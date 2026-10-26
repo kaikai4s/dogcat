@@ -25,11 +25,14 @@
       <view class="notice-title">
         <text class="remix-icon {{depositNotice.isRepay ? 'ri-alarm-warning-fill' : 'ri-shield-keyhole-fill'}} notice-icon"></text>
         <text>{{depositNotice.title || '未缴纳履约保证金'}}</text>
-        <text class="deposit-amount-tag" wx:if="{{depositNotice.amount}}" style="margin-left: 8rpx; padding: 2rpx 14rpx; border-radius: 999rpx; background: #ea580c; color: #fff; font-size: 20rpx; font-weight: 850;">需缴纳 ¥{{depositNotice.amount}}</text>
+
       </view>
       <view class="notice-desc">{{depositNotice.message || '未缴纳履约保证金暂无法抢单与被指定接单，请尽快完成缴纳。'}}</view>
     </view>
-    <button class="notice-btn deposit-btn" data-url="/pages/staff/training/index" bindtap="go">去缴纳</button>
+    <view class="deposit-notice-footer">
+      <view class="deposit-notice-amount" wx:if="{{depositNotice.amount}}"><text>应缴保证金</text><text class="deposit-notice-price">¥{{depositNotice.amount}}</text></view>
+      <button class="notice-btn deposit-btn" data-url="/pages/staff/training/index" bindtap="go">{{depositNotice.isRepay ? '去补缴' : '去缴纳'}}</button>
+    </view>
   </view>
 
   <!-- 未设置服务地址警示条 -->

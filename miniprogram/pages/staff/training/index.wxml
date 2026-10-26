@@ -4,7 +4,7 @@
   <view class="hero">
     <view class="badge">宠托师成长中心</view>
     <view class="title">培训与线上视频审核</view>
-    <view class="desc">完成答题、培训视频和管理员微信视频审核后，即可成为实习宠托师。</view>
+    <view class="desc">依次完成培训视频、答题和管理员微信视频审核后，即可成为实习宠托师。</view>
   </view>
 
   <view class="card" wx:if="{{profile}}">
@@ -29,7 +29,7 @@
       <view class="repay-alert-box" wx:if="{{depositState.needsRepay}}">
         <view class="repay-alert-title"><text class="remix-icon ri-alarm-warning-fill"></text> 管理员已要求重新足额缴纳保证金</view>
         <view class="repay-alert-reason">原因：{{depositState.repayReason || '保证金余额不足或发生履约出险扣除，重新足额缴纳前暂不可接单'}}</view>
-        <view class="repay-alert-amount" style="margin-top: 8rpx; padding: 6rpx 12rpx; background: #fee2e2; border-radius: 8rpx; display: inline-flex; align-items: center; gap: 8rpx;">
+        <view class="repay-alert-amount">
           <text style="color: #991b1b; font-size: 24rpx; font-weight: 850;">需足额缴纳保证金额度：</text>
           <text style="color: #dc2626; font-size: 30rpx; font-weight: 950;">¥{{depositState.config.amount}}</text>
         </view>
@@ -81,6 +81,7 @@
       </block>
     </block>
     <button class="ghost-btn" bindtap="loadDeposit" disabled="{{depositBusy || depositLoading}}">刷新保证金及退款状态</button>
+    <view class="muted" wx:if="{{depositState.paymentSyncPending}}">微信支付结果暂未核实，请稍后刷新状态，勿重复支付。</view>
     <view class="muted">支付或退款是否完成均以服务端核实结果为准。</view>
   </view>
 
@@ -107,18 +108,6 @@
         </view>
       </view>
     </view>
-  </view>
-
-  <view class="card" wx:if="{{quiz}}">
-    <view class="card-title">培训答题</view>
-    <view class="muted">{{quiz.passed ? '已通过，得分 ' + quiz.score : '达到 ' + quiz.passScore + ' 分即可通过'}}</view>
-    <view class="question" wx:for="{{quiz.questions}}" wx:key="id" wx:for-item="q">
-      <view class="question-title">{{index + 1}}. {{q.question}}</view>
-      <view class="option {{answers[q.id] === opt.value ? 'selected' : ''}}" wx:for="{{q.options}}" wx:key="value" wx:for-item="opt" data-question-id="{{q.id}}" data-value="{{opt.value}}" bindtap="selectAnswer">
-        <text>{{opt.value}}.</text><text>{{opt.label}}</text>
-      </view>
-    </view>
-    <button class="primary-btn" wx:if="{{!quiz.passed}}" bindtap="submitQuiz">提交答题</button>
   </view>
 
   <view class="card">
@@ -158,6 +147,24 @@
       </view>
     </view>
     <view class="muted" wx:if="{{!videos.length}}">管理员暂未配置培训视频。</view>
+  </view>
+
+  <view class="card" wx:if="{{quiz}}">
+    <view class="quiz-toggle" bindtap="toggleQuiz" role="button" aria-label="展开或收起培训答题">
+      <view class="quiz-heading"><view class="card-title">培训答题</view><view class="quiz-caption">{{!quiz.unlocked ? '完成视频后解锁' : (quiz.passed ? '已通过 · 可展开回顾' : '点击展开，开始答题')}}</view></view>
+      <text class="remix-icon {{!quiz.unlocked ? 'ri-lock-2-line' : 'ri-arrow-down-s-line'}} quiz-chevron {{quizExpanded ? 'expanded' : ''}}"></text>
+    </view>
+    <view class="quiz-locked" wx:if="{{!quiz.unlocked}}">已完成 {{watchedVideoCount}} / {{videos.length}} 个培训视频。请先完整观看全部视频，题目将在完成后解锁。</view>
+    <view class="quiz-content" wx:if="{{quiz.unlocked && quizExpanded}}">
+    <view class="muted">{{quiz.passed ? '已通过，得分 ' + quiz.score : '达到 ' + quiz.passScore + ' 分即可通过'}}</view>
+    <view class="question" wx:for="{{quiz.questions}}" wx:key="id" wx:for-item="q">
+      <view class="question-title">{{index + 1}}. {{q.question}}</view>
+      <view class="option {{answers[q.id] === opt.value ? 'selected' : ''}}" wx:for="{{q.options}}" wx:key="value" wx:for-item="opt" data-question-id="{{q.id}}" data-value="{{opt.value}}" bindtap="selectAnswer">
+        <text>{{opt.value}}.</text><text>{{opt.label}}</text>
+      </view>
+    </view>
+    <button class="primary-btn" wx:if="{{!quiz.passed}}" bindtap="submitQuiz" loading="{{quizBusy}}" disabled="{{quizBusy}}">提交答题</button>
+    </view>
   </view>
 
   <view class="card audit-card" wx:if="{{videoAuditGuide}}">

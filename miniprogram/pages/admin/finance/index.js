@@ -71,6 +71,7 @@ function decorateStaffFinance(item) {
     result[`${key}Text`] = item[key] === undefined || item[key] === null ? '待核实' : money(item[key])
   })
   result.refundPending = ['pending', 'requested', 'refund_requested', 'refund_pending'].includes(item.refundStatus) || ['refund_requested', 'refund_pending'].includes(item.status)
+  result.canRequestRefund = parseAmount(item.availableRefundAmount) !== null && ['paid', 'partially_refunded'].includes(item.status) && !['requested', 'approved', 'processing', 'refunding'].includes(item.refundStatus)
   result.canForfeit = parseAmount(item.availableRefundAmount) !== null && ['paid', 'partially_refunded'].includes(item.status) && !['requested', 'approved', 'processing', 'refunding', 'success'].includes(item.refundStatus)
   // Unknown states stay visible but never imply successful payment.
   result.transferConfirmed = item.status === 'paid' || item.transferStatus === 'SUCCESS'
@@ -145,7 +146,7 @@ Page({
     const suggestAmount = (q && q.suggestAmount) || ''
     const reason = (q && q.reason) ? decodeURIComponent(q.reason) : ''
 
-    if (targetStaffOpenid) {
+    if (targetStaffOpenid && (!q.action || q.action === 'forfeit')) {
       this._autoForfeitParams = {
         staffOpenid: targetStaffOpenid,
         evidenceId: targetEvidenceId,
@@ -191,7 +192,7 @@ Page({
     ]
     return Promise.all(fields.map(async ([action, field]) => {
       try {
-        const result = await optionalAdminRead(this, 'admin', action, field === 'requests' ? { ...query, status: this.data.status } : query, field === 'dashboard' ? null : [])
+        const result = await optionalAdminRead(this, 'admin', action, field === 'requests' ? { ...query, status: this.data.status, staffOpenid: this.data.targetStaffOpenid } : query, field === 'dashboard' ? null : [])
         if (this._financeVersion !== version) return
         if (field === 'dashboard') this.setData({ dashboard: result, metricCards: result ? metricCards(result.metrics) : [] })
         else this.setData({ [field]: field === 'logs' ? result || [] : (result || []).map(decorate) })
@@ -296,19 +297,24 @@ Page({
   },
 
   clearStaffFilter() {
-    this.setData({ targetStaffOpenid: '', targetStaffLabel: '' })
+    this._autoForfeitParams = null
+    this.setData({ targetStaffOpenid: '', targetStaffLabel: '' }, this.reloadAll)
   },
 
   loadStaffFinance() {
+    const version = (this._staffFinanceVersion || 0) + 1
+    this._staffFinanceVersion = version
+    const targetStaffOpenid = this.data.targetStaffOpenid
     this.setData({ staffFinanceLoading: true, staffFinanceError: '' })
     const query = this.query()
+    const depositQuery = targetStaffOpenid ? { staffOpenid: targetStaffOpenid } : query
     return Promise.all([
-      optionalAdminRead(this, 'admin', 'listStaffDeposits', query),
+      optionalAdminRead(this, 'admin', 'listStaffDeposits', depositQuery),
       optionalAdminRead(this, 'admin', 'listSupplyReimbursements', query)
     ])
       .then(([deposits, supplies]) => {
+        if (this._staffFinanceVersion !== version) return
         const rawDeposits = (deposits || []).map(decorateStaffFinance)
-        const targetStaffOpenid = this.data.targetStaffOpenid
 
         let targetStaffLabel = ''
         if (targetStaffOpenid) {
@@ -375,9 +381,31 @@ Page({
         }
       })
       .catch((err) => {
+        if (this._staffFinanceVersion !== version) return
         this.setData({ staffFinanceLoading: false, staffFinanceError: err.message || '加载宠托师财务失败' })
         showError(err)
       })
+  },
+
+  async requestDepositRefund(e) {
+    if (this.data.actionBusy) return
+    const id = e.currentTarget.dataset.id
+    if (!id) return
+    this.setData({ actionBusy: true })
+    try {
+      const response = await new Promise(resolve => wx.showModal({
+        title: '发起保证金退还', editable: true, placeholderText: '请输入退还原因（最多200字）',
+        content: '提交后进入退款审核。多笔保证金须逐笔处理，全部处理完成后才会退出身份。',
+        success: resolve, fail: () => resolve({ confirm: false })
+      }))
+      if (!response.confirm) return
+      const reason = String(response.content || '').trim()
+      if (!reason || reason.length > 200) throw new Error('请填写退还原因，最多200字')
+      await callFunction('admin', 'requestStaffDepositRefund', { id, reason })
+      wx.showToast({ title: '已提交退款审核', icon: 'none' })
+      await this.loadStaffFinance()
+    } catch (error) { showError(error) }
+    finally { this.setData({ actionBusy: false }) }
   },
 
   auditDepositRefund(e) {
@@ -666,9 +694,10 @@ Page({
         this.setData({ actionBusy: true })
         wx.showLoading({ title: '确认中...', mask: true })
         callFunction('admin', action, { id, paymentReference, paymentConfirmed: true })
-          .then(() => {
+          .then((result) => {
             wx.hideLoading()
-            wx.showToast({ title: '已确认付款' })
+            if (action === 'confirmDepositRefund' && result?.exitCompleted === false) wx.showModal({ title: '此笔退款已记录', content: '还有其他保证金记录未处理，请继续逐笔核对。全部处理完成后才会完成退出。', showCancel: false })
+            else wx.showToast({ title: '已确认付款' })
             if (action === 'markWithdrawPaid') this.load()
             else this.loadStaffFinance()
           })

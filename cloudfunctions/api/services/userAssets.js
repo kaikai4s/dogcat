@@ -412,7 +412,10 @@ module.exports = function createService({
       if (!['approved', 'transferring', 'transfer_failed'].includes(request.status)) throw new Error('当前用户资产提现状态不可失败回退')
       const time = now()
       await releaseWechatTransferQuota(tx, { _id: withdrawId, ...request }, 'transfer_failed')
-      await tx.collection('withdraw_requests').doc(withdrawId).update({ data: { status: 'transfer_failed', transferStatus: 'failed', failureReason: safeText(result.failReason || result.message).slice(0, 500), updatedAt: time } })
+      await tx.collection('withdraw_requests').doc(withdrawId).update({ data: { status: 'transfer_failed', transferStatus: 'failed',
+        gatewayFailureConfirmed: result.gatewayTerminalConfirmed === true,
+        wechatTransferState: safeText(result.state || result.transfer_state || 'FAIL'),
+        failureReason: safeText(result.failReason || result.message).slice(0, 500), updatedAt: time } })
       return { request: { ...request, status: 'transfer_failed' }, changed: true }
     })
   }
@@ -421,6 +424,7 @@ module.exports = function createService({
     return db.runTransaction(async tx => {
       const request = (await tx.collection('withdraw_requests').doc(data.id).get()).data
       if (!request || request.assetType !== 'user' || request.status !== 'transfer_failed') throw new Error('仅用户资产微信提现失败单可释放收益')
+      if (request.gatewayFailureConfirmed !== true) throw new Error('请先查询并确认微信转账已失败，再释放收益')
       const { earningIds } = await validateWithdrawalEarnings(tx, request, data.id)
       const time = now()
       const remark = safeText(data.remark || data.auditRemark).trim()

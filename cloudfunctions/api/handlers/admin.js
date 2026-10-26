@@ -222,10 +222,7 @@ module.exports = function createHandler(context) {
   async function assertStaffFundsSettledBeforeRoleRemoval(target, nextRoles = []) {
     if (!hasStaffRole(target) || nextRoles.includes('staff')) return
 
-    const earnings = (await db.collection('staff_earnings')
-      .where({ staffOpenid: target.openid })
-      .limit(100)
-      .get().catch(() => ({ data: [] }))).data || []
+    const earnings = await readScopedDocuments('staff_earnings', { staffOpenid: target.openid }, '_id', 'asc')
     const unsettledEarningStatuses = new Set(['pending', 'available', 'withdrawing', 'frozen'])
     const unsettledEarnings = earnings.filter((earning) => unsettledEarningStatuses.has(safeText(earning.status).trim()) && earning.isMock !== true && earning.paymentChannel !== 'mock')
     const earningAmount = unsettledEarnings.reduce((sum, earning) => sum + Number(earning.amount || 0), 0)
@@ -233,21 +230,14 @@ module.exports = function createHandler(context) {
       throw new Error(`该宠托师收益尚未结清，可处理金额 ¥${earningAmount.toFixed(2)}。请先在财务管理完成提现打款、驳回、冻结处理或收益结算后再移除宠托师身份`)
     }
 
-    const withdraws = (await db.collection('withdraw_requests')
-      .where({ staffOpenid: target.openid })
-      .limit(100)
-      .get().catch(() => ({ data: [] }))).data || []
+    const withdraws = await readScopedDocuments('withdraw_requests', { staffOpenid: target.openid }, '_id', 'asc')
     const pendingWithdraw = withdraws.find((item) => ['pending', 'approved', 'processing', 'transferring', 'transfer_failed'].includes(safeText(item.status).trim()))
     if (pendingWithdraw) {
       const amount = Number(pendingWithdraw.amount || 0).toFixed(2)
       throw new Error(`该宠托师存在未完成提现申请 ¥${amount}。请先在财务管理完成打款或驳回后再移除宠托师身份`)
     }
 
-    const deposits = (await db.collection('staff_deposits')
-      .where({ staffOpenid: target.openid })
-      .orderBy('createdAt', 'desc')
-      .limit(5)
-      .get().catch(() => ({ data: [] }))).data || []
+    const deposits = await readScopedDocuments('staff_deposits', { staffOpenid: target.openid }, '_id', 'asc')
     const unsettled = deposits.find((deposit) => {
       const available = Math.round(Number(deposit.availableRefundAmount || 0) * 100)
       const status = safeText(deposit.status).trim()
@@ -527,8 +517,11 @@ module.exports = function createHandler(context) {
       await refreshStaffEarnings()
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
-      const baseWhere = status ? { status } : {}
-      const requests = await queryFinanceListSafely('withdraw_requests', { baseWhere, dateRange: range, dateFields: ['createdAt', 'paidAt'], pageSize: data.pageSize })
+      const staffOpenid = safeText(data.staffOpenid).trim()
+      const baseWhere = { ...(status ? { status } : {}), ...(staffOpenid ? { staffOpenid } : {}) }
+      const requests = staffOpenid
+        ? await readScopedDocuments('withdraw_requests', baseWhere, 'createdAt', 'desc')
+        : await queryFinanceListSafely('withdraw_requests', { baseWhere, dateRange: range, dateFields: ['createdAt', 'paidAt'], pageSize: data.pageSize })
       const openids = [...new Set(requests.flatMap((item) => [item.staffOpenid, item.userOpenid]).filter(Boolean))]
       const [profiles, users, earnings, withdraws] = await Promise.all([
         fetchStaffProfilesByOpenids(openids),
@@ -603,6 +596,14 @@ module.exports = function createHandler(context) {
         if (earning.status === 'available') availableMap[earning.userOpenid] = (availableMap[earning.userOpenid] || 0) + Number(earning.amount || 0)
       })
       return rows.map((row) => ({ ...row, userNickname: (userMap.get(row.userOpenid) || {}).nickname || '', currentAvailableAmount: Math.round((availableMap[row.userOpenid] || 0) * 100) / 100 }))
+    }
+    if (action === 'getStaffSettlementPreview') {
+      const result = await context.getStaffSettlementPreview(safeText(data.staffProfileId).trim())
+      const { groups, ...preview } = result
+      return preview
+    }
+    if (action === 'settleStaffEarningsByWechat') {
+      return context.settleStaffEarningsByWechat({ ...admin, openid }, data)
     }
     if (action === 'auditWithdrawRequest') {
       const approved = data.approved === true
@@ -2951,14 +2952,14 @@ module.exports = function createHandler(context) {
     if (action === 'listStaffDeposits') {
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
-      const baseWhere = status ? { status } : {}
-      const pagedDeposits = await queryFinanceListSafely('staff_deposits', {
-        baseWhere,
-        dateRange: range,
-        dateFields: ['createdAt', 'paidAt'],
-        pageSize: data.pageSize || 50,
-        page: data.page || 1
-      })
+      const staffOpenid = safeText(data.staffOpenid).trim()
+      const baseWhere = { ...(status ? { status } : {}), ...(staffOpenid ? { staffOpenid } : {}) }
+      const pagedDeposits = staffOpenid
+        ? await readScopedDocuments('staff_deposits', baseWhere, 'createdAt', 'desc')
+        : await queryFinanceListSafely('staff_deposits', {
+          baseWhere, dateRange: range, dateFields: ['createdAt', 'paidAt'],
+          pageSize: data.pageSize || 50, page: data.page || 1
+        })
 
       const targetOpenids = Array.from(new Set(pagedDeposits.map((item) => item.staffOpenid).filter(Boolean)))
       const [users, profiles, allEvidences] = await Promise.all([
@@ -3011,6 +3012,15 @@ module.exports = function createHandler(context) {
         }
       })
       return list
+    }
+    if (action === 'requestStaffDepositRefund') {
+      const id = safeText(data.id).trim()
+      const reason = safeText(data.reason).trim()
+      if (!id || !reason || reason.length > 200) throw new Error('请选择保证金记录并填写退还原因（最多200字）')
+      if (typeof checkTextSecurity === 'function') await checkTextSecurity(openid, reason, { scene: 2, label: '管理员退还保证金原因' })
+      const deposit = (await db.collection('staff_deposits').doc(id).get()).data
+      if (!deposit) throw new Error('保证金记录不存在')
+      return context.requestStaffDepositRefund(deposit.staffOpenid, id, reason, { ...admin, openid })
     }
     if (action === 'auditDepositRefund') {
       const reason = safeText(data.reason || data.auditRemark).trim()

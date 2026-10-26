@@ -37,8 +37,8 @@ function normalizeDeposit(deposit) {
 function buildSteps(profile = {}, videos = []) {
   return [
     { title: '资料审核', desc: profile.auditStatus === 'approved' ? '已通过' : '待通过', done: profile.auditStatus === 'approved' },
-    { title: '培训答题', desc: profile.quizPassedAt ? '已通过' : '待完成', done: Boolean(profile.quizPassedAt) },
     { title: '培训视频', desc: videos.every((item) => item.watched) ? '已完成' : '待观看', done: videos.every((item) => item.watched) },
+    { title: '培训答题', desc: profile.quizPassedAt ? '已通过' : '待完成', done: Boolean(profile.quizPassedAt) },
     { title: '线上视频审核', desc: profile.videoAuditStatusText || '未申请', done: profile.videoAuditStatus === 'approved' },
     { title: '实习宠托师', desc: profile.staffLevel === 'intern' || profile.staffLevel === 'certified' ? '已达成' : '待达成', done: profile.staffLevel === 'intern' || profile.staffLevel === 'certified' }
   ]
@@ -50,6 +50,9 @@ Page({
     profile: null,
     quiz: null,
     answers: {},
+    quizExpanded: false,
+    quizBusy: false,
+    watchedVideoCount: 0,
     videos: [],
     steps: [],
     videoAuditGuide: null,
@@ -77,6 +80,7 @@ Page({
   },
 
   onShow() {
+    this._unloaded = false
     const theme = applyTheme()
     this.setData(getThemeState(theme.value))
     this.load()
@@ -88,6 +92,9 @@ Page({
   },
 
   onUnload() {
+    this._unloaded = true
+    this._depositLoadVersion = (this._depositLoadVersion || 0) + 1
+    this._trainingLoadVersion = (this._trainingLoadVersion || 0) + 1
     this.pauseAllVideos()
   },
 
@@ -101,18 +108,23 @@ Page({
   },
 
   async loadDeposit() {
+    if (this._unloaded) return null
+    const version = this._depositLoadVersion = (this._depositLoadVersion || 0) + 1
     this.setData({ depositLoading: true, depositError: false, depositAgreed: false })
     try {
       const depositState = await callFunction('staff', 'getDepositStatus')
       if (depositState && depositState.deposit) {
         depositState.deposit = normalizeDeposit(depositState.deposit)
       }
+      if (version !== this._depositLoadVersion || this._unloaded) return null
       this.setData({ depositState })
+      return depositState
     } catch (error) {
+      if (version !== this._depositLoadVersion || this._unloaded) return null
       this.setData({ depositState: null, depositError: true })
       showError(error)
     } finally {
-      this.setData({ depositLoading: false })
+      if (version === this._depositLoadVersion && !this._unloaded) this.setData({ depositLoading: false })
     }
   },
 
@@ -132,6 +144,7 @@ Page({
       return
     }
     this.setData({ depositBusy: true })
+    let paymentSubmitted = false
     wx.showLoading({ title: '创建支付...', mask: true })
     try {
       const result = await callFunction('staff', 'createDepositPayment', { agreed: true })
@@ -140,14 +153,22 @@ Page({
         if (!result.payParams) throw new Error('支付暂不可用，请稍后重试或联系平台')
         await new Promise((resolve, reject) => wx.requestPayment({ ...result.payParams, success: resolve, fail: reject }))
       }
-      wx.showToast({ title: '正在核实服务端支付状态', icon: 'none' })
+      paymentSubmitted = true
+      wx.showLoading({ title: '核实支付结果...', mask: true })
     } catch (error) {
       showError(error)
     } finally {
       wx.hideLoading()
-      await this.loadDeposit()
-      this.load()
-      this.setData({ depositBusy: false })
+      let confirmed = await this.loadDeposit()
+      for (let attempt = 0; paymentSubmitted && attempt < 2 && !this._unloaded && (!confirmed || confirmed.deposit?.status === 'unpaid'); attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, 1200))
+        if (!this._unloaded) confirmed = await this.loadDeposit()
+      }
+      if (!this._unloaded) {
+        if (paymentSubmitted) wx.showToast({ title: confirmed?.deposit?.status === 'paid' ? '保证金已缴纳' : '结果确认中，请刷新状态，勿重复支付', icon: 'none' })
+        this.load()
+        this.setData({ depositBusy: false })
+      }
     }
   },
 
@@ -186,9 +207,12 @@ Page({
   },
 
   load() {
+    if (this._unloaded) return Promise.resolve()
+    const version = this._trainingLoadVersion = (this._trainingLoadVersion || 0) + 1
     this.setData({ loading: true })
-    callFunction('staff', 'getTrainingStatus')
+    return callFunction('staff', 'getTrainingStatus')
       .then((res) => {
+        if (this._unloaded || version !== this._trainingLoadVersion) return
         const profile = withStaffWorkflowText(res.profile)
         if (!this._videoTracking) this._videoTracking = {}
         const videos = (res.videos || []).map((item) => {
@@ -215,15 +239,18 @@ Page({
         this.setData({
           profile,
           quiz: res.quiz,
+          quizExpanded: res.quiz && res.quiz.unlocked === true && this.data.quizExpanded,
+          watchedVideoCount: videos.filter(item => item.watched).length,
           videos,
           steps: buildSteps(profile, videos),
           videoAuditGuide: res.videoAuditGuide,
           canRequestVideoAudit: res.canRequestVideoAudit,
           supplyItems,
           loading: false
-        }, () => this.resolveVideoUrls(videos))
+        }, () => this.resolveVideoUrls(videos, version))
       })
       .catch((err) => {
+        if (this._unloaded || version !== this._trainingLoadVersion) return
         this.setData({ loading: false })
         showError(err)
       })
@@ -286,27 +313,36 @@ Page({
 
   noop() {},
 
+  toggleQuiz() {
+    if (!this.data.quiz?.unlocked || this.data.quizBusy) return
+    this.setData({ quizExpanded: !this.data.quizExpanded })
+  },
+
   selectAnswer(e) {
+    if (!this.data.quiz?.unlocked || this.data.quiz.passed || this.data.quizBusy) return
     const { questionId, value } = e.currentTarget.dataset
     this.setData({ [`answers.${questionId}`]: value })
   },
 
   submitQuiz() {
+    if (!this.data.quiz?.unlocked || this.data.quiz.passed || this.data.quizBusy) return
     const questions = (this.data.quiz && this.data.quiz.questions) || []
     const missing = questions.some((item) => !this.data.answers[item.id])
     if (missing) {
       wx.showToast({ title: '请完成全部题目', icon: 'none' })
       return
     }
+    this.setData({ quizBusy: true })
     callFunction('staff', 'submitTrainingQuiz', { answers: this.data.answers })
       .then((res) => {
         wx.showToast({ title: res.passed ? '答题通过' : `得分${res.score}，请重试`, icon: 'none' })
         this.load()
       })
       .catch(showError)
+      .finally(() => { if (!this._unloaded) this.setData({ quizBusy: false }) })
   },
 
-  resolveVideoUrls(videos = []) {
+  resolveVideoUrls(videos = [], version = this._trainingLoadVersion) {
     const fileIds = []
     videos.forEach((item) => {
       if (item.fileId) fileIds.push(item.fileId)
@@ -317,6 +353,7 @@ Page({
     wx.cloud.getTempFileURL({
       fileList: uniqueIds,
       success: (res) => {
+        if (this._unloaded || version !== this._trainingLoadVersion) return
         const urlMap = {}
         ;(res.fileList || []).forEach((file) => {
           if (file.fileID && file.tempFileURL) urlMap[file.fileID] = file.tempFileURL

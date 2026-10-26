@@ -1,6 +1,7 @@
 const { optionalAdminRead } = require('../../utils/admin-page-read')
 const { uploadImage } = require('../../../../utils/image-upload')
 const { callFunction, showError } = require('../../../../utils/cloud')
+const { getActiveEnvId } = require('../../../../envList')
 
 const statusTabs = [
   { label: '全部', value: '' },
@@ -71,7 +72,12 @@ Page({
     pageSize: 20,
     hasMore: true,
     total: 0,
-    loading: false
+    loading: false,
+    settlementBusy: false,
+    settlementStaffId: '',
+    settlementProgress: '',
+    settlementResumeStaffId: '',
+    depositRefundBusy: false
   },
 
     onPullDownRefresh() {
@@ -82,8 +88,13 @@ Page({
   },
 
   onShow() {
+    this._settlementPageUnloaded = false
     this.load({ reset: true })
     this.loadDepositConfig()
+  },
+
+  onUnload() {
+    this._settlementPageUnloaded = true
   },
 
   loadDepositConfig() {
@@ -504,12 +515,102 @@ Page({
     })
   },
 
+  async settleEarnings(e) {
+    if (this.data.settlementBusy) return
+    const staffProfileId = e.currentTarget.dataset.id
+    if (!staffProfileId) return
+    const storageKey = `admin_staff_settlement_${getActiveEnvId()}_${staffProfileId}`
+    this.setData({ settlementBusy: true, settlementStaffId: staffProfileId, settlementProgress: '正在核对可转账收益...' })
+    let operation = null
+    try {
+      try { operation = wx.getStorageSync(storageKey) || null } catch (_) {}
+      if (!operation) {
+        const preview = await callFunction('admin', 'getStaffSettlementPreview', { staffProfileId })
+        if (!preview.canSettle) throw new Error(preview.unavailableReason || '暂无可转账结清收益')
+        const confirmed = await new Promise(resolve => wx.showModal({
+          title: '商家微信转账结清收益',
+          content: `向${preview.staffName}转账 ¥${Number(preview.available).toFixed(2)}，共${preview.batchCount}笔。待结算 ¥${Number(preview.pending).toFixed(2)}、冻结 ¥${Number(preview.frozen).toFixed(2)}、已有提现占用 ¥${Number(preview.withdrawing).toFixed(2)} 不会重复打款。以微信到账结果扣减收益，可能需要宠托师确认收款。`,
+          confirmText: '确认转账', success: res => resolve(res.confirm), fail: () => resolve(false)
+        }))
+        if (!confirmed) return
+        operation = { clientRequestId: `settle_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`, expectedAmount: preview.available, batchIndex: 0 }
+        wx.setStorageSync(storageKey, operation)
+      }
+      let hasMore = true
+      while (hasMore && !this._settlementPageUnloaded) {
+        this.setData({ settlementProgress: `正在发起第 ${operation.batchIndex + 1} 笔转账，请勿关闭页面` })
+        const result = await callFunction('admin', 'settleStaffEarningsByWechat', { ...operation, staffProfileId, confirmed: true })
+        if (result.needsHandling) throw new Error('该笔转账需要处理，请到财务管理查看或重试原单；不会重复创建转账')
+        hasMore = result.hasMore
+        operation.batchIndex += 1
+        if (hasMore) wx.setStorageSync(storageKey, operation)
+      }
+      if (hasMore) return
+      wx.removeStorageSync(storageKey)
+      if (!this._settlementPageUnloaded) this.setData({ settlementResumeStaffId: '' })
+      if (this._settlementPageUnloaded) return
+      wx.showModal({ title: '结清转账已发起', content: '请到财务管理查看每笔结果。等待收款确认或转账处理中的收益会继续保留占用状态，只有微信确认到账后才记为已提现。', showCancel: false })
+    } catch (error) {
+      if (error.code === 'STAFF_SETTLEMENT_REVIEW_REQUIRED') wx.removeStorageSync(storageKey)
+      if (!this._settlementPageUnloaded) {
+        this.setData({ settlementResumeStaffId: error.code === 'STAFF_SETTLEMENT_REVIEW_REQUIRED' ? '' : staffProfileId })
+        showError(error)
+      }
+    } finally {
+      if (!this._settlementPageUnloaded) {
+        this.setData({ settlementBusy: false, settlementProgress: '' })
+        this.load({ reset: true })
+      }
+    }
+  },
+
+  resetSettlement(e) {
+    if (this.data.settlementBusy) return
+    const staffProfileId = e.currentTarget.dataset.id
+    wx.showModal({
+      title: '重新核对剩余收益',
+      content: '已发起的转账会保留原记录，仍在处理中的金额不会再次转账。清除本机续办记录后，再次点击收益转账结清，只核对当前可提现余额。',
+      confirmText: '重新核对',
+      success: res => {
+        if (!res.confirm) return
+        wx.removeStorageSync(`admin_staff_settlement_${getActiveEnvId()}_${staffProfileId}`)
+        this.setData({ settlementResumeStaffId: '' })
+        this.load({ reset: true })
+      }
+    })
+  },
+
+  async refundDeposit(e) {
+    if (this.data.depositRefundBusy) return
+    const item = e.currentTarget.dataset.item
+    if (!item?.depositId) return
+    const response = await new Promise(resolve => wx.showModal({
+      title: '发起退还保证金', editable: true, placeholderText: '请填写退还原因（最多200字）',
+      content: `可退余额 ${item.depositBalanceText}。本操作提交退款审核，不会立即转账。审核通过后需完成实际退款并填写凭证；退出前须结清收益。`,
+      confirmText: '提交审核', success: resolve, fail: () => resolve({ confirm: false })
+    }))
+    if (!response.confirm || this.data.depositRefundBusy) return
+    const reason = String(response.content || '').trim()
+    if (!reason || reason.length > 200) return wx.showToast({ title: '请填写退还原因，最多200字', icon: 'none' })
+    this.setData({ depositRefundBusy: true })
+    try {
+      await callFunction('admin', 'requestStaffDepositRefund', { id: item.depositId, reason })
+      wx.showToast({ title: '已提交退款审核' })
+      wx.navigateTo({ url: `/pages/admin/finance/index?tab=deposits&action=refund&staffOpenid=${encodeURIComponent(item.openid)}` })
+    } catch (error) { showError(error) }
+    finally { this.setData({ depositRefundBusy: false }); this.load({ reset: true }) }
+  },
+
+  viewStaffFinance(e) {
+    wx.navigateTo({ url: `/pages/admin/finance/index?tab=withdraws&action=settlement&staffOpenid=${encodeURIComponent(e.currentTarget.dataset.openid)}` })
+  },
+
   revokeStaff(e) {
     const staffProfileId = e.currentTarget.dataset.id
     if (!staffProfileId) return
     wx.showModal({
       title: '移除宠托师身份',
-      content: '确认后该用户会失去宠托师角色和接单资格。若该宠托师仍有可提现收益、提现申请、冻结收益或保证金未处理，系统会要求先在财务管理结清资金。',
+      content: '确认后该用户会失去宠托师角色和接单资格。请先用“收益转账结清”发起商家微信转账，并处理保证金退还。仍有待结算、冻结或未到账资金时不能移除；历史收益账目会保留。',
       confirmText: '确认移除',
       confirmColor: '#ef4444',
       success: (res) => {

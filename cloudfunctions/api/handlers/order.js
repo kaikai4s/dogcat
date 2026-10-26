@@ -1539,7 +1539,7 @@ module.exports = function createHandler(context) {
       if (!orderId) throw new Error('订单不可查看')
       const orderRes = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
       const order = orderRes && orderRes.data
-      if (!order || order.status !== ORDER_STATUS.COMPLETED) throw new Error('订单不可查看')
+      if (!order || isAdminDeletedOrder(order) || order.status !== ORDER_STATUS.COMPLETED) throw new Error('订单不可查看')
       const [reviewRes, checkinsRes, clientRes] = await Promise.all([
         db.collection('service_reviews').where({ orderId, status: 'visible' }).limit(1).get(),
         readScopedDocuments('checkin_logs', { orderId }, 'createdAt', 'asc'),

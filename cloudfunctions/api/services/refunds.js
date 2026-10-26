@@ -6,6 +6,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
   adjustStaffEarningsForRefund,
   enqueueOrderNotification, notifyOrder,
   normalizeMallProduct, getSkuById }) {
+  const inventory = require('./mallRefundInventory')({ db, now, normalizeMallProduct, getSkuById })
   const idFor = value => `refund_${crypto.createHash('sha256').update(value).digest('hex').slice(0, 32)}`
   const notificationDetail = refund => ({ refundAmount: refund.refundAmount, refundStatus: refund.status,
     refundTime: refund.succeededAt || refund.failedAt, failReason: refund.failReason })
@@ -237,57 +238,6 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         shouldRestoreStock = true
       }
 
-      if (shouldRestoreStock) {
-        const productRestores = new Map()
-        for (const item of order.items) {
-          const quantity = Number(item.quantity)
-          if (!Number.isSafeInteger(quantity) || quantity <= 0) throw new Error('退款商品数量异常，请核对库存')
-          let product = productRestores.get(item.productId)
-          if (!product) {
-            const rawProduct = (await tx.collection('mall_products').doc(item.productId).get()).data
-            if (!rawProduct) throw new Error('退款商品不存在，请核对库存')
-            if (rawProduct) product = typeof normalizeMallProduct === 'function' ? normalizeMallProduct(rawProduct) : rawProduct
-          }
-          if (product) {
-            let sku = typeof getSkuById === 'function' ? getSkuById(product, item.skuId) : null
-            if (!sku && Array.isArray(product.skus)) {
-              sku = product.skus.find(s => s.skuId === item.skuId)
-            }
-            if (!sku) throw new Error('退款商品规格不存在，请核对库存')
-            if (sku) {
-              const skus = product.skus.map(row => row.skuId === sku.skuId
-                ? {
-                  ...row,
-                  stock: Number(row.stock || 0) + quantity,
-                  salesCount: Math.max(0, Number(row.salesCount || 0) - quantity)
-                }
-                : row)
-              const changed = skus.find(row => row.skuId === sku.skuId)
-              if (typeof normalizeMallProduct === 'function') {
-                product = normalizeMallProduct({
-                  ...product,
-                  ...(product.specMode === 'single' ? { stock: changed.stock, salesCount: changed.salesCount } : {}),
-                  skus
-                })
-              } else {
-                product.skus = skus
-                if (product.specMode === 'single') {
-                  product.stock = changed.stock
-                  product.salesCount = changed.salesCount
-                }
-              }
-              productRestores.set(item.productId, product)
-            }
-          }
-        }
-        for (const [id, product] of productRestores) {
-          const { skus, price, originalPrice, stock, totalStock, minPrice, maxPrice, salesCount, specText } = product
-          await tx.collection('mall_products').doc(id).update({
-            data: { skus, price, originalPrice, stock, totalStock, minPrice, maxPrice, salesCount, specText, updatedAt: time }
-          })
-        }
-      }
-
       let nextStatus = order.status
       if (full && order.status !== 'completed') {
         nextStatus = 'refunded'
@@ -310,7 +260,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         paymentStatus, refundStatus,
         ...(['success', 'failed'].includes(status) ? { pendingEarningRefundIds: (order.pendingEarningRefundIds || []).filter(id => id !== refund._id) } : {}),
         status: nextStatus,
-        ...(shouldRestoreStock ? { stockRestored: true, stockRestoredAt: time } : {}),
+        ...(shouldRestoreStock ? { stockRestorePending: true, stockRestoreCheckedAt: time, stockRestoreError: '' } : {}),
         updatedAt: time
       } })
       if ((status === 'success' || status === 'failed') && resolved.collectionName !== 'mall_orders') {
@@ -333,6 +283,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
       }
       return { ...latest, ...patch }
     })
+    if (result?.status === 'success' && resolved.collectionName === 'mall_orders') await inventory.restorePendingStock(refund.orderId)
     if (result && ['success', 'failed'].includes(result.status) && resolved.collectionName !== 'mall_orders') {
       // The committed queue survives a send failure or a process restart.
       await notifyOrder(resolved.order.clientOpenid, 'refundResult', resolved.order, notificationDetail(result), 'client', notificationKey(result))
@@ -405,7 +356,8 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
       }
     }
 
-    return rows.length + allFailed.length
+    const stockChecked = await inventory.retryPendingStock()
+    return rows.length + allFailed.length + stockChecked
   }
   return { requestOrderRefund, dispatchOrderRefund, syncOrderRefund, refreshOrderRefunds, reconcilePendingRefunds }
 }

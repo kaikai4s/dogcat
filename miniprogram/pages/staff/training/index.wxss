@@ -330,3 +330,15 @@ button[disabled] { opacity: .55; }
   color: #9ca3af;
 }
 
+
+.quiz-toggle { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; }
+.quiz-heading { flex: 1; min-width: 0; }
+.quiz-heading .card-title { margin-bottom: 8rpx; }
+.quiz-caption, .quiz-locked { font-size: 24rpx; line-height: 1.65; color: var(--text-secondary, #7a6a5e); }
+.quiz-locked { margin-top: 20rpx; padding: 22rpx; border-radius: 20rpx; background: var(--bg-soft, #fff7ed); }
+.quiz-chevron { flex-shrink: 0; font-size: 36rpx; color: #ea580c; transition: transform .22s ease; }
+.quiz-chevron.expanded { transform: rotate(180deg); }
+.quiz-content { padding-top: 24rpx; animation: quiz-enter .22s ease-out; }
+@keyframes quiz-enter { from { opacity: 0; transform: translateY(-8rpx); } to { opacity: 1; transform: translateY(0); } }
+.repay-alert-amount { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8rpx; margin-top: 12rpx; padding: 12rpx 16rpx; background: #fee2e2; border-radius: 12rpx; }
+.repay-alert-title { line-height: 1.6; overflow-wrap: anywhere; }

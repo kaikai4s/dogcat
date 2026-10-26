@@ -308,11 +308,12 @@ module.exports = function createGroupBuy(context) {
     }
     let cursor = ''
     do {
-      const groups = (await db.collection(COLLECTION).where({
-        status: db.command ? db.command.neq('cancelled') : 'recruiting',
-        deadline: db.command ? db.command.lte(stamp) : stamp,
-        ...(cursor ? { _id: db.command.gt(cursor) } : {})
-      }).orderBy('_id', 'asc').limit(100).get()).data || []
+      const groups = (await db.collection(COLLECTION).where(db.command.and([
+        { deadline: db.command.lte(stamp) },
+        db.command.or([{ status: 'recruiting' }, { status: db.command.exists(false) }]),
+        db.command.or([{ formedAt: 0 }, { formedAt: null }, { formedAt: db.command.exists(false) }]),
+        ...(cursor ? [{ _id: db.command.gt(cursor) }] : [])
+      ])).orderBy('_id', 'asc').limit(100).get()).data || []
       for (const g of groups) {
         if (!g.formedAt && g.deadline <= stamp && g.status !== 'cancelled') {
           try {

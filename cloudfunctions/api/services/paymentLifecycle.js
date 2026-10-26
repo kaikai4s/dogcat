@@ -1,5 +1,5 @@
 module.exports = function createService({
-  recordStaffDepositPayment, reserveOrderPayment, settleOrderPayment, requestOrderRefund,
+  db, getStaffProfileByOpenid, recordStaffDepositPayment, reserveOrderPayment, settleOrderPayment, requestOrderRefund,
   appendOrderClientMessage, createPaymentNo, notifyOrder,
   getSystemSettings, getWechatPayConfig, wechatPayRequest, appendPaymentEvent,
   sanitizeWechatPayload, validatePaymentCallbackPayload, getPayableOrder, readScopedDocuments
@@ -35,6 +35,46 @@ module.exports = function createService({
 
   async function createRefundForOrder(order, refundAmount, reason, source, operatorOpenid, clientRequestId = '', options = {}) {
     return requestOrderRefund(order, refundAmount, reason, source, operatorOpenid, clientRequestId, options)
+  }
+
+  // Query only the current unpaid deposit: historical refunded/forfeited payments
+  // must never satisfy a new repayment requirement.
+  async function syncWechatStaffDeposit(profile) {
+    if (!profile) return { profile, deposit: null }
+    async function readCurrentDeposit(currentProfile) {
+      if (!currentProfile) return null
+      if (currentProfile.currentDepositId) {
+        const current = (await db.collection('staff_deposits').doc(currentProfile.currentDepositId).get()).data
+        if (!current || current.staffOpenid !== currentProfile.openid) throw new Error('当前保证金记录归属不匹配，请联系平台核对')
+        return current
+      }
+      return (await db.collection('staff_deposits').where({ staffOpenid: currentProfile.openid }).orderBy('createdAt', 'desc').limit(1).get()).data[0] || null
+    }
+    async function freshSnapshot() {
+      const freshProfile = await getStaffProfileByOpenid(profile.openid)
+      return { profile: freshProfile, deposit: await readCurrentDeposit(freshProfile) }
+    }
+    const deposit = await readCurrentDeposit(profile)
+    if (!deposit || deposit.status !== 'unpaid') return { profile, deposit }
+    const payments = (await db.collection('payments').where({ orderId: deposit._id, targetType: 'staff_deposit' }).limit(2).get()).data
+    if (payments.length > 1) throw new Error('保证金支付记录重复，请联系平台对账')
+    const payment = payments[0]
+    if (!payment || payment.channel !== 'wechat') return { profile, deposit }
+    if (payment.openid !== profile.openid || Number(payment.amount) !== Number(deposit.amount)) throw new Error('保证金支付记录不匹配')
+    let response, config
+    try {
+      config = getWechatPayConfig(await getSystemSettings({ includeSecrets: true }))
+      response = await wechatPayRequest('GET', `/v3/pay/transactions/out-trade-no/${encodeURIComponent(payment.paymentNo)}?mchid=${encodeURIComponent(config.mchId)}`, null, config)
+    } catch (error) {
+      console.error('[deposit-payment-query]', { depositId: deposit._id, message: error.message })
+      const fresh = await freshSnapshot()
+      return { ...fresh, paymentSyncPending: fresh.deposit?.status === 'unpaid' }
+    }
+    if (response.trade_state !== 'SUCCESS') return freshSnapshot()
+    validatePaymentCallbackPayload(response, { payAmount: deposit.amount }, payment, config)
+    await markStaffDepositPaid(deposit._id, { paymentNo: payment.paymentNo, wxTransactionId: response.transaction_id, channel: 'wechat', rawCallback: sanitizeWechatPayload(response) })
+    const fresh = await freshSnapshot()
+    return { ...fresh, reconciled: fresh.deposit?._id === deposit._id && fresh.deposit.status === 'paid' }
   }
 
   async function syncWechatPaidOrder(order, payments) {
@@ -102,6 +142,7 @@ module.exports = function createService({
     markOrderPaid,
     markStaffDepositPaid,
     createRefundForOrder,
-    syncWechatPaidOrder
+    syncWechatPaidOrder,
+    syncWechatStaffDeposit
   }
 }

@@ -56,6 +56,7 @@ module.exports = function createHandler(context) {
     isTrainingComplete,
     makeIdempotencyKey,
     markStaffDepositPaid,
+    syncWechatStaffDeposit,
     maskClientName,
     maskOrderForStaffPreview,
     maskStaffName,
@@ -520,7 +521,8 @@ module.exports = function createHandler(context) {
     if (action === 'getStaffProfile') {
       await getUser(openid)
       const res = await db.collection('staff_profiles').where({ openid }).limit(1).get()
-      const profile = normalizeStaffWorkflow(res.data[0] || null)
+      const synced = await syncWechatStaffDeposit(res.data[0] || null)
+      const profile = normalizeStaffWorkflow(synced.profile)
       if (!profile) return null
       const settings = await getSystemSettings()
       const depositConfig = settings.staffDeposit || normalizeStaffDepositConfig()
@@ -565,10 +567,10 @@ module.exports = function createHandler(context) {
       const settings = await getSystemSettings()
       const training = settings.staffTraining || normalizeStaffTrainingConfig()
       const completedOrders = await getCompletedStaffOrders(openid, 3)
-      const videos = enabledTrainingVideos(training).map((video) => ({ ...video, watched: Boolean(progress[video.key] && progress[video.key].watched), watchedAt: progress[video.key] && progress[video.key].watchedAt || '' }))
+      const videos = enabledTrainingVideos(training).map((video) => ({ ...video, watched: Boolean(progress[video.key] && progress[video.key].watched === true), watchedAt: progress[video.key] && progress[video.key].watchedAt || '' }))
       return {
         profile,
-        quiz: { questions: publicTrainingQuiz(training.quiz), passScore: training.passScore, passed: Boolean(profile.quizPassedAt), score: Number(profile.quizScore || 0), passedAt: profile.quizPassedAt || '' },
+        quiz: { unlocked: profile.auditStatus === 'approved' && videos.every(video => video.watched), questions: profile.auditStatus === 'approved' && videos.every(video => video.watched) ? publicTrainingQuiz(training.quiz) : [], passScore: training.passScore, passed: Boolean(profile.quizPassedAt), score: Number(profile.quizScore || 0), passedAt: profile.quizPassedAt || '' },
         videos,
         videoAuditGuide: normalizeVideoAuditGuide(training.videoAuditGuide),
         supplies: settings.staffSupplies || normalizeStaffSuppliesConfig(),
@@ -587,6 +589,7 @@ module.exports = function createHandler(context) {
       if (!profile || profile.auditStatus !== 'approved') throw new Error('资料审核通过后方可参加培训答题')
       const settings = await getSystemSettings()
       const training = settings.staffTraining || normalizeStaffTrainingConfig()
+      if (!enabledTrainingVideos(training).every(video => profile.trainingVideoProgress && profile.trainingVideoProgress[video.key]?.watched === true)) throw new Error('请先完成全部培训视频观看后再答题')
       const questions = training.quiz || DEFAULT_STAFF_TRAINING_QUIZ
       const answers = data.answers || {}
       const correct = questions.filter((item) => safeText(answers[item.id]).trim() === item.answer).length
@@ -1726,22 +1729,18 @@ module.exports = function createHandler(context) {
       return cancelStaffAcceptedOrder(openid, data)
     }
     if (action === 'getDepositStatus') {
-      const user = await getUser(openid)
-      const profile = await getStaffProfileByOpenid(openid)
+      await getUser(openid)
+      const synced = await syncWechatStaffDeposit(await getStaffProfileByOpenid(openid))
+      const profile = synced.profile
       const settings = await getSystemSettings()
       const config = settings.staffDeposit || normalizeStaffDepositConfig()
       const supplies = settings.staffSupplies || normalizeStaffSuppliesConfig()
-      let deposit = null
-      const depositRes = await db.collection('staff_deposits').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').limit(1).get()
-      if (depositRes.data && depositRes.data[0]) {
-        const rawDeposit = depositRes.data[0]
-        const safeDeposit = { ...rawDeposit }
-        // 严格隔离管理员内部举证照片，仅管理员可见，宠托师端不可见
-        delete safeDeposit.lastForfeitImages
-        delete safeDeposit.evidenceImages
-        delete safeDeposit.forfeitProofImages
-        delete safeDeposit.forfeitImages
-        deposit = safeDeposit
+      const deposit = synced.deposit ? { ...synced.deposit } : null
+      if (deposit) {
+        delete deposit.lastForfeitImages
+        delete deposit.evidenceImages
+        delete deposit.forfeitProofImages
+        delete deposit.forfeitImages
       }
       const auditApproved = profile && profile.auditStatus === 'approved'
       const needsRepay = Boolean(profile && (profile.requireDepositRepay === true || profile.depositStatus === 'supplement_required' || profile.depositStatus === 'forfeited' || (deposit && deposit.status === 'forfeited')))
@@ -1775,6 +1774,7 @@ module.exports = function createHandler(context) {
         canPay,
         canRequestRefund,
         needsRepay,
+        paymentSyncPending: synced.paymentSyncPending === true,
         repayReason: profile && profile.requireDepositRepayReason || '',
         events
       }
@@ -1790,7 +1790,9 @@ module.exports = function createHandler(context) {
       const clientRequestId = getClientRequestId(data)
       const paymentMode = (settings.payment && settings.payment.mode) || 'mock'
       assertPaymentModeAllowed({ ...settings.payment, mode: paymentMode })
-      const { deposit, payment: paymentRecord } = await reserveStaffDepositPayment(user, profile, config.amount, paymentMode, clientRequestId)
+      const synced = await syncWechatStaffDeposit(profile)
+      if (synced.reconciled && synced.deposit.status === 'paid') return { paid: true, depositId: synced.deposit._id }
+      const { deposit, payment: paymentRecord } = await reserveStaffDepositPayment(user, synced.profile, config.amount, paymentMode, clientRequestId)
       const amount = deposit.amount
       if (deposit.status === 'paid') return { paid: true, depositId: deposit._id }
       if (paymentMode === 'mock') {

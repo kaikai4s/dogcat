@@ -101,7 +101,7 @@ module.exports = function createService({ db, crypto, now, safeText }) {
       operatorOpenid: actor, operatorRole: type === 'refund_request' ? 'staff' : 'admin', type, amount, reason, createdAt: time, ...extra
     } })
   }
-  async function requestStaffDepositRefund(openid, depositId, reason) {
+  async function requestStaffDepositRefund(openid, depositId, reason, admin = null) {
     return db.runTransaction(async tx => {
       const deposit = (await tx.collection('staff_deposits').doc(depositId).get().catch(() => ({ data: null }))).data
       if (!deposit || deposit.staffOpenid !== openid) throw new Error('保证金归属不匹配')
@@ -119,7 +119,11 @@ module.exports = function createService({ db, crypto, now, safeText }) {
         refundRevision: revision, refundRequestedAt: time, updatedAt: time
       } })
       await tx.collection('staff_profiles').doc(profile._id).update({ data: { exitStatus: 'requested', depositStatus: 'refund_requested', updatedAt: time } })
-      await depositEvent(tx, key(depositId, 'request', revision), deposit, openid, 'refund_request', deposit.availableRefundAmount, reason, time)
+      await depositEvent(tx, key(depositId, 'request', revision), deposit, admin ? admin.openid : openid, 'refund_request', deposit.availableRefundAmount, reason, time, admin ? { operatorRole: 'admin' } : {})
+      if (admin) await tx.collection('admin_operation_logs').doc(key(depositId, 'admin_request', revision)).set({ data: {
+        adminUserId: admin._id, adminOpenid: admin.openid, action: 'requestStaffDepositRefund', targetType: 'staff_deposit', targetId: depositId,
+        detail: { staffOpenid: openid, amount: deposit.availableRefundAmount, reason }, createdAt: time
+      } })
       return { success: true, status: 'refund_requested' }
     })
   }
@@ -187,18 +191,38 @@ module.exports = function createService({ db, crypto, now, safeText }) {
       } else if (action === 'confirmDepositRefund') {
         if (deposit.status !== 'refund_approved' || deposit.refundStatus !== 'approved') throw new Error('仅已审核退款可确认付款')
         await exitCheck(deposit.staffOpenid)
+        const { documentPages } = require('../utils/documentPages')
+        for await (const rows of documentPages(tx, db.command, 'staff_earnings', { staffOpenid: deposit.staffOpenid })) {
+          if (rows.some(row => ['pending', 'available', 'withdrawing', 'frozen'].includes(row.status) && row.isMock !== true && row.paymentChannel !== 'mock' && money(row.amount) > 0)) throw new Error('尚有未结清收益，请先完成收益结算和转账，再确认退出退款')
+        }
+        for await (const rows of documentPages(tx, db.command, 'withdraw_requests', { staffOpenid: deposit.staffOpenid })) {
+          if (rows.some(row => ['pending', 'approved', 'processing', 'transferring', 'transfer_failed'].includes(row.status))) throw new Error('尚有未完成提现，请先核对转账结果')
+        }
         amount = money(deposit.approvedRefundAmount, true)
         if (amount !== balance.available) throw new Error('退款金额与余额不一致')
         patch = { status: 'refunded', statusText: '已人工确认退款', refundStatus: 'success', availableRefundAmount: 0,
           refundedAmount: (balance.refunded + amount) / 100, refundPaidAt: time, refundPaidBy: admin.openid, refundPaymentReference: proof, refundConfirmationSource: 'manual' }
-        profilePatch = { exitStatus: 'exited', depositStatus: 'refunded', auditStatus: 'revoked' }
+        let otherDepositsPending = false
+        for await (const rows of documentPages(tx, db.command, 'staff_deposits', { staffOpenid: deposit.staffOpenid })) {
+          if (rows.some(row => row._id !== targetDepositId && (
+            money(row.availableRefundAmount == null ? 0 : row.availableRefundAmount) > 0 ||
+            ['unpaid', 'refund_requested', 'refund_approved'].includes(row.status) ||
+            ['requested', 'approved', 'processing'].includes(row.refundStatus)
+          ))) otherDepositsPending = true
+        }
+        // Record each real refund, but finish the exit only after every deposit
+        // has been resolved. Repayment can leave refundable balances in older rows.
+        profilePatch = otherDepositsPending
+          ? { exitStatus: 'approved', depositStatus: 'refund_approved' }
+          : { exitStatus: 'exited', depositStatus: 'refunded', auditStatus: 'revoked' }
         financeAction = 'deposit_refunded'; delta = -amount / 100
       } else throw new Error('未知保证金操作')
       const result = { id: targetDepositId, status: patch.status, refundStatus: patch.refundStatus || deposit.refundStatus,
-        availableRefundAmount: patch.availableRefundAmount ?? deposit.availableRefundAmount }
+        availableRefundAmount: patch.availableRefundAmount ?? deposit.availableRefundAmount,
+        ...(action === 'confirmDepositRefund' ? { exitCompleted: profilePatch.exitStatus === 'exited' } : {}) }
       await tx.collection('staff_deposits').doc(targetDepositId).update({ data: { ...patch, updatedAt: time } })
       await tx.collection('staff_profiles').doc(profile._id).update({ data: { ...profilePatch, updatedAt: time } })
-      if (action === 'confirmDepositRefund') {
+      if (action === 'confirmDepositRefund' && result.exitCompleted) {
         const staffUserId = deposit.staffUserId || (profile && profile.userId)
         let staffUser = null
         if (staffUserId) {
@@ -335,7 +359,7 @@ module.exports = function createService({ db, crypto, now, safeText }) {
         paidAmount: amount, availableRefundAmount: amount, status: 'paid', statusText: '已缴纳',
         paymentNo, wxTransactionId: payload.wxTransactionId || '', paidAt: time, updatedAt: time
       } })
-      await tx.collection('staff_profiles').doc(profile._id).update({ data: {
+      if (!profile.currentDepositId || profile.currentDepositId === depositId) await tx.collection('staff_profiles').doc(profile._id).update({ data: {
         depositStatus: 'paid',
         depositRequired: true,
         requireDepositRepay: false,

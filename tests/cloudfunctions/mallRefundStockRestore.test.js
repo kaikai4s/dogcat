@@ -119,13 +119,17 @@ for (const payAmount of [200, 0]) {
   })
 }
 
-test('mall refund stock restore: missing SKU blocks settlement without marking stock restored', async () => {
+test('mall refund stock restore: missing SKU leaves inventory pending without blocking a confirmed refund', async () => {
   const { db, requestOrderRefund } = setupMallRefundTest()
   db.state.mall_orders[0].items[0].skuId = 'missing_sku'
-  await assert.rejects(requestOrderRefund(structuredClone(db.state.mall_orders[0]), 200, '退款', 'admin_mall_manual', 'openid_admin', 'bad_sku'), /规格不存在/)
+  const refund = await requestOrderRefund(structuredClone(db.state.mall_orders[0]), 200, '退款', 'admin_mall_manual', 'openid_admin', 'bad_sku')
+  assert.equal(refund.status, 'success')
   assert.equal(db.state.mall_products[0].stock, 8)
   assert.equal(db.state.mall_orders[0].stockRestored, undefined)
-  assert.equal(db.state.refunds[0].status, 'processing')
+  assert.equal(db.state.refunds[0].status, 'success')
+  assert.equal(db.state.mall_orders[0].paymentStatus, 'refunded')
+  assert.equal(db.state.mall_orders[0].stockRestorePending, true)
+  assert.match(db.state.mall_orders[0].stockRestoreError, /规格不存在/)
 })
 
 test('mall refund stock restore: 未发货商城订单全额退款成功后，商品库存与销量精准回滚', async () => {

@@ -555,7 +555,7 @@ test('staff training quiz uses admin configured questions and pass score', async
       { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
       { _id: 'staff_user', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' }
     ],
-    staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', auditStatus: 'approved', staffLevel: 'applicant', onboardingStatus: 'training_pending' }],
+    staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', auditStatus: 'approved', staffLevel: 'applicant', onboardingStatus: 'training_pending', trainingVideoProgress: Object.fromEntries(require('../../cloudfunctions/api/config/constants').STAFF_TRAINING_VIDEOS.map(video => [video.key, { watched: true }])) }],
     orders: [],
     platform_configs: [],
     admin_operation_logs: []

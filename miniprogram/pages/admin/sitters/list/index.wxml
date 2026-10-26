@@ -102,12 +102,18 @@
 
     <view class="admin-summary-row sitter-action-row">
       <button wx:if="{{adminSuper || adminPermissions.admin_listStaffAudits}}" class="mini-btn" data-id="{{item._id}}" bindtap="detail">{{item.actionText}}</button>
+      <button class="mini-btn" wx:if="{{adminSuper || adminPermissions.admin_settleStaffEarningsByWechat}}" data-id="{{item._id}}" bindtap="settleEarnings" disabled="{{settlementBusy}}" loading="{{settlementBusy && settlementStaffId === item._id}}">收益转账结清</button>
+      <button class="mini-btn ghost-mini" wx:if="{{item.depositBalance > 0 && (adminSuper || adminPermissions.admin_requestStaffDepositRefund)}}" data-item="{{item}}" bindtap="refundDeposit" disabled="{{depositRefundBusy}}">退还保证金</button>
+      <button class="mini-btn ghost-mini" wx:if="{{adminSuper || adminPermissions.admin_listWithdrawRequests}}" data-openid="{{item.openid}}" bindtap="viewStaffFinance">查看转账</button>
       <button class="mini-btn danger-mini" wx:if="{{item.auditStatus === 'approved' && item.depositBalance > 0}}" data-item="{{item}}" bindtap="openForfeitModal">扣除保证金</button>
+      <button class="mini-btn ghost-mini" wx:if="{{item.depositBalance <= 0 && (adminSuper || adminPermissions.admin_listStaffDeposits)}}" data-url="/pages/admin/finance/index?tab=deposits&amp;action=refund&amp;staffOpenid={{item.openid}}" bindtap="go">保证金记录</button>
       <button class="mini-btn ghost-mini" wx:if="{{(item.staffLevel === 'certified') && (adminSuper || adminPermissions.admin_setSitterFeatured)}}" data-id="{{item._id}}" data-featured="{{item.isFeatured}}" bindtap="toggleFeatured">{{item.featuredActionText}}</button>
       <button class="mini-btn danger-mini" wx:if="{{(item.canRevokeStaff) && (adminSuper || adminPermissions.admin_revokeStaff)}}" data-id="{{item._id}}" bindtap="revokeStaff">移除身份</button>
       <button class="mini-btn ghost-mini" data-index="{{index}}" bindtap="toggleDetails">{{item.expanded ? '收起详情' : '展开详情'}}</button>
     </view>
 
+    <view class="settlement-progress" wx:if="{{!settlementBusy && settlementResumeStaffId === item._id}}"><text>有未完成的结清任务，可点击“收益转账结清”继续。</text><button class="mini-btn ghost-mini" data-id="{{item._id}}" bindtap="resetSettlement">重新核对</button></view>
+    <view class="settlement-progress" wx:if="{{settlementBusy && settlementStaffId === item._id}}"><text class="remix-icon ri-bank-card-line"></text><text>{{settlementProgress}}</text></view>
     <view class="collapse-body sitter-detail-body" wx:if="{{item.expanded}}">
       <view class="compact-info-grid">
         <view class="compact-info-item"><view class="compact-info-label">绑定账号</view><view class="compact-info-value">{{item.userNickname}}</view></view>
@@ -122,6 +128,7 @@
         <view class="compact-info-item"><view class="compact-info-label">账号状态</view><view class="compact-info-value">{{item.userStatus || '未知'}}</view></view>
       </view>
 
+      <view class="settlement-note">收益结清通过商家微信转账发放，仅到账后计为已提现。待结算、冻结和在途资金须处理完成后才能移除身份。</view>
       <view class="withdraw-history" wx:if="{{item.withdrawHistory.length}}">
         <view class="withdraw-history-title">最近提现记录</view>
         <view class="withdraw-history-item" wx:for="{{item.withdrawHistory}}" wx:for-item="history" wx:key="_id">

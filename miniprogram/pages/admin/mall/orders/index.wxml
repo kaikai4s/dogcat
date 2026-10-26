@@ -63,6 +63,10 @@
       <view class="muted">{{item.refundReason || '用户申请售后'}}</view>
       <view class="muted" wx:if="{{item.refundStatus === 'return_shipped' && item.returnExpress}}">退货单号：{{item.returnExpress.expressCompany}} {{item.returnExpress.trackingNo}}</view>
     </view>
+    <view class="refund-note" wx:if="{{item.stockRestorePending}}">
+      <view class="badge danger-badge">退款已完成 · 库存待核对</view>
+      <view class="muted">{{item.stockRestoreError || '系统正在补偿恢复库存，请勿重复手动加库存。'}}</view>
+    </view>
     <view class="refund-note" wx:if="{{item.compensationAmount}}">
       <view class="badge success">已赔付</view>
       <view class="muted">已赔付买家 ¥{{item.compensationAmount}} {{item.compensationRemark ? '(' + item.compensationRemark + ')' : ''}}</view>

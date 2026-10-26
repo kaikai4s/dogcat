@@ -98,7 +98,7 @@ test('failed asset withdrawal release rejects missing, foreign, paid, duplicated
   ]
   for (const scenario of cases) {
     const { db, service } = context({
-      withdraw_requests: [{ _id: 'w', assetType: 'user', userOpenid: 'client', amount: scenario.amount || 2, earningIds: scenario.ids || ['e'], status: 'transfer_failed' }],
+      withdraw_requests: [{ _id: 'w', assetType: 'user', userOpenid: 'client', amount: scenario.amount || 2, earningIds: scenario.ids || ['e'], status: 'transfer_failed', gatewayFailureConfirmed: true }],
       user_asset_earnings: [{ _id: 'e', userOpenid: 'client', amount: 2, withdrawRequestId: 'w', status: 'withdrawing', ...scenario.patch }]
     })
     const before = structuredClone(db.state)
@@ -109,7 +109,7 @@ test('failed asset withdrawal release rejects missing, foreign, paid, duplicated
 
 test('valid failed asset withdrawal release restores only the locked owner earnings', async () => {
   const { db, service } = context({
-    withdraw_requests: [{ _id: 'w', assetType: 'user', userOpenid: 'client', amount: 2, earningIds: ['e'], status: 'transfer_failed' }],
+    withdraw_requests: [{ _id: 'w', assetType: 'user', userOpenid: 'client', amount: 2, earningIds: ['e'], status: 'transfer_failed', gatewayFailureConfirmed: true }],
     user_asset_earnings: [{ _id: 'e', userOpenid: 'client', amount: 2, withdrawRequestId: 'w', status: 'withdrawing' }]
   })
   await service.releaseUserAssetWithdrawal({ openid: 'admin' }, { id: 'w' })

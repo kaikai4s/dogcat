@@ -9,7 +9,6 @@ module.exports = function createHandler(context) {
     expireDueUnacceptedOrders,
     autoAcceptDueDirectOrders,
     autoCompleteDeliveredMallOrders,
-    getMonthDays,
     processOverdueUnfinishedOrders,
     processOverdueUnstartedOrders,
     sendUpcomingServiceRemindersToStaff,
@@ -71,20 +70,14 @@ module.exports = function createHandler(context) {
     let petBeautySettled = null
     const elapsedMs = Date.now() - startedAt
     if (elapsedMs < 80000) {
-      const isLastDayOfMonth = today.dayNumber === getMonthDays(today.monthKey)
-      if (isLastDayOfMonth) {
-        try { petBeautySettled = await settlePetBeautyMonthlyRanking(today.monthKey, { source: 'timer' }) }
-        catch (error) { console.error('[scheduled-error] settlePetBeautyMonthlyRanking:', error.message) }
-      }
-      if (today.dayNumber <= 2) {
-        const prevMonth = today.month === '01'
-          ? `${today.year - 1}-12`
-          : `${today.year}-${String(Number(today.month) - 1).padStart(2, '0')}`
-        try {
-          const prevSettled = await settlePetBeautyMonthlyRanking(prevMonth, { source: 'timer_catchup' })
-          if (!petBeautySettled) petBeautySettled = prevSettled
-        } catch (error) { console.error('[scheduled-error] settlePetBeautyMonthlyRanking prevMonth:', error.message) }
-      }
+      // Settle only a closed calendar month. Recheck its durable lock throughout
+      // the following month so downtime on the first two days cannot lose it.
+      const prevMonth = today.month === '01'
+        ? `${today.year - 1}-12`
+        : `${today.year}-${String(Number(today.month) - 1).padStart(2, '0')}`
+      try {
+        petBeautySettled = await settlePetBeautyMonthlyRanking(prevMonth, { source: 'timer_catchup' })
+      } catch (error) { console.error('[scheduled-error] settlePetBeautyMonthlyRanking prevMonth:', error.message) }
     } else {
       console.warn(`[scheduled] tasks elapsed ${elapsedMs}ms, skipping non-urgent monthly beauty ranking this cycle to prevent timeout.`)
     }

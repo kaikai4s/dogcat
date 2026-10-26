@@ -52,6 +52,9 @@ module.exports = function createService({
       if (request.payoutChannel !== 'wechat_wallet') throw new Error('非微信提现单不能执行微信零钱转账')
       if (request.status === 'paid') return request
       if (!['approved', 'transferring', 'transfer_failed'].includes(request.status)) throw new Error('仅审核通过的微信提现单可发起转账')
+      if (request.transferSubmittedAt && (!request.transferMchId || !request.transferAppId) && operator.gatewayBillConfirmed !== true) {
+        throw new Error('历史转账缺少原商户信息，请先人工核对原单')
+      }
       if (!request.assetType || request.assetType === 'staff') {
         for (const id of request.earningIds || []) {
           const earning = (await tx.collection('staff_earnings').doc(id).get()).data
@@ -59,12 +62,16 @@ module.exports = function createService({
         }
       }
       const validationConfig = getWechatTransferConfig(settings || await getSystemSettings({ includeSecrets: true }))
+      if ((request.transferMchId && request.transferMchId !== validationConfig.mchId) ||
+          (request.transferAppId && request.transferAppId !== validationConfig.appId)) throw new Error('原转账商户或小程序配置已变化，请先核对原单')
       validateTransferAmount(request, validationConfig)
       const recipientOpenid = safeText(request.recipientOpenid || request.staffOpenid || request.userOpenid || request.openid).trim()
       if (!recipientOpenid) throw new Error('微信提现收款openid缺失，无法发起转账')
       const time = now()
       const outBillNo = safeText(request.outBillNo || request.outDetailNo).trim() || createOutBillNo(withdrawId)
       const patch = {
+        ...(validationConfig.mchId ? { transferMchId: validationConfig.mchId } : {}),
+        ...(validationConfig.appId ? { transferAppId: validationConfig.appId } : {}),
         outBillNo,
         outDetailNo: outBillNo,
         // Backfill requests created before recipientOpenid was persisted. The
@@ -251,25 +258,37 @@ module.exports = function createService({
       const response = await wechatPayRequest('POST', '/v3/fund-app/mch-transfer/transfer-bills', payload, config, headers)
       return applyWechatTransferResult(withdrawId, response, 'submit')
     } catch (error) {
-      const uncertain = ['ETIMEDOUT', 'ECONNRESET', 'WECHAT_PAY_ERROR'].includes(error.code) || /超时|timeout|系统|SYSTEM/i.test(error.message || '')
       const failed = await patchTransferProcessing(withdrawId, {
-        transferStatus: uncertain ? 'unknown' : 'failed',
+        // A transport or parsing error never proves that funds did not move.
+        // Only an explicit terminal gateway state may release transfer quota.
+        transferStatus: 'unknown',
         lastTransferError: safeText(error.message || '微信转账提交失败').slice(0, 500)
       })
       if (!failed.changed) return failed
-      if (!uncertain) return markWechatWithdrawalFailed(withdrawId, { message: error.message, state: error.code || 'FAIL' })
       return { ...failed.request, request: failed.request, changed: true }
     }
   }
 
-  async function queryWechatWithdrawalTransfer(withdrawId) {
+  async function queryWechatWithdrawalTransfer(withdrawId, { retryMissing = false } = {}) {
     const request = await readWechatWithdrawal(withdrawId)
     const outBillNo = safeText(request.outBillNo || request.outDetailNo).trim()
     if (!outBillNo) throw new Error('微信提现单号缺失')
     const settings = await getSystemSettings({ includeSecrets: true })
     const config = getWechatTransferConfig(settings)
     // 当前商家转账查询接口只接受路径参数 out_bill_no；mchid 不在该接口的请求参数中。
-    const response = await wechatPayRequest('GET', `/v3/fund-app/mch-transfer/transfer-bills/out-bill-no/${encodeURIComponent(outBillNo)}`, null, config)
+    if ((request.transferMchId && request.transferMchId !== config.mchId) ||
+        (request.transferAppId && request.transferAppId !== config.appId)) throw new Error('原转账商户或小程序配置已变化，请先核对原单')
+    let response
+    try {
+      response = await wechatPayRequest('GET', `/v3/fund-app/mch-transfer/transfer-bills/out-bill-no/${encodeURIComponent(outBillNo)}`, null, config)
+    } catch (error) {
+      if (retryMissing && error.code === 'RESOURCE_NOT_EXISTS' && ['approved', 'transferring', 'transfer_failed'].includes(request.status)) {
+        if (request.transferSubmittedAt && (!request.transferMchId || !request.transferAppId)) throw new Error('历史转账缺少原商户信息，请先人工核对原单')
+        // Resume the original authorized intent with its original bill number.
+        return submitWechatWithdrawalTransfer(withdrawId, { openid: 'recover_missing_transfer' })
+      }
+      throw error
+    }
     const result = await applyWechatTransferResult(withdrawId, response, 'query')
     const current = result && result.request
     const state = safeText(current && (current.wechatTransferState || current.status)).trim().toUpperCase()
@@ -278,7 +297,7 @@ module.exports = function createService({
     // 依据微信支付官方重入规范：使用相同 out_bill_no 重新发起转账（POST），微信会幂等返回原单据及 package_info。
     if (state === 'WAIT_USER_CONFIRM' && !safeText(current && (current.wechatPackageInfo || current.transferPackageInfo)).trim()) {
       try {
-        return await submitWechatWithdrawalTransfer(withdrawId, { openid: 'auto_recover_package_info' })
+        return await submitWechatWithdrawalTransfer(withdrawId, { openid: 'auto_recover_package_info', gatewayBillConfirmed: true })
       } catch (err) {
         console.warn('[queryWechatWithdrawalTransfer] 自动幂等恢复 package_info 失败:', err)
       }
@@ -300,6 +319,7 @@ module.exports = function createService({
     if (mapped === 'failed') {
       return markWechatWithdrawalFailed(withdrawId, {
         state,
+        gatewayTerminalConfirmed: true,
         failReason: response.fail_reason || response.failReason,
         rawTransferResponse: sanitized
       })
@@ -321,7 +341,7 @@ module.exports = function createService({
   async function retryWechatWithdrawalTransfer(withdrawId, operator = {}) {
     const request = await readWechatWithdrawal(withdrawId)
     if (!['approved', 'transferring', 'transfer_failed'].includes(request.status)) throw new Error('当前状态不可重试微信提现')
-    if (request.transferStatus === 'unknown' || request.transferStatus === 'processing') return queryWechatWithdrawalTransfer(withdrawId)
+    if (['unknown', 'processing', 'submitting'].includes(request.transferStatus)) return queryWechatWithdrawalTransfer(withdrawId, { retryMissing: true })
     return submitWechatWithdrawalTransfer(withdrawId, operator)
   }
 
@@ -340,7 +360,7 @@ module.exports = function createService({
       const checkedAt = new Date(Math.max(new Date(now()).getTime(), (new Date(item.lastTransferCheckedAt || 0).getTime() || 0) + 1))
       await db.collection('withdraw_requests').doc(item._id).update({ data: { lastTransferCheckedAt: checkedAt } })
       try {
-        if (item.outBillNo || item.outDetailNo) results.push(await queryWechatWithdrawalTransfer(item._id))
+        if (item.outBillNo || item.outDetailNo) results.push(await queryWechatWithdrawalTransfer(item._id, { retryMissing: true }))
         else results.push(await submitWechatWithdrawalTransfer(item._id, { openid: 'scheduled' }))
       } catch (error) {
         await db.collection('withdraw_requests').doc(item._id).update({ data: { lastTransferError: safeText(error.message).slice(0, 500), updatedAt: now() } }).catch(() => {})

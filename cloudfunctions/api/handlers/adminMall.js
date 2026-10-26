@@ -1,5 +1,6 @@
 const { sameShipment } = require('../utils/logisticsShipment')
 const { shouldRestoreMallRefundStock } = require('../utils/mallRefundStock')
+const productEditToken = require('../utils/mallProductVersion')
 
 module.exports = function createHandler(context) {
   const {
@@ -85,7 +86,7 @@ module.exports = function createHandler(context) {
       const where = {}
       if (status) where.status = status
       const products = await readAll('mall_products', where)
-      let list = (products || []).map(publicMallProduct)
+      let list = (products || []).map(product => ({ ...publicMallProduct(product), editToken: productEditToken(product) }))
       if (keyword) list = list.filter((item) => [item.name, item.subtitle, item.specText].some((value) => safeText(value).toLowerCase().includes(keyword)))
       list.sort((a, b) => a.sortOrder - b.sortOrder || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
       return paginateList(list, data)
@@ -119,9 +120,22 @@ module.exports = function createHandler(context) {
         if (!category) throw new Error('商品分类不存在')
       }
       if (id) {
-        await db.collection('mall_products').doc(id).update({ data: payload })
+        const saved = await db.runTransaction(async tx => {
+          const current = (await tx.collection('mall_products').doc(id).get()).data
+          if (!current) throw new Error('商品不存在')
+          if (!data.editToken || data.editToken !== productEditToken(current)) throw new Error('商品资料或库存已变化，请刷新商品列表后重新编辑')
+          const latest = normalizeMallProduct(current)
+          const skus = payload.skus.map(sku => {
+            const previous = latest.specMode === 'single' && payload.specMode === 'single' ? latest.skus[0] : latest.skus.find(row => row.skuId === sku.skuId)
+            return { ...sku, ...(previous ? { skuId: previous.skuId } : {}), salesCount: previous?.salesCount || 0 }
+          })
+          const next = normalizeMallProduct({ ...payload, skus, salesCount: latest.salesCount, createdAt: current.createdAt || null })
+          delete next._id
+          await tx.collection('mall_products').doc(id).update({ data: next })
+          return { _id: id, ...next }
+        })
         await logAdmin(admin, 'mall_product', id, 'saveProduct', { name: payload.name })
-        return { _id: id, ...payload }
+        return saved
       }
       const created = await db.collection('mall_products').add({ data: { ...payload, createdAt: time } })
       await logAdmin(admin, 'mall_product', created._id, 'saveProduct', { name: payload.name })
@@ -350,7 +364,8 @@ module.exports = function createHandler(context) {
             restoredStatus = 'pending_ship'
           }
         }
-        const updated = await db.collection('mall_orders').where({ _id: order._id }).update({
+        const updated = await db.collection('mall_orders').where({ _id: order._id, status: order.status, refundStatus: order.refundStatus,
+          ...(order.paymentStatus ? { paymentStatus: order.paymentStatus } : {}) }).update({
           data: {
             status: restoredStatus,
             refundStatus: 'rejected',
@@ -371,15 +386,17 @@ module.exports = function createHandler(context) {
           phone: safeText(data.returnPhone || '13800000000').trim(),
           address: safeText(data.returnAddress || '官方商城仓储退货中心').trim()
         }
-        await db.collection('mall_orders').where({ _id: order._id, refundStatus: 'applied' }).update({
+        const updated = await db.collection('mall_orders').where({ _id: order._id, status: order.status, refundStatus: 'applied',
+          ...(order.paymentStatus ? { paymentStatus: order.paymentStatus } : {}) }).update({
           data: {
             refundStatus: 'return_pending_ship',
-            returnAddress,
+            returnAddress: db.command.set(returnAddress),
             refundAuditRemark: auditRemark,
             refundAuditedAt: time,
             updatedAt: time
           }
         })
+        if (!updated.stats || !updated.stats.updated) throw new Error('售后状态已变化，请刷新后重试')
         await logAdmin(admin, 'mall_order', order._id, 'auditRefund', { approved: true, step: 'return_pending_ship', returnAddress })
         return { orderId: order._id, refundStatus: 'return_pending_ship', returnAddress }
       }

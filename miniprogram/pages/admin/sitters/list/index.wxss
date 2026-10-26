@@ -739,3 +739,8 @@
 }
 
 
+
+.settlement-progress { display: flex; gap: 12rpx; align-items: center; padding: 20rpx; margin-top: 16rpx; border-radius: 16rpx; background: #fff7ed; color: #c2410c; font-size: 24rpx; line-height: 1.6; }
+.settlement-note { margin: 20rpx 0; padding: 18rpx; background: #f5f7fa; border-radius: 16rpx; color: #657083; font-size: 24rpx; line-height: 1.7; }
+
+.settlement-progress { flex-wrap: wrap; }
