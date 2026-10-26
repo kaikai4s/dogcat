@@ -3,6 +3,7 @@
   "disableScroll": true,
   "backgroundColor": "#d7e7db",
   "usingComponents": {
-    "community-chooser": "../components/community-chooser/index"
+    "community-chooser": "../components/community-chooser/index",
+    "user-titles": "../components/user-titles/index"
   }
 }

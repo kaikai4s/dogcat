@@ -62,6 +62,7 @@ function dimensions(value = {}) {
 function communityId(user) {
   const c = user.residentialCommunity
   if (!c || !String(c.name || '').trim()) return ''
+  if (/^map_community_[a-f0-9]{24}$/.test(c.serviceCommunityId || '')) return hash('service_community|' + c.serviceCommunityId)
   return hash(
     [c.city, c.district, c.name, c.address]
       .map((v) =>
@@ -127,17 +128,20 @@ async function updateCommunity(db, openid, userId, community, extra = {}, checkT
     await checkTextSecurity(openid, fields.map(key => String(community[key] || '').trim()).filter(Boolean).join('\n'), { scene: 2, label: '小区名称和地址' })
   }
   return transaction(db,async (tx) => {
+    const savedCommunity = community?.serviceCommunityId
+      ? await require('./playground-communities')({ db: tx }).resolve(community, tx) : community
     const placed = await read(tx, ownerId(openid))
     if (
       placed &&
-      communityId({ residentialCommunity: community }) !== placed.communityId
+      communityId({ residentialCommunity: savedCommunity }) !== placed.communityId
     ) {
       throw new Error('请先拆除原小区庭院，才能迁入新小区；已有庭院时不能更换所属小区')
     }
     await tx
       .collection('users')
       .doc(userId)
-      .update({ data: { ...extra, residentialCommunity: community } })
+      .update({ data: { ...extra, residentialCommunity: db.command.set(savedCommunity) } })
+    return savedCommunity
   })
 }
 module.exports = {

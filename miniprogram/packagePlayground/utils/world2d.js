@@ -1957,6 +1957,7 @@ class World2D {
       const nameColor = this.ownerNameColor(person.ownerId||person.id,person.nameColor)
       const labelY = p.y - size * CHARACTER_STYLE.anchor - 8
       this.markerLabel(baseName, p.x, labelY, false, nameColor)
+      if (person.userTitle) this.drawUserTitle(person.userTitle, p.x, labelY - 18)
       if (!isOnline) {
         this.drawOfflineBadge(p.x + Math.max(16, baseName.length * 6) + 8, labelY)
       }
@@ -2140,6 +2141,7 @@ class World2D {
     let name = this.scene && this.scene.name || this.ownPlot && this.ownPlot.ownerName || ''
     if (isJailed) name = `${name} [自省中]`
     if (name) this.markerLabel(name, point.x, point.y - size * style.anchor - 8, false, isJailed ? '#d32f2f' : this.ownerNameColor(this.scene && this.scene.playerId))
+    if (this.scene?.userTitle) this.drawUserTitle(this.scene.userTitle, point.x, point.y - size * style.anchor - (isInjured || isJailed ? 48 : 28))
     if (isInjured || isJailed) {
       c.save()
       c.translate(point.x, point.y - size * style.anchor - 26)
@@ -2403,6 +2405,29 @@ class World2D {
     if(!this.scene)return
     if(record.name)this.scene.name=record.name
     if(record.nameColor)this.scene.nameColor=record.nameColor
+    if(Object.prototype.hasOwnProperty.call(record,'userTitle')) {
+      const previous=this.scene.userTitleVersion,version=record.version
+      // Equipment replies and live snapshots arrive independently. Keep a
+      // confirmed newer title when a cached scene is applied again.
+      if(!previous || !version || version.epoch>previous.epoch || version.epoch===previous.epoch&&version.seq>=previous.seq) {
+        this.scene.userTitle=record.userTitle||null
+        if(version)this.scene.userTitleVersion={...version}
+      }
+    }
+  }
+  drawUserTitle(title, x, y) {
+    if (!title?.name) return
+    const c = this.ctx
+    c.save()
+    c.font = '600 10px sans-serif'
+    c.textAlign = 'center'
+    c.lineJoin = 'round'
+    c.lineWidth = 3
+    c.strokeStyle = '#ffffff'
+    c.fillStyle = /^#[0-9a-f]{6}$/i.test(title.color || '') ? title.color : '#98661d'
+    c.strokeText('【' + String(title.name).slice(0, 16) + '】', x, y)
+    c.fillText('【' + String(title.name).slice(0, 16) + '】', x, y)
+    c.restore()
   }
   ownerNameColor(ownerId, color) {
     const valid=(value)=>/^#[0-9a-f]{6}$/i.test(value||'')&&!/^#(?:ffffff|000000)$/i.test(value)

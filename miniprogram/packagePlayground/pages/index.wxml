@@ -8,6 +8,7 @@
     <view class="hero-actions">
       <button class="ghost-btn small-btn" bindtap="customize">专属形象定制</button>
       <button class="ghost-btn small-btn" bindtap="goPets">宠物档案</button>
+      <button class="ghost-btn small-btn" bindtap="openUserTitles">我的头衔</button>
       <button class="primary-btn small-btn" bindtap="load" loading="{{loading}}">刷新乐园</button>
     </view>
   </view>
@@ -95,3 +96,4 @@
 </view>
 
 <community-chooser id="communityChooser" />
+<user-titles id="userTitles" />

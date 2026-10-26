@@ -6,6 +6,7 @@ const { createNavigation } = require('./navigation')
 const { yardLayout } = require('./yard-layout')
 const { sampleMotion } = require('./shared-motion')
 const { publicAppearance } = require('../playground-appearance-record')
+const { publicUserTitle } = require('../userTitles')
 const { settleNeeds, isWasteExpired } = require('./pet-needs')
 const COLLECTION = 'pet_playground_plots'
 const presenceId = (openid) => 'presence_' + world.hash(openid)
@@ -126,7 +127,7 @@ module.exports = function createShared(context) {
         stains,soiled:!!row.soiled && stains.length > 0,
         mirrored:!!row.mirrored,moving:!!row.moving&&now()-row.lastSeen<3000,online:!!row.online&&now()-row.lastSeen<15000,lastSeen:row.lastSeen,speedMultiplier:row.speedMultiplier}
     }
-    return {kind:'presence',id:row._id,ownerId,name:row.name||'邻居',nameColor:row.nameColor||'',position:row.position,characterType:row.characterType==='girl'?'girl':'boy',
+    return {kind:'presence',id:row._id,ownerId,name:row.name||'邻居',nameColor:row.nameColor||'',userTitle:row.userTitle||null,position:row.position,characterType:row.characterType==='girl'?'girl':'boy',
       vehicleId:row.vehicleId||'',
       vehicleRole:row.vehicleRole||'',facing:row.facing||'sw',
       appearance:publicAppearance(row.appearance,'character',row._id,row.ownerOpenid),
@@ -193,7 +194,7 @@ module.exports = function createShared(context) {
     config:()=>service.config(),access:(...args)=>social.access(...args),nextEpoch:(...args)=>live.nextEpoch(...args),
     response:({actor,car,records=[]})=>({actor:{...publicRecord(actor),version:version(actor)},vehicle:{...publicRecord(car),version:version(car)},records:records.filter(Boolean).map((r)=>({...publicRecord(r),version:version(r)})),serverTime:now()})})
   async function enter(openid,user,data,pets) {
-    const community=data.community || user.residentialCommunity || null
+    const community=await require('../playground-communities')(context).resolve(data.community || user.residentialCommunity || null)
     const id=world.communityId({residentialCommunity:community}) || 'solo_'+world.hash(openid)
     await rides.prepareEntry(openid,id)
     await service.own(openid)
@@ -216,6 +217,7 @@ module.exports = function createShared(context) {
       const previous=old && old.communityId===id && (currentOwn || !plots.some((p)=>inside(old.position,p))) ? old.position : start
       const position=safePoint(publicNavigation(cfg,plots,allowed),previous)
       const actor={kind:'presence',communityId:id,ownerOpenid:openid,name:String(user.nickname||'邻居').slice(0,20),
+        userTitle:publicUserTitle(currentUser,id),
         nameColor:currentHome&&currentHome.nameColor||'',
         appearance:publicAppearance(currentUser.playgroundAppearance,'character',presenceId(openid),openid),
         position,characterType:old && old.characterType==='girl'?'girl':'boy',mirrored:!!(old&&old.mirrored),facing:old&&old.facing||'sw',
@@ -250,7 +252,7 @@ module.exports = function createShared(context) {
     if(state.resident) await publish({...state.resident,_id:residentId(openid)})
     if(state.vehicle)await publish(state.vehicle)
     const socialState=await social.state(openid)
-    return {session,playerId:presenceId(openid),name:state.name,nameColor:state.nameColor,sceneId:id,realtimeCollection:'pet_playground_live',serverTime:now(),social:socialState,allowedPlotIds:state.allowed,position:state.position,characterType:state.characterType,appearance:state.appearance,hasAvatar:state.active,
+    return {session,playerId:presenceId(openid),name:state.name,nameColor:state.nameColor,userTitle:state.userTitle,sceneId:id,realtimeCollection:'pet_playground_live',serverTime:now(),social:socialState,allowedPlotIds:state.allowed,position:state.position,characterType:state.characterType,appearance:state.appearance,hasAvatar:state.active,
       vehicleId:state.vehicleId||'',vehicleRole:state.vehicleRole||'',facing:state.facing||'sw',mirrored:!!state.mirrored,vehicleSpeed:Math.max(2,Math.min(5,Number(user.playgroundVehicleSpeed)||2)),
       community,visiting:id!==(world.communityId(user)||'solo_'+world.hash(openid)),hasHomeElsewhere:!!state.home&&!state.own,
       homeCommunity:user.residentialCommunity||null,plot:state.own?service.publicPlot({...state.own,_id:state.own.plotId},openid):null}

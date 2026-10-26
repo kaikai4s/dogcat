@@ -241,12 +241,14 @@ module.exports = function createHandler(context) {
             longitude: Number(data.residentialCommunity.longitude || 0),
             city: safeText(data.residentialCommunity.city || '').trim(),
             district: safeText(data.residentialCommunity.district || '').trim(),
+            ...(data.residentialCommunity.serviceCommunityId ? { serviceCommunityId: safeText(data.residentialCommunity.serviceCommunityId) } : {}),
             updatedAt: now()
           }
         }
       }
       if (data.residentialCommunity !== undefined) {
-        await require('../services/playground-world').updateCommunity(db, openid, user._id, payload.residentialCommunity, payload, checkTextSecurity)
+        if (payload.residentialCommunity?.serviceCommunityId) payload.residentialCommunity = await require('../services/playground-communities')(context).resolve(payload.residentialCommunity)
+        payload.residentialCommunity = await require('../services/playground-world').updateCommunity(db, openid, user._id, payload.residentialCommunity, payload, checkTextSecurity)
       } else {
         await db.collection('users').doc(user._id).update({ data: payload })
       }
@@ -266,10 +268,12 @@ module.exports = function createHandler(context) {
           longitude: Number(community.longitude || 0),
           city: safeText(community.city || '').trim(),
           district: safeText(community.district || '').trim(),
+          ...(community.serviceCommunityId ? { serviceCommunityId: safeText(community.serviceCommunityId) } : {}),
           updatedAt: now()
         }
       }
-      await require('../services/playground-world').updateCommunity(db, openid, user._id, normalizedCommunity, { updatedAt: now() }, checkTextSecurity)
+      if (normalizedCommunity?.serviceCommunityId) normalizedCommunity = await require('../services/playground-communities')(context).resolve(normalizedCommunity)
+      normalizedCommunity = await require('../services/playground-world').updateCommunity(db, openid, user._id, normalizedCommunity, { updatedAt: now() }, checkTextSecurity)
       return { ...user, residentialCommunity: normalizedCommunity }
     }
 

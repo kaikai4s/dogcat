@@ -143,6 +143,7 @@
           <text class="settings-count" wx:if="{{socialRequests.length}}">{{socialRequests.length}}</text><text class="settings-chevron">›</text>
         </button>
         <button class="settings-entry" bindtap="customizeAppearance"><text class="settings-entry-icon">绘</text><view class="settings-entry-copy"><text class="settings-entry-title">专属形象定制</text><text class="settings-tip">上传照片，为角色或爱宠申请专属形象</text></view><text class="settings-chevron">›</text></button>
+        <button class="settings-entry" bindtap="openUserTitles"><text class="settings-entry-icon">誉</text><view class="settings-entry-copy"><text class="settings-entry-title">我的用户头衔</text><text class="settings-tip">选择佩戴或摘下庄园头衔</text></view><text class="settings-chevron">›</text></button>
         <text class="settings-section">操控习惯</text>
         <view class="settings-card">
           <view class="settings-row"><view><text>长按显示摇杆</text><text class="settings-tip">关闭时常显，开启后长按草地 1 秒</text></view><switch checked="{{joystickMode === 'hold'}}" color="#6f8d58" bindchange="changeJoystickMode"/></view>
@@ -203,3 +204,4 @@
 </view>
 
 <community-chooser id="communityChooser" />
+<user-titles id="userTitles" bindchange="userTitleChanged" />

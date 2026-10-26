@@ -1,0 +1,24 @@
+<view class="titles-mask" wx:if="{{visible}}" catchtap="close" catchtouchmove="noop">
+  <view class="titles-panel" catchtap="noop">
+    <view class="sheet-handle" />
+    <view class="titles-header"><view class="titles-heading">我的用户头衔</view><button class="close" bindtap="close" disabled="{{busy}}" aria-label="关闭头衔面板">×</button></view>
+    <view class="title-preview">
+      <view class="preview-label">当前佩戴</view>
+      <view class="preview-name">{{loading ? '正在读取…' : error ? '暂时无法读取' : equippedTitle ? equippedTitle.name : '暂未佩戴头衔'}}</view>
+      <view class="preview-scope" wx:if="{{equippedTitle}}">{{equippedTitle.communityName || '用户专属头衔'}}</view>
+      <view class="titles-caption">小区荣誉仅在对应小区的庄园内展示</view>
+    </view>
+    <view class="list-heading">已获得头衔<text wx:if="{{!loading && !error}}">{{list.length}} 个</text></view>
+    <scroll-view scroll-y class="titles-list">
+      <view class="title-row {{item.equipped ? 'selected' : ''}}" wx:for="{{list}}" wx:key="id">
+        <view class="title-copy"><view class="title-name">{{item.name}}</view><view class="title-community">{{item.communityName || '用户专属头衔'}}</view></view>
+        <button class="{{item.equipped ? 'equipped' : ''}}" data-id="{{item.id}}" bindtap="equip" loading="{{busy && busyId === item.id}}" disabled="{{busy || item.equipped}}">{{item.equipped ? '佩戴中' : '佩戴'}}</button>
+      </view>
+      <view class="titles-empty" wx:if="{{loading}}">正在读取你的荣誉…</view>
+      <view class="titles-empty" wx:elif="{{error}}">{{error}}<button class="retry" bindtap="open">重新加载</button></view>
+      <view class="titles-empty" wx:elif="{{!list.length}}"><view class="empty-title">第一份邻里荣誉，等你开启</view><view>申请新增小区并经后台核验建档后，首位有效申请人可获得“小区初创者”。</view></view>
+    </scroll-view>
+    <view class="update-error" wx:if="{{updateError}}" role="alert">{{updateError}}</view>
+    <button wx:if="{{equippedTitle}}" class="unequip" data-id="" bindtap="equip" loading="{{busy && busyId === '_none'}}" disabled="{{busy}}">摘下当前头衔</button>
+  </view>
+</view>

@@ -30,7 +30,9 @@ module.exports = function createHandler(context) {
           throw new Error('该小区已维护但暂未启用，请联系平台核对')
         }
         if (!current || current.status !== 'pending') await tx.collection('platform_configs').doc(applicationId).set({ data: {
-          key: 'map_community_application', name, city, cityKey, district, status: 'pending', createdAt: current?.createdAt || now(), updatedAt: now()
+          key: 'map_community_application', name, city, cityKey, district, status: 'pending',
+          firstApplicantOpenid: current?.firstApplicantOpenid || (!current ? openid : ''),
+          createdAt: current?.createdAt || now(), updatedAt: now()
         } })
         return { applicationId, status: 'pending' }
       })
@@ -113,11 +115,13 @@ module.exports = function createHandler(context) {
             const current = await readOptionalDocument(tx, 'platform_configs', id)
             if (Number(current?.editVersion || current?.revision || 0) !== Number(existing?.editVersion || existing?.revision || 0)) throw new Error('小区已更新，请刷新后重试')
             const applications = []
+            const founderApplications = []
             for (const applicationId of applicationIds) {
               const application = await readOptionalDocument(tx, 'platform_configs', applicationId)
               if (!application || application.key !== 'map_community_application' || application.cityKey !== cityKey ||
                   (application.status === 'resolved' && application.serviceCommunityId !== id)) throw new Error('小区申请已变化或城市不一致，请刷新核对')
               applications.push(applicationId)
+              if (application.status === 'pending' && application.firstApplicantOpenid) founderApplications.push(application)
             }
             const linkedApplications = [...new Set([...(current?.applicationIds || []), ...applications])]
             if (linkedApplications.length > 100) throw new Error('关联申请过多，请联系平台核对')
@@ -130,7 +134,13 @@ module.exports = function createHandler(context) {
             const previousPublic = current && { name: current.name, cityKey: context.normalizeCityName(current.city), district: current.district || '',
               latitude: Number(current.latitude), longitude: Number(current.longitude), enabled: current.enabled === true }
             const publicChanged = !previousPublic || Object.keys(previousPublic).some(field => previousPublic[field] !== patch[field])
+            let founderUserId = current?.founderUserId || ''
+            if (!current && founderApplications.length) {
+              founderApplications.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt) || a._id.localeCompare(b._id))
+              founderUserId = await context.grantCommunityFounder(tx, founderApplications[0], { _id: id, name }) || ''
+            }
             await tx.collection('platform_configs').doc(id).set({ data: { ...patch,
+              ...(founderUserId ? { founderUserId } : {}),
               ...(linkedApplications.length ? { applicationIds: linkedApplications } : {}), updatedAt: now(),
               revision: Number(current?.revision || 0) + (publicChanged ? 1 : 0),
               editVersion: Number(current?.editVersion || current?.revision || 0) + 1, createdAt: current?.createdAt || now() } })

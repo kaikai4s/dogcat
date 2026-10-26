@@ -677,11 +677,24 @@ Page({
     if(this.data.hasPlot) actions.push({title:'拆除我的庭院',run:()=>this.demolishPlot()})
     wx.showActionSheet({itemList:actions.map((a)=>a.title),success:(r)=>actions[r.tapIndex].run()})
   },
+  openUserTitles() {
+    this.joystickEnd()
+    this.setData({ settingsOpen: false })
+    this.selectComponent('#userTitles').open()
+  },
+  userTitleChanged(e) {
+    // A slow equipment request can finish after the player enters another world.
+    const world = this.world, detail = e.detail
+    if (!world?.scene || detail.sceneId !== world.scene.sceneId || (detail.session && detail.session !== world.scene.session)) return
+    const latest = world.sceneSync?.records?.get(world.scene.playerId)?.version, version = detail.version
+    if (latest && version && (latest.epoch > version.epoch || (latest.epoch === version.epoch && latest.seq > version.seq))) return
+    world.setOwnName({ userTitle: detail.publicTitle || null, version })
+  },
   async visitCommunity() {
     try {
       const location=await this.selectComponent('#communityChooser').open()
       if(!location || !location.name) return
-      this.selectedCommunity={name:location.name,city:location.city||'',district:location.district||'',address:location.address||'',latitude:location.latitude||0,longitude:location.longitude||0}
+      this.selectedCommunity={...location}
       this.initialize()
     } catch(error) {
       if(!(error.errMsg||'').includes('cancel')) wx.showToast({title:error.message||'选择小区失败',icon:'none'})
@@ -693,7 +706,7 @@ Page({
     try {
       const location=await this.selectComponent('#communityChooser').open()
       if(!location || !location.name) return
-      const community={name:location.name,city:location.city||'',district:location.district||'',address:location.address||'',latitude:location.latitude||0,longitude:location.longitude||0}
+      const community={...location}
       await callFunction('playground','saveCommunity',{community})
       this.selectedCommunity=null
       this.placeAfterLoad=true

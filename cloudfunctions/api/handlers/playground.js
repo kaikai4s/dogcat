@@ -16,6 +16,12 @@ module.exports = function createHandler(context) {
 
   return async function playground(openid, action, data = {}) {
     const user = await getUser(openid)
+    if (action === 'listUserTitles') return context.getUserTitleState(user)
+    if (action === 'equipUserTitle') {
+      const { record, ...result } = await context.equipUserTitle(user, data.titleId)
+      if (record) await shared.publishRecords([record]).catch(error => console.error('[user-title-publish]', error.message))
+      return result
+    }
     if (action === 'listCommunities') return require('../services/playground-communities')(context).list(user, data)
     if (action === 'getCommunityInfo') return require('../services/playground-communities')(context).info(data.community || user.residentialCommunity)
     if (action === 'listCommunityGroupBuys') return require('../services/playground-group-buy')(context).list(openid)
@@ -459,12 +465,14 @@ module.exports = function createHandler(context) {
           longitude: Number(community.longitude || 0),
           city: safeText(community.city || '').trim(),
           district: safeText(community.district || '').trim(),
+          ...(community.serviceCommunityId ? { serviceCommunityId: safeText(community.serviceCommunityId) } : {}),
           updatedAt: context.nowText
             ? context.nowText()
             : new Date().toISOString()
         }
       }
-      await worldService.updateCommunity(
+      if (normalizedCommunity?.serviceCommunityId) normalizedCommunity = await require('../services/playground-communities')(context).resolve(normalizedCommunity)
+      normalizedCommunity = await worldService.updateCommunity(
         db,
         openid,
         user._id,
