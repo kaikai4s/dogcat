@@ -28,7 +28,7 @@ module.exports = function createHandler(context) {
       const wechatTransferQuota = typeof getWechatTransferQuotaSnapshot === 'function'
         ? await getWechatTransferQuotaSnapshot(openid, Math.round(Number(balance.availableAmount || balance.available || 0) * 100)).catch(() => null)
         : null
-      return { ...balance, minWithdrawAmount: settings.settlement.minWithdrawAmount, withdraws, assetSummary, wechatTransferQuota }
+      return { ...balance, minWithdrawAmount: Math.max(0.10, Number(settings.settlement.minWithdrawAmount || 0)), withdraws, assetSummary, wechatTransferQuota }
     }
     if (action === 'listStaffEarnings') {
       await getUser(openid)

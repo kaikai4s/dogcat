@@ -1,15 +1,11 @@
 const { documentPages } = require('../utils/documentPages')
+const { WECHAT_MIN_TRANSFER_CENTS, WECHAT_MAX_TRANSFER_CENTS } = require('../utils/wechatTransferLimits')
 
 module.exports = function createService({
   checkTextSecurity, crypto, db, findByClientRequestId, getClientRequestId, getSystemSettings,
   getUser, now, refreshStaffEarnings, reserveWechatApplicationQuota, safeText
 }) {
   const maxEarnings = 50
-  // The client enforces the normal WeChat floor of ¥0.10. Keep the server
-  // floor at one fen so an already-created request can still be reviewed or
-  // retried without being rejected solely by this display rule.
-  const WECHAT_MIN_TRANSFER_CENTS = 1
-  const WECHAT_MAX_TRANSFER_CENTS = 20000
 
   async function readRequest(transaction, id) {
     try {
@@ -76,7 +72,7 @@ module.exports = function createService({
       : crypto.randomBytes(16).toString('hex')}`
     const requestedCents = data.amount === undefined ? null : cents(data.amount)
     if (payoutChannel === 'wechat_wallet' && requestedCents !== null) {
-      if (requestedCents < WECHAT_MIN_TRANSFER_CENTS) throw new Error('微信提现金额必须至少为 ¥0.01')
+      if (requestedCents < WECHAT_MIN_TRANSFER_CENTS) throw new Error('微信零钱单笔最低 ¥0.10，请合并收益后提现')
       if (requestedCents > WECHAT_MAX_TRANSFER_CENTS) throw new Error('微信提现金额不能超过单笔上限 ¥200.00')
     }
     const targetCents = requestedCents === null ? Infinity : requestedCents
@@ -117,7 +113,7 @@ module.exports = function createService({
       if (!selected.length) throw new Error('暂无可提现收益')
       if (selected.length > maxEarnings) throw new Error('单次提现最多包含50笔收益，请减少提现金额后分批申请')
       if (payoutChannel === 'wechat_wallet') {
-        if (totalCents < WECHAT_MIN_TRANSFER_CENTS) throw new Error('微信提现金额必须至少为 ¥0.01')
+        if (totalCents < WECHAT_MIN_TRANSFER_CENTS) throw new Error('微信零钱单笔最低 ¥0.10，请合并收益后提现')
         if (totalCents > WECHAT_MAX_TRANSFER_CENTS) throw new Error('微信提现金额不能超过单笔上限 ¥200.00')
       }
       if (!internal.adminSettlementId && totalCents < Math.round(Number(settings.settlement.minWithdrawAmount || 0) * 100)) {

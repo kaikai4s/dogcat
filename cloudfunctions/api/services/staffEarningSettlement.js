@@ -1,4 +1,5 @@
 const { readDocuments, readOptionalDocument } = require('../utils/documentPages')
+const { WECHAT_MIN_TRANSFER_CENTS } = require('../utils/wechatTransferLimits')
 
 module.exports = function createService({ db, crypto, now, safeText, refreshStaffEarnings,
   getSystemSettings, getWechatTransferConfig, createWithdrawRequest, settleWithdrawal,
@@ -48,10 +49,97 @@ module.exports = function createService({ db, crypto, now, safeText, refreshStaf
       group.earningIds.push(earning._id)
       group.amountFen += amount
     }
+    // Move whole earnings across the last boundary when the fifty-record cap
+    // would otherwise leave a batch below WeChat's minimum transfer amount.
+    const tail = groups[groups.length - 1], donor = groups[groups.length - 2]
+    const amountById = new Map(eligible.map(row => [row._id, cents(row.amount)]))
+    while (tail && donor && tail.amountFen < WECHAT_MIN_TRANSFER_CENTS && tail.earningIds.length < 50) {
+      const index = donor.earningIds.findIndex(id => {
+        const amount = amountById.get(id)
+        return donor.amountFen - amount >= WECHAT_MIN_TRANSFER_CENTS && tail.amountFen + amount <= maxFen
+      })
+      if (index < 0) break
+      const [id] = donor.earningIds.splice(index, 1)
+      donor.amountFen -= amountById.get(id)
+      tail.earningIds.unshift(id)
+      tail.amountFen += amountById.get(id)
+    }
+    if (!unavailableReason && groups.some(group => group.amountFen < WECHAT_MIN_TRANSFER_CENTS)) unavailableReason = '微信零钱单笔最低 ¥0.10，请合并其他收益后结清；当前小额余额将保留'
+    const unresolvedWithdrawals = summary.available > 0 && summary.available < WECHAT_MIN_TRANSFER_CENTS
+      ? (await readDocuments(db, db.command, 'withdraw_requests', { staffOpenid: profile.openid }))
+        .some(row => ['pending', 'approved', 'processing', 'transferring', 'transfer_failed'].includes(row.status))
+      : false
+    const canSettleManualTail = summary.available > 0 && summary.available < WECHAT_MIN_TRANSFER_CENTS &&
+      summary.pending === 0 && summary.frozen === 0 && summary.withdrawing === 0 && !unresolvedWithdrawals
     return { staffProfileId, staffOpenid: profile.openid, staffName: profile.realName || '宠托师',
       ...Object.fromEntries(Object.entries(summary).map(([key, amount]) => [key, amount / 100])),
       batchCount: groups.length, maxAmount: maxFen / 100, unavailableReason,
-      canSettle: summary.available > 0 && !unavailableReason, groups }
+      canSettle: summary.available > 0 && !unavailableReason, canSettleManualTail,
+      manualTailUnavailableReason: canSettleManualTail ? '' : '仅可人工结清不足 ¥0.10 的全部尾款，请先处理待结算、冻结及在途提现', groups }
+  }
+
+  async function createStaffManualTailSettlement(admin, data = {}) {
+    const staffProfileId = safeText(data.staffProfileId).trim()
+    const clientRequestId = safeText(data.clientRequestId).trim()
+    const amountFen = cents(data.expectedAmount)
+    if (!staffProfileId || !clientRequestId || clientRequestId.length > 100 || data.confirmed !== true) throw new Error('请核对金额并确认发起人工尾款结清')
+    if (amountFen <= 0 || amountFen >= WECHAT_MIN_TRANSFER_CENTS) throw new Error('人工尾款入口仅处理不足 ¥0.10 的余额')
+    const id = `w_tail_${hash([staffProfileId, clientRequestId])}`
+    const reviewError = message => Object.assign(new Error(message), { code: 'STAFF_TAIL_REVIEW_REQUIRED' })
+    function validateExisting(request) {
+      if (request.source !== 'admin_manual_tail_settlement' || request.staffProfileId !== staffProfileId ||
+          request.clientRequestId !== clientRequestId || request.payoutChannel !== 'manual' || cents(request.amount) !== amountFen) throw new Error('已有尾款结清记录与本次核对信息不一致')
+      return { ...request, _id: id }
+    }
+    let request = await readOptionalDocument(db, 'withdraw_requests', id)
+    if (!request) {
+      const preview = await getStaffSettlementPreview(staffProfileId)
+      if (!preview.canSettleManualTail) throw reviewError(preview.manualTailUnavailableReason)
+      if (cents(preview.available) !== amountFen) throw reviewError('尾款余额已变化，请刷新后重新核对')
+      request = await db.runTransaction(async tx => {
+        const previous = await readOptionalDocument(tx, 'withdraw_requests', id)
+        if (previous) return validateExisting(previous)
+        const profile = (await tx.collection('staff_profiles').doc(staffProfileId).get()).data
+        if (!profile?.openid || profile.openid !== preview.staffOpenid) throw reviewError('宠托师资料已变化，请重新核对')
+        const rows = await readDocuments(tx, db.command, 'staff_earnings', { staffOpenid: profile.openid })
+        const earnings = []
+        let total = 0
+        for (const row of rows) {
+          if (row.isMock === true || row.paymentChannel === 'mock') continue
+          const amount = cents(row.amount)
+          if (!amount || !['pending', 'available', 'withdrawing', 'frozen'].includes(row.status)) continue
+          if (row.status !== 'available' || row.withdrawRequestId || row.frozenIncidentId || row.pendingRefundIds?.length) throw reviewError('尚有待结算、冻结或提现占用，请先处理原记录')
+          earnings.push(row)
+          total += amount
+        }
+        if (!earnings.length || earnings.length > 50 || total !== amountFen || total >= WECHAT_MIN_TRANSFER_CENTS) throw reviewError('尾款收益已变化，请刷新后重新核对')
+        const withdrawals = await readDocuments(tx, db.command, 'withdraw_requests', { staffOpenid: profile.openid })
+        if (withdrawals.some(row => ['pending', 'approved', 'processing', 'transferring', 'transfer_failed'].includes(row.status))) throw reviewError('尚有未完成提现，请先核对原单并处理')
+        const time = now()
+        const record = { staffOpenid: profile.openid, openid: profile.openid, staffProfileId,
+          amount: total / 100, amountFen: total, earningIds: earnings.map(row => row._id),
+          payoutChannel: 'manual', source: 'admin_manual_tail_settlement', status: 'pending',
+          recipientOpenid: profile.openid, recipientName: profile.realName || '', accountName: profile.realName || '', accountNo: '',
+          clientRequestId, initiatedByAdminOpenid: admin.openid,
+          remark: '不足微信零钱最低转账金额的人工尾款结清', createdAt: time, updatedAt: time }
+        await tx.collection('withdraw_requests').doc(id).set({ data: record })
+        for (const earning of earnings) await tx.collection('staff_earnings').doc(earning._id).update({ data: {
+          status: 'withdrawing', withdrawRequestId: id, updatedAt: time
+        } })
+        await tx.collection('finance_logs').doc(`withdraw_${id}`).set({ data: {
+          action: 'withdraw_requested', targetType: 'withdraw_request', targetId: id, staffOpenid: profile.openid,
+          amountDelta: -record.amount, detail: { earningIds: record.earningIds, source: record.source }, createdAt: time
+        } })
+        await tx.collection('admin_operation_logs').doc(`manual_tail_${id}`).set({ data: {
+          action: 'createStaffManualTailSettlement', adminUserId: admin._id, adminOpenid: admin.openid,
+          targetType: 'staff_profile', targetId: staffProfileId, detail: { withdrawId: id, amount: record.amount }, createdAt: time
+        } })
+        return { _id: id, ...record }
+      })
+    }
+    request = validateExisting(request)
+    return { withdrawId: id, staffOpenid: request.staffOpenid, amount: request.amount, status: request.status,
+      needsHandling: request.status === 'rejected' }
   }
 
   async function settleStaffEarningsByWechat(admin, data) {
@@ -103,9 +191,11 @@ module.exports = function createService({ db, crypto, now, safeText, refreshStaf
     return { settlementId: intentId, withdrawId: request._id, amount: request.amount,
       totalAmount: intent.amount, batchIndex: index, batchCount: intent.groups.length,
       status: current.status, transferStatus: current.transferStatus || '',
-      needsHandling: ['transfer_failed', 'rejected', 'failed'].includes(current.status),
+      wechatTransferState: current.wechatTransferState || '',
+      lastTransferError: current.lastTransferError || '', lastTransferErrorCode: current.lastTransferErrorCode || '',
+      needsHandling: ['transfer_failed', 'rejected', 'failed'].includes(current.status) || Boolean(current.lastTransferError),
       hasMore: index + 1 < intent.groups.length }
   }
 
-  return { getStaffSettlementPreview, settleStaffEarningsByWechat }
+  return { getStaffSettlementPreview, settleStaffEarningsByWechat, createStaffManualTailSettlement }
 }

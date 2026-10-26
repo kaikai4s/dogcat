@@ -55,7 +55,7 @@
 
     <view class="deposit-filter-bar" wx:if="{{targetStaffOpenid}}"><text>当前查看指定宠托师的全部日期转账记录</text><button class="mini-btn" bindtap="clearStaffFilter">查看全部</button></view>
     <view class="card record-card" wx:for="{{requests}}" wx:key="_id">
-      <view class="record-head"><view class="record-title">{{item.assetType === 'user' ? '用户邀请收益提现' : '宠托师提现申请'}}</view><view class="badge {{item.status === 'paid' ? 'green' : (item.status === 'rejected' ? 'gray' : 'pink')}}">{{item.statusText || item.status}}</view></view>
+      <view class="record-head"><view class="record-title">{{item.source === 'admin_manual_tail_settlement' ? '小额尾款人工结清' : (item.assetType === 'user' ? '用户邀请收益提现' : '宠托师提现申请')}}</view><view class="badge {{item.status === 'paid' ? 'green' : (item.status === 'rejected' ? 'gray' : 'pink')}}">{{item.statusText || item.status}}</view></view>
       <view class="info-row"><view class="label">申请人</view><view class="value">{{item.assetType === 'user' ? (item.userNickname || item.userOpenid) : (item.staffRealName || item.staffNickname || item.staffOpenid)}}</view></view>
       <view class="info-row" wx:if="{{item.staffPhone || item.accountPhone}}"><view class="label">绑定手机号</view><view class="value">{{item.accountPhone || item.staffPhone}}</view></view>
       <view class="info-row" wx:if="{{item.certifiedPhone}}"><view class="label">实名认证手机号</view><view class="value">{{item.certifiedPhone}}</view></view>
@@ -64,11 +64,13 @@
       <view class="info-row" wx:if="{{item.withdrawnAmount > 0}}"><view class="label">历史已提现</view><view class="value">¥{{item.withdrawnAmountText}}（{{item.withdrawCount}}笔）</view></view>
       <view class="info-row"><view class="label">收款方式</view><view class="value">{{item.isWechatWallet ? '微信零钱' : '人工打款'}}</view></view>
       <view class="info-row"><view class="label">收款人</view><view class="value">{{item.isWechatWallet ? (item.recipientOpenid ? (item.source === 'admin_wechat_settlement' ? '该宠托师绑定的微信' : '申请人绑定的微信') : '未记录收款openid') : (item.recipientName || item.accountName || '未填写')}}</view></view>
-      <view class="info-row" wx:if="{{!item.isWechatWallet}}"><view class="label">收款账号</view><view class="value">{{item.accountNo || '未填写'}}</view></view>
+      <view class="info-row" wx:if="{{!item.isWechatWallet && item.source !== 'admin_manual_tail_settlement'}}"><view class="label">收款账号</view><view class="value">{{item.accountNo || '未填写'}}</view></view>
+      <view class="info-row" wx:if="{{item.source === 'admin_manual_tail_settlement'}}"><view class="label">尾款说明</view><view class="value">不足 ¥0.10 的尾款。请与本人核对收款方式，实际付款并登记凭证后才记为已结清。</view></view>
       <view class="info-row" wx:if="{{item.isWechatWallet && item.transferStatusText}}"><view class="label">微信转账状态</view><view class="value">{{item.transferStatusText}}</view></view>
       <view class="info-row" wx:if="{{item.outBillNo}}"><view class="label">商户转账单号</view><view class="value">{{item.outBillNo}}</view></view>
       <view class="info-row" wx:if="{{item.wechatTransferBillNo}}"><view class="label">微信转账单号</view><view class="value">{{item.wechatTransferBillNo}}</view></view>
       <view class="info-row" wx:if="{{item.lastTransferError}}"><view class="label">失败/待确认原因</view><view class="value danger">{{item.lastTransferError}}</view></view>
+      <view class="info-row" wx:if="{{item.lastTransferErrorCode}}"><view class="label">微信错误码</view><view class="value">{{item.lastTransferErrorCode}}</view></view>
       <view class="info-row"><view class="label">申请时间</view><view class="value">{{beijingTime.format(item.createdAt)}}</view></view>
       <view class="info-row" wx:if="{{item.auditRemark}}"><view class="label">审核备注</view><view class="value">{{item.auditRemark}}</view></view>
       <view class="info-row" wx:if="{{item.auditedByOpenid}}"><view class="label">审核人</view><view class="value">{{item.auditedByOpenid}}</view></view>
@@ -82,16 +84,19 @@
       </view>
       <view class="withdraw-audit-actions" wx:if="{{item.status === 'pending' && (adminSuper || adminPermissions.admin_auditWithdrawRequest || (item.assetType === 'user' && adminPermissions.admin_auditUserAssetWithdrawal))}}">
         <button wx:if="{{adminSuper || adminPermissions.admin_auditWithdrawRequest || adminPermissions.admin_auditUserAssetWithdrawal}}" class="withdraw-reject-btn" data-id="{{item._id}}" data-approved="false" bindtap="audit">驳回</button>
-        <button wx:if="{{adminSuper || adminPermissions.admin_auditWithdrawRequest || adminPermissions.admin_auditUserAssetWithdrawal}}" class="withdraw-approve-btn" data-id="{{item._id}}" data-approved="true" bindtap="audit">同意并转账</button>
+        <button wx:if="{{adminSuper || adminPermissions.admin_auditWithdrawRequest || adminPermissions.admin_auditUserAssetWithdrawal}}" class="withdraw-approve-btn" data-id="{{item._id}}" data-approved="true" bindtap="audit">{{item.isWechatWallet ? '同意并转账' : '通过审核'}}</button>
       </view>
-      <button class="withdraw-start-btn full-btn" wx:if="{{(item.isWechatWallet && item.status === 'approved') && (adminSuper || adminPermissions.admin_retryWithdrawTransfer)}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="retryWithdrawTransfer">发起微信提现</button>
+      <view class="info-row" wx:if="{{item.canReturnSmallTransfer}}"><view class="label">金额限制</view><view class="value danger">单笔最低 ¥0.10，请查原单并退回余额后合并提现</view></view>
+      <button class="ghost-btn full-btn" wx:if="{{item.canReturnSmallTransfer && (adminSuper || adminPermissions.admin_releaseFailedWithdraw)}}" disabled="{{actionBusy}}" data-id="{{item._id}}" data-small="true" bindtap="releaseFailedWithdraw">查原单并退回余额合并提现</button>
+      <button class="withdraw-start-btn full-btn" wx:if="{{(item.isWechatWallet && !item.belowWechatMinimum && item.status === 'approved') && (adminSuper || adminPermissions.admin_retryWithdrawTransfer)}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="retryWithdrawTransfer">发起微信提现</button>
       <button class="primary-btn full-btn" wx:if="{{(item.isWechatWallet && item.status === 'transferring') && (adminSuper || adminPermissions.admin_queryWithdrawTransfer)}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="queryWithdrawTransfer">查询转账结果</button>
+      <button class="ghost-btn full-btn" wx:if="{{item.canRecoverTransfer && (adminSuper || adminPermissions.admin_retryWithdrawTransfer)}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="retryWithdrawTransfer">核对原单并安全重试</button>
       <view class="action-row" wx:if="{{item.isWechatWallet && item.status === 'transfer_failed'}}">
         <button wx:if="{{adminSuper || adminPermissions.admin_queryWithdrawTransfer}}" class="ghost-btn compact-btn" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="queryWithdrawTransfer">查询结果</button>
-        <button wx:if="{{adminSuper || adminPermissions.admin_retryWithdrawTransfer}}" class="primary-btn compact-btn" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="retryWithdrawTransfer">安全重试</button>
+        <button wx:if="{{!item.belowWechatMinimum && (adminSuper || adminPermissions.admin_retryWithdrawTransfer)}}" class="primary-btn compact-btn" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="retryWithdrawTransfer">安全重试</button>
       </view>
-      <button class="ghost-btn full-btn release-failed-btn" wx:if="{{(item.isWechatWallet && item.status === 'transfer_failed') && (adminSuper || adminPermissions.admin_releaseFailedWithdraw)}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="releaseFailedWithdraw">释放收益并退回余额</button>
-      <button class="primary-btn full-btn" wx:if="{{(!item.isWechatWallet && item.status === 'approved') && (adminSuper || adminPermissions.admin_markWithdrawPaid)}}" data-id="{{item._id}}" bindtap="markPaid">标记已打款</button>
+      <button class="ghost-btn full-btn release-failed-btn" wx:if="{{(item.isWechatWallet && !item.belowWechatMinimum && item.status === 'transfer_failed') && (adminSuper || adminPermissions.admin_releaseFailedWithdraw)}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="releaseFailedWithdraw">释放收益并退回余额</button>
+      <button class="primary-btn full-btn" wx:if="{{(!item.isWechatWallet && item.status === 'approved') && (adminSuper || adminPermissions.admin_markWithdrawPaid)}}" data-id="{{item._id}}" bindtap="markPaid">{{item.source === 'admin_manual_tail_settlement' ? '登记尾款实际付款凭证' : '标记已打款'}}</button>
     </view>
     <view class="empty-state" wx:if="{{!requests.length}}">暂无提现申请。</view>
   </block>
@@ -122,6 +127,9 @@
       <view class="info-row" wx:if="{{item.refundedAmount > 0}}"><view class="label">已退金额</view><view class="value">¥{{item.refundedAmountText}}</view></view>
       <view class="info-row" wx:if="{{item.forfeitedAmount > 0}}"><view class="label">已没收金额</view><view class="value danger">¥{{item.forfeitedAmountText}}</view></view>
       <view class="info-row" wx:if="{{item.refundReason}}"><view class="label">退出退款原因</view><view class="value">{{item.refundReason}}</view></view>
+      <view class="info-row" wx:if="{{item.refundNo}}"><view class="label">微信退款商户单号</view><view class="value">{{item.refundNo}}</view></view>
+      <view class="info-row" wx:if="{{item.refundLastError}}"><view class="label">退款待处理原因</view><view class="value danger">{{item.refundLastError}}</view></view>
+      <view class="info-row" wx:if="{{item.refundExitPending}}"><view class="label">退出进度</view><view class="value">退款已到账，待结清收益或其他保证金后完成退出</view></view>
       <view class="info-row" wx:if="{{item.lastForfeitReason}}"><view class="label">最近没收原因</view><view class="value">{{item.lastForfeitReason}}</view></view>
       <view class="info-row" wx:if="{{item.lastForfeitImages && item.lastForfeitImages.length}}">
         <view class="label">违规举证照片（内部留存）</view>
@@ -137,7 +145,8 @@
         <button wx:if="{{adminSuper || adminPermissions.admin_auditDepositRefund}}" class="ghost-btn compact-btn" data-id="{{item._id}}" data-approved="false" bindtap="auditDepositRefund">驳回退款</button>
         <button wx:if="{{adminSuper || adminPermissions.admin_auditDepositRefund}}" class="primary-btn compact-btn" data-id="{{item._id}}" data-approved="true" bindtap="auditDepositRefund">通过退款审核</button>
       </view>
-      <button class="primary-btn full-btn" wx:if="{{(item.status === 'refund_approved') && (adminSuper || adminPermissions.admin_confirmDepositRefund)}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="confirmDepositRefund">确认已实际退款</button>
+      <button class="primary-btn full-btn" wx:if="{{item.canSyncRefund && (adminSuper || adminPermissions.admin_syncDepositRefund)}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="syncDepositRefund">同步 / 发起原路退款</button>
+      <button class="ghost-btn full-btn" wx:if="{{item.canConfirmManualRefund && (adminSuper || adminPermissions.admin_confirmDepositRefund)}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="confirmDepositRefund">确认已实际人工退款</button>
       <button class="ghost-btn full-btn" wx:if="{{(item.canForfeit) && (adminSuper || adminPermissions.admin_forfeitStaffDeposit)}}" data-id="{{item._id}}" data-max="{{item.availableRefundAmount}}" data-staff="{{item.staffRealName || item.staffNickname || item.staffOpenid}}" bindtap="forfeitDeposit">违规没收保证金</button>
     </view>
     <view class="empty-state" wx:if="{{!deposits.length}}">暂无宠托师保证金记录。</view>

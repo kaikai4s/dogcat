@@ -6,6 +6,7 @@ module.exports = function createHandler(context) {
     retryStaffCancellationNotifications,
     retryPendingGroupCompletions,
     reconcileWechatTransfers,
+    reconcileStaffDepositRefunds,
     expireDueUnacceptedOrders,
     autoAcceptDueDirectOrders,
     autoCompleteDeliveredMallOrders,
@@ -23,6 +24,7 @@ module.exports = function createHandler(context) {
     const retryTasks = [
       { name: 'refunds', fn: reconcilePendingRefunds },
       { name: 'wechatTransfers', fn: reconcileWechatTransfers },
+      { name: 'staffDepositRefunds', fn: reconcileStaffDepositRefunds },
       { name: 'subscriptions', fn: retryFailedSubscriptions },
       { name: 'staffCancellationNotifications', fn: retryStaffCancellationNotifications },
       { name: 'groupCompletions', fn: retryPendingGroupCompletions }

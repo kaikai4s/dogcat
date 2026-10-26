@@ -33,10 +33,18 @@ const withdrawStatusText = {
   paid: '已到账'
 }
 
+const wechatTransferStateText = {
+  ACCEPTED: '微信已受理', PROCESSING: '微信处理中', WAIT_USER_CONFIRM: '待收款人确认收款',
+  TRANSFERING: '微信转账中', SUCCESS: '已到账', FAIL: '微信转账失败', CANCELING: '微信撤销中', CANCELLED: '微信已撤销'
+}
+
 function decorate(item) {
   const status = String(item.status || '').toLowerCase()
   const transferStatus = String(item.transferStatus || '').toLowerCase()
   const isWechatWallet = item.payoutChannel === 'wechat_wallet'
+  const wechatState = String(item.wechatTransferState || '').toUpperCase()
+  const belowWechatMinimum = isWechatWallet && Number(item.amount) > 0 && Number(item.amount) < 0.10
+  const manualTail = item.source === 'admin_manual_tail_settlement'
   // Older withdrawal records may not have recipientOpenid persisted yet. The
   // staff/user owner fields are the same verified openid used for the transfer.
   const recipientOpenid = item.recipientOpenid || item.staffOpenid || item.userOpenid || item.openid || ''
@@ -44,14 +52,22 @@ function decorate(item) {
     ...item,
     recipientOpenid,
     amountText: money(item.amount),
-    statusText: withdrawStatusText[status] || item.status,
-    transferStatusText: transferStatus ? (transferStatus === 'not_started' ? '未开始' : transferStatus === 'submitting' ? '提交中' : transferStatus === 'processing' ? '处理中' : transferStatus === 'success' ? '成功' : transferStatus === 'failed' ? '失败' : transferStatus === 'unknown' ? '待查询确认' : transferStatus) : '',
+    statusText: !isWechatWallet && status === 'approved' ? '待人工付款'
+      : manualTail && status === 'paid' ? '已人工结清' : withdrawStatusText[status] || item.status,
+    transferStatusText: status === 'rejected' && transferStatus === 'released' ? '已退回余额'
+      : transferStatus === 'unknown' ? '待查询确认'
+        : wechatTransferStateText[wechatState] || (transferStatus === 'not_started' ? '未开始' : transferStatus === 'submitting' ? '提交中' : transferStatus === 'processing' ? '处理中' : transferStatus === 'success' ? '成功' : transferStatus === 'failed' ? '失败' : transferStatus),
+    belowWechatMinimum,
+    canReturnSmallTransfer: belowWechatMinimum && ['approved', 'transferring', 'transfer_failed'].includes(status),
+    canRecoverTransfer: isWechatWallet && !belowWechatMinimum && status === 'transferring' && (transferStatus === 'unknown' || ['NOT_FOUND', 'RESOURCE_NOT_EXISTS'].includes(item.lastTransferErrorCode)),
     currentAvailableAmountText: money(item.currentAvailableAmount),
     withdrawnAmountText: money(item.withdrawnAmount),
     withdrawHistory: (item.withdrawHistory || []).map((history) => ({
       ...history,
       amountText: money(history.amount),
-      statusText: withdrawStatusText[String(history.status || '').toLowerCase()] || history.status || '处理中'
+      statusText: history.payoutChannel === 'manual' && history.status === 'approved' ? '待人工付款'
+        : history.source === 'admin_manual_tail_settlement' && history.status === 'paid' ? '已人工结清'
+          : withdrawStatusText[String(history.status || '').toLowerCase()] || history.status || '处理中'
     })),
     isWechatWallet,
     actionLoading: false
@@ -73,6 +89,8 @@ function decorateStaffFinance(item) {
   result.refundPending = ['pending', 'requested', 'refund_requested', 'refund_pending'].includes(item.refundStatus) || ['refund_requested', 'refund_pending'].includes(item.status)
   result.canRequestRefund = parseAmount(item.availableRefundAmount) !== null && ['paid', 'partially_refunded'].includes(item.status) && !['requested', 'approved', 'processing', 'refunding'].includes(item.refundStatus)
   result.canForfeit = parseAmount(item.availableRefundAmount) !== null && ['paid', 'partially_refunded'].includes(item.status) && !['requested', 'approved', 'processing', 'refunding', 'success'].includes(item.refundStatus)
+  result.canSyncRefund = ['refund_approved', 'refunding'].includes(item.status) || item.refundExitPending === true
+  result.canConfirmManualRefund = item.status === 'refund_approved' && item.refundChannel === 'manual'
   // Unknown states stay visible but never imply successful payment.
   result.transferConfirmed = item.status === 'paid' || item.transferStatus === 'SUCCESS'
   result.mediaFileIds = Array.isArray(item.mediaFileIds) ? item.mediaFileIds : []
@@ -237,15 +255,20 @@ Page({
     const row = (this.data.requests || []).find(item => item._id === id)
     const action = row?.assetType === 'user' && !can(this.data.adminAccess, 'admin.auditWithdrawRequest') ? 'auditUserAssetWithdrawal' : 'auditWithdrawRequest'
     callFunction('admin', action, { id, approved, auditRemark: approved ? '审核通过' : '审核驳回' })
-      .then(() => {
-        wx.showToast({ title: approved ? '已通过' : '已驳回' })
+      .then((result) => {
+        if (approved && result?.lastTransferError) wx.showModal({ title: '审核已通过，转账待处理', content: `${result.lastTransferError}${result.lastTransferErrorCode ? `（${result.lastTransferErrorCode}）` : ''}`, showCancel: false })
+        else wx.showToast({ title: approved ? '已通过' : '已驳回' })
         this.load()
       })
       .catch(showError)
   },
 
   markPaid(e) {
-    this.confirmStaffPayment(e.currentTarget.dataset.id, 'markWithdrawPaid', '确认提现付款')
+    const id = e.currentTarget.dataset.id
+    const item = (this.data.requests || []).find(row => row._id === id)
+    const manualTail = item?.source === 'admin_manual_tail_settlement'
+    this.confirmStaffPayment(id, 'markWithdrawPaid', manualTail ? '确认小额尾款已付款' : '确认提现付款',
+      manualTail ? `请核实已向${item.recipientName || item.staffRealName || item.staffOpenid}实际支付 ¥${money(item.amount)}，付款凭证须能核对收款人及金额。填写实际付款凭证号后才记为已结清。` : '')
   },
 
   queryWithdrawTransfer(e) {
@@ -267,10 +290,11 @@ Page({
 
   releaseFailedWithdraw(e) {
     const id = e.currentTarget.dataset.id
+    const small = e.currentTarget.dataset.small === true || e.currentTarget.dataset.small === 'true'
     wx.showModal({
-      title: '释放失败提现收益',
-      content: '确认微信侧未打款成功后，才可释放收益回可提现余额。',
-      editable: true,
+      title: small ? '查原单并退回余额' : '释放失败提现收益',
+      content: small ? '该笔金额低于微信零钱单笔最低 ¥0.10。系统将向原商户查询原单，确认微信未受理后退回可提现余额，供合并收益后重新申请。' : '确认微信侧未打款成功后，才可释放收益回可提现余额。',
+      editable: !small,
       placeholderText: '请输入处理备注',
       success: (res) => {
         if (!res.confirm) return
@@ -284,14 +308,19 @@ Page({
     this.setData({ actionBusy: true })
     wx.showLoading({ title, mask: true })
     callFunction('admin', action, { id, ...extra })
-      .then(() => {
+      .then((result) => {
         wx.hideLoading()
-        wx.showToast({ title: '已处理' })
+        if (result?.status === 'paid') wx.showToast({ title: '已到账', icon: 'none' })
+        else if (result?.transferStatus === 'released') wx.showToast({ title: '已退回可提现余额', icon: 'none' })
+        else if (result?.lastTransferError) wx.showModal({ title: '转账尚未完成', content: `${result.lastTransferError}${result.lastTransferErrorCode ? `（${result.lastTransferErrorCode}）` : ''}`, showCancel: false })
+        else if (result?.wechatTransferState === 'WAIT_USER_CONFIRM') wx.showModal({ title: '待收款人确认收款', content: '请宠托师本人进入“我的收益 → 提现记录”，点击该笔记录的“确认收款”。确认后系统会继续同步微信到账结果。', showCancel: false })
+        else wx.showToast({ title: wechatTransferStateText[result?.wechatTransferState] || (result?.status === 'transferring' ? '转账结果待查询' : '已处理'), icon: 'none' })
         this.load()
       })
       .catch((err) => {
         wx.hideLoading()
         showError(err)
+        this.load()
       })
       .finally(() => this.setData({ actionBusy: false }))
   },
@@ -413,7 +442,7 @@ Page({
     const approved = e.currentTarget.dataset.approved === true || e.currentTarget.dataset.approved === 'true'
     wx.showModal({
       title: approved ? '审核通过退还保证金' : '驳回退出退款申请',
-      content: approved ? '确认审核通过？审核后进入待实际退款状态。' : '确认驳回该退出退款申请？',
+      content: approved ? '确认审核通过并发起退款？微信支付的保证金将自动原路退回，到账结果以微信查询为准。' : '确认驳回该退出退款申请？',
       editable: !approved,
       placeholderText: !approved ? '请输入驳回原因' : '',
       success: (res) => {
@@ -425,9 +454,10 @@ Page({
         }
         wx.showLoading({ title: '处理中...', mask: true })
         callFunction('admin', 'auditDepositRefund', { id, approved, reason })
-          .then(() => {
+          .then((result) => {
             wx.hideLoading()
-            wx.showToast({ title: approved ? '已通过退款' : '已驳回' })
+            if (approved && result?.refundLastError) wx.showModal({ title: '审核已通过，退款待处理', content: result.refundLastError, showCancel: false })
+            else wx.showToast({ title: approved ? (result?.refundStatus === 'success' ? '退款已到账' : '已审核，退款待确认') : '已驳回', icon: 'none' })
             this.loadStaffFinance()
           })
           .catch((err) => {
@@ -679,11 +709,25 @@ Page({
     this.confirmStaffPayment(e.currentTarget.dataset.id, 'confirmDepositRefund', '确认保证金已退还')
   },
 
-  confirmStaffPayment(id, action, title) {
+  async syncDepositRefund(e) {
+    if (this.data.actionBusy) return
+    this.setData({ actionBusy: true })
+    wx.showLoading({ title: '同步退款中...', mask: true })
+    try {
+      const result = await callFunction('admin', 'syncDepositRefund', { id: e.currentTarget.dataset.id })
+      wx.hideLoading()
+      if (result?.refundLastError) wx.showModal({ title: '退款待处理', content: result.refundLastError, showCancel: false })
+      else wx.showToast({ title: result?.refundStatus === 'success' ? '退款已到账' : '已同步退款状态', icon: 'none' })
+      await this.loadStaffFinance()
+    } catch (error) { wx.hideLoading(); showError(error) }
+    finally { this.setData({ actionBusy: false }) }
+  },
+
+  confirmStaffPayment(id, action, title, content = '') {
     if (this.data.actionBusy) return
     wx.showModal({
       title,
-      content: '请核实实际付款成功，并填写付款凭证号。',
+      content: content || '请核实实际付款成功，并填写付款凭证号。',
       editable: true,
       placeholderText: '银行或微信付款凭证号',
       success: (res) => {

@@ -3,7 +3,7 @@ const { navMethods } = require('../../../utils/nav')
 const { createClientRequestId } = require('../../../utils/offlineQueue')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 
-const WECHAT_MIN_TRANSFER_AMOUNT = 0.01
+const WECHAT_MIN_TRANSFER_AMOUNT = 0.10
 const WECHAT_MAX_TRANSFER_AMOUNT = 200
 
 const earningStatusText = {
@@ -64,10 +64,11 @@ function withWithdraw(item) {
   return {
     ...item,
     amountText: money(item.amount),
-    statusText: withdrawStatusText[status] || '处理中',
+    statusText: item.source === 'admin_manual_tail_settlement' && status === 'approved' ? '待人工付款'
+      : item.source === 'admin_manual_tail_settlement' && status === 'paid' ? '已人工结清' : withdrawStatusText[status] || '处理中',
     wechatTransferStateText: wechatTransferStateText[transferState] || transferState,
     isAccepted,
-    canConfirmTransfer: transferState === 'WAIT_USER_CONFIRM'
+    canConfirmTransfer: item.payoutChannel === 'wechat_wallet' && ['approved', 'transferring'].includes(status) && transferState === 'WAIT_USER_CONFIRM'
   }
 }
 
@@ -151,7 +152,7 @@ Page({
       return wx.showToast({ title: '请输入正确的提现金额', icon: 'none' })
     }
     if (amount < WECHAT_MIN_TRANSFER_AMOUNT) {
-      return wx.showToast({ title: '微信零钱单笔最低 ¥0.01', icon: 'none' })
+      return wx.showToast({ title: '微信零钱单笔最低 ¥0.10，请合并收益', icon: 'none' })
     }
     if (amount > WECHAT_MAX_TRANSFER_AMOUNT) {
       return wx.showToast({ title: '微信零钱单笔最高 ¥200.00', icon: 'none' })

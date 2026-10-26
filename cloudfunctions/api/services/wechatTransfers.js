@@ -1,3 +1,5 @@
+const { WECHAT_MIN_TRANSFER_CENTS, WECHAT_MAX_TRANSFER_CENTS } = require('../utils/wechatTransferLimits')
+
 module.exports = function createService({
   crypto,
   db,
@@ -9,13 +11,10 @@ module.exports = function createService({
   markWechatWithdrawalPaid,
   markWechatWithdrawalFailed,
   prepareWechatSubmissionQuota,
+  releaseFailedWithdrawal,
   now,
   safeText
 }) {
-  // Frontend validation uses ¥0.10. The backend keeps only a one-fen floor
-  // so review/retry of an existing request is not blocked by that UI rule.
-  const WECHAT_MIN_TRANSFER_CENTS = 1
-  const WECHAT_MAX_TRANSFER_CENTS = 20000
 
   function cents(value) {
     const amount = Number(value)
@@ -209,8 +208,9 @@ module.exports = function createService({
   }
 
   function validateTransferAmount(request, config) {
-    const amountFen = request.amountFen || cents(request.amount)
-    if (amountFen < WECHAT_MIN_TRANSFER_CENTS) throw new Error('微信提现金额必须至少为 ¥0.01')
+    const amountFen = cents(request.amount)
+    if (request.amountFen != null && request.amountFen !== amountFen) throw new Error('提现分金额与申请金额不一致，请先核对账目')
+    if (amountFen < WECHAT_MIN_TRANSFER_CENTS) throw new Error('微信零钱单笔最低 ¥0.10，请核对原单并退回余额后合并提现')
     const configuredMaxFen = cents(config.transferMaxAmount)
     const maxFen = Math.min(WECHAT_MAX_TRANSFER_CENTS, configuredMaxFen)
     if (amountFen > maxFen) {
@@ -243,16 +243,20 @@ module.exports = function createService({
     try {
       prepared = await ensureTransferIntent(withdrawId, operator, settings)
     } catch (error) {
-      if (String(error.message || error.errMsg || error).includes('额度') || String(error.message || error.errMsg || error).includes('当日全平台转帐额度受限')) {
-        await db.collection('withdraw_requests').doc(withdrawId).update({ data: { lastTransferError: safeText(error.message || error).slice(0, 500), lastTransferCheckedAt: now(), updatedAt: now() } }).catch(() => {})
-      }
+      await db.runTransaction(async tx => {
+        const current = (await tx.collection('withdraw_requests').doc(withdrawId).get()).data
+        if (!current || !['approved', 'transferring', 'transfer_failed'].includes(current.status)) return
+        await tx.collection('withdraw_requests').doc(withdrawId).update({ data: {
+          lastTransferError: safeText(error.message || error).slice(0, 500), lastTransferErrorCode: safeText(error.code), updatedAt: now()
+        } })
+      }).catch(() => {})
       throw error
     }
     if (prepared.status === 'paid') return prepared
     const config = getWechatTransferConfig(settings)
     const payload = buildTransferPayload(prepared, config)
     const headers = payload.user_name ? { 'Wechatpay-Serial': config.platformCertSerialNo } : {}
-    const submitting = await patchTransferProcessing(withdrawId, { transferStatus: 'submitting', lastTransferError: '' }, { allowRetry: true, incrementAttempt: true })
+    const submitting = await patchTransferProcessing(withdrawId, { transferStatus: 'submitting', lastTransferError: '', lastTransferErrorCode: '' }, { allowRetry: true, incrementAttempt: true })
     if (!submitting.changed) return submitting
     try {
       const response = await wechatPayRequest('POST', '/v3/fund-app/mch-transfer/transfer-bills', payload, config, headers)
@@ -262,6 +266,7 @@ module.exports = function createService({
         // A transport or parsing error never proves that funds did not move.
         // Only an explicit terminal gateway state may release transfer quota.
         transferStatus: 'unknown',
+        lastTransferErrorCode: safeText(error.code),
         lastTransferError: safeText(error.message || '微信转账提交失败').slice(0, 500)
       })
       if (!failed.changed) return failed
@@ -282,11 +287,32 @@ module.exports = function createService({
     try {
       response = await wechatPayRequest('GET', `/v3/fund-app/mch-transfer/transfer-bills/out-bill-no/${encodeURIComponent(outBillNo)}`, null, config)
     } catch (error) {
-      if (retryMissing && error.code === 'RESOURCE_NOT_EXISTS' && ['approved', 'transferring', 'transfer_failed'].includes(request.status)) {
+      // This transfer query documents HTTP 404 / NOT_FOUND. Older integrations
+      // may use RESOURCE_NOT_EXISTS. Keep this mapping local to this endpoint;
+      // refund APIs have a different error contract.
+      const missing = ['NOT_FOUND', 'RESOURCE_NOT_EXISTS'].includes(error.code)
+      const belowMinimum = cents(request.amount) < WECHAT_MIN_TRANSFER_CENTS
+      const missingHint = belowMinimum
+        ? '微信尚未查到原转账单，此笔低于最低 ¥0.10，请点击“查原单并退回余额合并提现”'
+        : '微信尚未查到原转账单，请点击“核对原单并安全重试”恢复转账'
+      if (retryMissing && missing && !belowMinimum && ['approved', 'transferring', 'transfer_failed'].includes(request.status)) {
         if (request.transferSubmittedAt && (!request.transferMchId || !request.transferAppId)) throw new Error('历史转账缺少原商户信息，请先人工核对原单')
         // Resume the original authorized intent with its original bill number.
         return submitWechatWithdrawalTransfer(withdrawId, { openid: 'recover_missing_transfer' })
       }
+      await db.runTransaction(async tx => {
+        const current = (await tx.collection('withdraw_requests').doc(withdrawId).get()).data
+        if (!current || !['approved', 'transferring', 'transfer_failed'].includes(current.status)) return
+        const time = now()
+        await tx.collection('withdraw_requests').doc(withdrawId).update({ data: {
+          lastTransferErrorCode: safeText(error.code),
+          lastTransferError: missing
+            ? missingHint
+            : safeText(error.message || '微信转账查询失败').slice(0, 500),
+          lastTransferCheckedAt: new Date(Math.max(new Date(time).getTime(), (new Date(current.lastTransferCheckedAt || 0).getTime() || 0) + 1)), updatedAt: time
+        } })
+      })
+      if (missing) error.message = missingHint
       throw error
     }
     const result = await applyWechatTransferResult(withdrawId, response, 'query')
@@ -330,6 +356,8 @@ module.exports = function createService({
       wechatTransferState: state || 'PROCESSING',
       wechatTransferBillNo: safeText(response.transfer_bill_no).trim(),
       rawTransferResponse: sanitized,
+      lastTransferError: '',
+      lastTransferErrorCode: '',
       lastTransferSource: source
     }
     if (packageInfo) {
@@ -343,6 +371,32 @@ module.exports = function createService({
     if (!['approved', 'transferring', 'transfer_failed'].includes(request.status)) throw new Error('当前状态不可重试微信提现')
     if (['unknown', 'processing', 'submitting'].includes(request.transferStatus)) return queryWechatWithdrawalTransfer(withdrawId, { retryMissing: true })
     return submitWechatWithdrawalTransfer(withdrawId, operator)
+  }
+
+  async function returnSmallWechatWithdrawal(withdrawId, operator = {}) {
+    const request = await readWechatWithdrawal(withdrawId)
+    if (request.status === 'rejected' && request.transferStatus === 'released') return { request, changed: false }
+    const amountFen = cents(request.amount)
+    if (amountFen >= WECHAT_MIN_TRANSFER_CENTS || (request.amountFen != null && request.amountFen !== amountFen)) throw new Error('此入口仅处理低于 ¥0.10 的历史提现')
+    if (!['approved', 'transferring', 'transfer_failed'].includes(request.status)) throw new Error('当前提现状态不可退回余额')
+    const config = getWechatTransferConfig(await getSystemSettings({ includeSecrets: true }))
+    const outBillNo = safeText(request.outBillNo || request.outDetailNo).trim()
+    if (!outBillNo || !request.transferMchId || !request.transferAppId) throw new Error('原转账单号或商户信息缺失，请先核对原单')
+    if (request.transferMchId !== config.mchId || request.transferAppId !== config.appId) throw new Error('原转账商户或小程序配置已变化，请先核对原单')
+    let missing = false, response
+    try {
+      response = await wechatPayRequest('GET', `/v3/fund-app/mch-transfer/transfer-bills/out-bill-no/${encodeURIComponent(outBillNo)}`, null, config)
+    } catch (error) {
+      if (!['NOT_FOUND', 'RESOURCE_NOT_EXISTS'].includes(error.code)) throw error
+      missing = true
+    }
+    if (!missing) {
+      await applyWechatTransferResult(withdrawId, response, 'return_small_query')
+      throw new Error('微信已有转账记录，已同步原单结果，请核对后处理')
+    }
+    return releaseFailedWithdrawal(operator, { id: withdrawId, remark: '原微信单查询不存在，低于最低转账金额的历史提现退回余额合并提现' }, {
+      gatewayAbsence: { outBillNo, mchId: config.mchId, appId: config.appId, amountFen, attemptCount: Number(request.transferAttemptCount || 0) }
+    })
   }
 
   async function reconcileWechatTransfers(limit = 10) {
@@ -363,7 +417,13 @@ module.exports = function createService({
         if (item.outBillNo || item.outDetailNo) results.push(await queryWechatWithdrawalTransfer(item._id, { retryMissing: true }))
         else results.push(await submitWechatWithdrawalTransfer(item._id, { openid: 'scheduled' }))
       } catch (error) {
-        await db.collection('withdraw_requests').doc(item._id).update({ data: { lastTransferError: safeText(error.message).slice(0, 500), updatedAt: now() } }).catch(() => {})
+        await db.runTransaction(async tx => {
+          const current = (await tx.collection('withdraw_requests').doc(item._id).get()).data
+          if (!current || !['approved', 'transferring', 'transfer_failed'].includes(current.status)) return
+          await tx.collection('withdraw_requests').doc(item._id).update({ data: {
+            lastTransferError: safeText(error.message).slice(0, 500), updatedAt: now()
+          } })
+        }).catch(() => {})
       }
     }
     return { checked: results.length }
@@ -378,6 +438,7 @@ module.exports = function createService({
     queryWechatWithdrawalTransfer,
     applyWechatTransferResult,
     retryWechatWithdrawalTransfer,
+    returnSmallWechatWithdrawal,
     reconcileWechatTransfers
   }
 }

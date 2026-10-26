@@ -153,6 +153,7 @@ module.exports = function createService({
           const baseMessage = json.message || json.code || '微信支付请求失败'
           const error = new Error(detailText ? `${baseMessage}（${detailText}）` : baseMessage)
           error.code = json.code || 'WECHAT_PAY_ERROR'
+          error.statusCode = res.statusCode
           reject(error)
         })
       })

@@ -27,7 +27,9 @@ function withDisplay(profile, selectedIds = []) {
     withdrawHistory: (profile.withdrawHistory || []).map((history) => ({
       ...history,
       amountText: `¥${Number(history.amount || 0).toFixed(2)}`,
-      statusText: ({ pending: '审核中', approved: '已通过', transferring: '打款中', transfer_failed: '打款失败', rejected: '已驳回', paid: '已到账' })[history.status] || history.status || '处理中'
+      statusText: history.payoutChannel === 'manual' && history.status === 'approved' ? '待人工付款'
+        : history.source === 'admin_manual_tail_settlement' && history.status === 'paid' ? '已人工结清'
+          : ({ pending: '审核中', approved: '已通过', transferring: '打款中', transfer_failed: '打款失败', rejected: '已驳回', paid: '已到账' })[history.status] || history.status || '处理中'
     })),
     featuredActionText: profile.isFeatured ? '取消精选' : '设为精选',
     actionText: profile.auditStatus === 'pending' ? '去审核' : '查看资料',
@@ -540,7 +542,9 @@ Page({
       while (hasMore && !this._settlementPageUnloaded) {
         this.setData({ settlementProgress: `正在发起第 ${operation.batchIndex + 1} 笔转账，请勿关闭页面` })
         const result = await callFunction('admin', 'settleStaffEarningsByWechat', { ...operation, staffProfileId, confirmed: true })
-        if (result.needsHandling) throw new Error('该笔转账需要处理，请到财务管理查看或重试原单；不会重复创建转账')
+        if (result.needsHandling) throw new Error(result.lastTransferError
+          ? `${result.lastTransferError}${result.lastTransferErrorCode ? `（${result.lastTransferErrorCode}）` : ''}`
+          : '该笔转账需要处理，请到财务管理查看或重试原单；不会重复创建转账')
         hasMore = result.hasMore
         operation.batchIndex += 1
         if (hasMore) wx.setStorageSync(storageKey, operation)
@@ -556,6 +560,50 @@ Page({
         this.setData({ settlementResumeStaffId: error.code === 'STAFF_SETTLEMENT_REVIEW_REQUIRED' ? '' : staffProfileId })
         showError(error)
       }
+    } finally {
+      if (!this._settlementPageUnloaded) {
+        this.setData({ settlementBusy: false, settlementProgress: '' })
+        this.load({ reset: true })
+      }
+    }
+  },
+
+  async settleManualTail(e) {
+    if (this.data.settlementBusy) return
+    const staffProfileId = e.currentTarget.dataset.id
+    if (!staffProfileId) return
+    const storageKey = `admin_staff_manual_tail_${getActiveEnvId()}_${staffProfileId}`
+    this.setData({ settlementBusy: true, settlementStaffId: staffProfileId, settlementProgress: '正在核对小额尾款...' })
+    try {
+      let operation = wx.getStorageSync(storageKey) || null
+      if (!operation) {
+        const preview = await callFunction('admin', 'getStaffSettlementPreview', { staffProfileId })
+        if (this._settlementPageUnloaded) return
+        if (!preview.canSettleManualTail) throw new Error(preview.manualTailUnavailableReason || '仅可处理不足 ¥0.10 且没有其他未结清收益或在途提现的尾款')
+        const confirmed = await new Promise(resolve => wx.showModal({
+          title: '小额尾款人工结清',
+          content: `核对${preview.staffName}全部尾款 ¥${Number(preview.available).toFixed(2)}。确认后生成待审核人工付款记录；请到财务管理审核并核对收款人，完成实际付款并填写凭证号后才记为已结清。开启双人复核时须由另一位管理员确认付款。`,
+          confirmText: '生成结清单', success: res => resolve(res.confirm), fail: () => resolve(false)
+        }))
+        if (!confirmed || this._settlementPageUnloaded) return
+        operation = { clientRequestId: `tail_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`, expectedAmount: preview.available }
+        wx.setStorageSync(storageKey, operation)
+      }
+      if (this._settlementPageUnloaded) return
+      const result = await callFunction('admin', 'createStaffManualTailSettlement', { ...operation, staffProfileId, confirmed: true })
+      wx.removeStorageSync(storageKey)
+      if (this._settlementPageUnloaded) return
+      wx.showModal({
+        title: result.status === 'paid' ? '尾款已登记到账' : result.needsHandling ? '尾款单需要处理' : '尾款结清单已生成',
+        content: result.status === 'paid' ? '该笔尾款已有实际付款登记，可到财务管理查看凭证。'
+          : result.needsHandling ? '原尾款结清单已驳回，未记为付款；收益已退回余额。请先查看财务记录，重新发起时需再次核对余额。'
+            : '收益已关联结清记录。请到财务管理审核原单，核实实际付款并填写付款凭证号；尚未付款时请保留待付款状态。',
+        confirmText: '查看财务', showCancel: false,
+        success: () => wx.navigateTo({ url: `/pages/admin/finance/index?tab=withdraws&action=settlement&staffOpenid=${encodeURIComponent(result.staffOpenid)}` })
+      })
+    } catch (error) {
+      if (error.code === 'STAFF_TAIL_REVIEW_REQUIRED') wx.removeStorageSync(storageKey)
+      if (!this._settlementPageUnloaded) showError(error)
     } finally {
       if (!this._settlementPageUnloaded) {
         this.setData({ settlementBusy: false, settlementProgress: '' })
@@ -586,7 +634,7 @@ Page({
     if (!item?.depositId) return
     const response = await new Promise(resolve => wx.showModal({
       title: '发起退还保证金', editable: true, placeholderText: '请填写退还原因（最多200字）',
-      content: `可退余额 ${item.depositBalanceText}。本操作提交退款审核，不会立即转账。审核通过后需完成实际退款并填写凭证；退出前须结清收益。`,
+      content: `可退余额 ${item.depositBalanceText}。本操作提交退款审核。微信支付的保证金审核通过后自动发起原路退款，其他渠道需实际退款并登记凭证；退出前须结清收益。`,
       confirmText: '提交审核', success: resolve, fail: () => resolve({ confirm: false })
     }))
     if (!response.confirm || this.data.depositRefundBusy) return

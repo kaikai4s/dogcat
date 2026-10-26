@@ -297,6 +297,7 @@ Page({
     if (this.data.withdrawing) return
     if (!amount || amount <= 0) return wx.showToast({ title: '请输入提现金额', icon: 'none' })
     if (amount > Number(summary.availableAmount || 0)) return wx.showToast({ title: '提现金额超出可用余额', icon: 'none' })
+    if (amount < 0.10) return wx.showToast({ title: '微信零钱单笔最低 ¥0.10，请合并收益后提现', icon: 'none' })
     if (Number(summary.availableAmount || 0) < Number(summary.minWithdrawAmount || 0) || amount < Number(summary.minWithdrawAmount || 0)) return wx.showToast({ title: '可提现余额未达到最低金额', icon: 'none' })
     if (quota.singleMaxAmount !== null && quota.singleMaxAmount !== undefined && amount > Number(quota.singleMaxAmount || 0)) return wx.showToast({ title: '单笔额度不足，请分多次提现', icon: 'none' })
     if (quota.platformDailyRemainingAmount !== null && quota.platformDailyRemainingAmount !== undefined && amount > Number(quota.platformDailyRemainingAmount || 0)) return wx.showModal({ title: '暂不可提现', content: '当日全平台转帐额度受限,请明日再申请', showCancel: false })

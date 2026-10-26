@@ -96,6 +96,39 @@ function earningService(f, state = 'PROCESSING') {
 const admin = { _id: 'a', openid: 'admin' }
 const settleData = amount => ({ staffProfileId: 'sp', clientRequestId: 'test-operation', confirmed: true, expectedAmount: amount, batchIndex: 0 })
 
+test('admin settlement retains a seven-fen balance until it can meet the gateway minimum', async () => {
+  const f = fixture([{ amount: 0.07 }]), { service, calls } = earningService(f)
+  const preview = await service.getStaffSettlementPreview('sp')
+  assert.equal(preview.available, 0.07)
+  assert.equal(preview.canSettle, false)
+  await assert.rejects(service.settleStaffEarningsByWechat(admin, settleData(0.07)), /单笔最低.*0.10/)
+  assert.equal(calls.length, 0)
+  assert.equal(f.db.state.staff_earnings[0].status, 'available')
+})
+
+test('admin settlement combines two seven-fen earnings without changing either earning', async () => {
+  const f = fixture([{ amount: 0.07 }, { amount: 0.07 }]), { service, calls } = earningService(f, 'SUCCESS')
+  const result = await service.settleStaffEarningsByWechat(admin, settleData(0.14))
+  assert.equal(result.status, 'paid')
+  assert.equal(calls[0].body.transfer_amount, 14)
+  assert.deepEqual(f.db.state.staff_earnings.map(row => row.amount), [0.07, 0.07])
+  assert.ok(f.db.state.staff_earnings.every(row => row.status === 'withdrawn'))
+})
+
+test('fifty-record settlement boundary redistributes whole earnings to avoid a seven-fen final bill', async () => {
+  const f = fixture(Array.from({ length: 51 }, () => ({ amount: 0.07 }))), { service, calls } = earningService(f, 'SUCCESS')
+  const preview = await service.getStaffSettlementPreview('sp')
+  assert.equal(preview.canSettle, true)
+  assert.deepEqual(preview.groups.map(group => group.earningIds.length), [49, 2])
+  assert.deepEqual(preview.groups.map(group => group.amountFen), [343, 14])
+  const data = settleData(3.57)
+  await service.settleStaffEarningsByWechat(admin, data)
+  await service.settleStaffEarningsByWechat(admin, { ...data, batchIndex: 1 })
+  assert.deepEqual(calls.map(row => row.body.transfer_amount), [343, 14])
+  assert.equal(f.db.state.staff_earnings.length, 51)
+  assert.ok(f.db.state.staff_earnings.every(row => row.amount === 0.07 && row.status === 'withdrawn'))
+})
+
 test('admin settles only real available earnings, preserving pending/frozen/occupied money', async () => {
   const f = fixture([{ amount: 10 }, { amount: 20, status: 'pending' }, { amount: 30, status: 'frozen' }, { amount: 40, status: 'withdrawing' }, { amount: 50, isMock: true }])
   const { service, calls } = earningService(f)
@@ -125,6 +158,21 @@ test('admin settlement marks earnings withdrawn only after gateway success', asy
   await service.settleStaffEarningsByWechat(admin, settleData(15))
   assert.equal(f.db.state.withdraw_requests.length, 1)
   assert.equal(f.db.state.staff_earnings[0].amount, 15)
+})
+
+test('batch settlement returns a real gateway refusal as a result needing finance handling', async () => {
+  const f = fixture([{ amount: 15 }]), { deps } = earningService(f)
+  Object.assign(deps, require('../../cloudfunctions/api/services/wechatTransfers')({ ...deps,
+    wechatPayRequest: async () => { throw Object.assign(new Error('超过单笔转账上下限，核实产品设置是否准确'), { code: 'INVALID_REQUEST' }) }
+  }))
+  const service = require('../../cloudfunctions/api/services/staffEarningSettlement')(deps)
+  const result = await service.settleStaffEarningsByWechat(admin, settleData(15))
+  assert.equal(result.status, 'transferring')
+  assert.equal(result.transferStatus, 'unknown')
+  assert.equal(result.needsHandling, true)
+  assert.equal(result.lastTransferErrorCode, 'INVALID_REQUEST')
+  assert.match(result.lastTransferError, /超过单笔转账上下限/)
+  assert.equal(f.db.state.staff_earnings[0].status, 'withdrawing')
 })
 
 test('admin settlement groups all reviewed earnings into bounded transfer bills', async () => {
@@ -163,6 +211,7 @@ test('a freeze between preview and reservation prevents payment without clearing
 
 test('admin refund entry records administrator attribution and cannot bypass unsettled earnings on exit', async () => {
   const f = fixture([{ amount: 10 }])
+  f.db.state.payments[0].channel = 'manual'
   Object.assign(f.db.state.staff_deposits[0], { status: 'paid', paidAmount: 500, availableRefundAmount: 500 })
   const handler = require('../../cloudfunctions/api/handlers/admin')(f.context)
   await handler('admin', 'requestStaffDepositRefund', { id: 'd', reason: '结束服务退还保证金' })
@@ -210,6 +259,7 @@ for (const queryFails of [false, true]) {
 
 test('multiple refundable deposits are recorded one by one before staff exit completes', async () => {
   const f = fixture()
+  f.db.state.payments[0].channel = 'manual'
   Object.assign(f.db.state.staff_deposits[0], { status: 'paid', paidAmount: 500, availableRefundAmount: 500 })
   f.db.state.staff_deposits.push({ _id: 'older', staffOpenid: 'staff', staffUserId: 'u', staffProfileId: 'sp',
     status: 'paid', amount: 100, paidAmount: 100, availableRefundAmount: 100, refundedAmount: 0, forfeitedAmount: 0 })
@@ -235,6 +285,7 @@ test('multiple refundable deposits are recorded one by one before staff exit com
 
 test('concurrent confirmations refund each approved deposit once and complete staff exit only after both', async () => {
   const f = fixture()
+  f.db.state.payments[0].channel = 'manual'
   Object.assign(f.db.state.staff_deposits[0], { status: 'paid', paidAmount: 500, availableRefundAmount: 500 })
   f.db.state.staff_deposits.push({ _id: 'older', staffOpenid: 'staff', staffUserId: 'u', staffProfileId: 'sp',
     status: 'paid', amount: 100, paidAmount: 100, availableRefundAmount: 100, refundedAmount: 0, forfeitedAmount: 0 })

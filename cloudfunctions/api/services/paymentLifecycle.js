@@ -2,7 +2,7 @@ module.exports = function createService({
   db, getStaffProfileByOpenid, recordStaffDepositPayment, reserveOrderPayment, settleOrderPayment, requestOrderRefund,
   appendOrderClientMessage, createPaymentNo, notifyOrder,
   getSystemSettings, getWechatPayConfig, wechatPayRequest, appendPaymentEvent,
-  sanitizeWechatPayload, validatePaymentCallbackPayload, getPayableOrder, readScopedDocuments
+  sanitizeWechatPayload, validatePaymentCallbackPayload, getPayableOrder, readScopedDocuments, syncStaffDepositRefund
 }) {
   function buildMallOrderItemSnapshot(product, sku, quantity) {
     return { productId: product._id, skuId: sku.skuId, name: product.name, coverFileId: sku.imageFileId || product.coverFileId || '', price: Number(sku.price || 0), quantity, specText: sku.specText || '', specs: sku.specs || {}, shippingFee: Number(product.shippingFee || 0), skuSnapshot: { skuId: sku.skuId, specs: sku.specs || {}, specText: sku.specText || '', price: Number(sku.price || 0), originalPrice: Number(sku.originalPrice || 0), imageFileId: sku.imageFileId || '' } }
@@ -55,6 +55,10 @@ module.exports = function createService({
       return { profile: freshProfile, deposit: await readCurrentDeposit(freshProfile) }
     }
     const deposit = await readCurrentDeposit(profile)
+    if (deposit && ['refund_approved', 'refunding'].includes(deposit.status) && typeof syncStaffDepositRefund === 'function') {
+      await syncStaffDepositRefund(deposit._id)
+      return freshSnapshot()
+    }
     if (!deposit || deposit.status !== 'unpaid') return { profile, deposit }
     const payments = (await db.collection('payments').where({ orderId: deposit._id, targetType: 'staff_deposit' }).limit(2).get()).data
     if (payments.length > 1) throw new Error('保证金支付记录重复，请联系平台对账')

@@ -127,7 +127,27 @@ module.exports = function createService({ db, crypto, now, safeText }) {
       return { success: true, status: 'refund_requested' }
     })
   }
-  async function settleStaffDeposit(admin, action, data) {
+  async function hasUnsettledFunds(tx, openid) {
+    const { documentPages } = require('../utils/documentPages')
+    for await (const rows of documentPages(tx, db.command, 'staff_earnings', { staffOpenid: openid })) {
+      if (rows.some(row => ['pending', 'available', 'withdrawing', 'frozen'].includes(row.status) && row.isMock !== true && row.paymentChannel !== 'mock' && money(row.amount) > 0)) return true
+    }
+    for await (const rows of documentPages(tx, db.command, 'withdraw_requests', { staffOpenid: openid })) {
+      if (rows.some(row => ['pending', 'approved', 'processing', 'transferring', 'transfer_failed'].includes(row.status))) return true
+    }
+    return false
+  }
+  async function removeStaffRole(tx, deposit, profile, time) {
+    const staffUserId = deposit.staffUserId || profile.userId
+    let staffUser = staffUserId ? await optional(tx, 'users', staffUserId) : null
+    if (!staffUser) staffUser = (await tx.collection('users').where({ openid: deposit.staffOpenid }).limit(1).get()).data[0]
+    if (!staffUser || staffUser.openid !== deposit.staffOpenid) throw new Error('用户归属不匹配')
+    const roles = (Array.isArray(staffUser.roles) ? staffUser.roles : ['client']).filter(role => role !== 'staff')
+    await tx.collection('users').doc(staffUser._id).update({ data: {
+      roles: roles.length ? roles : ['client'], ...(staffUser.activeRole === 'staff' ? { activeRole: 'client' } : {}), updatedAt: time
+    } })
+  }
+  async function settleStaffDeposit(admin, action, data, internal = {}) {
     const reason = safeText(data.reason || data.auditRemark).trim()
     const requestId = safeText(data.clientRequestId).trim()
     const proof = safeText(data.paymentReference).trim()
@@ -148,6 +168,10 @@ module.exports = function createService({ db, crypto, now, safeText }) {
       }
       if (!deposit) throw new Error('保证金记录不存在')
       const targetDepositId = depositId || deposit._id || data.id
+      const gatewayRefund = internal.gatewayRefund
+      if (action === 'confirmDepositRefund' && (deposit.refundChannel === 'wechat' || deposit.paymentChannel === 'wechat') && !gatewayRefund) throw new Error('微信原路退款须查询微信结果，不能人工标记到账')
+      if (gatewayRefund && (gatewayRefund.refundNo !== deposit.refundNo || gatewayRefund.refundId !== proof ||
+          gatewayRefund.refundFen !== money(deposit.approvedRefundAmount, true))) throw new Error('微信退款凭证与保证金不一致')
       const eventId = key(targetDepositId, action, action === 'forfeitStaffDeposit' ? requestId : deposit.refundRevision || 0)
       const previous = await optional(tx, 'staff_deposit_events', eventId)
       if (previous?.result) {
@@ -189,19 +213,24 @@ module.exports = function createService({ db, crypto, now, safeText }) {
         }
         Object.assign(patch, { refundAuditedAt: time, refundAuditedBy: admin.openid, refundAuditRemark: reason })
       } else if (action === 'confirmDepositRefund') {
-        if (deposit.status !== 'refund_approved' || deposit.refundStatus !== 'approved') throw new Error('仅已审核退款可确认付款')
-        await exitCheck(deposit.staffOpenid)
+        if (!['refund_approved', ...(gatewayRefund ? ['refunding'] : [])].includes(deposit.status) ||
+            !['approved', ...(gatewayRefund ? ['processing'] : [])].includes(deposit.refundStatus)) throw new Error('仅已审核退款可确认付款')
+        let exitBlocked = await hasUnsettledFunds(tx, deposit.staffOpenid)
+        if (gatewayRefund) {
+          // A successful gateway refund must be booked even if exit is still
+          // waiting for earnings settlement or another business obligation.
+          try { await exitCheck(deposit.staffOpenid) } catch (error) { exitBlocked = true }
+        } else {
+          await exitCheck(deposit.staffOpenid)
+          if (exitBlocked) throw new Error('尚有未结清收益或未完成提现，请先核对转账结果，再确认退出退款')
+        }
         const { documentPages } = require('../utils/documentPages')
-        for await (const rows of documentPages(tx, db.command, 'staff_earnings', { staffOpenid: deposit.staffOpenid })) {
-          if (rows.some(row => ['pending', 'available', 'withdrawing', 'frozen'].includes(row.status) && row.isMock !== true && row.paymentChannel !== 'mock' && money(row.amount) > 0)) throw new Error('尚有未结清收益，请先完成收益结算和转账，再确认退出退款')
-        }
-        for await (const rows of documentPages(tx, db.command, 'withdraw_requests', { staffOpenid: deposit.staffOpenid })) {
-          if (rows.some(row => ['pending', 'approved', 'processing', 'transferring', 'transfer_failed'].includes(row.status))) throw new Error('尚有未完成提现，请先核对转账结果')
-        }
         amount = money(deposit.approvedRefundAmount, true)
         if (amount !== balance.available) throw new Error('退款金额与余额不一致')
-        patch = { status: 'refunded', statusText: '已人工确认退款', refundStatus: 'success', availableRefundAmount: 0,
-          refundedAmount: (balance.refunded + amount) / 100, refundPaidAt: time, refundPaidBy: admin.openid, refundPaymentReference: proof, refundConfirmationSource: 'manual' }
+        patch = { status: 'refunded', statusText: gatewayRefund ? '微信原路退款成功' : '已人工确认退款', refundStatus: 'success', availableRefundAmount: 0,
+          refundedAmount: (balance.refunded + amount) / 100, refundPaidAt: time, refundPaidBy: admin.openid, refundPaymentReference: proof,
+          refundConfirmationSource: gatewayRefund ? 'wechat' : 'manual', refundLastError: '' }
+        if (gatewayRefund) Object.assign(patch, { wechatRefundId: gatewayRefund.refundId, wechatRefundState: 'SUCCESS' })
         let otherDepositsPending = false
         for await (const rows of documentPages(tx, db.command, 'staff_deposits', { staffOpenid: deposit.staffOpenid })) {
           if (rows.some(row => row._id !== targetDepositId && (
@@ -212,7 +241,8 @@ module.exports = function createService({ db, crypto, now, safeText }) {
         }
         // Record each real refund, but finish the exit only after every deposit
         // has been resolved. Repayment can leave refundable balances in older rows.
-        profilePatch = otherDepositsPending
+        patch.refundExitPending = otherDepositsPending || exitBlocked
+        profilePatch = patch.refundExitPending
           ? { exitStatus: 'approved', depositStatus: 'refund_approved' }
           : { exitStatus: 'exited', depositStatus: 'refunded', auditStatus: 'revoked' }
         financeAction = 'deposit_refunded'; delta = -amount / 100
@@ -223,21 +253,7 @@ module.exports = function createService({ db, crypto, now, safeText }) {
       await tx.collection('staff_deposits').doc(targetDepositId).update({ data: { ...patch, updatedAt: time } })
       await tx.collection('staff_profiles').doc(profile._id).update({ data: { ...profilePatch, updatedAt: time } })
       if (action === 'confirmDepositRefund' && result.exitCompleted) {
-        const staffUserId = deposit.staffUserId || (profile && profile.userId)
-        let staffUser = null
-        if (staffUserId) {
-          staffUser = (await tx.collection('users').doc(staffUserId).get().catch(() => ({ data: null }))).data
-        }
-        if (!staffUser && deposit.staffOpenid) {
-          const userRes = await tx.collection('users').where({ openid: deposit.staffOpenid }).limit(1).get().catch(() => ({ data: [] }))
-          staffUser = userRes.data && userRes.data[0]
-        }
-        if (staffUser) {
-          const roles = (Array.isArray(staffUser.roles) ? staffUser.roles : ['client']).filter((r) => r !== 'staff')
-          const userUpdate = { roles: roles.length ? roles : ['client'], updatedAt: time }
-          if (staffUser.activeRole === 'staff') userUpdate.activeRole = 'client'
-          await tx.collection('users').doc(staffUser._id).update({ data: userUpdate })
-        }
+        await removeStaffRole(tx, deposit, profile, time)
       }
       if (action === 'forfeitStaffDeposit') {
         const evidencesToUpdate = []
@@ -287,6 +303,32 @@ module.exports = function createService({ db, crypto, now, safeText }) {
       })
       await log(tx, eventId, admin, action, 'staff_deposit', targetDepositId, deposit, { amount: amount / 100, reason, proof, financeAction, evidenceImages }, time, delta)
       return result
+    })
+  }
+  async function recordStaffDepositRefundSuccess(id, gatewayRefund) {
+    return settleStaffDeposit({ openid: 'wechat_refund', _id: '' }, 'confirmDepositRefund', {
+      id, paymentConfirmed: true, paymentReference: gatewayRefund.refundId
+    }, { gatewayRefund })
+  }
+  async function finalizeStaffDepositExit(id) {
+    return db.runTransaction(async tx => {
+      const deposit = await optional(tx, 'staff_deposits', id)
+      if (!deposit || deposit.refundStatus !== 'success' || !deposit.refundExitPending) return false
+      const profile = await profileFor(tx, deposit)
+      if (!['approved', 'exited'].includes(profile.exitStatus)) return false
+      const { documentPages } = require('../utils/documentPages')
+      for await (const rows of documentPages(tx, db.command, 'staff_deposits', { staffOpenid: deposit.staffOpenid })) {
+        if (rows.some(row => money(row.availableRefundAmount || 0) > 0 || ['unpaid', 'refund_requested', 'refund_approved', 'refunding'].includes(row.status) || ['requested', 'approved', 'processing'].includes(row.refundStatus))) return false
+      }
+      if (await hasUnsettledFunds(tx, deposit.staffOpenid)) return false
+      await exitCheck(deposit.staffOpenid)
+      const time = now()
+      if (profile.exitStatus !== 'exited') {
+        await tx.collection('staff_profiles').doc(profile._id).update({ data: { exitStatus: 'exited', depositStatus: 'refunded', auditStatus: 'revoked', updatedAt: time } })
+        await removeStaffRole(tx, deposit, profile, time)
+      }
+      await tx.collection('staff_deposits').doc(id).update({ data: { refundExitPending: false, updatedAt: time } })
+      return true
     })
   }
   async function settleSupplyReimbursement(admin, action, data) {
@@ -357,7 +399,7 @@ module.exports = function createService({ db, crypto, now, safeText }) {
       const paymentNo = payload.paymentNo
       await tx.collection('staff_deposits').doc(depositId).update({ data: {
         paidAmount: amount, availableRefundAmount: amount, status: 'paid', statusText: '已缴纳',
-        paymentNo, wxTransactionId: payload.wxTransactionId || '', paidAt: time, updatedAt: time
+        paymentNo, paymentChannel: payload.channel || 'mock', wxTransactionId: payload.wxTransactionId || '', paidAt: time, updatedAt: time
       } })
       if (!profile.currentDepositId || profile.currentDepositId === depositId) await tx.collection('staff_profiles').doc(profile._id).update({ data: {
         depositStatus: 'paid',
@@ -379,5 +421,5 @@ module.exports = function createService({ db, crypto, now, safeText }) {
       return { depositId, status: 'paid', paymentNo }
     })
   }
-  return { reserveStaffDepositPayment, requestStaffDepositRefund, settleStaffDeposit, settleSupplyReimbursement, submitStaffSupplyOnce, recordStaffDepositPayment }
+  return { reserveStaffDepositPayment, requestStaffDepositRefund, settleStaffDeposit, settleSupplyReimbursement, submitStaffSupplyOnce, recordStaffDepositPayment, recordStaffDepositRefundSuccess, finalizeStaffDepositExit }
 }

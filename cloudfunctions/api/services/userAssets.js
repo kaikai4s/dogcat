@@ -1,5 +1,7 @@
 const { readDocuments, readOptionalDocument } = require('../utils/documentPages')
 
+const { WECHAT_MIN_TRANSFER_CENTS, isAbsentSmallTransfer } = require('../utils/wechatTransferLimits')
+
 module.exports = function createService({
   commitWechatTransferSuccessQuota,
   crypto,
@@ -237,7 +239,7 @@ module.exports = function createService({
       withdrawingAmount: summary.withdrawing,
       withdrawnAmount: summary.withdrawn,
       totalAmount: summary.total,
-      minWithdrawAmount: Number(settings.userMinWithdrawAmount ?? settings.minWithdrawAmount ?? 10),
+      minWithdrawAmount: Math.max(0.10, Number(settings.userMinWithdrawAmount ?? settings.minWithdrawAmount ?? 10)),
       invitationEnabled: settings.enabled === true,
       invitationRewardAmount,
       invitationShareImageUrl: safeText(settings.shareImageUrl).trim(),
@@ -285,6 +287,7 @@ module.exports = function createService({
     const settings = await getInviteSettings()
     const minAmount = Number(settings.userMinWithdrawAmount ?? settings.minWithdrawAmount ?? 10)
     const requested = cents(data.amount, true)
+    if (requested < WECHAT_MIN_TRANSFER_CENTS) throw new Error('微信零钱单笔最低 ¥0.10，请合并收益后提现')
     if (requested < Math.round(minAmount * 100)) throw new Error(`最低提现金额 ¥${minAmount}`)
     const clientRequestId = safeText(data.clientRequestId).trim()
     const requestId = clientRequestId ? idFor('uw', [openid, clientRequestId]) : idFor('uw', [openid, requested, Date.now(), Math.random()])
@@ -363,6 +366,7 @@ module.exports = function createService({
     return db.runTransaction(async tx => {
       const request = (await tx.collection('withdraw_requests').doc(data.id).get()).data
       if (!request || request.assetType !== 'user') throw new Error('用户资产提现申请不存在')
+      if (!paid && data.approved === true && request.payoutChannel === 'wechat_wallet' && cents(request.amount, true) < WECHAT_MIN_TRANSFER_CENTS) throw new Error('微信零钱单笔最低 ¥0.10，请驳回此笔小额申请后合并收益提现')
       if (paid && options.wechatResult !== true) {
         if (request.payoutChannel === 'wechat_wallet') throw new Error('微信提现单须以微信转账成功结果为准，不能手动标记打款')
         if (data.paymentConfirmed !== true || !safeText(data.paymentReference).trim()) throw new Error('请确认实际付款成功并填写付款凭证号')
@@ -378,6 +382,8 @@ module.exports = function createService({
       const patch = paid ? {
         status: 'paid',
         transferStatus: 'success',
+        lastTransferError: '',
+        lastTransferErrorCode: '',
         transferSucceededAt: time,
         paidAt: time,
         paidByOpenid: admin.openid,
@@ -420,19 +426,23 @@ module.exports = function createService({
     })
   }
 
-  async function releaseUserAssetWithdrawal(admin, data = {}) {
+  async function releaseUserAssetWithdrawal(admin, data = {}, internal = {}) {
     return db.runTransaction(async tx => {
       const request = (await tx.collection('withdraw_requests').doc(data.id).get()).data
-      if (!request || request.assetType !== 'user' || request.status !== 'transfer_failed') throw new Error('仅用户资产微信提现失败单可释放收益')
-      if (request.gatewayFailureConfirmed !== true) throw new Error('请先查询并确认微信转账已失败，再释放收益')
+      if (request?.assetType === 'user' && request.status === 'rejected' && request.transferStatus === 'released') return { request, changed: false }
+      const absentSmallTransfer = isAbsentSmallTransfer(request, internal.gatewayAbsence)
+      if (!request || request.assetType !== 'user' || (!absentSmallTransfer && request.status !== 'transfer_failed')) throw new Error('仅用户资产微信提现失败单可释放收益')
+      if (!absentSmallTransfer && request.gatewayFailureConfirmed !== true) throw new Error('请先查询并确认微信转账已失败，再释放收益')
       const { earningIds } = await validateWithdrawalEarnings(tx, request, data.id)
       const time = now()
       const remark = safeText(data.remark || data.auditRemark).trim()
       await releaseWechatTransferQuota(tx, { _id: data.id, ...request }, 'released')
-      await tx.collection('withdraw_requests').doc(data.id).update({ data: { status: 'rejected', transferStatus: 'released', releasedAt: time, releasedByOpenid: admin.openid, auditRemark: remark || request.auditRemark || '微信提现失败后释放收益', updatedAt: time } })
+      const patch = { status: 'rejected', transferStatus: 'released', releasedAt: time, releasedByOpenid: admin.openid, auditRemark: remark || request.auditRemark || '微信提现失败后释放收益', updatedAt: time,
+        ...(absentSmallTransfer ? { releaseReason: 'below_wechat_minimum', gatewayAbsenceConfirmedAt: time, lastTransferError: '', lastTransferErrorCode: '' } : {}) }
+      await tx.collection('withdraw_requests').doc(data.id).update({ data: patch })
       for (const id of earningIds) await tx.collection('user_asset_earnings').doc(id).update({ data: { status: 'available', withdrawRequestId: '', updatedAt: time } })
       await tx.collection('finance_logs').doc(`user_withdraw_${data.id}_released`).set({ data: { action: 'user_withdraw_released', targetType: 'user_asset_withdrawal', targetId: data.id, userOpenid: request.userOpenid, amountDelta: 0, createdAt: time, detail: { earningIds, releasedByOpenid: admin.openid, remark } } })
-      return { request: { ...request, status: 'rejected', transferStatus: 'released' }, changed: true }
+      return { request: { ...request, ...patch }, changed: true }
     })
   }
 

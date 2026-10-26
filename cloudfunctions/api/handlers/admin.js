@@ -132,6 +132,25 @@ module.exports = function createHandler(context) {
     validateStaffTakeOrderAbility,
     getInviteSettings
   } = context
+  function transferResult(id, result) {
+    const request = result.request || result
+    return { id, status: request.status, transferStatus: request.transferStatus,
+      wechatTransferState: request.wechatTransferState || '',
+      lastTransferError: request.lastTransferError || '', lastTransferErrorCode: request.lastTransferErrorCode || '' }
+  }
+  async function startAuditedWechatTransfer(id, request, operator) {
+    try {
+      const submit = request.transferSubmittedAt ? retryWechatWithdrawalTransfer : submitWechatWithdrawalTransfer
+      const transfer = await submit(id, operator)
+      return transferResult(id, transfer)
+    } catch (error) {
+      // Approval is already committed. Keep that result and explain why the
+      // transfer still needs attention instead of implying approval rolled back.
+      const current = (await db.collection('withdraw_requests').doc(id).get()).data
+      return { ...transferResult(id, current),
+        lastTransferError: current.status === 'paid' ? '' : safeText(error.message) }
+    }
+  }
   async function readAll(collectionName, where = {}, maxLimit = 2000, projection = null) {
     const rows = []
     let cursor = ''
@@ -202,6 +221,8 @@ module.exports = function createHandler(context) {
         _id: request._id,
         amount: Number(request.amount || 0),
         status: request.status || '',
+        payoutChannel: request.payoutChannel || '',
+        source: request.source || '',
         createdAt: request.createdAt || '',
         paidAt: request.paidAt || ''
       })
@@ -605,53 +626,51 @@ module.exports = function createHandler(context) {
     if (action === 'settleStaffEarningsByWechat') {
       return context.settleStaffEarningsByWechat({ ...admin, openid }, data)
     }
+    if (action === 'createStaffManualTailSettlement') {
+      return context.createStaffManualTailSettlement({ ...admin, openid }, data)
+    }
     if (action === 'auditWithdrawRequest') {
       const approved = data.approved === true
-      const nextStatus = approved ? 'approved' : 'rejected'
       const auditRemark = safeText(data.auditRemark || data.remark).trim()
       if (auditRemark.length > 500) throw new Error('审核备注不能超过 500 字')
       if (auditRemark && typeof checkTextSecurity === 'function') {
         await checkTextSecurity(openid, auditRemark, { scene: 2, label: '提现审核备注' })
       }
-      const { request, changed } = await settleWithdrawal({ ...admin, openid }, { ...data, auditRemark })
-      if (approved && request.payoutChannel === 'wechat_wallet') {
-        const settings = await getSystemSettings().catch(() => ({}))
-        const transferConfig = (settings.staffSupplies && settings.staffSupplies.transfer) || {}
-        if (transferConfig.enabled) {
-          const result = await submitWechatWithdrawalTransfer(data.id, { ...admin, openid })
-          return { id: data.id, status: (result.request && result.request.status) || result.status || 'transferring', transferStatus: (result.request && result.request.transferStatus) || result.transferStatus || 'processing' }
-        }
+      const { request } = await settleWithdrawal({ ...admin, openid }, { ...data, auditRemark })
+      if (approved && request.payoutChannel === 'wechat_wallet' && request.status !== 'paid') {
+        return startAuditedWechatTransfer(data.id, request, { ...admin, openid })
       }
-      return { id: data.id, status: nextStatus }
+      return { id: data.id, status: request.status, transferStatus: request.transferStatus }
     }
     if (action === 'auditUserAssetWithdrawal') {
       const approved = data.approved === true
       const result = await settleUserAssetWithdrawal({ ...admin, openid }, { ...data, approved })
-      if (approved && result.request && result.request.payoutChannel === 'wechat_wallet') {
-        const settings = await getSystemSettings().catch(() => ({}))
-        const transferConfig = (settings.staffSupplies && settings.staffSupplies.transfer) || {}
-        if (transferConfig.enabled) {
-          const transfer = await submitWechatWithdrawalTransfer(data.id, { ...admin, openid })
-          return { id: data.id, status: transfer.request && transfer.request.status || transfer.status || 'transferring', transferStatus: transfer.request && transfer.request.transferStatus || transfer.transferStatus || 'processing' }
-        }
+      if (approved && result.request && result.request.payoutChannel === 'wechat_wallet' && result.request.status !== 'paid') {
+        return startAuditedWechatTransfer(data.id, result.request, { ...admin, openid })
       }
-      return { id: data.id, status: approved ? 'approved' : 'rejected' }
+      return { id: data.id, status: result.request?.status || (approved ? 'approved' : 'rejected') }
     }
     if (action === 'queryWithdrawTransfer') {
       const id = safeText(data.id).trim()
       if (!id) throw new Error('缺少提现申请 ID')
       const result = await queryWechatWithdrawalTransfer(id)
-      return { id, status: result.request && result.request.status, transferStatus: result.request && result.request.transferStatus }
+      return transferResult(id, result)
     }
     if (action === 'retryWithdrawTransfer') {
       const id = safeText(data.id).trim()
       if (!id) throw new Error('缺少提现申请 ID')
       const result = await retryWechatWithdrawalTransfer(id, { ...admin, openid })
-      return { id, status: result.request && result.request.status, transferStatus: result.request && result.request.transferStatus }
+      return transferResult(id, result)
     }
     if (action === 'releaseFailedWithdraw') {
       const remark = safeText(data.remark || data.auditRemark).trim()
       if (remark.length > 500) throw new Error('处理备注不能超过 500 字')
+      const id = safeText(data.id).trim()
+      if (!id) throw new Error('缺少提现申请 ID')
+      const original = (await db.collection('withdraw_requests').doc(id).get()).data
+      if (original && Number(original.amount) > 0 && Number(original.amount) < 0.10 && original.gatewayFailureConfirmed !== true) {
+        return transferResult(id, await context.returnSmallWechatWithdrawal(id, { ...admin, openid }))
+      }
       const { request } = await releaseFailedWithdrawal({ ...admin, openid }, { ...data, remark })
       return { id: data.id, status: request.status, transferStatus: request.transferStatus }
     }
@@ -667,6 +686,15 @@ module.exports = function createHandler(context) {
       }
       const { request, changed } = await settleWithdrawal({ ...admin, openid }, { ...data, payRemark, paymentProofImage }, true)
       if (changed && request.staffOpenid) await sendSubscribeMessage(request.staffOpenid, 'withdrawResult', 'pages/staff/earnings/index', buildSubscriptionData('withdrawResult', { orderNo: data.id, startTime: request.createdAt }, { amount: request.amount, statusText: '已打款' }), '', `withdraw:${data.id}:paid`)
+      if (request.source === 'admin_manual_tail_settlement') {
+        try {
+          const deposits = (await readAll('staff_deposits', { staffOpenid: request.staffOpenid }))
+            .filter(deposit => deposit.refundStatus === 'success' && deposit.refundExitPending === true)
+          for (const deposit of deposits) await context.finalizeStaffDepositExit(deposit._id)
+        } catch (error) {
+          console.warn('[manual-tail-exit-sync]', { withdrawId: data.id, message: error.message })
+        }
+      }
       return { id: data.id, status: 'paid' }
     }
     if (action === 'getSystemSettings') {
@@ -3028,7 +3056,12 @@ module.exports = function createHandler(context) {
       if (reason && typeof checkTextSecurity === 'function') {
         await checkTextSecurity(openid, reason, { scene: 2, label: '保证金退款审核说明' })
       }
-      return settleStaffDeposit({ ...admin, openid }, action, { ...data, reason })
+      const result = await settleStaffDeposit({ ...admin, openid }, action, { ...data, reason })
+      if (data.approved === true) return context.syncStaffDepositRefund(result.id)
+      return result
+    }
+    if (action === 'syncDepositRefund') {
+      return context.syncStaffDepositRefund(safeText(data.id).trim())
     }
     if (action === 'confirmDepositRefund') {
       const proof = safeText(data.paymentReference).trim()

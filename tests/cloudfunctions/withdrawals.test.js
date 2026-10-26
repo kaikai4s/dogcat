@@ -157,11 +157,15 @@ test('wechat wallet withdrawals do not require a bank account number', async () 
   assert.equal(db.state.withdraw_requests[0].payoutChannel, 'wechat_wallet')
 })
 
-test('wechat wallet withdrawals enforce the backend one-fen to 200 yuan range', async () => {
+test('wechat wallet withdrawals enforce the backend ten-fen to 200 yuan range', async () => {
   const { db, rawCreateWithdrawRequest } = setup(21)
   await assert.rejects(
     rawCreateWithdrawRequest('staff', { payoutChannel: 'wechat_wallet', amount: 0.001 }),
     /提现金额不正确/
+  )
+  await assert.rejects(
+    rawCreateWithdrawRequest('staff', { payoutChannel: 'wechat_wallet', amount: 0.07 }),
+    /单笔最低.*0.10/
   )
   await assert.rejects(
     rawCreateWithdrawRequest('staff', { payoutChannel: 'wechat_wallet', amount: 200.01 }),
@@ -174,6 +178,14 @@ test('wechat wallet withdrawals enforce the backend one-fen to 200 yuan range', 
   )
   assert.equal(db.state.withdraw_requests.length, 0)
   assert.ok(db.state.staff_earnings.every((earning) => earning.status === 'available'))
+})
+
+test('withdrawing all seven-fen earnings is blocked before reserving any money', async () => {
+  const { db, rawCreateWithdrawRequest } = setup(1)
+  db.state.staff_earnings[0].amount = 0.07
+  await assert.rejects(rawCreateWithdrawRequest('staff', { payoutChannel: 'wechat_wallet' }), /单笔最低.*0.10/)
+  assert.equal(db.state.withdraw_requests.length, 0)
+  assert.equal(db.state.staff_earnings[0].status, 'available')
 })
 
 test('mock payment earnings cannot be withdrawn and are excluded from withdrawal requests', async () => {

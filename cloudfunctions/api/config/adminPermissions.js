@@ -7,7 +7,7 @@ const definitions = [
   ['orders', '服务订单', 'admin', 'listOrders:订单列表 getOrderDetail:订单详情 getEvidence:服务证据 listOrderSessionMessages:查看服务会话记录 assignOrder:派单 updateOrderStatus:修改状态 manualCompleteOrder:人工完单 refundOrder:退款 batchDeleteOrders:删除订单 republishOrderAsUrgent:加急重发 addOrderDepositPenaltyEvidence:录入扣罚证据 listOrderDepositPenaltyEvidences:查看扣罚证据'],
   ['users', '用户资料', 'admin', 'listUsers:用户列表 getUserDetail:用户详情 updateUserProfile:编辑用户 deleteUser:删除用户 hardDeleteUser:彻底删除用户'],
   ['staff', '宠托师', 'admin', 'listStaffProfiles:宠托师列表 setSitterFeatured:推荐设置 listStaffAudits:资质列表 auditStaff:审核资质 completeStaffGender:核实补录性别 revokeStaff:撤销资格 listTrainingAudits:培训列表 auditTrainingVideo:培训审核 updateVideoAuditGuide:审核指引 listPromotionApplications:转正列表 getPromotionApplicationDetail:转正详情 auditPromotionApplication:转正审核'],
-  ['finance', '财务', 'admin', 'financeDashboard:财务看板 listFinanceLogs:资金流水 listPayments:支付单 listRefunds:退款单 listStaffEarnings:收益明细 listWithdrawRequests:提现列表 listUserAssetWithdrawals:用户资产提现列表 getStaffSettlementPreview:结清收益预览 settleStaffEarningsByWechat:结清收益微信转账 auditWithdrawRequest:审核提现 auditUserAssetWithdrawal:审核用户资产提现 queryWithdrawTransfer:查询微信提现 retryWithdrawTransfer:重试微信提现 releaseFailedWithdraw:释放失败提现 markWithdrawPaid:确认提现付款 listStaffDeposits:保证金列表 getStaffDepositDetail:保证金详情 batchRequireDepositRepay:要求补缴 requestStaffDepositRefund:发起保证金退还 auditDepositRefund:审核保证金退款 confirmDepositRefund:确认保证金退款 forfeitStaffDeposit:没收保证金 listSupplyReimbursements:报销列表 auditSupplyReimbursement:审核报销 paySupplyReimbursement:确认报销付款'],
+  ['finance', '财务', 'admin', 'financeDashboard:财务看板 listFinanceLogs:资金流水 listPayments:支付单 listRefunds:退款单 listStaffEarnings:收益明细 listWithdrawRequests:提现列表 listUserAssetWithdrawals:用户资产提现列表 getStaffSettlementPreview:结清收益预览 settleStaffEarningsByWechat:结清收益微信转账 createStaffManualTailSettlement:发起人工尾款结清 auditWithdrawRequest:审核提现 auditUserAssetWithdrawal:审核用户资产提现 queryWithdrawTransfer:查询微信提现 retryWithdrawTransfer:重试微信提现 releaseFailedWithdraw:释放失败提现 markWithdrawPaid:确认提现付款 listStaffDeposits:保证金列表 getStaffDepositDetail:保证金详情 batchRequireDepositRepay:要求补缴 requestStaffDepositRefund:发起保证金退还 auditDepositRefund:审核保证金退款 confirmDepositRefund:确认保证金退款 syncDepositRefund:同步保证金原路退款 forfeitStaffDeposit:没收保证金 listSupplyReimbursements:报销列表 auditSupplyReimbursement:审核报销 paySupplyReimbursement:确认报销付款'],
   ['prices', '服务配置', 'admin', 'listServicePrices:查看价格 saveServicePrice:编辑价格 deleteServicePrice:删除价格 resetDefaultServicePrices:重置价格 listServiceCheckinRules:打卡规则 saveServiceCheckinRules:编辑打卡规则 resetDefaultServiceCheckinRules:重置打卡规则'],
   ['marketing', '营销与会员', 'admin', 'listCouponTemplates:优惠券模板 saveCouponTemplate:编辑优惠券 deleteCouponTemplate:删除优惠券 issueCouponToUser:发放优惠券 issueCouponByLevels:分层发券 listMemberLevels:会员等级 saveMemberLevel:编辑会员等级 deleteMemberLevel:删除会员等级 listPetTitles:宠物头衔 savePetTitle:编辑头衔 deletePetTitle:删除头衔 listPetVaccineCertifications:宠物疫苗审核 auditPetVaccineCertification:审核疫苗认证 grantUserAssetCash:发放用户可提现零钱 grantPoints:调整积分 listPointLogs:积分流水 getCheckinMonthConfig:签到配置 saveCheckinMonthConfig:编辑签到配置 publishRewardMailByLevels:发放奖励 publishRetroCardMail:发放补签卡 publishPetTitleMail:发放头衔 saveLotteryActivity:编辑抽奖 listLotteryActivities:抽奖列表 toggleLotteryActivity:抽奖开关 deleteLotteryActivity:删除抽奖'],
   ['feedback', '反馈', 'admin', 'listFeedback:查看反馈 replyFeedback:回复反馈'],
@@ -38,8 +38,8 @@ const descriptions = {
   questionnaires: '问卷内容、发布、回收数据、AI分析和奖励补发。', logs: '后台操作人员、操作目标及执行结果。'
 }
 const splitGroups = [
-  ['withdrawals', '提现审核与微信转账', 'finance', 'listWithdrawRequests listUserAssetWithdrawals getStaffSettlementPreview settleStaffEarningsByWechat auditWithdrawRequest auditUserAssetWithdrawal queryWithdrawTransfer retryWithdrawTransfer releaseFailedWithdraw markWithdrawPaid'],
-  ['deposits', '保证金与扣罚', 'finance', 'listStaffDeposits getStaffDepositDetail batchRequireDepositRepay requestStaffDepositRefund auditDepositRefund confirmDepositRefund forfeitStaffDeposit'],
+  ['withdrawals', '提现审核与微信转账', 'finance', 'listWithdrawRequests listUserAssetWithdrawals getStaffSettlementPreview settleStaffEarningsByWechat createStaffManualTailSettlement auditWithdrawRequest auditUserAssetWithdrawal queryWithdrawTransfer retryWithdrawTransfer releaseFailedWithdraw markWithdrawPaid'],
+  ['deposits', '保证金与扣罚', 'finance', 'listStaffDeposits getStaffDepositDetail batchRequireDepositRepay requestStaffDepositRefund auditDepositRefund confirmDepositRefund syncDepositRefund forfeitStaffDeposit'],
   ['supplies', '用品报销', 'finance', 'listSupplyReimbursements auditSupplyReimbursement paySupplyReimbursement'],
   ['membership', '会员、头衔与疫苗', 'marketing', 'listMemberLevels saveMemberLevel deleteMemberLevel listPetTitles savePetTitle deletePetTitle listPetVaccineCertifications auditPetVaccineCertification publishPetTitleMail'],
   ['rewards', '积分、签到与抽奖', 'marketing', 'grantPoints listPointLogs getCheckinMonthConfig saveCheckinMonthConfig publishRetroCardMail saveLotteryActivity listLotteryActivities toggleLotteryActivity deleteLotteryActivity grantUserAssetCash']
@@ -52,7 +52,7 @@ for (const [id, label, from, names] of splitGroups) {
   source.actions = source.actions.filter(item => !keys.has(item.split(':')[0]))
   groups.splice(groups.indexOf(source) + 1, 0, { id, label, module: source.module, actions })
 }
-const sensitive = new Set(('communityMap.rejectApplication order.checkOverdueOrders staff.checkUpcomingReminders admin.refundOrder admin.batchDeleteOrders admin.deleteUser admin.hardDeleteUser admin.revokeStaff admin.settleStaffEarningsByWechat admin.auditWithdrawRequest admin.auditUserAssetWithdrawal admin.retryWithdrawTransfer admin.releaseFailedWithdraw admin.markWithdrawPaid admin.batchRequireDepositRepay admin.requestStaffDepositRefund admin.auditDepositRefund admin.confirmDepositRefund admin.forfeitStaffDeposit admin.auditSupplyReimbursement admin.paySupplyReimbursement admin.grantPoints admin.grantUserAssetCash admin.issueCouponToUser admin.issueCouponByLevels admin.publishRewardMailByLevels admin.publishRetroCardMail admin.publishPetTitleMail admin.resetDefaultServicePrices admin.resetDefaultServiceCheckinRules admin.sendSystemNotification adminMall.refundOrder adminMall.auditRefund incident.freezeStaffEarning incident.closeIncident payment.createRefund petBeauty.settleMonthlyRanking petBeauty.grantPetBeautyChampionPrize questionnaire.retryReward questionnaire.retryAllRewards').split(' '))
+const sensitive = new Set(('communityMap.rejectApplication order.checkOverdueOrders staff.checkUpcomingReminders admin.refundOrder admin.batchDeleteOrders admin.deleteUser admin.hardDeleteUser admin.revokeStaff admin.settleStaffEarningsByWechat admin.createStaffManualTailSettlement admin.auditWithdrawRequest admin.auditUserAssetWithdrawal admin.retryWithdrawTransfer admin.releaseFailedWithdraw admin.markWithdrawPaid admin.batchRequireDepositRepay admin.requestStaffDepositRefund admin.auditDepositRefund admin.confirmDepositRefund admin.syncDepositRefund admin.forfeitStaffDeposit admin.auditSupplyReimbursement admin.paySupplyReimbursement admin.grantPoints admin.grantUserAssetCash admin.issueCouponToUser admin.issueCouponByLevels admin.publishRewardMailByLevels admin.publishRetroCardMail admin.publishPetTitleMail admin.resetDefaultServicePrices admin.resetDefaultServiceCheckinRules admin.sendSystemNotification adminMall.refundOrder adminMall.auditRefund incident.freezeStaffEarning incident.closeIncident payment.createRefund petBeauty.settleMonthlyRanking petBeauty.grantPetBeautyChampionPrize questionnaire.retryReward questionnaire.retryAllRewards').split(' '))
 const details = {
   'communityMap.rejectApplication': '填写原因并永久驳回新增小区申请，通过系统通知告知原申请人；同一小区不再接受申请。',
   'admin.dashboard': '查看全平台订单数量、待审核数量及经营汇总，包含跨业务统计。',
@@ -69,8 +69,11 @@ const details = {
   'admin.auditUserAssetWithdrawal': '通过或驳回用户资产提现；可能触发实际微信零钱转账。',
   'admin.retryWithdrawTransfer': '发起或安全重试实际微信零钱转账，可能产生资金支出。',
   'admin.queryWithdrawTransfer': '向微信查询转账状态，并按结果同步本地提现状态。',
-  'admin.releaseFailedWithdraw': '核实微信转账失败后释放占用收益，将余额退回可提现额度。',
+  'admin.releaseFailedWithdraw': '核实微信转账失败，或核实低于微信最低金额的历史原单不存在后，将占用收益退回可提现余额。',
+  'admin.createStaffManualTailSettlement': '为不足0.10元且无其他未结清资金的宠托师尾款建立待审核人工结清单，审核及实际付款登记须另行授权。',
   'admin.markWithdrawPaid': '核实人工付款凭证后将提现标记为已到账。',
+  'admin.auditDepositRefund': '审核保证金退还申请；微信支付的保证金通过后自动发起原路退款。',
+  'admin.syncDepositRefund': '查询已审核保证金的微信退款结果；原单尚未受理时使用原退款单号恢复退款。',
   'admin.forfeitStaffDeposit': '依据违规事实、证据和原因扣除保证金余额。',
   'admin.grantUserAssetCash': '通过管理接口为指定用户增加可提现零钱，会形成平台资金责任；当前无独立后台页面。',
   'admin.getSystemSettings': '查看脱敏的平台参数；支付密钥和集成凭据仍仅超级管理员可读取。',
@@ -107,7 +110,8 @@ depend('admin.auditPromotionApplication', 'admin.listPromotionApplications admin
 depend('admin.queryWithdrawTransfer admin.retryWithdrawTransfer admin.releaseFailedWithdraw admin.markWithdrawPaid admin.auditWithdrawRequest', 'admin.listWithdrawRequests')
 depend('admin.auditUserAssetWithdrawal', 'admin.listUserAssetWithdrawals')
 depend('admin.settleStaffEarningsByWechat', 'admin.getStaffSettlementPreview admin.listWithdrawRequests admin.queryWithdrawTransfer')
-depend('admin.requestStaffDepositRefund admin.auditDepositRefund admin.confirmDepositRefund admin.forfeitStaffDeposit admin.getStaffDepositDetail', 'admin.listStaffDeposits')
+depend('admin.createStaffManualTailSettlement', 'admin.getStaffSettlementPreview admin.listStaffProfiles admin.listWithdrawRequests')
+depend('admin.requestStaffDepositRefund admin.auditDepositRefund admin.confirmDepositRefund admin.syncDepositRefund admin.forfeitStaffDeposit admin.getStaffDepositDetail', 'admin.listStaffDeposits')
 depend('admin.batchRequireDepositRepay', 'admin.listStaffProfiles')
 depend('admin.auditSupplyReimbursement admin.paySupplyReimbursement', 'admin.listSupplyReimbursements')
 depend('admin.saveServiceCheckinRules admin.resetDefaultServiceCheckinRules', 'admin.listServicePrices admin.listServiceCheckinRules')

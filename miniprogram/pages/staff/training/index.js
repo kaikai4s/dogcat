@@ -8,7 +8,8 @@ const depositStatusText = {
   paid: '已缴纳',
   partially_refunded: '部分退款',
   refund_requested: '退款审核中',
-  refund_approved: '审核通过，待实际退款',
+  refund_approved: '审核通过，待发起退款',
+  refunding: '微信原路退款处理中',
   refunded: '已退款',
   forfeited: '已没收'
 }
