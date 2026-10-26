@@ -71,8 +71,17 @@ Component({
         // Only public names are submitted; map coordinates and addresses stay out of the application.
         const result = await callFunction('communityMap', 'applyCommunity', { name: form.name, city: form.city, district: form.district || '' })
         if (!this.data.visible || version !== this._lifecycle) return
-        const resolved = result.status === 'resolved' && result.community
-        this.setData({ applyForm: null, city: String(resolved?.city || form.city).trim(), keyword: String(resolved?.name || form.name).trim(), applicationNotice: result.status === 'resolved' ? '该小区已维护，可在下方选择' : '申请已提交，后台核验并启用后即可选择；首位有效申请人可获得小区初创者头衔' })
+        if (result.status === 'rejected' || result.outcome === 'rejected') {
+          this.setData({ applicationNotice: '', formError: result.message || `该小区申请已驳回，不可再次申请${result.rejectionReason ? `：${result.rejectionReason}` : ''}` })
+          return
+        }
+        const existing = ['existing', 'resolved'].includes(result.status) || result.outcome === 'existing'
+        const community = existing && result.community
+        const notice = existing ? '该小区已维护，请在下方列表中重新选择'
+          : result.outcome === 'other_duplicate' ? '该小区已有待处理申请，处理结果仅通知原申请人'
+            : result.outcome === 'self_duplicate' ? '你已申请该小区，请等待管理员处理'
+              : '申请已提交，后台核验并启用后即可选择'
+        this.setData({ applyForm: null, city: String(community?.city || form.city).trim(), keyword: String(community?.name || form.name).trim(), applicationNotice: result.message || notice })
         // Refresh independently: a slow directory request must not lock a
         // successfully submitted form or prevent closing the selector.
         this.load(false)

@@ -42,7 +42,13 @@ test('enabled maintained communities with no residents are immediately selectabl
 test('first applicant is recorded by the server and receives one title only when a new community is approved', async () => {
   const f = fixture()
   const first = await f.map('a', 'applyCommunity', { ...application, firstApplicantOpenid: 'b' })
+  assert.equal(first.outcome, 'created')
+  assert.equal(first.message, '申请成功，请等待管理员处理')
+  const self = await f.map('a', 'applyCommunity', application)
+  assert.equal(self.outcome, 'self_duplicate')
   const duplicate = await f.map('b', 'applyCommunity', application)
+  assert.equal(duplicate.outcome, 'other_duplicate')
+  assert.equal(JSON.stringify(duplicate).includes('firstApplicantOpenid'), false)
   assert.equal(first.applicationId, duplicate.applicationId)
   const pending = f.db.state.platform_configs.find(item => item._id === first.applicationId)
   assert.equal(pending.firstApplicantOpenid, 'a')
@@ -56,17 +62,44 @@ test('first applicant is recorded by the server and receives one title only when
   assert.equal(f.user('b').userTitleInventory, undefined)
   await f.admin(approval(first.applicationId))
   assert.equal(f.user('a').userTitleInventory.length, 1)
+  assert.equal(f.db.state.system_notifications.length, 1)
+  const notice = f.db.state.system_notifications[0]
+  assert.equal(notice.target, 'client')
+  assert.equal(notice.targetOpenid, 'a')
+  assert.equal(notice.extra.founder, true)
+  assert.match(notice.content, /小区初创者/)
+  assert.equal((await f.context.listUserSystemNotifications('a', 'client')).list.length, 1)
+  assert.equal((await f.context.listUserSystemNotifications('b', 'client')).list.length, 0)
   const list = await f.playground('a', 'listCommunities')
   assert.equal(list.list[0].community.serviceCommunityId, saved.id)
   assert.equal(JSON.stringify(list).includes('firstApplicantOpenid'), false)
   assert.equal(JSON.stringify(list).includes('founderUserId'), false)
 })
 
-test('linking an application to an already maintained community does not award a second founder', async () => {
-  const f = fixture([managed()])
+test('linking an outstanding application to an already maintained community does not award a second founder', async () => {
+  const f = fixture()
   const app = await f.map('a', 'applyCommunity', application)
+  f.db.state.platform_configs.push(managed())
   await f.admin({ ...approval(app.applicationId), id, revision: 1, editVersion: 1 })
   assert.equal(f.user('a').userTitleInventory, undefined)
+  assert.equal(f.db.state.system_notifications.length, 1)
+  assert.equal(f.db.state.system_notifications[0].extra.founder, false)
+  assert.doesNotMatch(f.db.state.system_notifications[0].content, /小区初创者/)
+})
+
+test('a rejected legacy identity also blocks approval through a different pending historical ID', async () => {
+  const pendingId = 'map_application_' + '1'.repeat(32)
+  const f = fixture([
+    { _id: 'map_application_' + '2'.repeat(32), key: 'map_community_application', ...application,
+      cityKey: '上海', name: '上海市浦东新区阳光小区东门', status: 'rejected', rejectionReason: '资料不符' },
+    { _id: pendingId, key: 'map_community_application', ...application, cityKey: '上海',
+      status: 'pending', firstApplicantOpenid: 'a' }
+  ])
+  await assert.rejects(() => f.admin(approval(pendingId)), /已有被驳回/)
+  assert.equal(f.db.state.platform_configs.find(row => row._id === pendingId).status, 'pending')
+  assert.equal(f.db.state.platform_configs.some(row => row.key === 'service_community'), false)
+  assert.equal(f.user('a').userTitleInventory, undefined)
+  assert.equal((f.db.state.system_notifications || []).length, 0)
 })
 
 test('users can equip only owned titles, remove them, and founder display is scoped to its community', async () => {
@@ -186,6 +219,117 @@ test('switching to a legacy community replaces the profile object without retain
   assert.deepEqual(result.residentialCommunity, f.user('a').residentialCommunity)
   assert.equal(world.communityId(f.user('a')), world.communityId({ residentialCommunity: legacy }))
 })
+
+test('equivalent public names reuse historical application IDs without moving order references', async () => {
+  const f = fixture()
+  const legacyId = 'map_application_' + '1'.repeat(32)
+  f.db.state.platform_configs.push({ _id: legacyId, key: 'map_community_application', ...application,
+    name: '上海市浦东新区阳光小区（南门）', district: '浦东新 区', cityKey: '上海',
+    firstApplicantOpenid: 'a', status: 'pending', createdAt: new Date('2025-01-01') })
+  const result = await f.map('b', 'applyCommunity', { ...application, name: '阳光小区北门' })
+  assert.equal(result.applicationId, legacyId)
+  assert.equal(result.outcome, 'other_duplicate')
+  assert.equal(f.db.state.platform_configs.filter(row => row.key === 'map_community_application').length, 1)
+  await f.admin(approval(legacyId))
+  assert.equal(f.db.state.system_notifications[0].targetOpenid, 'a')
+  assert.equal(f.user('a').userTitleInventory[0].applicationId, legacyId)
+})
+
+test('application identities distinguish cities, districts, phases and residential areas', async () => {
+  const f = fixture()
+  const first = await f.map('a', 'applyCommunity', application)
+  for (const patch of [{ city: '南京市' }, { district: '闵行区' }, { name: '阳光小区二期' }, { name: '阳光小区北区' }]) {
+    const separate = await f.map('b', 'applyCommunity', { ...application, ...patch })
+    assert.equal(separate.outcome, 'created')
+    assert.notEqual(separate.applicationId, first.applicationId)
+  }
+  await assert.rejects(f.map('a', 'applyCommunity', { ...application, district: '' }), /行政区/)
+})
+
+for (const enabled of [true, false]) {
+  test(`maintained communities are recognized before creating an application, enabled=${enabled}`, async () => {
+    const f = fixture([managed({ enabled, aliases: ['阳光家园'] })])
+    const result = await f.map('a', 'applyCommunity', { ...application, name: '上海市浦东新区阳光家园南门' })
+    assert.equal(result.status, 'existing')
+    assert.equal(result.outcome, 'existing')
+    assert.equal(result.community?._id, enabled ? id : undefined)
+    assert.equal(result.applicationId, undefined)
+    assert.equal(f.db.state.platform_configs.filter(row => row.key === 'map_community_application').length, 0)
+    assert.equal(f.user('a').userTitleInventory, undefined)
+    assert.match(result.message, enabled ? /已上线/ : /暂未启用/)
+  })
+}
+
+test('application lookup errors and over-limit snapshots never become new applications', async () => {
+  const f = fixture()
+  const collection = f.db.collection.bind(f.db)
+  f.db.collection = name => {
+    const chain = collection(name), where = chain.where.bind(chain)
+    chain.where = filter => {
+      if (name === 'platform_configs' && filter.key === 'map_community_application') throw new Error('application lookup unavailable')
+      return where(filter)
+    }
+    return chain
+  }
+  await assert.rejects(f.map('a', 'applyCommunity', application), /lookup unavailable/)
+  assert.equal(f.db.state.platform_configs.length, 0)
+  f.db.collection = collection
+  f.db.state.platform_configs = Array.from({ length: 1001 }, (_, index) => ({
+    _id: 'map_application_' + index.toString(16).padStart(32, '0'), key: 'map_community_application',
+    ...application, cityKey: '上海', name: `历史小区${index}`, status: 'resolved'
+  }))
+  await assert.rejects(f.map('a', 'applyCommunity', application), /记录较多/)
+  assert.equal(f.db.state.platform_configs.length, 1001)
+})
+
+test('rejected applications remain closed for every applicant and notify only the original applicant once', async () => {
+  const f = fixture()
+  const app = await f.map('a', 'applyCommunity', application)
+  await f.map('b', 'applyCommunity', application)
+  const request = { applicationIds: [app.applicationId], reason: '无法核实为住宅小区' }
+  const reject = data => f.context.runAdminRequest('communityMap', 'rejectApplication', data, () => f.map('admin', 'rejectApplication', data))
+  await reject(request)
+  const record = structuredClone(f.db.state.platform_configs.find(row => row._id === app.applicationId))
+  await reject(request)
+  assert.deepEqual(f.db.state.platform_configs.find(row => row._id === app.applicationId), record)
+  assert.equal(f.db.state.system_notifications.length, 1)
+  assert.equal(f.db.state.system_notifications[0].targetOpenid, 'a')
+  assert.equal(f.db.state.system_notifications[0].extra.status, 'rejected')
+  assert.match(f.db.state.system_notifications[0].content, /无法核实为住宅小区/)
+  assert.equal((await f.context.listUserSystemNotifications('a', 'client')).list.length, 1)
+  assert.equal((await f.context.listUserSystemNotifications('b', 'client')).list.length, 0)
+  for (const openid of ['a', 'b']) {
+    const result = await f.map(openid, 'applyCommunity', { ...application, district: '' })
+    assert.equal(result.status, 'rejected')
+    assert.equal(result.rejectionReason, request.reason)
+    assert.equal(result.applicationId, app.applicationId)
+  }
+  await assert.rejects(f.admin(approval(app.applicationId)), /驳回/)
+  await assert.rejects(reject({ ...request, reason: '改变原因' }), /已处理|已变化/)
+  assert.deepEqual(f.db.state.platform_configs.find(row => row._id === app.applicationId), record)
+  assert.equal(f.user('a').userTitleInventory, undefined)
+})
+
+for (const action of ['saveAdmin', 'rejectApplication']) {
+  test(`${action} rolls back the application and title if its system notification cannot be saved`, async () => {
+    const f = fixture()
+    const app = await f.map('a', 'applyCommunity', application)
+    const before = structuredClone({ configs: f.db.state.platform_configs, users: f.db.state.users })
+    const notify = f.context.notifyCommunityApplicationResult
+    f.context.notifyCommunityApplicationResult = async (...args) => {
+      await notify(...args)
+      throw new Error('notification write unavailable')
+    }
+    const request = action === 'saveAdmin' ? approval(app.applicationId) : { applicationIds: [app.applicationId], reason: '无法核实' }
+    await assert.rejects(f.context.runAdminRequest('communityMap', action, request, () => f.map('admin', action, request)), /notification write/)
+    assert.deepEqual(f.db.state.platform_configs, before.configs)
+    assert.deepEqual(f.db.state.users, before.users)
+    assert.equal((f.db.state.system_notifications || []).length, 0)
+    f.context.notifyCommunityApplicationResult = notify
+    await f.context.runAdminRequest('communityMap', action, request, () => f.map('admin', action, request))
+    assert.equal(f.db.state.system_notifications.length, 1)
+  })
+}
 
 test('legacy applications with no trusted applicant do not retroactively grant a guessed founder', async () => {
   const f = fixture()

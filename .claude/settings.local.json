@@ -62,7 +62,8 @@
       "Bash(gh api:*)",
       "Bash(set -o pipefail)",
       "Bash(command -v cloc)",
-      "Bash(command -v scc)"
+      "Bash(command -v scc)",
+      "Bash(python:*)"
     ]
   }
 }

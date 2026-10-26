@@ -1,10 +1,28 @@
 const { readDocuments, readOptionalDocument } = require('../utils/documentPages')
 const { mapRefreshIds, visibleMapRows } = require('../utils/mapCards')
-const { nameKey } = require('../utils/communityNames')
+const { nameKey, communityAddress } = require('../utils/communityNames')
 
 module.exports = function createHandler(context) {
   const { db, requireAdmin, getUser, now, checkTextSecurity, checkRateLimit, hasCoordinate,
     readMapCommunities, publicCommunity, getMapCommunity } = context
+  const hash = value => context.crypto.createHash('sha256').update(value).digest('hex')
+  const catalogId = cityKey => 'map_community_catalog_' + hash(cityKey).slice(0, 24)
+  const districtKey = value => String(value || '').normalize('NFKC').replace(/\s+/g, '').toLowerCase()
+  function matchingApplications(rows, name, district) {
+    const matches = rows.filter(row => {
+      const parts = communityAddress(row.name, row.city, row.district)
+      return nameKey(parts.name) === nameKey(name) && (!district || !parts.district || districtKey(parts.district) === districtKey(district))
+    })
+    if (!district && new Set(matches.map(row => districtKey(communityAddress(row.name, row.city, row.district).district)).filter(Boolean)).size > 1) {
+      throw new Error('存在同名小区，请补充准确行政区后再申请')
+    }
+    return matches.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt) || a._id.localeCompare(b._id))
+  }
+  function catalogChanged() {
+    const error = new Error('小区目录正在更新，请重试')
+    error.code = 'COMMUNITY_CATALOG_CHANGED'
+    return error
+  }
   return async function communityMap(openid, action, data = {}) {
     if (action === 'nearbyForOrder') {
       await getUser(openid)
@@ -14,33 +32,111 @@ module.exports = function createHandler(context) {
     if (action === 'applyCommunity') {
       await getUser(openid)
       await checkRateLimit(openid, 'communityMap.applyCommunity', { max: 5, windowMs: 60 * 60 * 1000 })
-      const name = String(data.name || '').normalize('NFKC').trim()
-      const city = String(data.city || '').trim(), district = String(data.district || '').trim()
+      const rawName = String(data.name || '').normalize('NFKC').trim()
+      const city = String(data.city || '').normalize('NFKC').trim(), rawDistrict = String(data.district || '').normalize('NFKC').trim()
       const cityKey = context.normalizeCityName(city)
-      if (!name || name.length > 60 || !cityKey || city.length > 40 || district.length > 40) throw new Error('请填写小区公共名称及所在城市')
-      if (/1[3-9]\d{9}|\d+\s*(?:号楼|栋|幢|单元|室|门牌)/.test(name)) throw new Error('请只填写小区公共名称，不要填写楼栋、门牌或电话')
-      await checkTextSecurity(openid, [name, city, district].join(' '), { scene: 1, label: '新增公共小区申请' })
-      const applicationId = 'map_application_' + context.crypto.createHash('sha256').update(`${cityKey}|${nameKey(name)}|${district}`).digest('hex').slice(0, 32)
-      // Applications hold public place names only. Never copy the order's home point or doorplate.
-      return db.runTransaction(async tx => {
-        const current = await readOptionalDocument(tx, 'platform_configs', applicationId)
-        if (current?.status === 'resolved') {
-          const row = await readOptionalDocument(tx, 'platform_configs', current.serviceCommunityId)
-          if (publicCommunity(row)) return { applicationId, status: 'resolved', community: publicCommunity(row) }
-          throw new Error('该小区已维护但暂未启用，请联系平台核对')
-        }
-        if (!current || current.status !== 'pending') await tx.collection('platform_configs').doc(applicationId).set({ data: {
-          key: 'map_community_application', name, city, cityKey, district, status: 'pending',
-          firstApplicantOpenid: current?.firstApplicantOpenid || (!current ? openid : ''),
-          createdAt: current?.createdAt || now(), updatedAt: now()
-        } })
-        return { applicationId, status: 'pending' }
-      })
+      if (!rawName || rawName.length > 60 || !cityKey || city.length > 40 || rawDistrict.length > 40) throw new Error('请填写小区公共名称及所在城市')
+      if (/1[3-9]\d{9}|\d+\s*(?:号楼|栋|幢|单元|室|门牌)/.test(rawName)) throw new Error('请只填写小区公共名称，不要填写楼栋、门牌或电话')
+      const { name, district } = communityAddress(rawName, city, rawDistrict)
+      if (!name) throw new Error('请填写有效的小区公共名称')
+      await checkTextSecurity(openid, [rawName, city, rawDistrict].join(' '), { scene: 1, label: '新增公共小区申请' })
+      const applicationId = 'map_application_' + hash(`${cityKey}|${nameKey(name)}|${districtKey(district)}`).slice(0, 32)
+      const lockId = catalogId(cityKey)
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const version = Number((await readOptionalDocument(db, 'platform_configs', lockId))?.version || 0)
+        const [applications, communities] = await Promise.all([
+          readDocuments(db, db.command, 'platform_configs', { key: 'map_community_application', cityKey }, 1001),
+          readDocuments(db, db.command, 'platform_configs', { key: 'service_community', cityKey }, 1001)
+        ])
+        if (applications.length > 1000 || communities.length > 1000) throw new Error('当前城市记录较多，请联系管理员核对')
+        const matches = matchingApplications(applications, name, district)
+        const existing = communities.filter(row => context.sameCommunityName(name, row) &&
+          (!district || !row.district || districtKey(row.district) === districtKey(district)))
+        if (existing.length > 1) throw new Error('存在同名小区，请补充准确行政区或联系平台核对')
+        try {
+          // Applications hold public names only; the city lock also serializes approval and rejection.
+          return await db.runTransaction(async tx => {
+            const lock = await readOptionalDocument(tx, 'platform_configs', lockId)
+            if (Number(lock?.version || 0) !== version) throw catalogChanged()
+            const currentMatches = []
+            for (const match of matches) {
+              const current = await readOptionalDocument(tx, 'platform_configs', match._id)
+              if (!current) throw catalogChanged()
+              currentMatches.push(current)
+            }
+            const rejected = currentMatches.find(row => row.status === 'rejected')
+            if (rejected) return { applicationId: rejected._id, status: 'rejected', outcome: 'rejected',
+              rejectionReason: rejected.rejectionReason || '', message: `该小区申请已被驳回，不能再次申请。原因：${rejected.rejectionReason || '未通过平台核验'}` }
+            const current = currentMatches.find(row => row.status === 'resolved') || currentMatches[0]
+            if (currentMatches.some(row => !['pending', 'resolved'].includes(row.status))) throw new Error('小区申请状态异常，请联系平台核对')
+            if (current?.status === 'resolved' && !current.serviceCommunityId) throw new Error('小区申请关联异常，请联系平台核对')
+            const existingId = current?.status === 'resolved' ? current.serviceCommunityId : existing[0]?._id
+            if (existingId) {
+              const row = await readOptionalDocument(tx, 'platform_configs', existingId)
+              const community = publicCommunity(row)
+              return { ...(current?.status === 'resolved' ? { applicationId: current._id } : {}),
+                status: current?.status === 'resolved' ? 'resolved' : 'existing', outcome: 'existing',
+                ...(community ? { community } : {}),
+                message: community ? '该小区已上线，请直接搜索并选择' : '该小区已维护但暂未启用，请联系平台核对' }
+            }
+            if (current) return { applicationId: current._id, status: 'pending',
+              outcome: current.firstApplicantOpenid === openid ? 'self_duplicate' : 'other_duplicate',
+              message: current.firstApplicantOpenid === openid ? '你已申请过该小区，请等待管理员处理' : '该小区已有申请，正在等待管理员处理，无需重复申请；处理结果仅通知原申请人' }
+            if (await readOptionalDocument(tx, 'platform_configs', applicationId)) throw catalogChanged()
+            await tx.collection('platform_configs').doc(applicationId).set({ data: {
+              key: 'map_community_application', name, city, cityKey, district, status: 'pending',
+              firstApplicantOpenid: openid, createdAt: now(), updatedAt: now()
+            } })
+            await tx.collection('platform_configs').doc(lockId).set({ data: {
+              key: 'map_community_catalog', cityKey, version: version + 1, updatedAt: now()
+            } })
+            return { applicationId, status: 'pending', outcome: 'created', message: '申请成功，请等待管理员处理' }
+          })
+        } catch (error) { if (error.code !== 'COMMUNITY_CATALOG_CHANGED' || attempt === 2) throw error }
+      }
     }
-    if (action === 'listAdmin' || action === 'saveAdmin') {
-      await requireAdmin(openid)
-      await checkRateLimit(openid, `communityMap.${action}`, { max: action === 'saveAdmin' ? 30 : 60 })
+    if (action === 'listAdmin' || action === 'saveAdmin' || action === 'rejectApplication') {
+      const admin = await requireAdmin(openid)
+      await checkRateLimit(openid, `communityMap.${action}`, { max: action === 'listAdmin' ? 60 : 30 })
+      if (action === 'rejectApplication') {
+        const applicationIds = [...new Set(Array.isArray(data.applicationIds) ? data.applicationIds : [])].sort()
+        if (!applicationIds.length || applicationIds.length > 100 || applicationIds.some(id => !/^map_application_[a-f0-9]{32}$/.test(id))) throw new Error('小区申请编号无效，请刷新后重试')
+        const reason = String(data.reason || '').normalize('NFKC').trim()
+        if (!reason || reason.length > 200) throw new Error('请填写驳回原因，最多200字')
+        await checkTextSecurity(openid, reason, { scene: 2, label: '小区申请驳回原因' })
+        return db.runTransaction(async tx => {
+          const applications = []
+          for (const applicationId of applicationIds) {
+            const application = await readOptionalDocument(tx, 'platform_configs', applicationId)
+            if (!application || application.key !== 'map_community_application') throw new Error('小区申请不存在，请刷新后重试')
+            if (application.status === 'rejected' && application.rejectionReason === reason) { applications.push(application); continue }
+            if (application.status !== 'pending') throw new Error('小区申请已处理或驳回原因已变化，请刷新核对')
+            applications.push(application)
+          }
+          const cityKeys = [...new Set(applications.map(row => row.cityKey))].sort()
+          for (const cityKey of cityKeys) {
+            const lockId = catalogId(cityKey)
+            const lock = await readOptionalDocument(tx, 'platform_configs', lockId)
+            if (applications.some(row => row.cityKey === cityKey && row.status === 'pending')) {
+              await tx.collection('platform_configs').doc(lockId).set({ data: {
+                key: 'map_community_catalog', cityKey, version: Number(lock?.version || 0) + 1, updatedAt: now()
+              } })
+            }
+          }
+          for (const application of applications.filter(row => row.status === 'pending')) {
+            await tx.collection('platform_configs').doc(application._id).update({ data: {
+              status: 'rejected', rejectionReason: reason, rejectedAt: now(), rejectedByOpenid: openid, updatedAt: now()
+            } })
+            await context.notifyCommunityApplicationResult(tx, application, { status: 'rejected', reason }, { ...admin, openid })
+          }
+          return { rejectedCount: applications.length }
+        })
+      }
       if (action === 'listAdmin') {
+        if (data.pendingCountsOnly === true) {
+          const result = await db.collection('platform_configs').where({ key: 'map_community_application', status: 'pending' }).count()
+          return { pendingApplicationCount: result.total }
+        }
         const city = String(data.city || '').trim().slice(0, 40), keyword = String(data.keyword || '').normalize('NFKC').trim().toLowerCase().slice(0, 60)
         const offset = Math.max(0, Math.floor(Number(data.offset) || 0))
         if (data.view === 'pending') {
@@ -106,6 +202,10 @@ module.exports = function createHandler(context) {
         const versions = []
         for (const lockId of locks) versions.push(Number((await readOptionalDocument(db, 'platform_configs', lockId))?.version || 0))
         const neighbours = await readDocuments(db, db.command, 'platform_configs', { key: 'service_community', cityKey }, 1001)
+        const rejectedApplications = applicationIds.length ? await readDocuments(db, db.command, 'platform_configs', {
+          key: 'map_community_application', cityKey, status: 'rejected'
+        }, 1001) : []
+        if (rejectedApplications.length > 1000) throw new Error('当前城市申请记录较多，请联系平台核对')
         if (neighbours.length > 1000 || (neighbours.length >= 1000 && !neighbours.some(row => row._id === id))) throw new Error('当前城市小区数量已达管理上限')
         if (neighbours.some(row => row._id !== id && context.sameCommunityName(name, row) && hasCoordinate(row.latitude, row.longitude) &&
           context.calcDistanceKm(latitude, longitude, row.latitude, row.longitude) < .15)) throw new Error('附近已有同名公共小区，请编辑已有小区，避免重复展示')
@@ -115,12 +215,19 @@ module.exports = function createHandler(context) {
             const current = await readOptionalDocument(tx, 'platform_configs', id)
             if (Number(current?.editVersion || current?.revision || 0) !== Number(existing?.editVersion || existing?.revision || 0)) throw new Error('小区已更新，请刷新后重试')
             const applications = []
+            const pendingApplications = []
             const founderApplications = []
             for (const applicationId of applicationIds) {
               const application = await readOptionalDocument(tx, 'platform_configs', applicationId)
               if (!application || application.key !== 'map_community_application' || application.cityKey !== cityKey ||
-                  (application.status === 'resolved' && application.serviceCommunityId !== id)) throw new Error('小区申请已变化或城市不一致，请刷新核对')
+                  !['pending', 'resolved'].includes(application.status) ||
+                  (application.status === 'resolved' && application.serviceCommunityId !== id)) throw new Error('小区申请已变化、已被驳回或城市不一致，请刷新核对')
+              const identity = communityAddress(application.name, application.city, application.district)
+              if (application.status === 'pending' && matchingApplications(rejectedApplications, identity.name, identity.district).length) {
+                throw new Error('该小区已有被驳回的申请，不能再次通过，请刷新核对')
+              }
               applications.push(applicationId)
+              if (application.status === 'pending') pendingApplications.push(application)
               if (application.status === 'pending' && application.firstApplicantOpenid) founderApplications.push(application)
             }
             const linkedApplications = [...new Set([...(current?.applicationIds || []), ...applications])]
@@ -144,9 +251,13 @@ module.exports = function createHandler(context) {
               ...(linkedApplications.length ? { applicationIds: linkedApplications } : {}), updatedAt: now(),
               revision: Number(current?.revision || 0) + (publicChanged ? 1 : 0),
               editVersion: Number(current?.editVersion || current?.revision || 0) + 1, createdAt: current?.createdAt || now() } })
-            for (const applicationId of applications) await tx.collection('platform_configs').doc(applicationId).update({ data: {
-              status: 'resolved', serviceCommunityId: id, updatedAt: now()
-            } })
+            for (const application of pendingApplications) {
+              await tx.collection('platform_configs').doc(application._id).update({ data: {
+                status: 'resolved', serviceCommunityId: id, resolvedAt: now(), resolvedByOpenid: openid, updatedAt: now()
+              } })
+              await context.notifyCommunityApplicationResult(tx, application, { status: 'resolved', communityId: id, communityName: name,
+                founder: !current && !!founderUserId && application._id === founderApplications[0]?._id }, { ...admin, openid })
+            }
             for (let i = 0; i < locks.length; i++) await tx.collection('platform_configs').doc(locks[i]).set({ data: {
               key: 'map_community_catalog', cityKey: cityKeys[i], version: versions[i] + 1, updatedAt: now() } })
             if (receiptId) await tx.collection('platform_configs').doc(receiptId).set({ data: {

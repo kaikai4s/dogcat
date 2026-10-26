@@ -300,6 +300,263 @@ test('city-filtered candidates include legacy province prefixes and exclude othe
   assert.equal(result.total, 1); assert.equal(result.list[0].orderCount, 1); assert.equal(result.list[0].staffCount, 1)
 })
 
+const applicationData = { name: '阳光花园', city: '上海市', district: '浦东新区' }
+const applicationRows = db => db.state.platform_configs.filter(row => row.key === 'map_community_application')
+const applicationNotices = db => (db.state.system_notifications || []).filter(row => row.extra?.applicationId)
+const newPointData = () => ({ ...saveData(publicRow()), id: undefined, revision: undefined })
+function applicationFixture(data = {}) {
+  const f = fixture(data)
+  f.db.state.users.push(...['client-a', 'client-b'].map(openid => ({ _id: openid, openid, roles: ['client'], status: 'active' })))
+  return { ...f, apply: (openid = 'client-a', value = {}) => f.handler(openid, 'applyCommunity', { ...applicationData, ...value }) }
+}
+
+// Pause the first transaction after its caller has read the city catalog, then
+// commit the competing operation. The paused request must discard its stale scan.
+async function commitSecondBeforeFirst(db, first, second) {
+  const run = db.runTransaction.bind(db)
+  let enter, release, transactions = 0
+  const entered = new Promise(resolve => { enter = resolve })
+  const released = new Promise(resolve => { release = resolve })
+  db.runTransaction = async callback => {
+    if (++transactions === 1) { enter(); await released }
+    return run(callback)
+  }
+  const firstResult = first()
+  await entered
+  let secondResult
+  try { secondResult = await second() } finally { release() }
+  return { first: await firstResult, second: secondResult, transactions }
+}
+
+test('applications distinguish creation, own retry and another applicant without replacing the first applicant', async () => {
+  const { apply, db } = applicationFixture()
+  const created = await apply()
+  assert.equal(created.status, 'pending'); assert.equal(created.outcome, 'created')
+  const original = structuredClone(applicationRows(db)[0])
+  const own = await apply(), other = await apply('client-b')
+  assert.equal(own.status, 'pending'); assert.equal(own.outcome, 'self_duplicate')
+  assert.equal(other.status, 'pending'); assert.equal(other.outcome, 'other_duplicate')
+  assert.equal(own.applicationId, created.applicationId); assert.equal(other.applicationId, created.applicationId)
+  assert.deepEqual(applicationRows(db), [original])
+  assert.equal(original.firstApplicantOpenid, 'client-a')
+  assert.deepEqual(applicationNotices(db), [])
+})
+
+test('maintained enabled and disabled communities return existing without creating applications', async () => {
+  for (const enabled of [true, false]) {
+    const { apply, db } = applicationFixture({ platform_configs: [publicRow({ enabled })] })
+    const result = await apply()
+    assert.equal(result.status, 'existing'); assert.equal(result.outcome, 'existing')
+    assert.equal(result.applicationId, undefined)
+    if (enabled) assert.equal(result.community._id, id)
+    else assert.match(result.message, /暂未启用/)
+    assert.deepEqual(applicationRows(db), [])
+  }
+})
+
+test('approved applications retain resolved history and only notify their original applicant', async () => {
+  const { apply, admin, db } = applicationFixture()
+  const created = await apply()
+  await apply('client-b')
+  const saved = await admin('saveAdmin', { ...newPointData(), applicationIds: [created.applicationId] })
+  const history = structuredClone(applicationRows(db))
+  for (const openid of ['client-a', 'client-b']) {
+    const result = await apply(openid)
+    assert.equal(result.status, 'resolved'); assert.equal(result.outcome, 'existing')
+    assert.equal(result.applicationId, created.applicationId); assert.equal(result.community._id, saved.id)
+  }
+  assert.deepEqual(applicationRows(db), history)
+  assert.equal(history[0].status, 'resolved'); assert.equal(history[0].serviceCommunityId, saved.id)
+  const notices = applicationNotices(db)
+  assert.equal(notices.length, 1); assert.equal(notices[0].targetOpenid, 'client-a')
+  assert.equal(notices[0].extra.status, 'resolved'); assert.equal(notices[0].extra.communityId, saved.id)
+  await assert.rejects(admin('rejectApplication', { applicationIds: [created.applicationId], reason: '不能重复处理' }), /已处理/)
+  assert.deepEqual(applicationRows(db), history)
+  assert.equal(applicationNotices(db).length, 1)
+})
+
+test('pending counts only count pending applications and never scan community candidates', async () => {
+  const { apply, admin, db, context } = applicationFixture({ orders: [order()], staff_profiles: [staff()], platform_configs: [publicRow({ name: '已维护花园' })] })
+  const pending = await apply()
+  const rejected = await apply('client-b', { name: '驳回花园' })
+  await admin('rejectApplication', { applicationIds: [rejected.applicationId], reason: '名称不实' })
+  const resolved = await apply('client-b', { name: '通过花园' })
+  await admin('saveAdmin', { ...newPointData(), name: '通过花园', applicationIds: [resolved.applicationId] })
+  // A non-application row with the same status must not inflate the badge.
+  db.state.platform_configs.push({ _id: 'unrelated', key: 'unrelated_config', status: 'pending' })
+  context.readCommunityCandidates = async () => { assert.fail('count must not read order/staff candidates') }
+  const collection = db.collection.bind(db)
+  let counts = 0
+  db.collection = name => {
+    const query = collection(name), where = query.where.bind(query)
+    query.where = condition => {
+      const filtered = where(condition)
+      if (name === 'platform_configs') {
+        assert.deepEqual(condition, { key: 'map_community_application', status: 'pending' })
+        const count = filtered.count.bind(filtered)
+        filtered.count = async () => { counts++; return count() }
+        filtered.get = async () => { assert.fail('count must not fetch application rows') }
+      }
+      return filtered
+    }
+    return query
+  }
+  assert.deepEqual(await admin('listAdmin', { pendingCountsOnly: true, view: 'pending', city: '深圳市' }), { pendingApplicationCount: 1 })
+  assert.equal(counts, 1); assert.equal(applicationRows(db).find(row => row._id === pending.applicationId).status, 'pending')
+})
+
+test('list-only administrators may count but need the explicit reject permission to reject', async () => {
+  const { apply, admin, db } = applicationFixture({
+    admin_access_config: [{ _id: 'policy', enabled: true, ownerOpenid: 'owner' }],
+    admin_groups: [{ _id: 'map-reader', enabled: true, permissions: ['communityMap.listAdmin'] }],
+    admin_memberships: [{ _id: 'admin', groupIds: ['map-reader'] }]
+  })
+  const created = await apply()
+  assert.deepEqual(await admin('listAdmin', { pendingCountsOnly: true }), { pendingApplicationCount: 1 })
+  const data = { applicationIds: [created.applicationId], reason: '公共名称无法核验' }
+  await assert.rejects(admin('rejectApplication', data), { code: 'ADMIN_FORBIDDEN' })
+  assert.equal(applicationRows(db)[0].status, 'pending'); assert.equal(applicationNotices(db).length, 0)
+  const { tree } = require('../../cloudfunctions/api/config/adminPermissions')
+  const permission = tree.flatMap(group => group.children).find(row => row.id === 'communityMap.rejectApplication')
+  assert.ok(permission.requires.includes('communityMap.listAdmin'))
+  db.state.admin_groups[0].permissions.push('communityMap.rejectApplication')
+  assert.deepEqual(await admin('rejectApplication', data), { rejectedCount: 1 })
+  assert.equal(applicationRows(db)[0].status, 'rejected')
+  assert.deepEqual(await admin('listAdmin', { pendingCountsOnly: true }), { pendingApplicationCount: 0 })
+})
+
+test('reject requires a nonblank reason of at most 200 characters and same-reason retries are idempotent', async () => {
+  const { apply, admin, db } = applicationFixture()
+  const created = await apply(), applicationIds = [created.applicationId]
+  for (const reason of [undefined, '', '  \n ', '驳'.repeat(201)]) {
+    await assert.rejects(admin('rejectApplication', { applicationIds, reason }), /驳回原因.*200/)
+    assert.equal(applicationRows(db)[0].status, 'pending'); assert.equal(applicationNotices(db).length, 0)
+  }
+  const reason = '驳'.repeat(200)
+  assert.deepEqual(await admin('rejectApplication', { applicationIds: [...applicationIds, ...applicationIds], reason: ` ${reason} ` }), { rejectedCount: 1 })
+  const history = structuredClone(applicationRows(db)), notices = structuredClone(applicationNotices(db))
+  assert.equal(history[0].rejectionReason, reason); assert.equal(history[0].rejectedByOpenid, 'admin')
+  assert.ok(history[0].rejectedAt)
+  assert.deepEqual(await admin('rejectApplication', { applicationIds, reason }), { rejectedCount: 1 })
+  await assert.rejects(admin('rejectApplication', { applicationIds, reason: '不同的原因' }), /已处理|原因已变化/)
+  for (const openid of ['client-a', 'client-b']) {
+    const result = await apply(openid)
+    assert.equal(result.status, 'rejected'); assert.equal(result.outcome, 'rejected')
+    assert.equal(result.applicationId, created.applicationId); assert.equal(result.rejectionReason, reason)
+    assert.ok(result.message.includes(reason))
+  }
+  await assert.rejects(admin('saveAdmin', { ...newPointData(), applicationIds }), /已被驳回/)
+  assert.deepEqual(applicationRows(db), history); assert.deepEqual(applicationNotices(db), notices)
+  assert.equal(notices.length, 1); assert.equal(notices[0].targetOpenid, 'client-a')
+  assert.equal(notices[0].extra.status, 'rejected'); assert.ok(notices[0].content.includes(reason))
+})
+
+test('notification failure rolls back rejection and the city catalog in the same transaction', async () => {
+  const { apply, admin, db, context } = applicationFixture()
+  const created = await apply()
+  const before = structuredClone(db.state.platform_configs)
+  const notify = context.notifyCommunityApplicationResult
+  context.notifyCommunityApplicationResult = async (...args) => {
+    await notify(...args)
+    throw new Error('injected notification failure')
+  }
+  await assert.rejects(admin('rejectApplication', { applicationIds: [created.applicationId], reason: '无法核验' }), /injected notification failure/)
+  assert.deepEqual(db.state.platform_configs, before); assert.equal(applicationNotices(db).length, 0)
+  context.notifyCommunityApplicationResult = notify
+  await admin('rejectApplication', { applicationIds: [created.applicationId], reason: '无法核验' })
+  assert.equal(applicationRows(db)[0].status, 'rejected'); assert.equal(applicationNotices(db).length, 1)
+})
+
+test('batch rejection is atomic when another application has already been resolved', async () => {
+  const { apply, admin, db } = applicationFixture()
+  const pending = await apply(), resolved = await apply('client-b', { name: '已通过花园' })
+  await admin('saveAdmin', { ...newPointData(), name: '已通过花园', applicationIds: [resolved.applicationId] })
+  const before = structuredClone(db.state.platform_configs), notices = structuredClone(applicationNotices(db))
+  await assert.rejects(admin('rejectApplication', { applicationIds: [pending.applicationId, resolved.applicationId], reason: '批量驳回' }), /已处理/)
+  assert.deepEqual(db.state.platform_configs, before); assert.deepEqual(applicationNotices(db), notices)
+})
+
+test('rejecting an application preserves original orders, staff profiles and their pending candidates', async () => {
+  const { apply, admin, db } = applicationFixture({ orders: [order()], staff_profiles: [staff()] })
+  const created = await apply()
+  const originals = structuredClone([db.state.orders, db.state.staff_profiles])
+  await admin('rejectApplication', { applicationIds: [created.applicationId], reason: '需核对公共名称' })
+  assert.deepEqual([db.state.orders, db.state.staff_profiles], originals)
+  const result = await admin('listAdmin', { view: 'pending' })
+  const candidate = result.list.find(row => row.name === '阳光花园')
+  assert.ok(candidate); assert.equal(candidate.orderCount, 1); assert.equal(candidate.staffCount, 1)
+  assert.deepEqual(await admin('listAdmin', { pendingCountsOnly: true }), { pendingApplicationCount: 0 })
+})
+
+test('concurrent approval and rejection commit exactly one terminal state and its matching notification', async () => {
+  for (const rejectFirst of [false, true]) {
+    const { apply, admin, db } = applicationFixture()
+    const created = await apply()
+    const retries = require('./optimisticTransactions')(db)
+    const approve = () => admin('saveAdmin', { ...newPointData(), applicationIds: [created.applicationId] })
+    const reject = () => admin('rejectApplication', { applicationIds: [created.applicationId], reason: '无法核验公共名称' })
+    const results = await Promise.allSettled((rejectFirst ? [reject, approve] : [approve, reject]).map(run => run()))
+    assert.equal(results.filter(result => result.status === 'fulfilled').length, 1)
+    assert.match(results.find(result => result.status === 'rejected').reason.message, /已处理|已被驳回/)
+    assert.ok(retries() > 0, 'overlapping snapshots must exercise conflict retry')
+    const application = applicationRows(db)[0], notices = applicationNotices(db)
+    assert.ok(['resolved', 'rejected'].includes(application.status))
+    assert.equal(notices.length, 1); assert.equal(notices[0].extra.status, application.status)
+    assert.equal(notices[0].targetOpenid, 'client-a')
+    const points = db.state.platform_configs.filter(row => row.key === 'service_community')
+    assert.equal(points.length, application.status === 'resolved' ? 1 : 0)
+    if (application.status === 'resolved') {
+      assert.equal(notices[0].extra.communityId, application.serviceCommunityId)
+      assert.equal(points[0]._id, application.serviceCommunityId)
+    } else assert.ok(notices[0].content.includes(application.rejectionReason))
+  }
+})
+
+test('two first-time concurrent applicants create one application and retain the winning original applicant', async () => {
+  const { apply, db } = applicationFixture()
+  const retries = require('./optimisticTransactions')(db)
+  const openids = ['client-a', 'client-b']
+  const results = await Promise.all(openids.map(openid => apply(openid)))
+  assert.deepEqual(results.map(row => row.outcome).sort(), ['created', 'other_duplicate'])
+  assert.ok(results.every(row => row.status === 'pending'))
+  assert.equal(results[0].applicationId, results[1].applicationId)
+  assert.ok(retries() > 0)
+  const rows = applicationRows(db)
+  assert.equal(rows.length, 1)
+  const winner = openids[results.findIndex(row => row.outcome === 'created')]
+  assert.equal(rows[0].firstApplicantOpenid, winner)
+  const original = structuredClone(rows[0])
+  assert.equal((await apply(winner)).outcome, 'self_duplicate')
+  assert.equal((await apply(openids.find(openid => openid !== winner))).outcome, 'other_duplicate')
+  assert.deepEqual(applicationRows(db), [original])
+})
+
+test('application and public point creation retry stale city catalogs in either commit order without duplicate applications', async () => {
+  for (const applicationCommitsFirst of [false, true]) {
+    const { apply, admin, db } = applicationFixture()
+    require('./optimisticTransactions')(db)
+    const application = () => apply()
+    const create = () => admin('saveAdmin', newPointData())
+    const result = await commitSecondBeforeFirst(db,
+      applicationCommitsFirst ? create : application,
+      applicationCommitsFirst ? application : create)
+    assert.ok(result.transactions >= 3, 'stale city snapshot must trigger a fresh catalog scan')
+    const applied = applicationCommitsFirst ? result.second : result.first
+    assert.equal(applied.status, applicationCommitsFirst ? 'pending' : 'existing')
+    assert.equal(applied.outcome, applicationCommitsFirst ? 'created' : 'existing')
+    const history = structuredClone(applicationRows(db))
+    // Creating a point without linking an earlier application may leave pending
+    // history; it must still prevent any subsequent duplicate application.
+    assert.equal(history.length, applicationCommitsFirst ? 1 : 0)
+    if (history.length) { assert.equal(history[0].status, 'pending'); assert.equal(history[0].firstApplicantOpenid, 'client-a') }
+    const later = await apply('client-b')
+    assert.equal(later.status, 'existing'); assert.equal(later.outcome, 'existing')
+    assert.deepEqual(applicationRows(db), history)
+    assert.equal(db.state.platform_configs.filter(row => row.key === 'service_community').length, 1)
+    assert.equal(applicationNotices(db).length, 0)
+  }
+})
+
 test('published sitters with legacy province-prefixed service cities remain visible on their city map', async () => {
   const { handler } = fixture({ platform_configs: [publicRow({ city: '深圳市', cityKey: '深圳', latitude: 22.5, longitude: 114 })],
     staff_profiles: [staff({ staffLevel: 'certified', serviceCity: '广东省深圳市', serviceLatitude: 22.501, serviceLongitude: 114.001,

@@ -19,11 +19,23 @@
       <view class="description" wx:if="{{item.applicationCount}}">{{item.applicationCount}} 项用户新增申请，保存并启用后关联至此小区。</view>
       <view class="description">{{item.reason}}</view>
       <view class="row-actions" wx:if="{{adminSuper || adminPermissions.communityMap_saveAdmin}}"><button class="primary" data-id="{{item._id}}" bindtap="{{item.existingId ? 'editExisting' : 'addCandidate'}}" disabled="{{busy}}">{{item.existingId ? '查看已有小区' : '选公共点并启用'}}</button><button class="secondary" wx:if="{{item.existingId}}" data-id="{{item._id}}" bindtap="addCandidate" disabled="{{busy}}">另建同名小区</button></view>
+      <view class="row-actions" wx:if="{{item.applicationIds.length && (adminSuper || adminPermissions.communityMap_rejectApplication)}}"><button class="reject-button" data-id="{{item._id}}" bindtap="rejectCandidate" disabled="{{busy}}">驳回用户申请</button></view>
     </block>
     <block wx:else><view class="description">{{item.aliases.length}} 个别名 · 已自动匹配同名入口</view><button class="secondary" data-id="{{item._id}}" bindtap="edit" wx:if="{{adminSuper || adminPermissions.communityMap_saveAdmin}}">编辑与纠错</button></block>
   </view>
   <view class="empty-copy description" wx:if="{{!loading && !rows.length && !error}}">{{view === 'pending' ? '当前没有待处理的小区。新增小区地址会自动出现在这里。' : '尚无符合条件的小区，可从待处理清单选择或新增。'}}</view>
   <button class="secondary more-button" wx:if="{{hasMore && !error}}" bindtap="more" loading="{{loading}}" disabled="{{loading}}">加载更多</button>
+</view>
+<view class="edit-mask" wx:if="{{rejectForm}}" catchtouchmove="noop">
+  <view class="edit-panel">
+    <view class="edit-header"><view class="card-title">驳回 {{rejectForm.name}} 的用户申请</view></view>
+    <view class="edit-content">
+      <view class="reject-warning">驳回后，相关用户永久不可再次申请该小区。订单和宠托师地址候选会保留。</view>
+      <view class="field-label">驳回原因（必填，最多200字）</view>
+      <textarea class="field reject-reason" placeholder="请填写供用户查看的具体原因" value="{{rejectForm.reason}}" bindinput="inputRejectReason" maxlength="200" disabled="{{busy}}" />
+    </view>
+    <view class="edit-footer"><button class="secondary" bindtap="closeReject" disabled="{{busy}}">取消</button><button class="reject-button" bindtap="submitReject" disabled="{{busy || !rejectForm.reason}}" loading="{{busy}}">确认驳回</button></view>
+  </view>
 </view>
 <view class="edit-mask" wx:if="{{form}}" catchtouchmove="noop">
   <view class="edit-panel">

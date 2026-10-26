@@ -100,14 +100,17 @@ function pendingCountForUrl(url, pending = {}) {
     '/pages/admin/pet-vaccine/list/index': pending.petVaccine,
     '/pages/admin/finance/index': pending.finance,
     '/pages/admin/playground-customizations/index': pending.playgroundCustomizations,
+    '/pages/admin/community-map/index': pending.communityApplications,
     '/pages/admin/mall/orders/index': pending.mallOrders,
     '/pages/admin/incidents/list/index': pending.incidents
   }
   return Number(map[url] || 0)
 }
 
-function buildAdminSections(access, dashboard = null, mallPendingCount = null) {
-  const pending = { ...((dashboard && dashboard.pendingReviews) || {}), ...(mallPendingCount !== null ? { mallOrders: mallPendingCount } : {}) }
+function buildAdminSections(access, dashboard = null, mallPendingCount = null, communityPendingCount = null) {
+  const pending = { ...((dashboard && dashboard.pendingReviews) || {}),
+    ...(mallPendingCount !== null ? { mallOrders: mallPendingCount } : {}),
+    ...(communityPendingCount !== null ? { communityApplications: communityPendingCount } : {}) }
   return adminSections
     .map(section => ({
       ...section,
@@ -121,6 +124,7 @@ function buildAdminSections(access, dashboard = null, mallPendingCount = null) {
 Page({
   data: {
     mallPendingCount: null,
+    communityPendingCount: null,
     dashboard: null,
     overviewStats: [],
     revenueStats: [],
@@ -145,6 +149,7 @@ Page({
   invalidateRequests() {
     this._dashboardRequest = (this._dashboardRequest || 0) + 1
     this._mallRequest = (this._mallRequest || 0) + 1
+    this._communityRequest = (this._communityRequest || 0) + 1
     this._notificationRequest = (this._notificationRequest || 0) + 1
   },
 
@@ -155,9 +160,10 @@ Page({
   refreshHome() {
     this.invalidateRequests()
     const access = this.data.adminAccess
-    this.setData({ adminSections: buildAdminSections(access), dashboard: null, mallPendingCount: null, urgentNotice: null, unreadNotificationCount: 0, staffAuditTodo: null })
+    this.setData({ adminSections: buildAdminSections(access, null, null, null), dashboard: null, mallPendingCount: null, communityPendingCount: null, urgentNotice: null, unreadNotificationCount: 0, staffAuditTodo: null })
     const requests = []
     if (can(access, 'adminMall.listOrders')) requests.push(this.loadMallPending())
+    if (can(access, 'communityMap.listAdmin')) requests.push(this.loadCommunityPending())
     if (can(access, 'admin.dashboard')) requests.push(this.loadDashboard())
     if (can(access, 'admin.getAdminNotificationBadge')) requests.push(this.loadNotifications())
     return Promise.all(requests)
@@ -168,8 +174,18 @@ Page({
     return callFunction('adminMall', 'listOrders', { pendingCountsOnly: true }).then(result => {
       if (requestId !== this._mallRequest) return
       const count = Number(result.pendingCount || 0)
-      this.setData({ mallPendingCount: count, adminSections: buildAdminSections(this.data.adminAccess, this.data.dashboard, count) })
+      this.setData({ mallPendingCount: count, adminSections: buildAdminSections(this.data.adminAccess, this.data.dashboard, count, this.data.communityPendingCount) })
     }).catch(error => { if (requestId === this._mallRequest) showError(error) })
+  },
+
+  loadCommunityPending() {
+    const requestId = this._communityRequest = (this._communityRequest || 0) + 1
+    return callFunction('communityMap', 'listAdmin', { pendingCountsOnly: true }).then(result => {
+      if (requestId !== this._communityRequest) return
+      const count = Number(result.pendingApplicationCount || 0)
+      this.setData({ communityPendingCount: count,
+        adminSections: buildAdminSections(this.data.adminAccess, this.data.dashboard, this.data.mallPendingCount, count) })
+    }).catch(error => { if (requestId === this._communityRequest) showError(error) })
   },
 
   loadDashboard() {
@@ -183,7 +199,7 @@ Page({
           dashboard,
           overviewStats: buildOverviewStats(dashboard),
           revenueStats: buildRevenueStats(dashboard),
-          adminSections: buildAdminSections(this.data.adminAccess, dashboard, this.data.mallPendingCount),
+          adminSections: buildAdminSections(this.data.adminAccess, dashboard, this.data.mallPendingCount, this.data.communityPendingCount),
           staffAuditTodo: staffPending > 0 && canVisit(this.data.adminAccess, staffAuditUrl)
             ? { count: staffPending, url: staffAuditUrl }
             : null

@@ -1053,13 +1053,13 @@ typeof Page === 'function' ? Page({
     this._communitySeq = (this._communitySeq || 0) + 1
     this._applicationSeq = (this._applicationSeq || 0) + 1
     const restore = template && !this.data.groupBuyMode && this.data.form.publishMode === 'open' ? template : {}
-    const application = restore.orderCommunityApplication
+    const application = restore.orderCommunityApplication?.status === 'pending' ? restore.orderCommunityApplication : null
     this.setData({ orderCommunity: restore.orderCommunity || null, orderCommunities: [], communityKeyword: '', communityError: '',
       communityHasMore: false, communityLoading: false, communityApplicationStatus: '', communityApplicationBusy: false,
       communityApplicationName: '', communityApplicationDistrict: '', showCommunityApplication: false,
       communitySelectionNotice: restore.communitySelectionNotice || '',
       'form.serviceCommunityId': restore.orderCommunity ? restore.serviceCommunityId : '',
-      'form.serviceCommunityApplicationId': restore.serviceCommunityApplicationId || '',
+      'form.serviceCommunityApplicationId': application ? restore.serviceCommunityApplicationId || '' : '',
       ...(application ? { communityApplicationStatus: `${application.name}：申请已提交；可继续下单，平台核验公共点后，符合条件的待接订单会在该小区展示` } : {}) })
     this._communitySearch = ''
     this._communityOffset = 0
@@ -1131,10 +1131,20 @@ typeof Page === 'function' ? Page({
     try {
       const result = await callFunction('communityMap', 'applyCommunity', { name, city, district: this.data.communityApplicationDistrict || '' })
       if (this._closed || seq !== this._applicationSeq) return
-      this.setData({ orderCommunity: null, 'form.serviceCommunityId': '', 'form.serviceCommunityApplicationId': result.applicationId,
-        communitySelectionNotice: '',
-        communityApplicationStatus: result.status === 'resolved' ? '该小区已维护，提交订单时会校验服务地址与小区距离' : '申请已提交；可继续下单，平台核验公共点后，符合条件的待接订单会在该小区展示',
-        showCommunityApplication: false })
+      const rejected = result.status === 'rejected' || result.outcome === 'rejected'
+      const existing = ['existing', 'resolved'].includes(result.status) || result.outcome === 'existing'
+      const pending = result.status === 'pending' && !rejected && !existing
+      const notice = rejected ? `该小区申请已驳回，不可再次申请${result.rejectionReason ? `：${result.rejectionReason}` : ''}`
+        : existing ? '该小区已维护，请在附近列表中重新选择；仅可选择服务地址三公里内的小区'
+          : result.outcome === 'other_duplicate' ? '该小区已有待处理申请，处理结果仅通知原申请人；可继续下单'
+            : result.outcome === 'self_duplicate' ? '你已申请该小区，请等待管理员处理；可继续下单'
+              : '申请已提交；可继续下单，平台核验公共点后，符合条件的待接订单会在该小区展示'
+      this.setData({ orderCommunity: null, 'form.serviceCommunityId': '', 'form.serviceCommunityApplicationId': pending ? result.applicationId || '' : '',
+        communitySelectionNotice: '', communityApplicationStatus: result.message || notice,
+        showCommunityApplication: rejected })
+      // Keep the address, city and submitted nearby filters: the returned
+      // community is not proof that it is selectable within three kilometres.
+      if (existing) this.loadOrderCommunities()
     } catch (error) { if (!this._closed && seq === this._applicationSeq) showError(error) }
     finally { if (!this._closed && seq === this._applicationSeq) this.setData({ communityApplicationBusy: false }) }
   },

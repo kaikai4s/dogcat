@@ -15,7 +15,7 @@ function setup(respond) {
     } }
   })
   const component = { ...definition.methods, data: structuredClone(definition.data), setData(patch) { Object.assign(this.data, patch) } }
-  return { component, calls, errors }
+  return { component, calls, errors, detach: () => definition.lifetimes.detached.call(component) }
 }
 test('community selection displays real counts and returns public community identity only after tapping a row', async () => {
   const item = { id: 'c', community: { name: '阳光小区', city: '上海', district: '浦东' }, residentCount: 132 }
@@ -166,7 +166,83 @@ test('reapplying after a community was renamed searches its current public name 
   await flush()
   assert.equal(f.calls.at(-1).data.keyword, '阳光花园新名称')
   assert.equal(f.calls.at(-1).data.city, '上海市')
-  assert.match(f.component.data.applicationNotice, /可在下方选择/)
+  assert.match(f.component.data.applicationNotice, /重新选择/)
   f.component.close()
   await selection
+})
+
+for (const result of [
+  { status: 'pending', outcome: 'created', message: '申请成功，请等待管理员处理', applicationId: 'new' },
+  { status: 'pending', outcome: 'self_duplicate', message: '您已提交申请，请勿重复申请', applicationId: 'mine' },
+  { status: 'pending', outcome: 'other_duplicate', message: '其他用户已申请，审核结果仅通知原申请人', applicationId: 'other' },
+  { status: 'existing', outcome: 'existing', message: '小区已维护，请重新选择', community: { name: '规范名称', city: '规范城市' } },
+  { status: 'resolved', outcome: 'existing', message: '原申请已处理，请在列表重新选择', applicationId: 'resolved', community: { name: '规范名称', city: '规范城市' } },
+  { status: 'existing', outcome: 'existing', message: '小区已维护但暂未启用' }
+]) {
+  test(`chooser respects server message and requires explicit selection for ${result.status}/${result.outcome}/${!!result.community}`, async () => {
+    const f = setup(action => action === 'applyCommunity' ? result : { list: [], hasMore: false })
+    let selected = false
+    const selection = f.component.open().then(() => { selected = true }, () => {})
+    await flush()
+    f.component.keyword({ detail: { value: '申请名称' } })
+    f.component.city({ detail: { value: '申请城市' } })
+    f.component.newApplication()
+    await f.component.submitApplication()
+    await flush()
+    assert.equal(f.component.data.applicationNotice, result.message)
+    assert.equal(f.component.data.formError, '')
+    assert.equal(f.component.data.applyForm, null)
+    assert.equal(f.component.data.applying, false)
+    assert.equal(selected, false)
+    assert.equal(f.component.data.visible, true)
+    assert.equal(f.calls.at(-1).data.keyword, result.community?.name || '申请名称')
+    assert.equal(f.calls.at(-1).data.city, result.community?.city || '申请城市')
+    f.component.close()
+    await selection
+  })
+}
+
+for (const message of ['该申请已驳回，禁止重新申请：非公共小区', '']) {
+  test(`chooser treats rejection as an error without refreshing or claiming success (${!!message})`, async () => {
+    const f = setup(action => action === 'applyCommunity'
+      ? { status: 'rejected', outcome: 'rejected', message, rejectionReason: '非公共小区', applicationId: 'rejected' }
+      : { list: [], hasMore: false })
+    const selection = f.component.open().catch(() => {})
+    await flush()
+    await f.component.map()
+    await f.component.submitApplication()
+    assert.equal(f.component.data.formError, message || '该小区申请已驳回，不可再次申请：非公共小区')
+    assert.equal(f.component.data.applyForm.name, '地图小区')
+    assert.equal(f.component.data.applicationNotice, '')
+    assert.equal(f.component.data.applying, false)
+    assert.equal(f.calls.filter(call => call.action === 'listCommunities').length, 1)
+    f.component.close()
+    await selection
+  })
+}
+
+test('a detached chooser ignores a late application and prevents duplicate busy submissions', async () => {
+  let complete
+  const f = setup(action => action === 'applyCommunity' ? new Promise(resolve => { complete = resolve }) : { list: [] })
+  const selection = f.component.open().catch(() => {})
+  await flush()
+  await f.component.map()
+  const submission = f.component.submitApplication()
+  await flush()
+  await f.component.submitApplication()
+  await assert.rejects(f.component.open(), error => String(error.errMsg).includes('busy'))
+  assert.equal(f.calls.filter(call => call.action === 'applyCommunity').length, 1)
+  f.detach()
+  await selection
+  const snapshot = JSON.stringify(f.component.data)
+  complete({ status: 'pending', outcome: 'created', message: '不可写入的旧响应' })
+  await submission
+  assert.equal(JSON.stringify(f.component.data), snapshot)
+  assert.equal(f.calls.filter(call => call.action === 'listCommunities').length, 1)
+})
+
+test('founder title copy limits eligibility to a genuinely new community and never promises automatic wearing', () => {
+  const template = fs.readFileSync(path.join(__dirname, '../../miniprogram/packagePlayground/components/community-chooser/index.wxml'), 'utf8')
+  assert.match(template, /仅真正新建小区的首位有效申请人/)
+  assert.match(template, /不会自动佩戴/)
 })

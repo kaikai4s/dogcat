@@ -316,3 +316,108 @@ test('a delayed rebooking render callback cannot restore an old estate after the
   assert.equal(page.data.form.serviceAddress, '新地址')
   assert.equal(requests.length, 2)
 })
+
+for (const outcome of ['created', 'self_duplicate', 'other_duplicate']) {
+  test(`pending ${outcome} uses the exact server message and is the only linked application`, async () => {
+    const { page, requests } = fixture()
+    page.data.communityApplicationName = '红瓦小区'
+    page.data.form.serviceCommunityApplicationId = 'stale'
+    const message = outcome === 'other_duplicate' ? '其他用户已申请，结果仅通知原申请人' : '申请成功，请等待管理员处理'
+    const application = page.applyOrderCommunity()
+    await page.applyOrderCommunity()
+    assert.equal(requests.length, 1)
+    requests[0].resolve({ status: 'pending', outcome, message, applicationId: outcome })
+    await application
+    assert.equal(page.data.communityApplicationStatus, message)
+    assert.equal(page.buildOrderPayload().serviceCommunityApplicationId, outcome)
+    assert.equal(page.data.form.serviceCommunityId, '')
+    assert.equal(page.data.communityApplicationBusy, false)
+  })
+}
+
+for (const status of ['existing', 'resolved']) {
+  for (const withCommunity of [false, true]) {
+    test(`${status} (${withCommunity}) clears stale links and refreshes the original nearby query without selecting the response`, async () => {
+      const { page, requests } = fixture()
+      page.data.communityKeyword = '原搜索'
+      const nearby = page.searchOrderCommunities()
+      requests[0].resolve({ list: [row('old')], hasMore: true })
+      await nearby
+      page.data.communityKeyword = '未提交搜索'
+      page.data.communityApplicationName = '申请名称'
+      page.data.form.serviceCommunityApplicationId = 'stale-application'
+      page.data.form.serviceCommunityId = 'old'
+      page.data.orderCommunity = row('old')
+      const application = page.applyOrderCommunity()
+      const message = withCommunity ? '小区已维护，请重新选择' : '该小区已维护，暂未启用'
+      requests[1].resolve({ status, outcome: 'existing', message, applicationId: 'must-not-link',
+        ...(withCommunity ? { community: { ...row('far-away'), city: '上海市', name: '异地规范名称', latitude: 31.2 } } : {}) })
+      await application
+      assert.equal(page.data.communityApplicationStatus, message)
+      assert.equal(page.buildOrderPayload().serviceCommunityApplicationId, '')
+      assert.equal(page.buildOrderPayload().serviceCommunityId, '')
+      assert.equal(page.data.orderCommunity, null)
+      assert.equal(page.data.communityApplicationBusy, false)
+      assert.equal(requests[2].action, 'nearbyForOrder')
+      assert.deepEqual({ ...requests[2].data }, { city: '成都市', latitude: 30.5, longitude: 104, keyword: '原搜索', offset: 0 })
+      assert.equal(page.data.form.serviceAddress, '红瓦小区（华府大道二段）')
+      requests[2].resolve({ list: [row('eligible')], hasMore: false })
+      for (let i = 0; i < 8; i++) await Promise.resolve()
+      assert.equal(page.buildOrderPayload().serviceCommunityId, '')
+      page.chooseOrderCommunity(tap('far-away'))
+      assert.equal(page.buildOrderPayload().serviceCommunityId, '')
+      page.chooseOrderCommunity(tap('eligible'))
+      assert.equal(page.buildOrderPayload().serviceCommunityId, 'eligible')
+    })
+  }
+}
+
+for (const message of ['申请被驳回且永久禁止重申', '']) {
+  test(`rejected orders clear old links and display rejection instead of success (${!!message})`, async () => {
+    const { page, requests } = fixture()
+    page.data.communityApplicationName = '红瓦小区'
+    page.data.form.serviceCommunityApplicationId = 'old'
+    page.data.form.serviceCommunityId = 'old-estate'
+    const application = page.applyOrderCommunity()
+    requests[0].resolve({ status: 'rejected', outcome: 'rejected', message, rejectionReason: '非公共小区', applicationId: 'rejected' })
+    await application
+    assert.equal(page.buildOrderPayload().serviceCommunityApplicationId, '')
+    assert.equal(page.buildOrderPayload().serviceCommunityId, '')
+    assert.equal(page.data.communityApplicationStatus, message || '该小区申请已驳回，不可再次申请：非公共小区')
+    assert.doesNotMatch(page.data.communityApplicationStatus, /申请已提交|申请成功|可继续下单/)
+    assert.equal(page.data.showCommunityApplication, true)
+    assert.equal(page.data.communityApplicationBusy, false)
+    assert.equal(requests.length, 1)
+  })
+}
+
+for (const status of ['existing', 'resolved', 'rejected']) {
+  test(`history cannot restore a ${status} application as pending`, async () => {
+    const { page, requests } = fixture()
+    const loading = page.resetOrderCommunity({ serviceCommunityApplicationId: 'not-pending', orderCommunityApplication: { name: '红瓦小区', status } })
+    assert.equal(page.buildOrderPayload().serviceCommunityApplicationId, '')
+    assert.equal(page.data.communityApplicationStatus, '')
+    requests[0].resolve({ list: [], hasMore: false })
+    await loading
+  })
+}
+
+test('a nearby refresh after an existing application cannot write over a newer address or unloaded page', async () => {
+  for (const close of [false, true]) {
+    const { page, requests } = fixture()
+    page.data.communityApplicationName = '红瓦小区'
+    const application = page.applyOrderCommunity()
+    requests[0].resolve({ status: 'existing', outcome: 'existing' })
+    await application
+    if (close) page.onUnload()
+    else {
+      const next = page.resetOrderCommunity()
+      requests[2].resolve({ list: [row('new-address')], hasMore: false })
+      await next
+    }
+    const snapshot = JSON.stringify(page.data)
+    requests[1].resolve({ list: [row('late-existing-refresh')], hasMore: false })
+    for (let i = 0; i < 8; i++) await Promise.resolve()
+    assert.equal(JSON.stringify(page.data), snapshot)
+  }
+})

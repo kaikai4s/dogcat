@@ -4,8 +4,8 @@ const { createClientRequestId } = require('../../../utils/offlineQueue')
 const empty = () => ({ name: '', city: '', district: '', aliasesText: '', latitude: 0, longitude: 0, enabled: true, matchRadiusKm: 1, confirmPublic: false })
 Page({
   data: { view: 'pending', city: '', keyword: '', rows: [], total: 0, hasMore: false, missingCityCount: 0,
-    form: null, advanced: false, choosing: false, busy: false, loading: false, error: '' },
-  onShow() { if (!this._choosing && !this.data.form) return this.load() },
+    form: null, rejectForm: null, advanced: false, choosing: false, busy: false, loading: false, error: '' },
+  onShow() { if (!this._choosing && !this.data.form && !this.data.rejectForm) return this.load() },
   onUnload() { this._closed = true; this._seq = (this._seq || 0) + 1; this._formToken = null; this._editToken = null },
   async load(append = false) {
     append = append === true
@@ -38,7 +38,7 @@ Page({
   clearCity() { this.setData({ city: '', rows: [], total: 0, hasMore: false }); return this.load() },
   cancelEditLookup() { if (this._editToken) { this._editToken = null; this.setData({ busy: false }) } },
   openForm(form) {
-    if (this._closed || (this.data.busy && !this._editToken)) return
+    if (this._closed || this.data.rejectForm || (this.data.busy && !this._editToken)) return
     this.cancelEditLookup()
     this._formToken = {}; this._saveRequest = null; this.setData({ form, advanced: false })
   },
@@ -106,6 +106,35 @@ Page({
       await callFunction('communityMap', 'saveAdmin', { ...payload, requestId: this._saveRequest.requestId })
       if (this._closed) return
       this._formToken = null; this.setData({ form: null }); wx.showToast({ title: '已保存，后续自动匹配', icon: 'none' }); await this.load()
+    } catch (error) { if (!this._closed) showError(error) }
+    finally { if (!this._closed) this.setData({ busy: false }) }
+  },
+  canRejectApplications() { return !!(this.data.adminSuper || this.data.adminPermissions?.communityMap_rejectApplication) },
+  rejectCandidate(e) {
+    if (this._closed || this.data.busy || this.data.form || this.data.rejectForm || !this.canRejectApplications()) return
+    const row = this.data.rows.find(item => item._id === e.currentTarget.dataset.id)
+    if (this.data.view !== 'pending' || !row?.applicationIds?.length) return
+    this.setData({ rejectForm: { name: row.name, applicationIds: [...row.applicationIds], reason: '' } })
+  },
+  inputRejectReason(e) { if (!this.data.busy && this.data.rejectForm) this.setData({ 'rejectForm.reason': e.detail.value }) },
+  closeReject() { if (!this.data.busy) this.setData({ rejectForm: null }) },
+  async submitReject() {
+    const form = this.data.rejectForm
+    if (this._closed || this.data.busy || !form?.applicationIds?.length || !this.canRejectApplications()) return
+    const reason = String(form.reason || '').trim()
+    if (!reason || reason.length > 200) { showError(new Error('请填写驳回原因，最多200字')); return }
+    this.setData({ busy: true })
+    try {
+      const confirmation = await new Promise((resolve, reject) => wx.showModal({
+        title: '确认永久驳回申请？', content: '驳回后，相关用户永久不可再次申请该小区。仅处理用户申请，不删除订单或宠托师地址候选。',
+        confirmText: '确认驳回', confirmColor: '#b34232', success: resolve, fail: reject
+      }))
+      if (this._closed || !confirmation.confirm || !this.canRejectApplications()) return
+      const result = await callFunction('communityMap', 'rejectApplication', { applicationIds: form.applicationIds, reason })
+      if (this._closed) return
+      this.setData({ rejectForm: null })
+      wx.showToast({ title: `已驳回 ${result.rejectedCount || 0} 项申请`, icon: 'none' })
+      await this.load()
     } catch (error) { if (!this._closed) showError(error) }
     finally { if (!this._closed) this.setData({ busy: false }) }
   },

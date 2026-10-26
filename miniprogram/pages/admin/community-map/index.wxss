@@ -30,7 +30,10 @@
 .edit-panel .choose-button { width: 100%; padding: 22rpx 12rpx; }
 .field-label { margin-top: 18rpx; font-size: 24rpx; color: #74665b; }
 .edit-panel .field { background: #f0ece6; border: 0; border-radius: 14rpx; padding: 16rpx; font-size: 26rpx; margin: 8rpx 0; height: 78rpx; box-sizing: border-box; width: 100%; }
-.edit-panel .aliases { height: 160rpx; }
+.edit-panel .aliases, .edit-panel .reject-reason { height: 160rpx; }
+.admin-map-page .reject-button, .edit-panel .reject-button { background: #fae8e3; color: #b34232; border-radius: 18rpx; }
+.reject-warning { margin: 16rpx 0; color: #b34232; font-size: 25rpx; line-height: 1.6; }
+.edit-footer .reject-button { flex: 1; }
 .advanced-trigger { margin: 20rpx 0; font-size: 25rpx; color: #176b5b; }
 .switch-line { display: flex; justify-content: space-between; align-items: center; gap: 12rpx; margin: 20rpx 0; font-size: 27rpx; }
 .edit-footer { display: flex; gap: 12rpx; padding: 20rpx 24rpx; border-top: 1rpx solid #e6ddd4; flex-shrink: 0; }

@@ -1,4 +1,7 @@
+const { readOptionalDocument } = require('../utils/documentPages')
+
 module.exports = function createService({
+  crypto,
   checkTextSecurity,
   db,
   getUser,
@@ -78,6 +81,27 @@ module.exports = function createService({
     }
 
     return { _id: notificationId, ...doc }
+  }
+
+  async function notifyCommunityApplicationResult(tx, application, result, adminUser = {}) {
+    if (!application.firstApplicantOpenid) return
+    const rejected = result.status === 'rejected'
+    const idempotencyKey = `community_application_result:${application._id}:${result.status}`
+    const id = 'community_result_' + crypto.createHash('sha256').update(idempotencyKey).digest('hex').slice(0, 32)
+    if (await readOptionalDocument(tx, 'system_notifications', id)) return
+    const rawTime = now()
+    const time = rawTime instanceof Date ? rawTime.toISOString() : String(rawTime)
+    const content = rejected
+      ? `你申请的“${application.name}”未通过审核。原因：${result.reason}。该小区申请已结束，不能再次申请。`
+      : `你申请的“${application.name}”已通过审核，现已启用为“${result.communityName}”，可以在下单或庄园中搜索选择。${result.founder ? '你已获得“小区初创者”头衔，可前往庄园头衔面板查看并手动佩戴。' : ''}`
+    await tx.collection('system_notifications').doc(id).set({ data: {
+      title: rejected ? '小区申请审核未通过' : '小区申请审核通过', content,
+      target: 'client', targetOpenid: application.firstApplicantOpenid, targetOpenids: [],
+      type: 'notice', targetUrl: '', level: 'normal', status: 'active', idempotencyKey,
+      extra: { applicationId: application._id, status: result.status, communityId: result.communityId || '', founder: result.founder === true },
+      senderAdminId: adminUser._id || '', senderAdminOpenid: adminUser.openid || '',
+      senderAdminName: adminUser.name || adminUser.nickName || '系统管理员', createdAt: time, updatedAt: time
+    } })
   }
 
   function toBeijingString(value) {
@@ -244,6 +268,7 @@ module.exports = function createService({
 
   return {
     sendSystemNotification,
+    notifyCommunityApplicationResult,
     listAdminSystemNotifications,
     revokeSystemNotification,
     listUserSystemNotifications,

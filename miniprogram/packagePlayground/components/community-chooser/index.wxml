@@ -36,7 +36,7 @@
         <input placeholder="例如：上海市" maxlength="40" value="{{applyForm.city}}" data-field="city" bindinput="inputApplication" disabled="{{applying}}" adjust-position />
         <view class="form-label">所在行政区<text>选填</text></view>
         <input placeholder="例如：浦东新区" maxlength="40" value="{{applyForm.district}}" data-field="district" bindinput="inputApplication" disabled="{{applying}}" adjust-position />
-        <view class="application-help"><view>仅填写公共小区信息，无需门牌号。</view><view>后台核验并启用后，庄园中即可选择。首位有效申请人可获得“小区初创者”头衔。</view></view>
+        <view class="application-help"><view>仅填写公共小区信息，无需门牌号。</view><view>后台核验并启用后，庄园中即可选择。仅真正新建小区的首位有效申请人获授“小区初创者”头衔，授予后不会自动佩戴。</view></view>
         <view class="form-error" wx:if="{{formError}}" role="alert">{{formError}}</view>
       </scroll-view>
       <view class="chooser-footer"><button class="map-button" bindtap="cancelApplication" disabled="{{applying}}">返回列表</button><button class="confirm" bindtap="submitApplication" loading="{{applying}}" disabled="{{applying}}">{{applying ? '正在提交' : '提交申请'}}</button></view>

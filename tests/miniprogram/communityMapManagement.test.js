@@ -29,6 +29,82 @@ function fixture(kind, options = {}) {
 }
 async function settle() { for (let i = 0; i < 12; i++) await Promise.resolve() }
 const tap = (id) => ({ currentTarget: { dataset: { id } } })
+const rejectionData = () => ({ adminPermissions: { communityMap_rejectApplication: true }, rows: [
+  { _id: 'candidate', name: '花园', applicationIds: ['application-a', 'application-b'], orderCount: 2, staffCount: 1 },
+  { _id: 'address-only', name: '地址候选', applicationIds: [], orderCount: 1 }
+] })
+
+test('rejection requires separate permission and application IDs, including for direct handlers', () => {
+  for (const data of [rejectionData(), { ...rejectionData(), adminPermissions: { communityMap_saveAdmin: true } },
+    { ...rejectionData(), adminPermissions: { communityMap_listAdmin: true } }, { ...rejectionData(), adminPermissions: {}, adminSuper: true }]) {
+    const { page, requests } = fixture('admin', { data })
+    page.rejectCandidate(tap('address-only')); assert.equal(page.data.rejectForm, null)
+    page.rejectCandidate(tap('candidate'))
+    assert.equal(!!page.data.rejectForm, !!(data.adminSuper || data.adminPermissions.communityMap_rejectApplication))
+    assert.equal(requests.length, 0)
+  }
+  const template = fs.readFileSync(require.resolve('../../miniprogram/pages/admin/community-map/index.wxml'), 'utf8')
+  assert.match(template, /item\.applicationIds\.length && \(adminSuper \|\| adminPermissions\.communityMap_rejectApplication\)/)
+  assert.match(template, /maxlength="200"/)
+  assert.match(template, /永久不可再次申请/)
+})
+
+test('rejection validates reason, confirms permanent effect, prevents reentry and refreshes candidates', async () => {
+  let modal
+  const { page, requests, errors } = fixture('admin', { data: rejectionData(), wx: { showModal(args) { modal = args } } })
+  page.rejectCandidate(tap('candidate'))
+  for (const reason of ['', '   ', '长'.repeat(201)]) {
+    page.inputRejectReason({ detail: { value: reason } }); await page.submitReject()
+  }
+  assert.equal(errors.length, 3); assert.equal(requests.length, 0)
+  page.inputRejectReason({ detail: { value: '  重复申请  ' } })
+  const submit = page.submitReject()
+  assert.match(modal.content, /永久不可再次申请/); assert.match(modal.content, /不删除订单或宠托师地址候选/)
+  await page.submitReject(); page.closeReject(); page.add()
+  page.inputRejectReason({ detail: { value: '不可更改' } })
+  assert.equal(page.data.rejectForm.reason, '  重复申请  '); assert.equal(page.data.form, null)
+  modal.success({ confirm: true }); await settle()
+  assert.equal(requests.length, 1); assert.equal(requests[0].action, 'rejectApplication')
+  assert.equal(JSON.stringify(requests[0].data), JSON.stringify({ applicationIds: ['application-a', 'application-b'], reason: '重复申请' }))
+  requests[0].resolve({ rejectedCount: 2 }); await settle()
+  assert.equal(requests[1].action, 'listAdmin')
+  requests[1].resolve({ list: [{ _id: 'candidate', orderCount: 2, staffCount: 1, applicationIds: [] }], total: 1, hasMore: false }); await submit
+  assert.equal(page.data.rejectForm, null); assert.equal(page.data.busy, false)
+  assert.equal(page.data.rows[0].orderCount, 2); assert.equal(page.data.rows[0].staffCount, 1)
+})
+
+test('cancelled confirmation sends nothing; failed rejection retains identical retry payload without requestId', async () => {
+  let confirm = false
+  const { page, requests } = fixture('admin', { data: rejectionData(), wx: { showModal(args) { args.success({ confirm }) } } })
+  page.rejectCandidate(tap('candidate')); page.inputRejectReason({ detail: { value: '资料不实' } })
+  await page.submitReject(); assert.equal(requests.length, 0); assert.equal(page.data.busy, false)
+  confirm = true
+  const first = page.submitReject(); await settle()
+  requests[0].reject(new Error('响应丢失')); await first
+  assert.ok(page.data.rejectForm)
+  const retry = page.submitReject(); await settle()
+  assert.equal(JSON.stringify(requests[1].data), JSON.stringify(requests[0].data)); assert.equal(requests[1].data.requestId, undefined)
+  requests[1].reject(new Error('网络未恢复')); await retry
+  page.closeReject(); assert.equal(page.data.rejectForm, null)
+})
+
+test('unloaded rejection confirmations and API responses cannot send requests or write page state', async () => {
+  for (const stage of ['confirmation', 'success', 'failure']) {
+    let modal
+    const { page, requests, errors } = fixture('admin', { data: rejectionData(), wx: { showModal(args) { modal = args } } })
+    page.rejectCandidate(tap('candidate')); page.inputRejectReason({ detail: { value: '错误资料' } })
+    const pending = page.submitReject()
+    if (stage !== 'confirmation') { modal.success({ confirm: true }); await settle() }
+    page.onUnload()
+    page.setData = () => assert.fail('unloaded page must not be updated')
+    if (stage === 'confirmation') modal.success({ confirm: true })
+    else if (stage === 'success') requests[0].resolve({ rejectedCount: 2 })
+    else requests[0].reject(new Error('late error'))
+    await pending
+    assert.equal(requests.length, stage === 'confirmation' ? 0 : 1); assert.equal(errors.length, 0)
+    await page.submitReject()
+  }
+})
 
 test('public POI autofill extracts city, district and a community name from the entrance', () => {
   const fields = communityLocationFields({ latitude: 22.5, longitude: 114, name: '阳光花园（南门）', address: '广东省深圳市南山区某路' })

@@ -4,18 +4,19 @@ const vm = require('node:vm')
 const fs = require('node:fs')
 const path = require('node:path')
 
-function setup() {
+function setup(access) {
   let page, stopped = 0
   const requests = []
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/admin/home/index.js'), 'utf8'), {
     Page: value => { page = value },
     require: () => ({
-      callFunction: (module, action) => new Promise((resolve, reject) => requests.push({ action, resolve, reject })),
-      showError() {}, can: access => access !== false, canVisit: () => true
+      callFunction: (module, action, data) => new Promise((resolve, reject) => requests.push({ module, action, data, resolve, reject })),
+      showError() {}, ...(access ? require('../../miniprogram/utils/adminAccess') : { can: access => access !== false, canVisit: () => true })
     }),
     wx: { stopPullDownRefresh: () => { stopped++ } }
   })
   page.setData = patch => Object.assign(page.data, patch)
+  if (access) page.data.adminAccess = access
   return { page, requests, stopped: () => stopped }
 }
 const answer = (requests, notice = null) => requests.forEach(r => r.resolve(r.action === 'dashboard' ? { orders: {} } : { unreadCount: notice ? 1 : 0, latestUrgent: notice }))
@@ -23,11 +24,12 @@ const answer = (requests, notice = null) => requests.forEach(r => r.resolve(r.ac
 test('returning after completion refreshes and clears alert; pre-navigation response cannot restore it', async () => {
   const { page, requests } = setup()
   const first = page.onShow()
+  const firstBatch = requests.length
   page.onHide()
   const second = page.onShow()
-  answer(requests.slice(2))
+  answer(requests.slice(firstBatch))
   await second
-  answer(requests.slice(0, 2), { orderId: 'completed_order' })
+  answer(requests.slice(0, firstBatch), { orderId: 'completed_order' })
   await first
   assert.equal(page.data.urgentNotice, null)
   assert.equal(page.data.unreadNotificationCount, 0)
@@ -135,6 +137,63 @@ test('appearance customization entry shows outstanding count and clears it after
     const entry = page.data.adminSections.flatMap(section => section.items).find(item => item.url === '/pages/admin/playground-customizations/index')
     assert.equal(entry.pendingCount, count)
   }
+})
+
+const badge = (page, route) => page.data.adminSections.flatMap(group => group.items).find(item => item.url === `/pages/admin/${route}/index`)?.pendingCount
+
+test('community-only permission loads its own count without dashboard or notification access', async () => {
+  const { page, requests } = setup({ permissions: ['communityMap.listAdmin'] })
+  const pending = page.onShow()
+  assert.equal(requests.length, 1)
+  assert.equal(requests[0].module, 'communityMap'); assert.equal(requests[0].action, 'listAdmin')
+  assert.equal(requests[0].data.pendingCountsOnly, true)
+  requests[0].resolve({ pendingApplicationCount: 6 }); await pending
+  assert.equal(badge(page, 'community-map'), 6)
+  assert.equal(page.data.dashboard, null); assert.equal(page.data.unreadNotificationCount, 0)
+})
+
+test('dashboard, mall and community responses preserve both badges in every completion order', async () => {
+  for (const order of [['communityMap', 'adminMall', 'admin'], ['adminMall', 'admin', 'communityMap'],
+    ['admin', 'communityMap', 'adminMall'], ['admin', 'adminMall', 'communityMap'],
+    ['communityMap', 'admin', 'adminMall'], ['adminMall', 'communityMap', 'admin']]) {
+    const { page, requests } = setup({ permissions: ['communityMap.listAdmin', 'adminMall.listOrders', 'admin.dashboard'] })
+    const pending = page.onShow()
+    for (const module of order) {
+      requests.find(r => r.module === module).resolve(module === 'communityMap' ? { pendingApplicationCount: 4 }
+        : module === 'adminMall' ? { pendingCount: 7 } : { pendingReviews: { mallOrders: 99, communityApplications: 99 } })
+      await Promise.resolve(); await Promise.resolve()
+      if (module === 'communityMap' || page.data.communityPendingCount !== null) assert.equal(badge(page, 'community-map'), 4)
+      if (module === 'adminMall' || page.data.mallPendingCount !== null) assert.equal(badge(page, 'mall/orders'), 7)
+    }
+    await pending
+    assert.equal(badge(page, 'community-map'), 4); assert.equal(badge(page, 'mall/orders'), 7)
+    assert.equal(page.data.unreadNotificationCount, 0)
+  }
+})
+
+test('community count refresh, hide, unload and permission loss fence stale responses', async () => {
+  for (const invalidate of ['refresh', 'onHide', 'onUnload', 'permission']) {
+    const { page, requests } = setup({ permissions: ['communityMap.listAdmin'] })
+    const old = page.onShow()
+    if (invalidate === 'refresh') {
+      const fresh = page.refreshHome()
+      requests[1].resolve({ pendingApplicationCount: 2 }); await fresh
+    } else if (invalidate === 'permission') {
+      page.data.adminAccess = { permissions: [] }; await page.refreshHome()
+    } else page[invalidate]()
+    requests[0].resolve({ pendingApplicationCount: 99 }); await old
+    assert.equal(page.data.communityPendingCount, invalidate === 'refresh' ? 2 : null)
+    assert.notEqual(badge(page, 'community-map'), 99)
+  }
+})
+
+test('community request sequences do not invalidate mall queries and stale errors stay silent', async () => {
+  const { page, requests } = setup({ permissions: ['communityMap.listAdmin', 'adminMall.listOrders'] })
+  const pending = page.onShow()
+  const current = page.loadCommunityPending()
+  requests[2].resolve({ pendingApplicationCount: 0 }); await current
+  requests[0].resolve({ pendingCount: 8 }); requests[1].reject(new Error('stale')); await pending
+  assert.equal(badge(page, 'community-map'), 0); assert.equal(badge(page, 'mall/orders'), 8)
 })
 
 test('mall-only administrator sees pending mall order badge without the dashboard permission', async () => {
