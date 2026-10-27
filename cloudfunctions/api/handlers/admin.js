@@ -251,7 +251,8 @@ module.exports = function createHandler(context) {
       const available = Math.round(Number(deposit.availableRefundAmount || 0) * 100)
       const status = safeText(deposit.status).trim()
       const refundStatus = safeText(deposit.refundStatus).trim()
-      return available > 0 || ['paid', 'partially_refunded', 'refund_requested', 'refund_approved'].includes(status) || ['requested', 'approved', 'processing'].includes(refundStatus)
+      const isRefundInFlight = ['refund_requested', 'refund_approved'].includes(status) || ['requested', 'approved', 'processing'].includes(refundStatus)
+      return available > 0 || isRefundInFlight
     })
     if (unsettled) {
       const amount = Number(unsettled.availableRefundAmount || 0).toFixed(2)
@@ -1336,7 +1337,8 @@ module.exports = function createHandler(context) {
             const available = Math.round(Number(deposit.availableRefundAmount || 0) * 100)
             const status = safeText(deposit.status).trim()
             const refundStatus = safeText(deposit.refundStatus).trim()
-            return available > 0 || ['paid', 'partially_refunded', 'refund_requested', 'refund_approved'].includes(status) || ['requested', 'approved', 'processing'].includes(refundStatus)
+            const isRefundInFlight = ['refund_requested', 'refund_approved'].includes(status) || ['requested', 'approved', 'processing'].includes(refundStatus)
+            return available > 0 || isRefundInFlight
           })
           const hasUnsettledDeposit = Boolean(unsettledDeposit)
 

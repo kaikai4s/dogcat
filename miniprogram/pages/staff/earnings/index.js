@@ -178,6 +178,16 @@ Page({
       .catch(showError)
   },
 
+  fillAllAvailable() {
+    const available = Number(this.data.balance?.availableAmount || this.data.balance?.available || 0)
+    if (available <= 0) {
+      return wx.showToast({ title: '暂无可提现余额', icon: 'none' })
+    }
+    const maxTransfer = Number(this.data.balance?.wechatTransferQuota?.singleMaxAmount || 200)
+    const target = Math.min(available, maxTransfer)
+    this.setData({ amount: String(Number(target.toFixed(2))) })
+  },
+
   input(e) {
     this.setData({ [e.currentTarget.dataset.field]: e.detail.value })
   },
@@ -234,6 +244,12 @@ Page({
         if (String(error.message || error.errMsg || error).includes('当日全平台转帐额度受限')) {
           wx.showModal({ title: '暂不可提现', content: '当日全平台转帐额度受限,请明日再申请', showCancel: false })
           this.load()
+        } else if (String(error.message || error.errMsg || error).includes('提现金额需按收益记录整笔申请')) {
+          wx.showModal({
+            title: '提现金额提示',
+            content: '提现需对应单笔或多笔订单整笔合并打款。建议点击【全部提现】或根据可提现收益明细调整提现金额。',
+            showCancel: false
+          })
         } else {
           showError(error)
         }

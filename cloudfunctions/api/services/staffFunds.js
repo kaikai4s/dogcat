@@ -108,7 +108,7 @@ module.exports = function createService(context) {
   }
   async function exitCheck(openid) {
     const orders = await db.collection('orders').where({ staffOpenid: openid,
-      status: db.command.in(['paid', 'assigned', 'on_the_way', 'in_service', 'day_completed']) }).limit(1).get()
+      status: db.command.in(['paid', 'assigned', 'on_the_way', 'in_service', 'day_completed', 'pending_staff_confirm', 'service_suspended', 'refund_pending']) }).limit(1).get()
     if (orders.data.length) throw new Error('尚有未完成订单，暂不可退出退款')
     const incidents = await db.collection('order_incidents').where({ staffOpenid: openid,
       status: db.command.in(['open', 'investigating', 'triaging', 'waiting_client', 'waiting_staff', 'processing', 'refund_pending']) }).limit(1).get()
@@ -144,7 +144,15 @@ module.exports = function createService(context) {
       if (deposit.refundStatus === 'requested') return { success: true, status: deposit.status }
       if (!['paid', 'partially_refunded'].includes(deposit.status) || !balances(deposit).available) throw new Error('暂无可退还保证金')
       const profile = await profileFor(tx, deposit)
-      const user = (await tx.collection('users').doc(deposit.staffUserId).get().catch(() => ({ data: null }))).data
+      const staffUserId = deposit.staffUserId || (profile && profile.userId)
+      let user = null
+      if (staffUserId) {
+        user = (await tx.collection('users').doc(staffUserId).get().catch(() => ({ data: null }))).data
+      }
+      if (!user && (deposit.staffOpenid || openid)) {
+        const userRes = await tx.collection('users').where({ openid: deposit.staffOpenid || openid }).limit(1).get().catch(() => ({ data: [] }))
+        user = userRes.data && userRes.data[0]
+      }
       if (!user || user.openid !== openid) throw new Error('用户归属不匹配')
       await exitCheck(openid)
       const time = now()
@@ -510,7 +518,21 @@ module.exports = function createService(context) {
       try {
         wxRes = await wechatRequest('POST', '/v3/refund/domestic/refunds', refundBody, payConfig)
       } catch (err) {
-        throw new Error(`微信原路退款发起失败：${err.message || err}`)
+        const errMsg = String(err && (err.message || err.errMsg || err) || '').toLowerCase()
+        const isDuplicateOrExists = /already|exist|duplicate|out_trade_no_used|trade_state_error|已退款|已存在|重复/.test(errMsg)
+        let recovered = false
+        if (isDuplicateOrExists) {
+          try {
+            const queryRes = await wechatRequest('GET', `/v3/refund/domestic/refunds/out-refund-no/${encodeURIComponent(refundNo)}`, null, payConfig)
+            if (queryRes && (queryRes.status === 'SUCCESS' || queryRes.status === 'PROCESSING' || queryRes.refund_id)) {
+              wxRes = queryRes
+              recovered = true
+            }
+          } catch (_) {}
+        }
+        if (!recovered) {
+          throw new Error(`微信原路退款发起失败：${err.message || err}`)
+        }
       }
       paymentReference = (wxRes && (wxRes.refund_id || wxRes.out_refund_no)) || refundNo
       confirmationSource = 'auto_wechat'

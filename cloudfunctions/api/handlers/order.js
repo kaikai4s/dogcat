@@ -646,7 +646,16 @@ module.exports = function createHandler(context) {
           const rate = Number(settings.settlement && settings.settlement.staffCommissionRate !== undefined ? settings.settlement.staffCommissionRate : 0.7)
           const staffEarningAmount = Math.round(retainedAmount * rate * 100) / 100
           if (staffEarningAmount > 0) {
-            await ensureStaffEarning(order, time, { overrideAmount: staffEarningAmount, reason: '多天订单取消剩余服务，结算已履约天数收益' }).catch((e) => console.error('[cancelOrder] staff earning settlement error:', e))
+            const existingEarning = (await db.collection('staff_earnings').where({ orderId: data.orderId }).limit(1).get().catch(() => ({ data: [] })))?.data?.[0]
+            if (existingEarning && ['withdrawing', 'withdrawn', 'frozen'].includes(existingEarning.status)) {
+              console.warn('[cancelOrder] staff earning is already withdrawing/withdrawn/frozen, skip override:', existingEarning._id)
+            } else if (existingEarning && ['pending', 'available'].includes(existingEarning.status)) {
+              await db.collection('staff_earnings').doc(existingEarning._id).update({
+                data: { amount: staffEarningAmount, deductReason: '多天订单取消剩余服务结算已履约天数', updatedAt: time }
+              }).catch((e) => console.error('[cancelOrder] staff earning update error:', e))
+            } else if (!existingEarning) {
+              await ensureStaffEarning(order, time, { overrideAmount: staffEarningAmount, reason: '多天订单取消剩余服务，结算已履约天数收益' }).catch((e) => console.error('[cancelOrder] staff earning settlement error:', e))
+            }
           }
         }
       }

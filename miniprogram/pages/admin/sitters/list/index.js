@@ -566,7 +566,15 @@ Page({
       if (error.code === 'STAFF_SETTLEMENT_REVIEW_REQUIRED') wx.removeStorageSync(storageKey)
       if (!this._settlementPageUnloaded) {
         this.setData({ settlementResumeStaffId: error.code === 'STAFF_SETTLEMENT_REVIEW_REQUIRED' ? '' : staffProfileId })
-        showError(error)
+        if (operation && operation.batchIndex > 0) {
+          wx.showModal({
+            title: '部分转账已发起',
+            content: `前 ${operation.batchIndex} 笔转账已成功发起；后续批次因提示“${error.message || '网络或商户额度受限'}”暂停。未完成的批次可在财务管理处理或稍后点击继续结清，不会重复打款。`,
+            showCancel: false
+          })
+        } else {
+          showError(error)
+        }
       }
     } finally {
       if (!this._settlementPageUnloaded) {
