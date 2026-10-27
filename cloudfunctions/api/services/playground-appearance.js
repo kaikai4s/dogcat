@@ -22,6 +22,7 @@ module.exports=function createAppearance(context) {
   function view(row) {
     return {_id:row._id,targetType:row.targetType,targetId:row.targetId,targetName:row.targetName,ownerName:row.ownerName,
       status:row.status,photos:row.photos||[],remark:row.remark||'',reason:row.reason||'',createdAt:row.createdAt,
+      submittedAt:row.submittedAt||row.createdAt,
       updatedAt:row.updatedAt,appearance:row.appearance||null,
       appearanceDisabled:Boolean(row.appearanceDisabled || (row.appearance && row.appearance.disabled)),
       appearanceDisabledReason:row.appearanceDisabledReason || (row.appearance && row.appearance.disabledReason) || ''}
@@ -110,8 +111,9 @@ module.exports=function createAppearance(context) {
     // 自然月频次上限：每个自然月最多可提交申请1次（月度熔断）
     const monthStartMs = getBeijingMonthStart(nowMs)
     const monthConsumedRequests = consumedRequests.filter(r => {
-      const created = typeof r.createdAt === 'number' ? r.createdAt : new Date(r.createdAt || 0).getTime()
-      return created >= monthStartMs
+      const submitTime = r.submittedAt || r.createdAt
+      const submitMs = typeof submitTime === 'number' ? submitTime : new Date(submitTime || 0).getTime()
+      return submitMs >= monthStartMs
     })
 
     const monthQuota = 1
@@ -227,8 +229,9 @@ module.exports=function createAppearance(context) {
         throw new Error(eligibility.unavailableReason||'当前暂不符合专属形象定制申请条件')
       }
       await target(tx,openid,current.targetType,current.targetType==='pet'?current.targetId:'')
-      await tx.collection(REQUESTS).doc(id).update({data:{photos,remark,status:'pending',updatedAt:now()}})
-      return view({...current,photos,remark,status:'pending',updatedAt:now()})
+      const stamp=now()
+      await tx.collection(REQUESTS).doc(id).update({data:{photos,remark,status:'pending',submittedAt:stamp,updatedAt:stamp}})
+      return view({...current,photos,remark,status:'pending',submittedAt:stamp,updatedAt:stamp})
     })
   }
   async function list(openid,data,admin=false) {

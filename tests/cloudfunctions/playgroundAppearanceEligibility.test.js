@@ -250,6 +250,7 @@ test('Playground Appearance: eligibility rules (client 3 orders, staff 1 order, 
   // 模拟猫咪定制提交
   const catReq = requests.find((r) => r._id === draftCat._id)
   catReq.status = 'pending'
+  catReq.submittedAt = nowMs
 
   // 2. 宠托师资格验证（宠托师同样需要每完成3次履约才获得1次机会）：
   // 宠托师履约 0 单且客户 0 单时：不通过
