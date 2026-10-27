@@ -157,8 +157,10 @@ test('Playground Appearance: eligibility rules (client 3 orders, staff 1 order, 
   const opt1 = await appearanceService.options('openid_client_1')
   assert.strictEqual(opt1.eligibility.canApply, false)
   assert.strictEqual(opt1.eligibility.clientCompletedCount, 0)
-  assert.strictEqual(opt1.eligibility.clientRequiredCount, 3)
-  assert.ok(opt1.eligibility.unavailableReason.includes('需累计完成至少3笔服务订单'))
+  assert.strictEqual(opt1.eligibility.clientEarnedChances, 0)
+  assert.strictEqual(opt1.eligibility.availableChances, 0)
+  assert.strictEqual(opt1.eligibility.clientNextChanceNeeded, 3)
+  assert.ok(opt1.eligibility.unavailableReason.includes('每完成3笔服务订单可获1次定制机会'))
 
   // 创建草稿直接拦截
   await assert.rejects(
@@ -168,18 +170,22 @@ test('Playground Appearance: eligibility rules (client 3 orders, staff 1 order, 
     /未达到专属形象定制申请条件/
   )
 
-  // 客户完成 2 单仍不通过
+  // 客户完成 2 单仍不通过（还差 1 单）
   orders.push({ _id: 'o1', clientOpenid: 'openid_client_1', status: 'completed' })
   orders.push({ _id: 'o2', clientOpenid: 'openid_client_1', status: 'completed' })
   const opt2 = await appearanceService.options('openid_client_1')
   assert.strictEqual(opt2.eligibility.canApply, false)
   assert.strictEqual(opt2.eligibility.clientCompletedCount, 2)
+  assert.strictEqual(opt2.eligibility.availableChances, 0)
+  assert.strictEqual(opt2.eligibility.clientNextChanceNeeded, 1)
 
-  // 客户完成第 3 单：获得资格！
+  // 客户完成第 3 单：获得第 1 次机会！
   orders.push({ _id: 'o3', clientOpenid: 'openid_client_1', status: 'completed' })
   const opt3 = await appearanceService.options('openid_client_1')
   assert.strictEqual(opt3.eligibility.canApply, true)
   assert.strictEqual(opt3.eligibility.clientCompletedCount, 3)
+  assert.strictEqual(opt3.eligibility.clientEarnedChances, 1)
+  assert.strictEqual(opt3.eligibility.availableChances, 1)
   assert.strictEqual(opt3.eligibility.monthRemaining, 1)
 
   // 客户发起定制角色草稿
@@ -187,22 +193,63 @@ test('Playground Appearance: eligibility rules (client 3 orders, staff 1 order, 
   assert.ok(draftChar._id)
   assert.strictEqual(draftChar.targetType, 'character')
 
-  // 模拟客户提交申请
+  // 模拟客户提交申请（进入 pending，消耗该次机会）
   const submitReq = requests.find((r) => r._id === draftChar._id)
   submitReq.status = 'pending'
 
-  // 本月已经有 pending 申请，本月再次申请应被月度频次限制拦截
+  // 核心规则验证 A：本月已消耗额度，当月再次申请立即被月度限额（每月限1次）拦截
   const optMonthExceeded = await appearanceService.options('openid_client_1')
   assert.strictEqual(optMonthExceeded.eligibility.canApply, false)
+  assert.strictEqual(optMonthExceeded.eligibility.totalEarnedChances, 1)
+  assert.strictEqual(optMonthExceeded.eligibility.totalUsedChances, 1)
+  assert.strictEqual(optMonthExceeded.eligibility.availableChances, 0)
   assert.strictEqual(optMonthExceeded.eligibility.monthRemaining, 0)
-  assert.ok(optMonthExceeded.eligibility.unavailableReason.includes('每个自然月限申请1次形象定制'))
 
   await assert.rejects(
     async () => {
       await appearanceService.createDraft('openid_client_1', { targetType: 'pet', petId: 'pet_cat_1' })
     },
-    /每个自然月限申请1次形象定制/
+    /已全部使用/
   )
+
+  // 核心规则验证 B：跨月后（到了11月），如果未完成新的3单，不能“因为之前完成过3单就每月白嫖1次机会”！
+  nowMs = new Date('2026-11-05T12:00:00+08:00').getTime()
+  const optNextMonth = await appearanceService.options('openid_client_1')
+  // 11月份虽然月度限额恢复为1，但因总机会只有1次且已用完，可用机会仍为0，绝对不可申请！
+  assert.strictEqual(optNextMonth.eligibility.monthRemaining, 1)
+  assert.strictEqual(optNextMonth.eligibility.availableChances, 0)
+  assert.strictEqual(optNextMonth.eligibility.canApply, false)
+  assert.ok(optNextMonth.eligibility.unavailableReason.includes('已全部使用'))
+
+  await assert.rejects(
+    async () => {
+      await appearanceService.createDraft('openid_client_1', { targetType: 'pet', petId: 'pet_cat_1' })
+    },
+    /已全部使用/
+  )
+
+  // 核心规则验证 C：客户在11月又完成了3单（累计达6单），获得第2次定制机会！
+  orders.push({ _id: 'o4', clientOpenid: 'openid_client_1', status: 'completed' })
+  orders.push({ _id: 'o5', clientOpenid: 'openid_client_1', status: 'completed' })
+  orders.push({ _id: 'o6', clientOpenid: 'openid_client_1', status: 'completed' })
+
+  const optEarnSecond = await appearanceService.options('openid_client_1')
+  assert.strictEqual(optEarnSecond.eligibility.clientCompletedCount, 6)
+  assert.strictEqual(optEarnSecond.eligibility.totalEarnedChances, 2)
+  assert.strictEqual(optEarnSecond.eligibility.totalUsedChances, 1)
+  assert.strictEqual(optEarnSecond.eligibility.availableChances, 1)
+  assert.strictEqual(optEarnSecond.eligibility.monthRemaining, 1)
+  assert.strictEqual(optEarnSecond.eligibility.canApply, true)
+
+  // 此时可以为宠物猫咪发起定制草稿！
+  const draftCat = await appearanceService.createDraft('openid_client_1', { targetType: 'pet', petId: 'pet_cat_1' })
+  assert.ok(draftCat._id)
+  assert.strictEqual(draftCat.targetType, 'pet')
+  assert.strictEqual(draftCat.targetName, '咪咪')
+
+  // 模拟猫咪定制提交
+  const catReq = requests.find((r) => r._id === draftCat._id)
+  catReq.status = 'pending'
 
   // 2. 宠托师资格验证：
   // 宠托师履约 0 单且客户 0 单时：不通过
@@ -210,13 +257,16 @@ test('Playground Appearance: eligibility rules (client 3 orders, staff 1 order, 
   assert.strictEqual(optStaff0.eligibility.canApply, false)
   assert.strictEqual(optStaff0.eligibility.isStaff, true)
   assert.strictEqual(optStaff0.eligibility.staffCompletedCount, 0)
-  assert.strictEqual(optStaff0.eligibility.staffRequiredCount, 1)
+  assert.strictEqual(optStaff0.eligibility.staffEarnedChances, 0)
+  assert.strictEqual(optStaff0.eligibility.availableChances, 0)
 
-  // 宠托师完成 1 单履约：立即获得资格！
+  // 宠托师完成 1 单履约：获得 1 次机会！
   orders.push({ _id: 'o_staff_1', staffOpenid: 'openid_staff_1', status: 'completed' })
   const optStaff1 = await appearanceService.options('openid_staff_1')
   assert.strictEqual(optStaff1.eligibility.canApply, true)
   assert.strictEqual(optStaff1.eligibility.staffCompletedCount, 1)
+  assert.strictEqual(optStaff1.eligibility.staffEarnedChances, 1)
+  assert.strictEqual(optStaff1.eligibility.availableChances, 1)
   assert.strictEqual(optStaff1.eligibility.monthRemaining, 1)
 
   // 宠托师为宠物旺财申请定制草稿
@@ -224,6 +274,24 @@ test('Playground Appearance: eligibility rules (client 3 orders, staff 1 order, 
   assert.ok(draftPet._id)
   assert.strictEqual(draftPet.targetType, 'pet')
   assert.strictEqual(draftPet.targetName, '旺财')
+
+  // 模拟宠托师提交
+  const petReq = requests.find((r) => r._id === draftPet._id)
+  petReq.status = 'pending'
+
+  // 宠托师已消耗机会后，可用机会归零，必须再次履约才能再获得机会
+  const optStaffUsed = await appearanceService.options('openid_staff_1')
+  assert.strictEqual(optStaffUsed.eligibility.availableChances, 0)
+  assert.strictEqual(optStaffUsed.eligibility.canApply, false)
+  assert.ok(optStaffUsed.eligibility.unavailableReason.includes('已全部使用'))
+
+  // 宠托师再完成1单履约，可用机会再次变为 1
+  orders.push({ _id: 'o_staff_2', staffOpenid: 'openid_staff_1', status: 'completed' })
+  const optStaffSecond = await appearanceService.options('openid_staff_1')
+  assert.strictEqual(optStaffSecond.eligibility.staffCompletedCount, 2)
+  assert.strictEqual(optStaffSecond.eligibility.staffEarnedChances, 2)
+  assert.strictEqual(optStaffSecond.eligibility.totalUsedChances, 1)
+  assert.strictEqual(optStaffSecond.eligibility.availableChances, 1)
 
   // 3. 形象作废与重新启用验证
   // 模拟宠物旺财已绑定完成生效的专属形象

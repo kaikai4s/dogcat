@@ -3,20 +3,28 @@
   <view class="eligibility-card" wx:if="{{eligibility}}">
     <view class="eligibility-header">
       <view class="eligibility-title">专属定制资格与每月限额</view>
-      <text class="eligibility-badge {{eligibility.canApply ? 'badge-ok' : 'badge-wait'}}">{{eligibility.canApply ? '符合申请条件' : '暂未达标'}}</text>
+      <text class="eligibility-badge {{eligibility.canApply ? 'badge-ok' : 'badge-wait'}}">{{eligibility.canApply ? '可申请' : '暂不可申请'}}</text>
+    </view>
+    <view class="chances-banner">
+      <view class="chances-main">
+        <text class="chances-label">剩余定制机会</text>
+        <text class="chances-num">{{eligibility.availableChances}}</text>
+        <text class="chances-unit">次</text>
+      </view>
+      <text class="chances-detail">累计获得 {{eligibility.totalEarnedChances}} 次 · 已使用 {{eligibility.totalUsedChances}} 次</text>
     </view>
     <view class="eligibility-rules">
-      <view class="rule-item {{eligibility.clientQualified ? 'rule-met' : ''}}">
-        <text class="rule-icon">{{eligibility.clientQualified ? '✓' : '•'}}</text>
-        <text class="rule-text">宠物主累计服务完单 ≥3 笔（当前：{{eligibility.clientCompletedCount}}/3单）</text>
+      <view class="rule-item {{eligibility.clientEarnedChances > 0 ? 'rule-met' : ''}}">
+        <text class="rule-icon">{{eligibility.clientEarnedChances > 0 ? '✓' : '•'}}</text>
+        <text class="rule-text">客户完单：每完成3单获1次机会（累计完单{{eligibility.clientCompletedCount}}笔，已获{{eligibility.clientEarnedChances}}次；当前进度{{eligibility.clientRemainder}}/3单，还差{{eligibility.clientNextChanceNeeded}}单可再得1次）</text>
       </view>
-      <view class="rule-item {{eligibility.staffQualified ? 'rule-met' : ''}}" wx:if="{{eligibility.isStaff}}">
-        <text class="rule-icon">{{eligibility.staffQualified ? '✓' : '•'}}</text>
-        <text class="rule-text">宠托师完成服务履约 ≥1 笔（当前：{{eligibility.staffCompletedCount}}/1单）</text>
+      <view class="rule-item {{eligibility.staffEarnedChances > 0 ? 'rule-met' : ''}}" wx:if="{{eligibility.isStaff}}">
+        <text class="rule-icon">{{eligibility.staffEarnedChances > 0 ? '✓' : '•'}}</text>
+        <text class="rule-text">宠托师履约：每完成1次服务获1次机会（累计履约{{eligibility.staffCompletedCount}}笔，获得{{eligibility.staffEarnedChances}}次）</text>
       </view>
       <view class="rule-item {{eligibility.monthRemaining > 0 ? 'rule-met' : 'rule-warn'}}">
         <text class="rule-icon">{{eligibility.monthRemaining > 0 ? '✓' : '!'}}</text>
-        <text class="rule-text">自然月度申请额度：{{eligibility.monthRemaining > 0 ? '本月剩余 1 次（角色或宠物任选）' : '本月额度已使用，下月1日恢复'}}</text>
+        <text class="rule-text">月度频次限额：每个自然月最多可提交 1 次（{{eligibility.monthRemaining > 0 ? '本月尚未使用，当前可提交 1 次' : '本月已提交过 1 次，剩余机会可在下月1日使用'}}）</text>
       </view>
     </view>
     <view class="eligibility-tip" wx:if="{{!eligibility.canApply}}">💡 {{eligibility.unavailableReason}}</view>

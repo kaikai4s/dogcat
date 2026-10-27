@@ -35,11 +35,17 @@ textarea { box-sizing: border-box; width: 100%; height: 180rpx; margin-top: 18rp
 .more-button { margin-top: 24rpx; }
 
 .eligibility-card { margin-bottom: 24rpx; padding: 26rpx 28rpx; border-radius: 28rpx; background: #fbfdf7; border: 2rpx solid #e3ebd8; }
-.eligibility-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16rpx; }
+.eligibility-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14rpx; }
 .eligibility-title { font-size: 27rpx; font-weight: 700; color: #364e3b; }
 .eligibility-badge { font-size: 21rpx; padding: 4rpx 14rpx; border-radius: 12rpx; font-weight: 600; }
 .badge-ok { background: #e6f2dc; color: #4e7a30; }
 .badge-wait { background: #fbeee5; color: #b45309; }
+.chances-banner { display: flex; flex-direction: column; gap: 6rpx; margin-bottom: 16rpx; padding: 18rpx 22rpx; border-radius: 20rpx; background: #f1f6ea; }
+.chances-main { display: flex; align-items: baseline; gap: 8rpx; }
+.chances-label { font-size: 24rpx; color: #486142; font-weight: 600; }
+.chances-num { font-size: 40rpx; font-weight: 800; color: #2d5526; line-height: 1; }
+.chances-unit { font-size: 24rpx; color: #2d5526; font-weight: 600; }
+.chances-detail { font-size: 21rpx; color: #76876e; }
 .eligibility-rules { display: flex; flex-direction: column; gap: 10rpx; font-size: 23rpx; color: #617359; line-height: 1.5; }
 .rule-item { display: flex; align-items: flex-start; gap: 10rpx; }
 .rule-icon { font-weight: bold; }
