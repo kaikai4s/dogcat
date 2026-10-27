@@ -20,12 +20,16 @@
     <view class="notice-main">
       <view class="notice-title">
         <text class="remix-icon {{depositNotice.isRepay ? 'ri-alarm-warning-fill' : 'ri-shield-keyhole-fill'}} notice-icon"></text>
-        <text>{{depositNotice.title || '未缴纳履约保证金'}}</text>
+        <text class="notice-title-text">{{depositNotice.title || (depositNotice.isRepay ? '要求重新足额缴纳保证金' : '未缴纳履约保证金')}}</text>
         <text class="deposit-amount-tag" wx:if="{{depositNotice.amount}}">需缴纳 ¥{{depositNotice.amount}}</text>
       </view>
-      <view class="notice-desc">{{depositNotice.message || ('平台已开启履约保证金（¥' + depositNotice.amount + '），未缴纳暂不可抢单或被指定接单，请先缴纳。')}}</view>
+      <view class="deposit-reason-box" wx:if="{{depositNotice.isRepay && (depositNotice.reason || depositNotice.repayReason)}}">
+        <text class="deposit-reason-label">原因：</text>
+        <text class="deposit-reason-text">{{depositNotice.reason || depositNotice.repayReason}}</text>
+      </view>
+      <view class="notice-desc">{{depositNotice.message || (depositNotice.isRepay ? '足额缴纳后即可恢复接单与抢单资格。' : '未缴纳履约保证金暂无法抢单与被指定接单，请尽快完成缴纳。')}}</view>
     </view>
-    <button class="notice-btn deposit-btn" bindtap="goDeposit">去缴纳</button>
+    <button class="notice-btn deposit-btn" bindtap="goDeposit">{{depositNotice.isRepay ? '去补缴' : '去缴纳'}}</button>
   </view>
 
   <view class="notice-card warning-notice" wx:if="{{missingAddressNotice}}">

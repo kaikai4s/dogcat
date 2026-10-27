@@ -546,9 +546,10 @@ module.exports = function createHandler(context) {
           amount: depositConfig.amount,
           title: (profile.requireDepositRepay === true || profile.depositStatus === 'supplement_required' || profile.depositStatus === 'forfeited') ? '要求重新足额缴纳保证金' : '未缴纳履约保证金',
           reason: profile.requireDepositRepayReason || '',
+          repayReason: profile.requireDepositRepayReason || '',
           message: (profile.requireDepositRepay === true || profile.depositStatus === 'supplement_required' || profile.depositStatus === 'forfeited')
-            ? `平台要求重新足额缴纳履约保证金（¥${depositConfig.amount}）。原因：${profile.requireDepositRepayReason || '保证金余额不足或存在违规出险'}。请先完成足额缴纳后继续接单。`
-            : `平台已开启宠托师履约保证金（¥${depositConfig.amount}），请先完成缴纳后再开始抢单/接单。`
+            ? `平台要求重新足额缴纳履约保证金，足额缴纳后即可恢复接单资格。`
+            : `平台已开启宠托师履约保证金，请先完成缴纳后再开始抢单/接单。`
         } : null
       }
     }
