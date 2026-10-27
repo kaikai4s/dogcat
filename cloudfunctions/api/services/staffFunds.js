@@ -27,18 +27,36 @@ module.exports = function createService(context) {
     money(requestedAmount, true)
     return db.runTransaction(async tx => {
       const profile = await profileFor(tx, { staffOpenid: user.openid, staffProfileId: snapshot._id })
-      if (profile.auditStatus !== 'approved' || ['requested', 'approved', 'exited'].includes(profile.exitStatus)) throw new Error('当前资料状态不支持缴纳保证金')
+      if (profile.auditStatus !== 'approved') throw new Error('资料审核通过后方可缴纳保证金')
       const candidates = (await db.collection('staff_deposits').where({ staffOpenid: user.openid }).orderBy('createdAt', 'desc').limit(2).get()).data
       let deposit = profile.currentDepositId ? await optional(tx, 'staff_deposits', profile.currentDepositId) : null
       if (!deposit && candidates[0]) deposit = await optional(tx, 'staff_deposits', candidates[0]._id)
       if (deposit && deposit.staffOpenid !== user.openid) throw new Error('保证金归属不匹配')
+
+      const isExitPending = ['requested', 'approved'].includes(profile.exitStatus) && deposit && ['refund_requested', 'refund_approved'].includes(deposit.status)
+      if (isExitPending) throw new Error('保证金退还流程处理中，暂不可缴纳保证金')
+
       for (const candidate of candidates) {
         if (deposit && candidate._id === deposit._id) continue
         const other = await optional(tx, 'staff_deposits', candidate._id)
-        if (other && other.status === 'unpaid') throw new Error('存在多笔保证金记录，请先对账')
+        if (other && other.status === 'unpaid') {
+          if (!deposit) {
+            deposit = other
+          } else {
+            await tx.collection('staff_deposits').doc(other._id).update({
+              data: { status: 'superseded', statusText: '已失效', updatedAt: now() }
+            })
+          }
+        }
       }
       const repeat = deposit && clientRequestId && deposit.clientRequestId === clientRequestId
-      const needsRepay = profile.requireDepositRepay === true || ['supplement_required', 'forfeited'].includes(profile.depositStatus) || deposit?.status === 'forfeited'
+      const isRefunded = profile.depositStatus === 'refunded' || deposit?.status === 'refunded'
+      const needsRepay = profile.requireDepositRepay === true ||
+        ['supplement_required', 'forfeited', 'refunded'].includes(profile.depositStatus) ||
+        ['forfeited', 'refunded'].includes(deposit?.status) ||
+        isRefunded ||
+        (deposit && Number(deposit.availableRefundAmount || 0) <= 0 && Number(deposit.paidAmount || 0) > 0)
+
       if (deposit && deposit.status !== 'unpaid' && !(repeat && deposit.status === 'paid')) {
         if (!needsRepay || ['refund_requested', 'refund_approved'].includes(deposit.status)) throw new Error('您已足额缴纳保证金或记录正在处理中，无需重复缴纳')
         deposit = null
@@ -52,11 +70,28 @@ module.exports = function createService(context) {
           clientRequestId, createdAt: time, updatedAt: time }
         const { _id, ...value } = deposit
         await tx.collection('staff_deposits').doc(_id).set({ data: value })
+      } else if (deposit.status === 'unpaid' && money(deposit.amount, true) !== money(requestedAmount, true)) {
+        const newAmount = money(requestedAmount, true) / 100
+        await tx.collection('staff_deposits').doc(deposit._id).update({ data: { amount: newAmount, updatedAt: time } })
+        deposit.amount = newAmount
       }
       const payments = (await db.collection('payments').where({ orderId: deposit._id, targetType: 'staff_deposit' }).limit(2).get()).data
-      if (payments.length > 1) throw new Error('保证金支付记录重复，请先对账')
+      if (payments.length > 1) {
+        for (let i = 1; i < payments.length; i++) {
+          await tx.collection('payments').doc(payments[i]._id).update({ data: { status: 'superseded', updatedAt: time } })
+        }
+      }
       let payment = payments[0] ? await optional(tx, 'payments', payments[0]._id) : null
-      if (payment && (payment.channel !== channel || money(payment.amount, true) !== money(deposit.amount, true) || !['pending', 'success'].includes(payment.status))) throw new Error('保证金支付状态异常，请先对账')
+      if (payment && payment.status === 'pending' && (payment.channel !== channel || money(payment.amount, true) !== money(deposit.amount, true))) {
+        payment.channel = channel
+        payment.amount = deposit.amount
+        payment.prepayId = ''
+        await tx.collection('payments').doc(payment._id).update({
+          data: { channel, amount: deposit.amount, prepayId: '', updatedAt: time }
+        })
+      } else if (payment && !['pending', 'success'].includes(payment.status)) {
+        payment = null
+      }
       if (!payment) {
         payment = { _id: key('deposit_payment', deposit._id), orderId: deposit._id, depositId: deposit._id,
           targetType: 'staff_deposit', openid: user.openid, paymentNo: `P${crypto.randomBytes(15).toString('hex')}`,
@@ -363,11 +398,23 @@ module.exports = function createService(context) {
       if (!profile.currentDepositId || profile.currentDepositId === depositId) await tx.collection('staff_profiles').doc(profile._id).update({ data: {
         depositStatus: 'paid',
         depositRequired: true,
+        exitStatus: 'none',
         requireDepositRepay: false,
         requireDepositRepayReason: '',
         requireDepositRepayAt: '',
         updatedAt: time
       } })
+      const staffUserId = deposit.staffUserId || profile.userId
+      if (staffUserId) {
+        const staffUser = (await tx.collection('users').doc(staffUserId).get().catch(() => ({ data: null }))).data
+        if (staffUser) {
+          const roles = Array.isArray(staffUser.roles) ? [...staffUser.roles] : ['client']
+          if (!roles.includes('staff')) {
+            roles.push('staff')
+            await tx.collection('users').doc(staffUser._id).update({ data: { roles, updatedAt: time } })
+          }
+        }
+      }
       await depositEvent(tx, key(depositId, 'paid'), deposit, deposit.staffOpenid, 'pay', amount, '缴纳宠托师入驻保证金', time)
       await tx.collection('finance_logs').doc(key(depositId, 'paid')).set({ data: {
         action: 'deposit_paid', targetType: 'staff_deposit', targetId: depositId, staffOpenid: deposit.staffOpenid,

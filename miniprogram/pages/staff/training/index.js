@@ -138,9 +138,14 @@ Page({
 
   async payDeposit() {
     const state = this.data.depositState
-    if (this.data.depositBusy || this.data.depositLoading || !state || !state.canPay) return
+    if (this.data.depositBusy || this.data.depositLoading || !state || !state.canPay) {
+      if (state && !state.canPay) {
+        wx.showToast({ title: '当前状态无需缴纳或暂不可缴', icon: 'none' })
+      }
+      return
+    }
     if (!this.data.depositAgreed) {
-      wx.showToast({ title: '请先阅读并同意规则', icon: 'none' })
+      wx.showToast({ title: '请先阅读并勾选保证金缴纳规则', icon: 'none' })
       return
     }
     this.setData({ depositBusy: true })
@@ -149,14 +154,26 @@ Page({
     try {
       const result = await callFunction('staff', 'createDepositPayment', { agreed: true })
       wx.hideLoading()
-      if (!result.paid) {
+      if (result.paid) {
+        paymentSubmitted = true
+      } else {
         if (!result.payParams) throw new Error('支付暂不可用，请稍后重试或联系平台')
         await new Promise((resolve, reject) => wx.requestPayment({ ...result.payParams, success: resolve, fail: reject }))
+        paymentSubmitted = true
       }
-      paymentSubmitted = true
-      wx.showLoading({ title: '核实支付结果...', mask: true })
+      if (!result.paid) {
+        wx.showLoading({ title: '核实支付结果...', mask: true })
+      }
     } catch (error) {
-      showError(error)
+      wx.hideLoading()
+      const errMsg = (error && (error.message || error.errMsg)) || ''
+      if (!errMsg.includes('cancel') && !errMsg.includes('canceled')) {
+        wx.showModal({
+          title: '缴纳保证金失败',
+          content: errMsg || '发起支付失败，请稍后重试',
+          showCancel: false
+        })
+      }
     } finally {
       wx.hideLoading()
       let confirmed = await this.loadDeposit()
@@ -165,7 +182,9 @@ Page({
         if (!this._unloaded) confirmed = await this.loadDeposit()
       }
       if (!this._unloaded) {
-        if (paymentSubmitted) wx.showToast({ title: confirmed?.deposit?.status === 'paid' ? '保证金已缴纳' : '结果确认中，请刷新状态，勿重复支付', icon: 'none' })
+        if (paymentSubmitted) {
+          wx.showToast({ title: confirmed?.deposit?.status === 'paid' ? '保证金已缴纳' : '结果确认中，请刷新状态，勿重复支付', icon: 'none' })
+        }
         this.load()
         this.setData({ depositBusy: false })
       }

@@ -1743,7 +1743,8 @@ module.exports = function createHandler(context) {
         delete deposit.forfeitImages
       }
       const auditApproved = profile && profile.auditStatus === 'approved'
-      const needsRepay = Boolean(profile && (profile.requireDepositRepay === true || profile.depositStatus === 'supplement_required' || profile.depositStatus === 'forfeited' || (deposit && deposit.status === 'forfeited')))
+      const isRefunded = Boolean((profile && profile.depositStatus === 'refunded') || (deposit && deposit.status === 'refunded'))
+      const needsRepay = Boolean(profile && (profile.requireDepositRepay === true || profile.depositStatus === 'supplement_required' || profile.depositStatus === 'forfeited' || (deposit && deposit.status === 'forfeited') || isRefunded))
       const canPay = Boolean(config.enabled && config.amount > 0 && auditApproved && (!deposit || deposit.status === 'unpaid' || needsRepay))
       const canRequestRefund = Boolean(deposit && ['paid', 'partially_refunded'].includes(deposit.status) && (deposit.availableRefundAmount || 0) > 0 && deposit.refundStatus !== 'requested')
 
@@ -1797,10 +1798,12 @@ module.exports = function createHandler(context) {
       if (deposit.status === 'paid') return { paid: true, depositId: deposit._id }
       if (paymentMode === 'mock') {
         await markStaffDepositPaid(deposit._id, { paymentNo: paymentRecord.paymentNo, channel: 'mock' })
-        return { paid: true, depositId: deposit._id }
+        return { paid: true, depositId: deposit._id, isMock: true }
       } else {
         const configWechat = getWechatPayConfig(settings)
-        if (paymentRecord.prepayId) {
+        const PREPAY_TTL_MS = 90 * 60 * 1000
+        const isPrepayExpired = paymentRecord.updatedAt && (Date.now() - new Date(paymentRecord.updatedAt).getTime() > PREPAY_TTL_MS)
+        if (paymentRecord.prepayId && !isPrepayExpired) {
           return {
             paid: false,
             depositId: deposit._id,
