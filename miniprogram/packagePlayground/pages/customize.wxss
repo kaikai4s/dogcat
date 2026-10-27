@@ -33,3 +33,18 @@ textarea { box-sizing: border-box; width: 100%; height: 180rpx; margin-top: 18rp
 .empty-message, .error-message { padding: 30rpx; font-size: 25rpx; line-height: 1.7; color: #8b967f; text-align: center; }
 .error-message { color: #a16f51; }
 .more-button { margin-top: 24rpx; }
+
+.eligibility-card { margin-bottom: 24rpx; padding: 26rpx 28rpx; border-radius: 28rpx; background: #fbfdf7; border: 2rpx solid #e3ebd8; }
+.eligibility-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16rpx; }
+.eligibility-title { font-size: 27rpx; font-weight: 700; color: #364e3b; }
+.eligibility-badge { font-size: 21rpx; padding: 4rpx 14rpx; border-radius: 12rpx; font-weight: 600; }
+.badge-ok { background: #e6f2dc; color: #4e7a30; }
+.badge-wait { background: #fbeee5; color: #b45309; }
+.eligibility-rules { display: flex; flex-direction: column; gap: 10rpx; font-size: 23rpx; color: #617359; line-height: 1.5; }
+.rule-item { display: flex; align-items: flex-start; gap: 10rpx; }
+.rule-icon { font-weight: bold; }
+.rule-met { color: #3b6b27; font-weight: 500; }
+.rule-warn { color: #b45309; }
+.eligibility-tip { margin-top: 16rpx; padding-top: 14rpx; border-top: 1rpx dashed #dbe5cf; font-size: 22rpx; color: #92632e; line-height: 1.6; }
+.disabled-warning { margin-top: 20rpx; padding: 18rpx; border-radius: 16rpx; color: #a14324; background: #fdede8; font-size: 23rpx; line-height: 1.6; }
+.submit-button[disabled] { background: #bccab4; color: #ffffff; opacity: 0.8; }

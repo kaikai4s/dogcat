@@ -22,7 +22,113 @@ module.exports=function createAppearance(context) {
   function view(row) {
     return {_id:row._id,targetType:row.targetType,targetId:row.targetId,targetName:row.targetName,ownerName:row.ownerName,
       status:row.status,photos:row.photos||[],remark:row.remark||'',reason:row.reason||'',createdAt:row.createdAt,
-      updatedAt:row.updatedAt,appearance:row.appearance||null}
+      updatedAt:row.updatedAt,appearance:row.appearance||null,
+      appearanceDisabled:Boolean(row.appearanceDisabled || (row.appearance && row.appearance.disabled)),
+      appearanceDisabledReason:row.appearanceDisabledReason || (row.appearance && row.appearance.disabledReason) || ''}
+  }
+  function getBeijingMonthStart(nowMs = now()) {
+    const BEIJING_OFFSET_MS = 8 * 3600 * 1000
+    const beijingDate = new Date(nowMs + BEIJING_OFFSET_MS)
+    const year = beijingDate.getUTCFullYear()
+    const month = beijingDate.getUTCMonth()
+    return Date.UTC(year, month, 1) - BEIJING_OFFSET_MS
+  }
+  async function checkAppearanceEligibility(database, openid, nowMs = now()) {
+    if (context.skipEligibilityCheck) {
+      return {
+        canApply: true,
+        hasBaseQualification: true,
+        clientQualified: true,
+        staffQualified: true,
+        clientCompletedCount: 99,
+        clientRequiredCount: 3,
+        isStaff: true,
+        staffCompletedCount: 99,
+        staffRequiredCount: 1,
+        monthQuota: 99,
+        monthUsedCount: 0,
+        monthRemaining: 99,
+        unavailableReason: ''
+      }
+    }
+    const users = (await database.collection('users').where({ openid }).limit(1).get()).data || []
+    const user = users[0] || {}
+    const isStaff = Array.isArray(user.roles) && user.roles.includes('staff')
+
+    let clientCompletedCount = 0
+    try {
+      const cRes = await database.collection('orders').where({ clientOpenid: openid, status: 'completed' }).count()
+      clientCompletedCount = Number(cRes.total || 0)
+    } catch (_) {
+      const cRes = await database.collection('orders').where({ clientOpenid: openid, status: 'completed' }).get()
+      clientCompletedCount = (cRes.data || []).length
+    }
+
+    let staffCompletedCount = 0
+    if (isStaff) {
+      try {
+        const sRes = await database.collection('orders').where({ staffOpenid: openid, status: 'completed' }).count()
+        staffCompletedCount = Number(sRes.total || 0)
+      } catch (_) {
+        const sRes = await database.collection('orders').where({ staffOpenid: openid, status: 'completed' }).get()
+        staffCompletedCount = (sRes.data || []).length
+      }
+    }
+
+    const clientQualified = clientCompletedCount >= 3
+    const staffQualified = isStaff && staffCompletedCount >= 1
+    const hasBaseQualification = clientQualified || staffQualified
+
+    const monthStartMs = getBeijingMonthStart(nowMs)
+    let monthRequests = []
+    try {
+      const qRes = await database.collection(REQUESTS).where({
+        ownerOpenid: openid
+      }).get()
+      monthRequests = (qRes.data || []).filter(r => {
+        if (!['pending', 'processing', 'completed'].includes(r.status)) return false
+        const created = typeof r.createdAt === 'number' ? r.createdAt : new Date(r.createdAt || 0).getTime()
+        return created >= monthStartMs
+      })
+    } catch (_) {
+      monthRequests = []
+    }
+
+    const monthQuota = 1
+    const monthUsedCount = monthRequests.length
+    const monthRemaining = Math.max(0, monthQuota - monthUsedCount)
+    const monthQuotaAvailable = monthRemaining > 0
+
+    let canApply = false
+    let unavailableReason = ''
+
+    if (!hasBaseQualification) {
+      if (isStaff) {
+        unavailableReason = `未达到专属形象定制申请条件：普通用户需累计完成至少3笔服务订单（当前已完成${clientCompletedCount}/3单）；宠托师需完成至少1次服务履约（当前已完成${staffCompletedCount}/1单）。`
+      } else {
+        unavailableReason = `未达到专属形象定制申请条件：需累计完成至少3笔服务订单（当前已完成${clientCompletedCount}/3单）。`
+      }
+    } else if (!monthQuotaAvailable) {
+      unavailableReason = '每个自然月限申请1次形象定制，您本月已提交过申请，请下月1日后再试。'
+    } else {
+      canApply = true
+    }
+
+    return {
+      canApply,
+      hasBaseQualification,
+      clientQualified,
+      staffQualified,
+      clientCompletedCount,
+      clientRequiredCount: 3,
+      isStaff,
+      staffCompletedCount,
+      staffRequiredCount: 1,
+      monthQuota,
+      monthUsedCount,
+      monthRemaining,
+      unavailableReason
+    }
   }
   async function target(database,openid,type,petId) {
     const users=(await database.collection('users').where({openid}).limit(1).get()).data||[]
@@ -36,12 +142,17 @@ module.exports=function createAppearance(context) {
   }
   async function options(openid) {
     const pets=(await db.collection('pets').where({openid}).orderBy('createdAt','desc').limit(100).get()).data||[]
-    return {pets:pets.filter((p)=>!p.deletedAt&&['cat','dog'].includes(p.species||'dog')).map((p)=>({id:p._id,name:p.name||'宠物',species:p.species||'dog'}))}
+    const eligibility=await checkAppearanceEligibility(db,openid,now())
+    return {eligibility,pets:pets.filter((p)=>!p.deletedAt&&['cat','dog'].includes(p.species||'dog')).map((p)=>({id:p._id,name:p.name||'宠物',species:p.species||'dog'}))}
   }
   async function createDraft(openid,data) {
     const type=data.targetType,petId=type==='pet'?data.petId:''
     return transaction(db,async(tx)=>{
       const t=await target(tx,openid,type,petId),key=keyOf(type,openid,petId)
+      const eligibility=await checkAppearanceEligibility(tx,openid,now())
+      if(!eligibility.canApply) {
+        throw new Error(eligibility.unavailableReason||'当前暂不符合专属形象定制申请条件')
+      }
       const binding=await read(tx,BINDINGS,key)
       if(binding&&binding.activeRequestId) {
         const old=await read(tx,REQUESTS,binding.activeRequestId)
@@ -186,7 +297,188 @@ module.exports=function createAppearance(context) {
     catch(error) {syncPending=true;console.warn('[appearance] scene projection will recover on snapshot',error.message)}
     return {appearance:result.appearance,completed:true,syncPending}
   }
-  return {options,createDraft,submit,list,detail,close,prepareUpload,publish}
+  async function disableAppearance(admin, data) {
+    const id = data.requestId || data.id
+    const reason = String(data.reason || '管理员作废专属形象').trim()
+    return transaction(db, async (tx) => {
+      let current = null
+      let targetType = data.targetType
+      let targetId = data.targetId
+
+      if (id) {
+        current = await read(tx, REQUESTS, id)
+        if (current) {
+          targetType = current.targetType
+          targetId = current.targetType === 'pet' ? current.targetId : ''
+        }
+      }
+
+      if (!targetType) throw new Error('缺少形象定制对象')
+      const t = await target(tx, (current && current.ownerOpenid) || data.ownerOpenid, targetType, targetId)
+      const appearance = t.entity.playgroundAppearance
+      if (!appearance || !appearance.id) throw new Error('该对象尚未绑定生效专属形象')
+
+      const stamp = now()
+      const updatedAppearance = {
+        ...appearance,
+        disabled: true,
+        disabledReason: reason,
+        disabledAt: stamp,
+        disabledBy: admin,
+        revision: (appearance.revision || 0) + 1
+      }
+
+      await tx.collection(t.collection).doc(t.id).update({
+        data: { playgroundAppearance: db.command.set(updatedAppearance) }
+      })
+
+      const key = keyOf(targetType, t.user.openid, targetType === 'pet' ? t.id : '')
+      const binding = await read(tx, BINDINGS, key)
+      if (binding) {
+        await tx.collection(BINDINGS).doc(key).update({
+          data: { appearance: db.command.set(updatedAppearance) }
+        }).catch(() => {})
+      }
+
+      if (current) {
+        await tx.collection(REQUESTS).doc(current._id).update({
+          data: {
+            appearance: db.command.set(updatedAppearance),
+            appearanceDisabled: true,
+            appearanceDisabledReason: reason,
+            updatedAt: stamp
+          }
+        })
+      }
+
+      const rows = []
+      const sourceId = (targetType === 'pet' ? 'resident_' : 'presence_') + hash(t.user.openid)
+      const source = await read(tx, 'pet_playground_plots', sourceId)
+      if (source) {
+        const { _id, ...saved } = source
+        if (targetType === 'pet') {
+          saved.pets = (saved.pets || []).map((pet) => pet.id === t.id ? { ...pet, appearance: updatedAppearance } : pet)
+          saved.revision = Math.max(stamp, (saved.revision || 0) + 1)
+        } else {
+          saved.appearance = updatedAppearance
+          saved.sessionStarted = Math.max(stamp, (saved.sessionStarted || 0) + 1)
+        }
+        await tx.collection('pet_playground_plots').doc(sourceId).set({ data: saved })
+        rows.push({ ...saved, _id: sourceId })
+      }
+
+      try {
+        await require('./playground-shared')(context).publishRecords(rows)
+      } catch (err) {
+        console.warn('[disableAppearance] scene sync failed:', err.message)
+      }
+
+      await tx.collection('admin_operation_logs').doc(`disable_look_${stamp}_${random().slice(0, 8)}`).set({
+        data: {
+          adminOpenid: admin,
+          action: 'disablePlaygroundAppearance',
+          targetType,
+          targetId: t.id,
+          reason,
+          createdAt: stamp
+        }
+      }).catch(() => {})
+
+      return { success: true, disabled: true, reason, targetId: t.id }
+    })
+  }
+
+  async function enableAppearance(admin, data) {
+    const id = data.requestId || data.id
+    return transaction(db, async (tx) => {
+      let current = null
+      let targetType = data.targetType
+      let targetId = data.targetId
+
+      if (id) {
+        current = await read(tx, REQUESTS, id)
+        if (current) {
+          targetType = current.targetType
+          targetId = current.targetType === 'pet' ? current.targetId : ''
+        }
+      }
+
+      if (!targetType) throw new Error('缺少形象定制对象')
+      const t = await target(tx, (current && current.ownerOpenid) || data.ownerOpenid, targetType, targetId)
+      const appearance = t.entity.playgroundAppearance
+      if (!appearance || !appearance.id) throw new Error('该对象尚未绑定生效专属形象')
+
+      const stamp = now()
+      const { disabled: _dis, disabledReason: _rea, disabledAt: _at, disabledBy: _by, ...rest } = appearance
+      const updatedAppearance = {
+        ...rest,
+        disabled: false,
+        disabledReason: '',
+        enabledAt: stamp,
+        enabledBy: admin,
+        revision: (appearance.revision || 0) + 1
+      }
+
+      await tx.collection(t.collection).doc(t.id).update({
+        data: { playgroundAppearance: db.command.set(updatedAppearance) }
+      })
+
+      const key = keyOf(targetType, t.user.openid, targetType === 'pet' ? t.id : '')
+      const binding = await read(tx, BINDINGS, key)
+      if (binding) {
+        await tx.collection(BINDINGS).doc(key).update({
+          data: { appearance: db.command.set(updatedAppearance) }
+        }).catch(() => {})
+      }
+
+      if (current) {
+        await tx.collection(REQUESTS).doc(current._id).update({
+          data: {
+            appearance: db.command.set(updatedAppearance),
+            appearanceDisabled: false,
+            appearanceDisabledReason: '',
+            updatedAt: stamp
+          }
+        })
+      }
+
+      const rows = []
+      const sourceId = (targetType === 'pet' ? 'resident_' : 'presence_') + hash(t.user.openid)
+      const source = await read(tx, 'pet_playground_plots', sourceId)
+      if (source) {
+        const { _id, ...saved } = source
+        if (targetType === 'pet') {
+          saved.pets = (saved.pets || []).map((pet) => pet.id === t.id ? { ...pet, appearance: updatedAppearance } : pet)
+          saved.revision = Math.max(stamp, (saved.revision || 0) + 1)
+        } else {
+          saved.appearance = updatedAppearance
+          saved.sessionStarted = Math.max(stamp, (saved.sessionStarted || 0) + 1)
+        }
+        await tx.collection('pet_playground_plots').doc(sourceId).set({ data: saved })
+        rows.push({ ...saved, _id: sourceId })
+      }
+
+      try {
+        await require('./playground-shared')(context).publishRecords(rows)
+      } catch (err) {
+        console.warn('[enableAppearance] scene sync failed:', err.message)
+      }
+
+      await tx.collection('admin_operation_logs').doc(`enable_look_${stamp}_${random().slice(0, 8)}`).set({
+        data: {
+          adminOpenid: admin,
+          action: 'enablePlaygroundAppearance',
+          targetType,
+          targetId: t.id,
+          createdAt: stamp
+        }
+      }).catch(() => {})
+
+      return { success: true, disabled: false, targetId: t.id }
+    })
+  }
+
+  return {options,createDraft,submit,list,detail,close,prepareUpload,publish,disableAppearance,enableAppearance}
 }
 module.exports.REQUESTS=REQUESTS
 module.exports.BINDINGS=BINDINGS

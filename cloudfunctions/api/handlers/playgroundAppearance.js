@@ -1,6 +1,6 @@
 module.exports=function createHandler(context) {
   const service=require('../services/playground-appearance')(context)
-  const adminActions=new Set(['listAdmin','detailAdmin','prepareUpload','publish','reject'])
+  const adminActions=new Set(['listAdmin','detailAdmin','prepareUpload','publish','reject','disableAppearance','enableAppearance'])
   return async(openid,action,data={})=>{
     await context.getUser(openid)
     if(adminActions.has(action))await context.requireAdmin(openid)
@@ -15,6 +15,8 @@ module.exports=function createHandler(context) {
     if(action==='prepareUpload')return service.prepareUpload(openid,data)
     if(action==='publish')return service.publish(openid,data)
     if(action==='reject')return service.close(openid,data,true)
+    if(action==='disableAppearance')return service.disableAppearance(openid,data)
+    if(action==='enableAppearance')return service.enableAppearance(openid,data)
     throw new Error('未知形象定制操作')
   }
 }

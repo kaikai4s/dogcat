@@ -39,3 +39,5 @@ button { margin: 0; padding: 0 22rpx; line-height: 66rpx; font-size: 25rpx; bord
 .reject-section { margin-top: 30rpx; padding-top: 12rpx; border-top: 1rpx solid #e5eadc; }
 textarea { box-sizing: border-box; width: 100%; height: 160rpx; padding: 20rpx; margin-bottom: 18rpx; border-radius: 20rpx; background: #f4f1e8; font-size: 25rpx; }
 .reject-section button { color: #a47a54; background: #f3eadb; }
+.disabled-warning { color: #a14324 !important; background: #fdede8 !important; }
+.danger-button { padding: 0 24rpx; line-height: 72rpx; border-radius: 20rpx; font-size: 26rpx; }
