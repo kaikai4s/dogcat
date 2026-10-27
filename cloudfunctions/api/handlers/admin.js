@@ -114,6 +114,7 @@ module.exports = function createHandler(context) {
     queryWechatWithdrawalTransfer,
     retryWechatWithdrawalTransfer,
     releaseFailedWithdrawal,
+    markWechatWithdrawalFailed,
     settleStaffDeposit,
     settleSupplyReimbursement,
     safeUserSummary,
@@ -279,7 +280,73 @@ module.exports = function createHandler(context) {
     return readAll(collectionName, {}, 2000, projection)
   }
 
-  async function queryFinanceListSafely(collectionName, { baseWhere = {}, dateRange, dateFields = ['createdAt'], pageSize = 50, page = 1 }) {
+  function matchFinanceRecord(record, keyword, searchContext = {}) {
+    if (!record || typeof record !== 'object') return false
+    const kw = safeText(keyword).trim().toLowerCase()
+    if (!kw) return true
+
+    const openids = (searchContext && searchContext.matchedOpenids) || []
+    const orderIds = (searchContext && searchContext.matchedOrderIds) || []
+
+    const phoneValues = [
+      record.staffPhone, record.accountPhone, record.certifiedPhone,
+      record.phone, record.userPhone, record.contactPhone
+    ]
+    for (const v of phoneValues) {
+      if (v && String(v).toLowerCase().includes(kw)) return true
+    }
+
+    const orderValues = [
+      record._id, record.id, record.orderId, record.orderNo,
+      record.paymentNo, record.refundNo, record.outBillNo, record.outTradeNo,
+      record.transactionId, record.wechatTransferBillNo, record.paymentReference,
+      record.targetId, record.withdrawRequestId
+    ]
+    for (const v of orderValues) {
+      if (v && String(v).toLowerCase().includes(kw)) return true
+    }
+
+    if (Array.isArray(record.problemOrders)) {
+      for (const p of record.problemOrders) {
+        if (!p) continue
+        if (p.orderId && String(p.orderId).toLowerCase().includes(kw)) return true
+        if (p.orderNo && String(p.orderNo).toLowerCase().includes(kw)) return true
+        if (orderIds.length && (orderIds.includes(String(p.orderId)) || orderIds.includes(String(p.orderNo)))) return true
+      }
+    }
+
+    const recordOpenids = [
+      record.staffOpenid, record.userOpenid, record.openid, record.recipientOpenid
+    ].filter(Boolean)
+    if (openids.length && recordOpenids.some((id) => openids.includes(id))) return true
+
+    if (orderIds.length) {
+      if (record.orderId && orderIds.includes(String(record.orderId))) return true
+      if (record._id && orderIds.includes(String(record._id))) return true
+      if (record.orderNo && orderIds.includes(String(record.orderNo))) return true
+    }
+
+    const textValues = [
+      record.staffRealName, record.staffNickname, record.userNickname,
+      record.accountName, record.recipientName, record.reason, record.action
+    ]
+    for (const v of textValues) {
+      if (v && String(v).toLowerCase().includes(kw)) return true
+    }
+
+    return false
+  }
+
+  async function queryFinanceListSafely(collectionName, {
+    baseWhere = {},
+    dateRange,
+    dateFields = ['createdAt'],
+    pageSize = 50,
+    page = 1,
+    keyword = '',
+    searchContext = null
+  }) {
+    const kw = safeText(keyword).trim()
     const limit = Math.min(Math.max(Number(pageSize || 50), 1), 100)
     const pageNum = Math.max(Number(page || 1), 1)
     const offset = (pageNum - 1) * limit
@@ -290,6 +357,8 @@ module.exports = function createHandler(context) {
       where[primaryDateField] = db.command.gte(dateRange.start || `${dateRange.startDate} 00:00:00`)
     }
 
+    let dateList = []
+    let queryFailed = false
     try {
       const res = await db.collection(collectionName)
         .where(where)
@@ -297,26 +366,96 @@ module.exports = function createHandler(context) {
         .skip(offset)
         .limit(limit)
         .get()
-      const list = (res.data || []).filter((item) => inDateRange(item, dateRange, dateFields))
-      if (list.length > 0 || !dateRange || (!dateRange.startDate && !dateRange.endDate)) {
-        return limitList(list, limit)
-      }
+      dateList = (res.data || []).filter((item) => inDateRange(item, dateRange, dateFields))
     } catch (e) {
-      // 降级保护
+      queryFailed = true
     }
 
-    const candidates = (await db.collection(collectionName)
-      .where(baseWhere)
-      .skip(offset)
-      .limit(Math.min(limit * 3, 150))
-      .get()).data || []
+    if (!dateList.length && (queryFailed || !dateRange || (!dateRange.startDate && !dateRange.endDate))) {
+      const candidates = (await db.collection(collectionName)
+        .where(baseWhere)
+        .skip(offset)
+        .limit(Math.min(limit * 3, 150))
+        .get().catch(() => ({ data: [] }))).data || []
 
-    const sorted = candidates.sort((a, b) => {
+      const sorted = candidates.sort((a, b) => {
+        const aDate = dateFields.map(f => parseDateValue(a[f])).find(Boolean) || 0
+        const bDate = dateFields.map(f => parseDateValue(b[f])).find(Boolean) || 0
+        return new Date(bDate) - new Date(aDate)
+      })
+      dateList = sorted.filter((item) => inDateRange(item, dateRange, dateFields))
+    }
+
+    if (!kw) {
+      return limitList(dateList, limit)
+    }
+
+    const matchedInDate = dateList.filter((item) => matchFinanceRecord(item, kw, searchContext))
+    const targetedRows = []
+    const targetedWhereList = []
+
+    if (searchContext && searchContext.matchedOrderIds && searchContext.matchedOrderIds.length > 0) {
+      const ids = searchContext.matchedOrderIds.slice(0, 30)
+      const inVal = db.command && typeof db.command.in === 'function' ? db.command.in(ids) : (ids.length === 1 ? ids[0] : null)
+      if (inVal) {
+        if (['payments', 'refunds', 'staff_earnings'].includes(collectionName)) {
+          targetedWhereList.push({ ...baseWhere, orderId: inVal })
+        }
+        if (['payments', 'refunds', 'withdraw_requests', 'staff_deposits', 'staff_supply_reimbursements', 'finance_logs'].includes(collectionName)) {
+          targetedWhereList.push({ ...baseWhere, _id: inVal })
+        }
+      }
+    }
+
+    if (searchContext && searchContext.matchedOpenids && searchContext.matchedOpenids.length > 0) {
+      const openids = searchContext.matchedOpenids.slice(0, 30)
+      const inVal = db.command && typeof db.command.in === 'function' ? db.command.in(openids) : (openids.length === 1 ? openids[0] : null)
+      if (inVal) {
+        if (['staff_earnings', 'withdraw_requests', 'staff_deposits', 'staff_supply_reimbursements'].includes(collectionName)) {
+          targetedWhereList.push({ ...baseWhere, staffOpenid: inVal })
+        }
+        if (['withdraw_requests'].includes(collectionName)) {
+          targetedWhereList.push({ ...baseWhere, userOpenid: inVal })
+        }
+      }
+    }
+
+    if (['payments'].includes(collectionName)) {
+      targetedWhereList.push({ ...baseWhere, paymentNo: kw })
+    } else if (['refunds'].includes(collectionName)) {
+      targetedWhereList.push({ ...baseWhere, refundNo: kw })
+    } else if (['withdraw_requests'].includes(collectionName)) {
+      targetedWhereList.push({ ...baseWhere, outBillNo: kw })
+      targetedWhereList.push({ ...baseWhere, wechatTransferBillNo: kw })
+    } else if (['finance_logs'].includes(collectionName)) {
+      targetedWhereList.push({ ...baseWhere, targetId: kw })
+    }
+
+    for (const tw of targetedWhereList) {
+      try {
+        const res = await db.collection(collectionName).where(tw).limit(limit).get()
+        if (res.data && res.data.length) {
+          targetedRows.push(...res.data)
+        }
+      } catch (_) {}
+    }
+
+    const mergedMap = new Map()
+    for (const item of [...matchedInDate, ...targetedRows]) {
+      if (item && item._id && !mergedMap.has(item._id)) {
+        if (matchFinanceRecord(item, kw, searchContext)) {
+          mergedMap.set(item._id, item)
+        }
+      }
+    }
+
+    const mergedList = Array.from(mergedMap.values()).sort((a, b) => {
       const aDate = dateFields.map(f => parseDateValue(a[f])).find(Boolean) || 0
       const bDate = dateFields.map(f => parseDateValue(b[f])).find(Boolean) || 0
       return new Date(bDate) - new Date(aDate)
     })
-    return limitList(sorted.filter((item) => inDateRange(item, dateRange, dateFields)), limit)
+
+    return limitList(mergedList, limit)
   }
 
   async function fetchUsersByOpenids(openids = []) {
@@ -428,6 +567,83 @@ module.exports = function createHandler(context) {
     return []
   }
 
+  async function searchOrdersByKeywordSafely(keyword) {
+    const raw = safeText(keyword).trim()
+    if (!raw) return []
+    const orders = []
+    const seen = new Set()
+    const pushAll = (list) => {
+      for (const item of (list || [])) {
+        if (item && item._id && !seen.has(item._id)) {
+          seen.add(item._id)
+          orders.push(item)
+        }
+      }
+    }
+
+    try {
+      const byId = await db.collection('orders').where({ _id: raw }).limit(1).get()
+      pushAll(byId.data)
+    } catch (_) {}
+    try {
+      const byNo = await db.collection('orders').where({ orderNo: raw }).limit(10).get()
+      pushAll(byNo.data)
+    } catch (_) {}
+
+    if (/\d{3,}/.test(raw)) {
+      if (db && typeof db.RegExp === 'function') {
+        try {
+          const res = await db.collection('orders').where({ contactPhone: db.RegExp({ regexp: raw, options: 'i' }) }).limit(50).get()
+          pushAll(res.data)
+        } catch (_) {}
+        try {
+          const res = await db.collection('orders').where({ phone: db.RegExp({ regexp: raw, options: 'i' }) }).limit(50).get()
+          pushAll(res.data)
+        } catch (_) {}
+      }
+      try {
+        const exactContact = await db.collection('orders').where({ contactPhone: raw }).limit(50).get()
+        pushAll(exactContact.data)
+      } catch (_) {}
+      try {
+        const exactPhone = await db.collection('orders').where({ phone: raw }).limit(50).get()
+        pushAll(exactPhone.data)
+      } catch (_) {}
+    }
+
+    return orders
+  }
+
+  async function searchRelatedOpenidsAndOrderIds(keyword) {
+    const raw = safeText(keyword).trim()
+    if (!raw) return { matchedOpenids: [], matchedOrderIds: [], rawKeyword: '' }
+
+    const matchedOpenids = new Set()
+    const matchedOrderIds = new Set()
+    matchedOrderIds.add(raw)
+
+    const [users, profiles, orders] = await Promise.all([
+      searchUsersByPhoneSafely(raw),
+      searchStaffProfilesByPhoneSafely(raw),
+      searchOrdersByKeywordSafely(raw)
+    ])
+
+    users.forEach((u) => u && u.openid && matchedOpenids.add(u.openid))
+    profiles.forEach((p) => p && p.openid && matchedOpenids.add(p.openid))
+    orders.forEach((o) => {
+      if (o && o._id) matchedOrderIds.add(o._id)
+      if (o && o.orderNo) matchedOrderIds.add(o.orderNo)
+      if (o && o.userOpenid) matchedOpenids.add(o.userOpenid)
+      if (o && o.staffOpenid) matchedOpenids.add(o.staffOpenid)
+    })
+
+    return {
+      matchedOpenids: Array.from(matchedOpenids),
+      matchedOrderIds: Array.from(matchedOrderIds),
+      rawKeyword: raw
+    }
+  }
+
   return async function admin(openid, action, data) {
     const admin = await requireAdmin(openid)
     if (action === 'listSubscriptionDeliveries') return listSubscriptionDeliveries(data)
@@ -489,39 +705,131 @@ module.exports = function createHandler(context) {
       return { ...dashboard, wechatTransferQuota }
     }
     if (action === 'listFinanceLogs') {
+      const keyword = safeText(data.keyword || data.orderId || data.phone).trim()
+      const searchContext = keyword ? await searchRelatedOpenidsAndOrderIds(keyword) : null
       const range = buildDateRange(data)
       const targetType = safeText(data.targetType).trim()
       const baseWhere = targetType ? { targetType } : {}
-      return queryFinanceListSafely('finance_logs', { baseWhere, dateRange: range, dateFields: ['createdAt'], pageSize: data.pageSize })
+      const logs = await queryFinanceListSafely('finance_logs', {
+        baseWhere,
+        dateRange: range,
+        dateFields: ['createdAt'],
+        pageSize: data.pageSize,
+        keyword,
+        searchContext
+      })
+      return logs.filter((l) => !keyword || matchFinanceRecord(l, keyword, searchContext))
     }
     if (action === 'listPayments') {
+      const keyword = safeText(data.keyword || data.orderId || data.phone).trim()
+      const searchContext = keyword ? await searchRelatedOpenidsAndOrderIds(keyword) : null
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
       const baseWhere = status ? { status } : {}
-      return queryFinanceListSafely('payments', { baseWhere, dateRange: range, dateFields: ['paidAt', 'updatedAt', 'createdAt'], pageSize: data.pageSize })
+      const payments = await queryFinanceListSafely('payments', {
+        baseWhere,
+        dateRange: range,
+        dateFields: ['paidAt', 'updatedAt', 'createdAt'],
+        pageSize: data.pageSize,
+        keyword,
+        searchContext
+      })
+      const orderIds = [...new Set(payments.map((p) => p.orderId).filter(Boolean))]
+      const orders = orderIds.length && db.command && typeof db.command.in === 'function'
+        ? (await db.collection('orders').where({ _id: db.command.in(orderIds) }).limit(orderIds.length).get().catch(() => ({ data: [] }))).data || []
+        : []
+      const orderMap = new Map(orders.map((o) => [o._id, o]))
+      return payments.map((p) => {
+        const o = orderMap.get(p.orderId) || {}
+        return {
+          ...p,
+          contactPhone: o.contactPhone || o.phone || '',
+          orderNo: o.orderNo || ''
+        }
+      }).filter((p) => !keyword || matchFinanceRecord(p, keyword, searchContext))
     }
     if (action === 'listRefunds') {
+      const keyword = safeText(data.keyword || data.orderId || data.phone).trim()
+      const searchContext = keyword ? await searchRelatedOpenidsAndOrderIds(keyword) : null
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
       const baseWhere = status ? { status } : {}
-      return queryFinanceListSafely('refunds', { baseWhere, dateRange: range, dateFields: ['createdAt', 'updatedAt'], pageSize: data.pageSize })
+      const refunds = await queryFinanceListSafely('refunds', {
+        baseWhere,
+        dateRange: range,
+        dateFields: ['createdAt', 'updatedAt'],
+        pageSize: data.pageSize,
+        keyword,
+        searchContext
+      })
+      const orderIds = [...new Set(refunds.map((r) => r.orderId).filter(Boolean))]
+      const orders = orderIds.length && db.command && typeof db.command.in === 'function'
+        ? (await db.collection('orders').where({ _id: db.command.in(orderIds) }).limit(orderIds.length).get().catch(() => ({ data: [] }))).data || []
+        : []
+      const orderMap = new Map(orders.map((o) => [o._id, o]))
+      return refunds.map((r) => {
+        const o = orderMap.get(r.orderId) || {}
+        return {
+          ...r,
+          contactPhone: o.contactPhone || o.phone || '',
+          orderNo: o.orderNo || ''
+        }
+      }).filter((r) => !keyword || matchFinanceRecord(r, keyword, searchContext))
     }
     if (action === 'listStaffEarnings') {
       await refreshStaffEarnings()
+      const keyword = safeText(data.keyword || data.orderId || data.phone).trim()
+      const searchContext = keyword ? await searchRelatedOpenidsAndOrderIds(keyword) : null
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
       const baseWhere = status ? { status } : {}
-      return queryFinanceListSafely('staff_earnings', { baseWhere, dateRange: range, dateFields: ['createdAt', 'completedAt'], pageSize: data.pageSize })
+      const earnings = await queryFinanceListSafely('staff_earnings', {
+        baseWhere,
+        dateRange: range,
+        dateFields: ['createdAt', 'completedAt'],
+        pageSize: data.pageSize,
+        keyword,
+        searchContext
+      })
+      const staffOpenids = [...new Set(earnings.map((e) => e.staffOpenid).filter(Boolean))]
+      const [users, profiles] = await Promise.all([
+        fetchUsersByOpenids(staffOpenids),
+        fetchStaffProfilesByOpenids(staffOpenids)
+      ])
+      const userMap = new Map(users.map((u) => [u.openid, u]))
+      const profileMap = new Map(profiles.map((p) => [p.openid, p]))
+      return earnings.map((e) => {
+        const u = userMap.get(e.staffOpenid) || {}
+        const p = profileMap.get(e.staffOpenid) || {}
+        const phoneFields = staffPhoneFields(u, p)
+        return {
+          ...e,
+          staffRealName: p.realName || '',
+          staffNickname: u.nickname || '',
+          staffPhone: phoneFields.phone,
+          accountPhone: phoneFields.accountPhone,
+          certifiedPhone: phoneFields.certifiedPhone
+        }
+      }).filter((e) => !keyword || matchFinanceRecord(e, keyword, searchContext))
     }
     if (action === 'listWithdrawRequests') {
       await refreshStaffEarnings()
+      const keyword = safeText(data.keyword || data.orderId || data.phone).trim()
+      const searchContext = keyword ? await searchRelatedOpenidsAndOrderIds(keyword) : null
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
       const staffOpenid = safeText(data.staffOpenid).trim()
       const baseWhere = { ...(status ? { status } : {}), ...(staffOpenid ? { staffOpenid } : {}) }
       const requests = staffOpenid
         ? await readScopedDocuments('withdraw_requests', baseWhere, 'createdAt', 'desc')
-        : await queryFinanceListSafely('withdraw_requests', { baseWhere, dateRange: range, dateFields: ['createdAt', 'paidAt'], pageSize: data.pageSize })
+        : await queryFinanceListSafely('withdraw_requests', {
+          baseWhere,
+          dateRange: range,
+          dateFields: ['createdAt', 'paidAt'],
+          pageSize: data.pageSize,
+          keyword,
+          searchContext
+        })
       const openids = [...new Set(requests.flatMap((item) => [item.staffOpenid, item.userOpenid]).filter(Boolean))]
       const [profiles, users, earnings, withdraws] = await Promise.all([
         fetchStaffProfilesByOpenids(openids),
@@ -555,11 +863,22 @@ module.exports = function createHandler(context) {
         item.withdrawHistory.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
         item.withdrawHistory = item.withdrawHistory.slice(0, 8)
       })
-      return requests.map((item) => {
+      const list = requests.map((item) => {
         if (item.assetType === 'user') {
           const user = userMap.get(item.userOpenid) || {}
           const asset = userAssetMap[item.userOpenid] || { available: 0, withdrawn: 0, withdrawHistory: [], withdrawCount: 0 }
-          return { ...item, staffNickname: user.nickname || '', userNickname: user.nickname || '', currentAvailableAmount: asset.available, withdrawnAmount: asset.withdrawn, withdrawCount: asset.withdrawCount, withdrawHistory: asset.withdrawHistory, assetLabel: '用户邀请收益' }
+          return {
+            ...item,
+            staffNickname: user.nickname || '',
+            userNickname: user.nickname || '',
+            userPhone: user.phone || '',
+            phone: user.phone || '',
+            currentAvailableAmount: asset.available,
+            withdrawnAmount: asset.withdrawn,
+            withdrawCount: asset.withdrawCount,
+            withdrawHistory: asset.withdrawHistory,
+            assetLabel: '用户邀请收益'
+          }
         }
         const profile = profileMap.get(item.staffOpenid) || {}
         const user = userMap.get(item.staffOpenid) || {}
@@ -571,6 +890,7 @@ module.exports = function createHandler(context) {
           staffPhone: phoneFields.phone,
           accountPhone: phoneFields.accountPhone,
           certifiedPhone: phoneFields.certifiedPhone,
+          phone: phoneFields.phone,
           recipientOpenid: item.recipientOpenid || item.staffOpenid || '',
           staffNickname: user.nickname || '',
           currentAvailableAmount: finance.available,
@@ -579,12 +899,22 @@ module.exports = function createHandler(context) {
           withdrawHistory: finance.withdrawHistory
         }
       })
+      return list.filter((r) => !keyword || matchFinanceRecord(r, keyword, searchContext))
     }
     if (action === 'listUserAssetWithdrawals') {
+      const keyword = safeText(data.keyword || data.orderId || data.phone).trim()
+      const searchContext = keyword ? await searchRelatedOpenidsAndOrderIds(keyword) : null
       const status = safeText(data.status).trim()
       const where = { assetType: 'user' }
       if (status) where.status = status
-      const rows = await queryFinanceListSafely('withdraw_requests', { baseWhere: where, dateRange: buildDateRange(data), dateFields: ['createdAt', 'paidAt'], pageSize: data.pageSize })
+      const rows = await queryFinanceListSafely('withdraw_requests', {
+        baseWhere: where,
+        dateRange: buildDateRange(data),
+        dateFields: ['createdAt', 'paidAt'],
+        pageSize: data.pageSize,
+        keyword,
+        searchContext
+      })
       const openids = [...new Set(rows.map((row) => row.userOpenid).filter(Boolean))]
       const users = await fetchUsersByOpenids(openids)
       const userMap = new Map(users.map((user) => [user.openid, user]))
@@ -595,7 +925,16 @@ module.exports = function createHandler(context) {
       earnings.forEach((earning) => {
         if (earning.status === 'available') availableMap[earning.userOpenid] = (availableMap[earning.userOpenid] || 0) + Number(earning.amount || 0)
       })
-      return rows.map((row) => ({ ...row, userNickname: (userMap.get(row.userOpenid) || {}).nickname || '', currentAvailableAmount: Math.round((availableMap[row.userOpenid] || 0) * 100) / 100 }))
+      return rows.map((row) => {
+        const user = userMap.get(row.userOpenid) || {}
+        return {
+          ...row,
+          userNickname: user.nickname || '',
+          userPhone: user.phone || '',
+          phone: user.phone || '',
+          currentAvailableAmount: Math.round((availableMap[row.userOpenid] || 0) * 100) / 100
+        }
+      }).filter((r) => !keyword || matchFinanceRecord(r, keyword, searchContext))
     }
     if (action === 'getStaffSettlementPreview') {
       const result = await context.getStaffSettlementPreview(safeText(data.staffProfileId).trim())
@@ -616,10 +955,35 @@ module.exports = function createHandler(context) {
       const { request, changed } = await settleWithdrawal({ ...admin, openid }, { ...data, auditRemark })
       if (approved && request.payoutChannel === 'wechat_wallet') {
         const settings = await getSystemSettings().catch(() => ({}))
-        const transferConfig = (settings.staffSupplies && settings.staffSupplies.transfer) || {}
-        if (transferConfig.enabled) {
-          const result = await submitWechatWithdrawalTransfer(data.id, { ...admin, openid })
-          return { id: data.id, status: (result.request && result.request.status) || result.status || 'transferring', transferStatus: (result.request && result.request.transferStatus) || result.transferStatus || 'processing' }
+        const transfer = (settings.staffSupplies && settings.staffSupplies.transfer) || (settings.payment && settings.payment.transfer) || settings.transfer || {}
+        const isTransferEnabled = transfer.enabled === true || process.env.WECHAT_TRANSFER_ENABLED === 'true'
+        if (isTransferEnabled) {
+          try {
+            const result = await submitWechatWithdrawalTransfer(data.id, { ...admin, openid })
+            const finalReq = (result && result.request) ? result.request : result
+            return {
+              id: data.id,
+              status: finalReq.status || 'transferring',
+              transferStatus: finalReq.transferStatus || 'processing',
+              autoTransferred: true
+            }
+          } catch (transferErr) {
+            console.error('[admin:auditWithdrawRequest] 审核通过后自动发起打款异常:', transferErr)
+            if (typeof markWechatWithdrawalFailed === 'function') {
+              try {
+                await markWechatWithdrawalFailed(data.id, {
+                  failReason: safeText(transferErr.message).slice(0, 500),
+                  gatewayTerminalConfirmed: true
+                })
+              } catch (_) {}
+            }
+            return {
+              id: data.id,
+              status: 'transfer_failed',
+              autoTransferred: false,
+              transferError: safeText(transferErr.message).slice(0, 500)
+            }
+          }
         }
       }
       return { id: data.id, status: nextStatus }
@@ -629,10 +993,35 @@ module.exports = function createHandler(context) {
       const result = await settleUserAssetWithdrawal({ ...admin, openid }, { ...data, approved })
       if (approved && result.request && result.request.payoutChannel === 'wechat_wallet') {
         const settings = await getSystemSettings().catch(() => ({}))
-        const transferConfig = (settings.staffSupplies && settings.staffSupplies.transfer) || {}
-        if (transferConfig.enabled) {
-          const transfer = await submitWechatWithdrawalTransfer(data.id, { ...admin, openid })
-          return { id: data.id, status: transfer.request && transfer.request.status || transfer.status || 'transferring', transferStatus: transfer.request && transfer.request.transferStatus || transfer.transferStatus || 'processing' }
+        const transfer = (settings.staffSupplies && settings.staffSupplies.transfer) || (settings.payment && settings.payment.transfer) || settings.transfer || {}
+        const isTransferEnabled = transfer.enabled === true || process.env.WECHAT_TRANSFER_ENABLED === 'true'
+        if (isTransferEnabled) {
+          try {
+            const transferRes = await submitWechatWithdrawalTransfer(data.id, { ...admin, openid })
+            const finalReq = (transferRes && transferRes.request) ? transferRes.request : transferRes
+            return {
+              id: data.id,
+              status: finalReq.status || 'transferring',
+              transferStatus: finalReq.transferStatus || 'processing',
+              autoTransferred: true
+            }
+          } catch (transferErr) {
+            console.error('[admin:auditUserAssetWithdrawal] 审核通过后自动发起打款异常:', transferErr)
+            if (typeof markWechatWithdrawalFailed === 'function') {
+              try {
+                await markWechatWithdrawalFailed(data.id, {
+                  failReason: safeText(transferErr.message).slice(0, 500),
+                  gatewayTerminalConfirmed: true
+                })
+              } catch (_) {}
+            }
+            return {
+              id: data.id,
+              status: 'transfer_failed',
+              autoTransferred: false,
+              transferError: safeText(transferErr.message).slice(0, 500)
+            }
+          }
         }
       }
       return { id: data.id, status: approved ? 'approved' : 'rejected' }
@@ -2950,6 +3339,8 @@ module.exports = function createHandler(context) {
       return { _id: activityId, success: true }
     }
     if (action === 'listStaffDeposits') {
+      const keyword = safeText(data.keyword || data.orderId || data.phone).trim()
+      const searchContext = keyword ? await searchRelatedOpenidsAndOrderIds(keyword) : null
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
       const staffOpenid = safeText(data.staffOpenid).trim()
@@ -2958,7 +3349,9 @@ module.exports = function createHandler(context) {
         ? await readScopedDocuments('staff_deposits', baseWhere, 'createdAt', 'desc')
         : await queryFinanceListSafely('staff_deposits', {
           baseWhere, dateRange: range, dateFields: ['createdAt', 'paidAt'],
-          pageSize: data.pageSize || 50, page: data.page || 1
+          pageSize: data.pageSize || 50, page: data.page || 1,
+          keyword,
+          searchContext
         })
 
       const targetOpenids = Array.from(new Set(pagedDeposits.map((item) => item.staffOpenid).filter(Boolean)))
@@ -3011,7 +3404,7 @@ module.exports = function createHandler(context) {
           problemOrders
         }
       })
-      return list
+      return list.filter((d) => !keyword || matchFinanceRecord(d, keyword, searchContext))
     }
     if (action === 'requestStaffDepositRefund') {
       const id = safeText(data.id).trim()
@@ -3050,6 +3443,8 @@ module.exports = function createHandler(context) {
       return settleStaffDeposit({ ...admin, openid }, action, { ...data, reason, evidenceImages })
     }
     if (action === 'listSupplyReimbursements') {
+      const keyword = safeText(data.keyword || data.orderId || data.phone).trim()
+      const searchContext = keyword ? await searchRelatedOpenidsAndOrderIds(keyword) : null
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
       const baseWhere = status ? { status } : {}
@@ -3058,7 +3453,9 @@ module.exports = function createHandler(context) {
         dateRange: range,
         dateFields: ['createdAt', 'paidAt'],
         pageSize: data.pageSize || 50,
-        page: data.page || 1
+        page: data.page || 1,
+        keyword,
+        searchContext
       })
 
       const targetOpenids = Array.from(new Set(pagedReimbursements.map((item) => item.staffOpenid).filter(Boolean)))
@@ -3083,7 +3480,7 @@ module.exports = function createHandler(context) {
           staffLevel: p.staffLevel || ''
         }
       })
-      return list
+      return list.filter((s) => !keyword || matchFinanceRecord(s, keyword, searchContext))
     }
     if (action === 'auditSupplyReimbursement') {
       const reason = safeText(data.rejectReason || data.reason || data.auditRemark).trim()

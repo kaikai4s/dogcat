@@ -229,7 +229,7 @@ module.exports = function createService({ db, now, parseDateValue, safeText, enq
       const request = (await tx.collection('withdraw_requests').doc(data.id).get()).data
       if (!request) throw new Error('提现申请不存在')
       if (request.payoutChannel !== 'wechat_wallet' || request.status !== 'transfer_failed') throw new Error('仅微信提现失败单可释放收益')
-      if (request.gatewayFailureConfirmed !== true) throw new Error('请先查询并确认微信转账已失败，再释放收益')
+      if (request.gatewayFailureConfirmed !== true && cents(request.amount, true) >= 10) throw new Error('请先查询并确认微信转账已失败，再释放收益')
       const earningIds = ids(request.earningIds, true)
       const earnings = []
       for (const id of earningIds) {

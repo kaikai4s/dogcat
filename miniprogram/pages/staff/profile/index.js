@@ -1,9 +1,33 @@
 const { uploadImage } = require('../../../utils/image-upload')
-const { callFunction, showError, chooseSelectedLocation } = require('../../../utils/cloud')
+const { callFunction, showError, chooseSelectedLocation, getCachedUser } = require('../../../utils/cloud')
 const { withStaffWorkflowText } = require('../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { loadMessageUnread } = require('../../../utils/client-nav')
 const { DEFAULT_CARD_STYLE, isHexColor, normalizeCardStyle, buildCardStyle } = require('../utils/profileCardStyle')
+
+const STAFF_PROFILE_STORAGE = 'staff_profile_display_cache_v1'
+const STAFF_CACHE_TTL = 24 * 60 * 60 * 1000
+
+function readStaffProfileCache() {
+  try {
+    const cached = wx.getStorageSync(STAFF_PROFILE_STORAGE)
+    if (cached && cached.profile && typeof cached.cachedAt === 'number' && Date.now() - cached.cachedAt < STAFF_CACHE_TTL) {
+      return cached
+    }
+  } catch (_) {}
+  return null
+}
+
+function writeStaffProfileCache(profile, balance) {
+  if (!profile) return
+  try {
+    wx.setStorageSync(STAFF_PROFILE_STORAGE, {
+      profile,
+      balance,
+      cachedAt: Date.now()
+    })
+  } catch (_) {}
+}
 
 const statusMap = {
   pending: { title: '审核中', tip: '资料已提交，请等待平台审核' },
@@ -52,40 +76,89 @@ function uploadProfileBackground(filePath) {
   })
 }
 
-Page({
-  data: {
+function getInitialStaffProfileData() {
+  let user = null
+  try {
+    user = typeof getCachedUser === 'function' ? getCachedUser() : null
+  } catch (_) {}
+
+  const cached = readStaffProfileCache()
+  const profile = cached?.profile || null
+  const balance = cached?.balance || null
+
+  let statusTitle = ''
+  let statusTip = ''
+  let isApproved = false
+  let hasAddr = false
+  let depositNotice = null
+  let balanceData = null
+
+  if (profile) {
+    const profileView = withStaffWorkflowText(profile)
+    const info = profileStatusInfo(profileView)
+    statusTitle = info.title
+    statusTip = profileView?.auditRemark || info.tip
+    isApproved = profileView?.auditStatus === 'approved'
+    hasAddr = Boolean(profileView?.serviceAddress && profileView?.serviceLatitude && profileView?.serviceLongitude)
+    depositNotice = profileView?.depositNotice || null
+    if (balance) {
+      balanceData = {
+        ...balance,
+        availableText: Number(balance.available || 0).toFixed(2),
+        pendingText: Number(balance.pending || 0).toFixed(2),
+        withdrawnText: Number(balance.withdrawn || 0).toFixed(2)
+      }
+    }
+  }
+
+  const rawNickname = String(user?.nickname || '').trim()
+  const displayName = rawNickname || profile?.realName || '宠托师'
+  const avatarUrl = user?.avatarUrl || ''
+
+  return {
     themeClass: 'theme-day',
-    user: null,
-    profile: null,
-    displayName: '宠托师',
-    avatarUrl: '',
-    statusTitle: '未入驻',
-    statusTip: '完善资料后申请成为宠托师',
-    missingAddressNotice: false,
-    depositNotice: null,
+    loadingProfile: !profile,
+    user,
+    profile,
+    balance: balanceData,
+    displayName,
+    avatarUrl,
+    badgeTag: user?.badgeTag || '',
+    badgeStyle: user?.badgeStyle || '',
+    memberLevelName: user?.memberLevelName || '',
+    nameColor: user?.nameColor || '',
+    nameEffect: user?.nameEffect || '',
+    statusTitle,
+    statusTip,
+    missingAddressNotice: isApproved && !hasAddr,
+    depositNotice,
     showConfigModal: false,
     weekdays: WEEKDAYS,
     radiusOptions,
     hourLabels,
-    profileCardStyle: buildCardStyle(DEFAULT_CARD_STYLE),
+    profileCardStyle: buildCardStyle(profile || DEFAULT_CARD_STYLE),
     configForm: {
       ...DEFAULT_CARD_STYLE,
-      serviceAddress: '',
-      publicServiceAddress: '',
-      serviceLatitude: 0,
-      serviceLongitude: 0,
-      serviceRadiusKm: 5,
-      profileBackgroundFileId: '',
-      profileIntro: '',
-      rejectUnvaccinatedPets: false,
-      weeklySchedule: { '1': [], '2': [], '3': [], '4': [], '5': [], '6': [], '7': [] }
+      serviceAddress: profile?.serviceAddress || '',
+      publicServiceAddress: profile?.publicServiceAddress || '',
+      serviceLatitude: Number(profile?.serviceLatitude || 0),
+      serviceLongitude: Number(profile?.serviceLongitude || 0),
+      serviceRadiusKm: Number(profile?.serviceRadiusKm || 5),
+      profileBackgroundFileId: profile?.profileBackgroundFileId || '',
+      profileIntro: profile?.profileIntro || '',
+      rejectUnvaccinatedPets: profile?.rejectUnvaccinatedPets === true,
+      weeklySchedule: profile?.weeklySchedule || { '1': [], '2': [], '3': [], '4': [], '5': [], '6': [], '7': [] }
     },
     activeDay: 1,
     startHourIndex: 10,
     endHourIndex: 12,
     messageUnreadCount: 0,
     messageHasUnread: false
-  },
+  }
+}
+
+Page({
+  data: getInitialStaffProfileData(),
 
     onPullDownRefresh() {
     Promise.resolve(this.loadProfile()).finally(() => {
@@ -106,7 +179,7 @@ Page({
   },
 
   loadProfile() {
-    Promise.all([
+    return Promise.all([
       callFunction('auth', 'me'),
       callFunction('staff', 'getStaffProfile'),
       callFunction('finance', 'getStaffBalance').catch(() => null)
@@ -115,6 +188,7 @@ Page({
         const isStaffActive = user && Array.isArray(user.roles) && user.roles.includes('staff')
         const isProfileValid = profile && (profile.auditStatus === 'approved' || profile.auditStatus === 'intern' || profile.videoAuditStatus === 'approved')
         if (!profile || (!isStaffActive && !isProfileValid)) {
+          this.setData({ loadingProfile: false })
           wx.showToast({ title: '未通过宠托师认证，即将返回', icon: 'none' })
           setTimeout(() => {
             wx.redirectTo({ url: '/pages/staff/certification/index' })
@@ -135,7 +209,10 @@ Page({
           withdrawnText: Number(balance.withdrawn || 0).toFixed(2)
         } : null
 
+        writeStaffProfileCache(profile, balance)
+
         this.setData({
+          loadingProfile: false,
           user,
           profile: profileView,
           balance: balanceData,
@@ -152,7 +229,10 @@ Page({
           depositNotice: profileView?.depositNotice || null
         })
       })
-      .catch(showError)
+      .catch(err => {
+        this.setData({ loadingProfile: false })
+        showError(err)
+      })
   },
 
   openConfigModal() {

@@ -2,13 +2,25 @@ function validPoint(point) {
   return !!point && Number.isFinite(Number(point.latitude)) && Number.isFinite(Number(point.longitude)) &&
     Math.abs(Number(point.latitude)) <= 85 && Math.abs(Number(point.longitude)) <= 180 && Number(point.latitude) !== 0 && Number(point.longitude) !== 0
 }
+function safeDecodeCity(val) {
+  if (!val || typeof val !== 'string') return ''
+  let result = String(val).trim()
+  try {
+    while (result.includes('%')) {
+      const decoded = decodeURIComponent(result).trim()
+      if (decoded === result) break
+      result = decoded
+    }
+  } catch (_) {}
+  return result
+}
 function locationCity(location) {
-  if (location?.city) return String(location.city).trim()
+  if (location?.city) return safeDecodeCity(String(location.city))
   const text = `${location?.address || ''}${location?.name || ''}`
   const direct = text.match(/(北京市|上海市|天津市|重庆市|香港特别行政区|澳门特别行政区)/)
-  if (direct) return direct[1]
+  if (direct) return safeDecodeCity(direct[1])
   const city = text.match(/(?:.*省|.*自治区)?([^省自治区特别行政区]{2,20}市|[^省自治区特别行政区]{2,20}自治州|[^省自治区特别行政区]{2,20}地区|[^省自治区特别行政区]{2,20}盟)/)
-  return city ? city[1] : ''
+  return city ? safeDecodeCity(city[1]) : ''
 }
 function project(point, scale) {
   const sin = Math.sin(Number(point.latitude) * Math.PI / 180), size = 256 * Math.pow(2, scale)
@@ -59,4 +71,4 @@ function storeViewport(cache, key, point, now = Date.now()) {
   // Store camera geometry only. Never persist cards, task IDs, or personal profiles.
   return [{ key, latitude: Number(point.latitude), longitude: Number(point.longitude), scale: point.scale, savedAt: now }, ...others].slice(0, 12)
 }
-module.exports = { validPoint, locationCity, inRegion, clusterCommunities, viewportKey, readViewport, storeViewport }
+module.exports = { validPoint, safeDecodeCity, locationCity, inRegion, clusterCommunities, viewportKey, readViewport, storeViewport }

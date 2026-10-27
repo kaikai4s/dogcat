@@ -258,6 +258,7 @@
   overflow: hidden;
   box-sizing: border-box;
   flex-shrink: 0;
+  transition: opacity 0.2s ease;
 }
 
 .profile-avatar.empty {

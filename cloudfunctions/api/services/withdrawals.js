@@ -96,7 +96,11 @@ module.exports = function createService({
     } else {
     selectEarnings: for await (const earnings of documentPages(db, db.command, 'staff_earnings', { staffOpenid: openid, status: 'available' })) {
       for (const earning of earnings) {
-        if (earning.isMock === true || earning.paymentChannel === 'mock' || earning.status === 'mock_settled' || earning.pendingRefundIds?.length) continue
+        if (earning.isMock === true || earning.paymentChannel === 'mock' || earning.status === 'mock_settled' || earning.pendingRefundIds?.length || earning.frozenIncidentId) continue
+        if (earning.withdrawRequestId) {
+          const boundReq = (await db.collection('withdraw_requests').doc(earning.withdrawRequestId).get().catch(() => ({ data: null }))).data
+          if (boundReq && boundReq.status === 'pending') continue
+        }
         if (totalCents >= targetCents || selected.length > maxEarnings) break selectEarnings
         selected.push(earning)
         totalCents += cents(earning.amount)
@@ -123,19 +127,45 @@ module.exports = function createService({
       if (!internal.adminSettlementId && totalCents < Math.round(Number(settings.settlement.minWithdrawAmount || 0) * 100)) {
         throw new Error(`最低提现金额 ¥${settings.settlement.minWithdrawAmount}`)
       }
-      // Read every record concurrently before writing. A competing transaction must retry and revalidate.
-      const currentSnapshots = await Promise.all(
-        selected.map(earning =>
-          transaction.collection('staff_earnings').doc(earning._id).get().catch(() => ({ data: null }))
-        )
-      )
+      // 微信云开发事务内禁止使用 Promise.all 并发调用 transaction 操作，改用串行依次读取和写入
+      const currentSnapshots = []
+      for (const earning of selected) {
+        const snap = await transaction.collection('staff_earnings').doc(earning._id).get().catch(() => ({ data: null }))
+        currentSnapshots.push(snap)
+      }
       for (let i = 0; i < selected.length; i++) {
         const earning = selected[i]
         const current = (currentSnapshots[i] && currentSnapshots[i].data) || null
-        if (!current || current.staffOpenid !== openid || current.status !== 'available' ||
-            current.isMock === true || current.paymentChannel === 'mock' || current.status === 'mock_settled' ||
-            current.withdrawRequestId || current.frozenIncidentId || current.pendingRefundIds?.length || cents(current.amount) !== cents(earning.amount)) {
-          throw new Error('收益状态已变化或包含不可提现的模拟测试收益，请刷新后重试')
+        if (!current) {
+          throw new Error(`收益状态已变化或包含不可提现的模拟测试收益: 收益记录不存在或无法读取（ID: ${earning._id}）`)
+        }
+        if (current.staffOpenid !== openid) {
+          throw new Error(`收益状态已变化或包含不可提现的模拟测试收益: 收益归属异常（ID: ${earning._id}）`)
+        }
+        if (current.status !== 'available') {
+          throw new Error(`收益状态已变化或包含不可提现的模拟测试收益: 收益状态已变更为 ${current.status}（ID: ${earning._id}）`)
+        }
+        if (current.isMock === true || current.paymentChannel === 'mock' || current.status === 'mock_settled') {
+          throw new Error(`收益状态已变化或包含不可提现的模拟测试收益: 包含不可提现的模拟测试收益（ID: ${earning._id}）`)
+        }
+        if (current.frozenIncidentId) {
+          throw new Error(`收益状态已变化或包含不可提现的模拟测试收益: 收益已被售后纠纷冻结（ID: ${earning._id}）`)
+        }
+        if (current.pendingRefundIds?.length) {
+          throw new Error(`收益状态已变化或包含不可提现的模拟测试收益: 收益存在未决退款纠纷（ID: ${earning._id}）`)
+        }
+        if (cents(current.amount) !== cents(earning.amount)) {
+          throw new Error(`收益状态已变化或包含不可提现的模拟测试收益: 收益金额已变动（ID: ${earning._id}）`)
+        }
+        // 并发防抢占：如果该收益在事务开启前没有被占用，而在进入事务后被其他并发请求写入了新的 withdrawRequestId
+        if (current.withdrawRequestId && current.withdrawRequestId !== earning.withdrawRequestId) {
+          throw new Error(`收益状态已变化或包含不可提现的模拟测试收益: 收益已被其他提现申请锁定（ID: ${earning._id}）`)
+        }
+        if (current.withdrawRequestId) {
+          const activeReq = (await db.collection('withdraw_requests').doc(current.withdrawRequestId).get().catch(() => ({ data: null }))).data
+          if (activeReq && activeReq.status === 'pending') {
+            throw new Error(`收益状态已变化或包含不可提现的模拟测试收益: 收益正处于提现审核排队中（申请单号: ${current.withdrawRequestId}）`)
+          }
         }
       }
       const request = {
@@ -157,13 +187,11 @@ module.exports = function createService({
         await reserveWechatApplicationQuota(transaction, { _id: id, ...request }, { settings })
       }
       await transaction.collection('withdraw_requests').doc(id).set({ data: request })
-      await Promise.all(
-        selected.map(earning =>
-          transaction.collection('staff_earnings').doc(earning._id).update({
-            data: { status: 'withdrawing', withdrawRequestId: id, updatedAt: time }
-          })
-        )
-      )
+      for (const earning of selected) {
+        await transaction.collection('staff_earnings').doc(earning._id).update({
+          data: { status: 'withdrawing', withdrawRequestId: id, updatedAt: time }
+        })
+      }
       await transaction.collection('finance_logs').doc(`withdraw_${id}`).set({ data: {
         action: 'withdraw_requested', targetType: 'withdraw_request', targetId: id,
         orderId: '', staffOpenid: openid, amountDelta: -request.amount,

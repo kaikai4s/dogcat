@@ -40,6 +40,114 @@ function setup() {
 }
 const ok = user => ({ result: { ok: true, data: user } })
 
+test('ordinary user reads return the cached identity without requesting auth', async () => {
+  const { api, requests } = setup()
+  const cached = { _id: 'user', nickname: 'cached' }
+  api.setCachedUser(cached)
+  assert.equal(await api.getCurrentUser(), cached)
+  await flush()
+  assert.equal(requests.length, 0)
+})
+
+test('forced user reads bypass the cache and share an auth.me refresh', async () => {
+  const { api, requests, app } = setup()
+  const cached = { _id: 'user', nickname: 'cached' }
+  api.setCachedUser(cached)
+  const first = api.getCurrentUser({ force: true })
+  const second = api.getCurrentUser({ force: true })
+  await flush()
+  assert.equal(requests.length, 1)
+  assert.equal(requests[0].data.module, 'auth')
+  assert.equal(requests[0].data.action, 'me')
+  assert.equal(await api.getCurrentUser(), cached)
+  const refreshed = { _id: 'user', nickname: 'refreshed' }
+  requests[0].resolve(ok(refreshed))
+  for (const user of await Promise.all([first, second])) assert.equal(user, refreshed)
+  assert.equal(app.globalData.user, refreshed)
+})
+
+test('a failed forced refresh preserves the cached identity and permits retry', async () => {
+  const { api, requests, app } = setup()
+  const cached = { _id: 'user' }
+  api.setCachedUser(cached)
+  const waiting = api.getCurrentUser({ force: true }).catch(error => error)
+  await flush()
+  assert.equal(requests.length, 1)
+  const failure = new Error('network unavailable')
+  requests[0].reject(failure)
+  assert.equal(await waiting, failure)
+  assert.equal(app.globalData.user, cached)
+  assert.equal(app.globalData.isGuest, false)
+  const retry = api.getCurrentUser({ force: true })
+  await flush()
+  assert.equal(requests.length, 2)
+  requests[1].resolve(ok(cached))
+  assert.equal(await retry, cached)
+})
+
+test('a forced refresh timeout preserves identity and ignores late success after retry', async () => {
+  const { api, requests, advance, app } = setup()
+  const cached = { _id: 'user', nickname: 'cached' }
+  api.setCachedUser(cached)
+  const waiting = api.getCurrentUser({ force: true }).catch(error => error)
+  await flush()
+  assert.equal(requests.length, 1)
+  advance(15000)
+  assert.equal((await waiting).code, 'ENTRY_READ_TIMEOUT')
+  assert.equal(app.globalData.user, cached)
+  assert.equal(app.globalData.isGuest, false)
+  const retry = api.getCurrentUser({ force: true })
+  await flush()
+  assert.equal(requests.length, 2)
+  const refreshed = { _id: 'user', nickname: 'refreshed' }
+  requests[1].resolve(ok(refreshed))
+  assert.equal(await retry, refreshed)
+  requests[0].resolve(ok({ _id: 'user', nickname: 'stale' }))
+  await flush()
+  assert.equal(app.globalData.user, refreshed)
+})
+
+test('a forced refresh started before logout cannot restore the logged-out identity', async () => {
+  const { api, requests, app } = setup()
+  api.setCachedUser({ _id: 'user' })
+  const waiting = api.getCurrentUser({ force: true })
+  await flush()
+  assert.equal(requests.length, 1)
+  api.logoutCurrentUser()
+  requests[0].resolve(ok({ _id: 'user' }))
+  assert.equal(await waiting, null)
+  assert.equal(app.globalData.user, null)
+  assert.equal(app.globalData.isGuest, true)
+  assert.equal(await api.getCurrentUser({ force: true }), null)
+  assert.equal(requests.length, 1)
+})
+
+test('force respects the logout marker unless silent is explicitly false', async () => {
+  const { api, requests, app } = setup()
+  api.setCachedUser({ _id: 'user' })
+  api.logoutCurrentUser()
+  assert.equal(await api.getCurrentUser({ force: true }), null)
+  assert.equal(await api.getCurrentUser({ force: true, silent: true }), null)
+  await flush()
+  assert.equal(requests.length, 0)
+  assert.equal(app.globalData.user, null)
+  const explicit = api.getCurrentUser({ force: true, silent: false })
+  await flush()
+  assert.equal(requests.length, 1)
+  assert.equal(requests[0].data.module, 'auth')
+  assert.equal(requests[0].data.action, 'me')
+  const user = { _id: 'explicit-user' }
+  requests[0].resolve(ok(user))
+  assert.equal(await explicit, user)
+  assert.equal(app.globalData.user, user)
+  api.setCachedUser(null)
+  const afterExplicit = api.getCurrentUser({ force: true })
+  await flush()
+  assert.equal(requests.length, 2)
+  requests[1].resolve(ok(user))
+  assert.equal(await afterExplicit, user)
+})
+
 test('a late explicit login cannot undo a subsequent logout', async () => {
   const { api, requests, app } = setup()
   const pending = api.loginWithWechat()

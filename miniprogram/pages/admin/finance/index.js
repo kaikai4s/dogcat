@@ -58,6 +58,25 @@ function decorate(item) {
   }
 }
 
+function matchClientKeyword(item, kw) {
+  if (!kw) return true
+  const k = String(kw).trim().toLowerCase()
+  if (!k) return true
+  const checks = [
+    item.staffPhone, item.accountPhone, item.certifiedPhone, item.phone, item.userPhone, item.contactPhone,
+    item._id, item.id, item.orderId, item.orderNo, item.paymentNo, item.refundNo, item.outBillNo,
+    item.outTradeNo, item.transactionId, item.wechatTransferBillNo, item.paymentReference, item.targetId,
+    item.staffRealName, item.staffNickname, item.userNickname, item.accountName
+  ]
+  if (checks.some((val) => val && String(val).toLowerCase().includes(k))) return true
+  if (Array.isArray(item.problemOrders)) {
+    if (item.problemOrders.some((p) => p && (String(p.orderId || '').toLowerCase().includes(k) || String(p.orderNo || '').toLowerCase().includes(k)))) {
+      return true
+    }
+  }
+  return false
+}
+
 function parseAmount(value) {
   const text = String(value).trim()
   const amount = Number(text)
@@ -126,6 +145,7 @@ Page({
     eligibilityChecked: false,
     status: '',
     activeTab: 'withdraws',
+    expandedWithdrawHistories: {},
     targetStaffOpenid: '',
     targetStaffLabel: '',
     forfeitEvidenceId: '',
@@ -134,6 +154,8 @@ Page({
     forfeitImages: [],
     startDate: monthStart(),
     endDate: today(),
+    keyword: '',
+    appliedKeyword: '',
     sectionHomeUrl: '',
     canGoBack: false
   },
@@ -169,7 +191,28 @@ Page({
   },
 
   query() {
-    return { startDate: this.data.startDate, endDate: this.data.endDate }
+    const q = { startDate: this.data.startDate, endDate: this.data.endDate }
+    if (this.data.appliedKeyword) {
+      q.keyword = this.data.appliedKeyword
+    }
+    return q
+  },
+
+  inputKeyword(e) {
+    this.setData({ keyword: e.detail.value })
+  },
+
+  submitSearch() {
+    const appliedKeyword = String(this.data.keyword || '').trim()
+    this.setData({ appliedKeyword }, () => {
+      this.reloadAll()
+    })
+  },
+
+  clearSearch() {
+    this.setData({ keyword: '', appliedKeyword: '' }, () => {
+      this.reloadAll()
+    })
   },
 
   updateAccessibleTabs() {
@@ -195,7 +238,12 @@ Page({
         const result = await optionalAdminRead(this, 'admin', action, field === 'requests' ? { ...query, status: this.data.status, staffOpenid: this.data.targetStaffOpenid } : query, field === 'dashboard' ? null : [])
         if (this._financeVersion !== version) return
         if (field === 'dashboard') this.setData({ dashboard: result, metricCards: result ? metricCards(result.metrics) : [] })
-        else this.setData({ [field]: field === 'logs' ? result || [] : (result || []).map(decorate) })
+        else {
+          const appliedKeyword = this.data.appliedKeyword
+          const rawList = field === 'logs' ? (result || []) : (result || []).map(decorate)
+          const filtered = appliedKeyword ? rawList.filter((item) => matchClientKeyword(item, appliedKeyword)) : rawList
+          this.setData({ [field]: filtered })
+        }
       } catch (error) { if (this._financeVersion === version) { this.setData({ [field]: field === 'dashboard' ? null : [], ...(field === 'dashboard' ? { metricCards: [] } : {}) }); showError(error) } }
     }))
   },
@@ -231,17 +279,44 @@ Page({
     this.setData({ status: e.currentTarget.dataset.status || '' }, this.load)
   },
 
+  toggleWithdrawHistory(e) {
+    const id = e.currentTarget.dataset.id
+    if (!id) return
+    const currentMap = this.data.expandedWithdrawHistories || {}
+    this.setData({
+      [`expandedWithdrawHistories.${id}`]: !currentMap[id]
+    })
+  },
+
   audit(e) {
     const id = e.currentTarget.dataset.id
     const approved = e.currentTarget.dataset.approved === true || e.currentTarget.dataset.approved === 'true'
     const row = (this.data.requests || []).find(item => item._id === id)
     const action = row?.assetType === 'user' && !can(this.data.adminAccess, 'admin.auditWithdrawRequest') ? 'auditUserAssetWithdrawal' : 'auditWithdrawRequest'
+    if (typeof wx.showLoading === 'function') wx.showLoading({ title: approved ? '正在审核并打款...' : '正在处理...', mask: true })
     callFunction('admin', action, { id, approved, auditRemark: approved ? '审核通过' : '审核驳回' })
-      .then(() => {
-        wx.showToast({ title: approved ? '已通过' : '已驳回' })
+      .then((res) => {
+        if (typeof wx.hideLoading === 'function') wx.hideLoading()
+        if (approved && res && res.autoTransferred) {
+          const statusText = res.status === 'paid' ? '已审核并成功到账' : '已审核并自动发起微信打款'
+          if (typeof wx.showToast === 'function') wx.showToast({ title: statusText, icon: 'success' })
+        } else if (approved && res && res.transferError) {
+          if (typeof wx.showModal === 'function') {
+            wx.showModal({
+              title: '审核已通过，自动打款待重试',
+              content: `审核已通过，但自动打款提示：${res.transferError}。您可在待转账列表中重试发起微信打款。`,
+              showCancel: false
+            })
+          }
+        } else {
+          if (typeof wx.showToast === 'function') wx.showToast({ title: approved ? '已通过' : '已驳回' })
+        }
         this.load()
       })
-      .catch(showError)
+      .catch((err) => {
+        if (typeof wx.hideLoading === 'function') wx.hideLoading()
+        showError(err)
+      })
   },
 
   markPaid(e) {
@@ -307,14 +382,20 @@ Page({
     const targetStaffOpenid = this.data.targetStaffOpenid
     this.setData({ staffFinanceLoading: true, staffFinanceError: '' })
     const query = this.query()
-    const depositQuery = targetStaffOpenid ? { staffOpenid: targetStaffOpenid } : query
+    const depositQuery = targetStaffOpenid
+      ? { staffOpenid: targetStaffOpenid, ...(this.data.appliedKeyword ? { keyword: this.data.appliedKeyword } : {}) }
+      : query
     return Promise.all([
       optionalAdminRead(this, 'admin', 'listStaffDeposits', depositQuery),
       optionalAdminRead(this, 'admin', 'listSupplyReimbursements', query)
     ])
       .then(([deposits, supplies]) => {
         if (this._staffFinanceVersion !== version) return
+        const appliedKeyword = this.data.appliedKeyword
         const rawDeposits = (deposits || []).map(decorateStaffFinance)
+        const rawSupplies = (supplies || []).map(decorateStaffFinance)
+        const filteredDeposits = appliedKeyword ? rawDeposits.filter((item) => matchClientKeyword(item, appliedKeyword)) : rawDeposits
+        const filteredSupplies = appliedKeyword ? rawSupplies.filter((item) => matchClientKeyword(item, appliedKeyword)) : rawSupplies
 
         let targetStaffLabel = ''
         if (targetStaffOpenid) {
@@ -325,8 +406,8 @@ Page({
         }
 
         this.setData({
-          deposits: rawDeposits,
-          supplies: (supplies || []).map(decorateStaffFinance),
+          deposits: filteredDeposits,
+          supplies: filteredSupplies,
           staffFinanceLoading: false,
           targetStaffLabel
         })

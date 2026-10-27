@@ -282,10 +282,19 @@ module.exports = function createService({
     try {
       response = await wechatPayRequest('GET', `/v3/fund-app/mch-transfer/transfer-bills/out-bill-no/${encodeURIComponent(outBillNo)}`, null, config)
     } catch (error) {
-      if (retryMissing && error.code === 'RESOURCE_NOT_EXISTS' && ['approved', 'transferring', 'transfer_failed'].includes(request.status)) {
-        if (request.transferSubmittedAt && (!request.transferMchId || !request.transferAppId)) throw new Error('历史转账缺少原商户信息，请先人工核对原单')
-        // Resume the original authorized intent with its original bill number.
-        return submitWechatWithdrawalTransfer(withdrawId, { openid: 'recover_missing_transfer' })
+      if (error.code === 'RESOURCE_NOT_EXISTS') {
+        const amountFen = request.amountFen || (typeof cents === 'function' ? cents(request.amount) : Math.round(Number(request.amount || 0) * 100))
+        if (retryMissing && ['approved', 'transferring'].includes(request.status) && amountFen >= 10) {
+          if (request.transferSubmittedAt && (!request.transferMchId || !request.transferAppId)) throw new Error('历史转账缺少原商户信息，请先人工核对原单')
+          // Resume the original authorized intent with its original bill number.
+          return submitWechatWithdrawalTransfer(withdrawId, { openid: 'recover_missing_transfer' })
+        }
+        return markWechatWithdrawalFailed(withdrawId, {
+          state: 'NOT_FOUND',
+          gatewayTerminalConfirmed: true,
+          failReason: safeText(request.lastTransferError && request.lastTransferError.includes('低于最低') ? request.lastTransferError : '微信未查到原转账单（资金未出账，已确认转账失败）'),
+          rawTransferResponse: { code: 'RESOURCE_NOT_EXISTS', message: error.message }
+        })
       }
       throw error
     }

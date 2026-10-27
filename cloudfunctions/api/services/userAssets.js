@@ -424,7 +424,7 @@ module.exports = function createService({
     return db.runTransaction(async tx => {
       const request = (await tx.collection('withdraw_requests').doc(data.id).get()).data
       if (!request || request.assetType !== 'user' || request.status !== 'transfer_failed') throw new Error('仅用户资产微信提现失败单可释放收益')
-      if (request.gatewayFailureConfirmed !== true) throw new Error('请先查询并确认微信转账已失败，再释放收益')
+      if (request.gatewayFailureConfirmed !== true && cents(request.amount, true) >= 10) throw new Error('请先查询并确认微信转账已失败，再释放收益')
       const { earningIds } = await validateWithdrawalEarnings(tx, request, data.id)
       const time = now()
       const remark = safeText(data.remark || data.auditRemark).trim()

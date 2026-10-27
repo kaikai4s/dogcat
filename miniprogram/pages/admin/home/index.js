@@ -126,6 +126,7 @@ Page({
     mallPendingCount: null,
     communityPendingCount: null,
     dashboard: null,
+    dashboardLoading: true,
     overviewStats: [],
     revenueStats: [],
     adminSections: [],
@@ -160,7 +161,16 @@ Page({
   refreshHome() {
     this.invalidateRequests()
     const access = this.data.adminAccess
-    this.setData({ adminSections: buildAdminSections(access, null, null, null), dashboard: null, mallPendingCount: null, communityPendingCount: null, urgentNotice: null, unreadNotificationCount: 0, staffAuditTodo: null })
+    this.setData({
+      adminSections: buildAdminSections(access, null, null, null),
+      dashboard: null,
+      dashboardLoading: true,
+      mallPendingCount: null,
+      communityPendingCount: null,
+      urgentNotice: null,
+      unreadNotificationCount: 0,
+      staffAuditTodo: null
+    })
     const requests = []
     if (can(access, 'adminMall.listOrders')) requests.push(this.loadMallPending())
     if (can(access, 'communityMap.listAdmin')) requests.push(this.loadCommunityPending())
@@ -190,6 +200,7 @@ Page({
 
   loadDashboard() {
     const requestId = this._dashboardRequest = (this._dashboardRequest || 0) + 1
+    this.setData({ dashboardLoading: true })
     return callFunction('admin', 'dashboard')
       .then((dashboard) => {
         if (requestId !== this._dashboardRequest) return
@@ -197,6 +208,7 @@ Page({
         const staffAuditUrl = '/pages/admin/staff-audit/list/index'
         this.setData({
           dashboard,
+          dashboardLoading: false,
           overviewStats: buildOverviewStats(dashboard),
           revenueStats: buildRevenueStats(dashboard),
           adminSections: buildAdminSections(this.data.adminAccess, dashboard, this.data.mallPendingCount, this.data.communityPendingCount),
@@ -205,7 +217,12 @@ Page({
             : null
         })
       })
-      .catch((err) => { if (requestId === this._dashboardRequest) showError(err) })
+      .catch((err) => {
+        if (requestId === this._dashboardRequest) {
+          this.setData({ dashboardLoading: false })
+          showError(err)
+        }
+      })
   },
 
   loadNotifications() {

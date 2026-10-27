@@ -160,6 +160,11 @@
             <text>查询微信转账状态</text>
           </button>
 
+          <view class="withdraw-hint-box" wx:if="{{item.status === 'transferring' && !item.canConfirmTransfer}}" style="margin-top: 16rpx; padding: 16rpx 20rpx; background: #f0fdf4; border-radius: 12rpx; color: #166534; font-size: 24rpx; display: flex; align-items: center; gap: 8rpx;">
+            <text class="remix-icon ri-information-line"></text>
+            <text>后台审核已通过，系统已自动发起微信打款，资金将自动转入微信零钱，无需手动确认。</text>
+          </view>
+
           <!-- 提现详情明细 -->
           <view class="withdraw-item-details">
             <view class="detail-row">

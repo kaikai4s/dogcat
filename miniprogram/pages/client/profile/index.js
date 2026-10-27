@@ -1,8 +1,9 @@
 const { callFunction, showError } = require('../../../utils/cloud')
-const { getCurrentUser, loginWithWechat, ensureLogin, setCachedUser, logoutCurrentUser } = require('../../../utils/cloud')
+const { getCurrentUser, getCachedUser, getCloudEnv, subscribeIdentityChange, loginWithWechat, ensureLogin, setCachedUser, logoutCurrentUser } = require('../../../utils/cloud')
+const displayCache = require('./display-cache')
 const { themeOptions, applyTheme, saveTheme, getThemeState } = require('../../../utils/theme')
 const { fontOptions, applyFont, saveFont, getFontState } = require('../../../utils/font')
-const { loadMessageUnread, startStaffEntryUnread, stopStaffEntryUnread } = require('../../../utils/client-nav')
+// Unread data here is fetched under this page's identity/request guards, not the shared role-only cache.
 const { copyText } = require('../../../utils/clipboard')
 
 const staffEntryMap = {
@@ -13,19 +14,6 @@ const staffEntryMap = {
 }
 
 function getCachedStaffState() {
-  try {
-    const profile = wx.getStorageSync('cached_staff_profile_data')
-    if (profile) {
-      const status = profile.auditStatus || 'none'
-      const entry = staffEntryMap[status] || staffEntryMap.none
-      return {
-        staffProfile: profile,
-        staffEntryReady: true,
-        staffEntryTitle: entry.title,
-        staffEntryTip: status === 'rejected' && profile.auditRemark ? profile.auditRemark : entry.tip
-      }
-    }
-  } catch (e) {}
   return {
     staffProfile: null,
     staffEntryReady: true,
@@ -33,12 +21,26 @@ function getCachedStaffState() {
     staffEntryTip: staffEntryMap.none.tip
   }
 }
+const emptySummary = {
+  points: null, memberLevelName: '', pointMultiplier: null, retroCardCount: null,
+  levelDescription: '', badgeTag: '', badgeStyle: '', nameColor: '', nameEffect: ''
+}
 
-Page({
-  data: {
+function getInitialProfileData() {
+  let user = null
+  try {
+    user = getCachedUser()
+  } catch (_) {}
+
+  const isGuest = !user
+  const roles = Array.isArray(user?.roles) ? user.roles : []
+  const rawPhone = String(user?.phone || '')
+  const phone = rawPhone ? `${rawPhone.slice(0, 3)}****${rawPhone.slice(-4)}` : ''
+
+  const base = {
     loginAgreed: false,
-    isGuest: true,
-    isAdmin: false,
+    isGuest,
+    isAdmin: roles.includes('admin'),
     showSettings: false,
     themeOptions,
     themeKey: 'day',
@@ -55,21 +57,19 @@ Page({
     savingFont: false,
     loadingLogin: false,
     ...getCachedStaffState(),
-    userName: '游客',
-    userMeta: '登录后可管理宠物、订单、地址和收藏',
-    avatarUrl: '',
-    points: 0,
-    memberLevelName: '',
-    pointMultiplier: 1,
-    retroCardCount: 0,
-    levelDescription: '',
+    identityReady: !isGuest,
+    userName: isGuest ? '个人中心' : (user.nickname || phone || '宠物主'),
+    userMeta: isGuest ? '正在确认登录状态' : (phone ? `已绑定手机 ${phone}` : '欢迎回来，Dovelin 多芙琳陪你安心照护'),
+    avatarUrl: isGuest ? '' : (user.avatarUrl || ''),
+    avatarImages: [],
+    ...emptySummary,
     rewardMailUnreadCount: 0,
     rewardMailUnclaimedCount: 0,
     staffUnreadCount: 0,
     staffUnreadCountText: '0',
     messageUnreadCount: 0,
     messageHasUnread: false,
-    hidePublicCheckinPhotos: false,
+    hidePublicCheckinPhotos: isGuest ? false : (user.hidePublicCheckinPhotos === true || (user.privacySettings && user.privacySettings.hidePublicCheckinPhotos === true)),
     savingPrivacy: false,
     showCustomerServiceModal: false,
     showFeedbackModal: false,
@@ -94,10 +94,112 @@ Page({
       enableFollowBar: false
     },
     officialAccountFollowBarLoaded: false
-  },
+  }
+
+  if (user) {
+    try {
+      const env = typeof getCloudEnv === 'function' ? getCloudEnv() : ''
+      const scope = typeof displayCache?.scopeKey === 'function'
+        ? displayCache.scopeKey(env, user)
+        : (user._id || user.openid ? JSON.stringify([String(env), String(user._id || user.openid)]) : '')
+      if (scope && typeof displayCache?.readDisplay === 'function') {
+        const cached = displayCache.readDisplay(scope)
+        if (cached && cached.summary) {
+          Object.assign(base, cached.summary)
+        }
+        if (cached && cached.staff) {
+          const status = cached.staff.auditStatus || 'none'
+          const entry = staffEntryMap[status] || staffEntryMap.none
+          base.staffProfile = cached.staff
+          base.staffEntryTitle = entry.title
+          base.staffEntryTip = status === 'rejected' && cached.staff.auditRemark ? cached.staff.auditRemark : entry.tip
+        }
+      }
+    } catch (_) {}
+  }
+
+  return base
+}
+
+Page({
+  data: getInitialProfileData(),
 
   onLoad(query = {}) {
+    this._visible = true
+    this._unloaded = false
+    this._life = 0
+    this._identity = 0
+    this._requests = {}
+    const cachedUser = getCachedUser()
+    if (cachedUser) {
+      this._scope = this.currentScope(cachedUser)
+    }
     this.setData({ showSettings: query.settings === '1' })
+    this.restoreIdentity()
+    this._unsubscribeIdentity = subscribeIdentityChange(user => {
+      if (this._unloaded) return
+      if (!user) this.applyGuest()
+      else this.applyUser(user)
+      if (this._visible && user) this.refreshDetails()
+    })
+  },
+
+  currentScope(user = getCachedUser()) {
+    if (typeof displayCache?.scopeKey === 'function') {
+      return displayCache.scopeKey(getCloudEnv(), user)
+    }
+    const env = typeof getCloudEnv === 'function' ? getCloudEnv() : 'default'
+    const id = user && (user._id || user.openid || user._openid)
+    return id ? JSON.stringify([String(env), String(id)]) : ''
+  },
+
+  restoreIdentity() {
+    const user = getCachedUser()
+    if (user) this.applyUser(user)
+    else if (this._scope || !this.data.isGuest) this.applyGuest()
+  },
+
+  ticket(kind) {
+    this._requests = this._requests || {}
+    const seq = (this._requests[kind] || 0) + 1
+    this._requests[kind] = seq
+    return { kind, seq, life: this._life || 0, identity: this._identity || 0, scope: this._scope || '', env: getCloudEnv() }
+  },
+
+  active(ticket, allowLogin = false, user) {
+    if (this._unloaded || this._visible === false || ticket.life !== (this._life || 0) || ticket.env !== getCloudEnv() || this._requests[ticket.kind] !== ticket.seq) return false
+    const scope = this.currentScope()
+    if (allowLogin && !ticket.scope && user && scope === this.currentScope(user)) {
+      return (this._identity || 0) <= ticket.identity + 1
+    }
+    return ticket.identity === (this._identity || 0) && ticket.scope === (this._scope || '') && ticket.scope === scope
+  },
+
+  ensurePageLogin(options) {
+    const ticket = this.ticket('entry')
+    this._entryTicket = ticket
+    return ensureLogin({ ...options, isActive: () => this.active(ticket) }).then(user => {
+      if (!user || !this.active(ticket, true, user)) throw { code: 'LOGIN_CANCELLED' }
+      if (!this._scope) this.applyUser(user)
+      return user
+    })
+  },
+
+  refreshDetails() {
+    return Promise.all([this.loadStaffProfile(), this.loadPoints(), this.loadRewardMailUnread(), this.loadUnread()])
+  },
+
+  refreshProfile(force = false) {
+    this.restoreIdentity()
+    const ticket = this.ticket('auth')
+    return getCurrentUser(force ? { force: true } : { silent: true }).then(user => {
+      if (!this.active(ticket, true, user)) return
+      if (!user) { this.applyGuest(); return }
+      this.syncUserTheme(user)
+      this.syncUserFont(user)
+      this.applyUser(user)
+      return this.refreshDetails()
+    }).catch(() => {}) // A transport failure is not a logout.
   },
 
   onCustomRefresh() {
@@ -110,59 +212,31 @@ Page({
   },
 
   onPullDownRefresh() {
-    return Promise.resolve(
-      getCurrentUser({ force: true })
-        .then((user) => {
-          if (!user) { this.applyGuest(); return; }
-          this.applyUser(user)
-          this.loadStaffProfile()
-          this.loadPoints()
-          this.loadRewardMailUnread()
-          startStaffEntryUnread(this)
-          loadMessageUnread(this)
-        })
-        .catch(() => this.applyGuest())
-    ).finally(() => wx.stopPullDownRefresh())
+    return this.refreshProfile(true).finally(() => wx.stopPullDownRefresh())
   },
 
   onShow() {
-    this._staffEntryVisible = true
+    this._visible = true
+    this.restoreIdentity()
     wx.setNavigationBarTitle({ title: this.data.showSettings ? '设置' : '我的' })
-    // 静默刷新宠护师状态，不重置 staffEntryReady: false，避免每次进入页面时金刚区卡片延迟加载跳动
-    try {
-      const cached = wx.getStorageSync('cached_staff_profile_data')
-      if (cached) {
-        this.applyStaffProfile(cached)
-      }
-    } catch (e) {}
     this.applyCurrentTheme()
     this.applyCurrentFont()
-    getCurrentUser({ silent: true })
-      .then((user) => {
-        if (!user) {
-          this.applyGuest()
-          return
-        }
-        this.syncUserTheme(user)
-        this.syncUserFont(user)
-        this.applyUser(user)
-        this.loadStaffProfile()
-        this.loadPoints()
-        this.loadRewardMailUnread()
-        startStaffEntryUnread(this)
-        loadMessageUnread(this)
-      })
-      .catch(() => this.applyGuest())
+    return this.refreshProfile()
   },
 
   onHide() {
-    this._staffEntryVisible = false
-    stopStaffEntryUnread(this)
+    this._visible = false
+    this._life = (this._life || 0) + 1
+    clearTimeout(this._staffUnreadTimer)
+    // Restart an unresolved candidate when shown again; retain a loaded same-account image.
+    this._avatarSource = undefined
+    this.setData({ avatarImages: this.data.avatarImages.filter(item => item.loaded), loadingLogin: false, savingTheme: false, savingFont: false, savingPrivacy: false })
   },
 
   onUnload() {
-    this._staffEntryVisible = false
-    stopStaffEntryUnread(this)
+    this.onHide()
+    this._unloaded = true
+    if (this._unsubscribeIdentity) this._unsubscribeIdentity()
   },
 
   applyCurrentTheme(themeKey) {
@@ -188,9 +262,11 @@ Page({
   },
 
   applyGuest() {
-    stopStaffEntryUnread(this)
-    try { wx.removeStorageSync('cached_staff_profile_data') } catch (e) {}
-    setCachedUser(null)
+    this._identity = (this._identity || 0) + 1
+    this._scope = ''
+    this._hasSummary = false
+    this._avatarSource = undefined
+    clearTimeout(this._staffUnreadTimer)
     this.setData({
       isGuest: true,
       loginAgreed: false,
@@ -201,43 +277,119 @@ Page({
       staffEntryTip: staffEntryMap.none.tip,
       userName: '游客',
       userMeta: '登录后可管理宠物、订单、地址和收藏',
+      identityReady: true,
       avatarUrl: '',
-      points: 0,
-      memberLevelName: '',
-      pointMultiplier: 1,
-      retroCardCount: 0,
-      levelDescription: '',
+      avatarImages: [],
+      ...emptySummary,
       rewardMailUnreadCount: 0,
       rewardMailUnclaimedCount: 0,
       staffUnreadCount: 0,
       staffUnreadCountText: '0',
       messageUnreadCount: 0,
+      messageUnreadCountText: '0',
       messageHasUnread: false,
+      messageShowUnreadDot: false,
       hidePublicCheckinPhotos: false,
       savingPrivacy: false
     })
   },
 
   applyUser(user) {
+    const scope = this.currentScope(user)
+    if (!scope) return
+    const isNewScope = !this._scope || this._scope !== scope
+    this._scope = scope
+    if (isNewScope) {
+      const cached = typeof displayCache?.readDisplay === 'function' ? displayCache.readDisplay(scope) : {}
+      this._hasSummary = !!cached.summary
+      if (cached.summary) this.setData(cached.summary)
+      if (cached.staff) this.applyStaffProfile(cached.staff)
+    }
     const rawPhone = String(user.phone || '')
     const phone = rawPhone ? `${rawPhone.slice(0, 3)}****${rawPhone.slice(-4)}` : ''
     const roles = Array.isArray(user.roles) ? user.roles : []
     const patch = {
       isGuest: false,
+      identityReady: true,
       isAdmin: roles.includes('admin'),
       userName: user.nickname || phone || '宠物主',
       userMeta: phone ? `已绑定手机 ${phone}` : '欢迎回来，Dovelin 多芙琳陪你安心照护',
-      avatarUrl: user.avatarUrl || '',
       hidePublicCheckinPhotos: user.hidePublicCheckinPhotos === true || (user.privacySettings && user.privacySettings.hidePublicCheckinPhotos === true)
     }
-    if (user.memberLevelName || user.badgeTag || user.nameEffect || user.nameColor) {
-      patch.memberLevelName = user.memberLevelName || '普通会员'
-      patch.badgeTag = user.badgeTag || 'V1'
-      patch.badgeStyle = user.badgeStyle || 'gold'
-      patch.nameColor = user.nameColor || ''
-      patch.nameEffect = user.nameEffect || ''
+    if (user.avatarUrl && this.data.avatarUrl !== user.avatarUrl) {
+      patch.avatarUrl = user.avatarUrl
+    }
+    if (!this._hasSummary) {
+      const partial = typeof displayCache?.pickSummary === 'function' ? displayCache.pickSummary(user) : {}
+      Object.keys(partial).forEach(key => {
+        if (Object.prototype.hasOwnProperty.call(user, key)) patch[key] = partial[key]
+      })
     }
     this.setData(patch)
+    if (this._visible !== false && user.avatarUrl) this.prepareAvatar(user.avatarUrl)
+  },
+
+  prepareAvatar(source, retry = false) {
+    if (!retry && this._avatarSource === source) return
+    if (!retry) this._avatarRetries = 0
+    this._avatarSource = source
+    const ticket = this.ticket('avatar')
+    this._avatarTicket = ticket
+    const images = this.data.avatarImages.filter(item => item.loaded)
+    this.setData({ avatarImages: source ? images : [], ...(source ? {} : { avatarUrl: '' }) })
+    if (!source) return
+    const apply = path => {
+      if (!this.active(ticket) || this._avatarSource !== source) return
+      const token = `${ticket.life}-${ticket.identity}-${ticket.seq}`
+      const nextImages = [...this.data.avatarImages.filter(item => item.loaded), { token, path, source, loaded: true }]
+      const updateData = { avatarImages: nextImages }
+      if (path && path !== this.data.avatarUrl) {
+        updateData.avatarUrl = path
+      }
+      this.setData(updateData)
+    }
+    const cached = typeof displayCache?.getAvatar === 'function' ? displayCache.getAvatar(this._scope, source) : ''
+    if (cached) { apply(cached); return }
+    if (typeof displayCache?.resolveAvatar === 'function') {
+      return displayCache.resolveAvatar(this._scope, source, () => this.active(ticket) && this._avatarSource === source)
+        .then(apply).catch(() => {
+          if (this.active(ticket) && this._avatarRetries < 1) {
+            this._avatarRetries += 1
+            return this.prepareAvatar(source, true)
+          }
+        })
+    } else {
+      apply(source)
+    }
+  },
+
+  onMainAvatarError() {
+    if (this._avatarSource && this._avatarSource.startsWith('cloud://')) {
+      if (typeof displayCache?.invalidateAvatar === 'function') {
+        displayCache.invalidateAvatar(this._scope, this._avatarSource)
+      }
+      this.prepareAvatar(this._avatarSource, true)
+    } else {
+      this.setData({ avatarUrl: '' })
+    }
+  },
+
+  onAvatarLoad(e) {
+    const token = e.currentTarget.dataset.token
+    const item = this.data.avatarImages.find(image => image.token === token)
+    if (!item || item.loaded || !this._avatarTicket || !this.active(this._avatarTicket) || item.source !== this._avatarSource) return
+    this.setData({ avatarUrl: item.path, avatarImages: [{ ...item, loaded: true }] })
+  },
+
+  onAvatarError(e) {
+    const token = e.currentTarget.dataset.token
+    const item = this.data.avatarImages.find(image => image.token === token)
+    if (!item || !this._avatarTicket || !this.active(this._avatarTicket)) return
+    displayCache.invalidateAvatar(this._scope, item.source, item.path)
+    this.setData({ avatarImages: this.data.avatarImages.filter(image => image.token !== token), ...(item.loaded ? { avatarUrl: '' } : {}) })
+    if (item.source !== this._avatarSource || this._avatarRetries >= 1) return
+    this._avatarRetries += 1
+    this.prepareAvatar(item.source, true)
   },
 
   onLoginConsentChange(e) {
@@ -251,27 +403,27 @@ Page({
     }
     if (this.data.loading || this.data.loadingLogin) return
     this.setData({ loadingLogin: true })
-    loginWithWechat({ agreementVersion: '2026-10-23' })
+    const ticket = this.ticket('login')
+    return loginWithWechat({ agreementVersion: '2026-10-23' })
       .then((user) => {
+        if (!user || !this.active(ticket, true, user)) return
         this.syncUserTheme(user)
         this.syncUserFont(user)
         this.applyUser(user)
-        this.loadStaffProfile()
-        this.loadPoints()
-        this.loadRewardMailUnread()
-        startStaffEntryUnread(this)
-        loadMessageUnread(this)
+        this.refreshDetails()
+        const loggedIn = this.ticket('welcome')
         wx.showToast({ title: '已登录' })
         const isNewUser = !user || user.nickname === '微信用户' || !user.avatarUrl
         if (isNewUser) {
           setTimeout(() => {
+            if (!this.active(loggedIn)) return
             wx.showModal({
               title: '欢迎加入多芙琳',
               content: '检测到您尚未完善资料，是否立即一键同步微信头像、昵称与手机号？',
               confirmText: '立即完善',
               cancelText: '暂不完善',
               success: (res) => {
-                if (res.confirm) {
+                if (res.confirm && this.active(loggedIn)) {
                   wx.navigateTo({ url: '/pages/client/profile/edit/index' })
                 }
               }
@@ -279,8 +431,8 @@ Page({
           }, 400)
         }
       })
-      .catch(showError)
-      .finally(() => this.setData({ loadingLogin: false }))
+      .catch(err => { if (this.active(ticket)) showError(err) })
+      .finally(() => { if (this.active(ticket, true, getCachedUser())) this.setData({ loadingLogin: false }) })
   },
 
   applyStaffProfile(profile) {
@@ -295,59 +447,104 @@ Page({
   },
 
   loadStaffProfile() {
-    callFunction('staff', 'getStaffProfile')
+    if (!this._scope) return Promise.resolve()
+    const ticket = this.ticket('staff')
+    return callFunction('staff', 'getStaffProfile')
       .then((profile) => {
-        this.applyStaffProfile(profile)
-        try { wx.setStorageSync('cached_staff_profile_data', profile) } catch (e) {}
-      })
-      .catch((err) => {
-        console.warn('loadStaffProfile failed', err)
-      })
+        if (!this.active(ticket)) return
+        const minimal = { auditStatus: profile && profile.auditStatus || 'none', auditRemark: profile && profile.auditRemark || '' }
+        this.applyStaffProfile(minimal)
+        displayCache.writeDisplay(ticket.scope, 'staff', minimal)
+      }).catch(() => {})
   },
 
   loadPoints() {
-    callFunction('memberLevel', 'myInfo')
+    if (!this._scope) return Promise.resolve()
+    const ticket = this.ticket('points')
+    return callFunction('memberLevel', 'myInfo')
       .then((info) => {
+        if (!info || !this.active(ticket)) return
         const curLevel = info.currentLevel || {}
-        this.setData({
+        const summary = typeof displayCache?.pickSummary === 'function' ? displayCache.pickSummary({
           points: info.points,
-          memberLevelName: info.memberLevelName || '普通会员',
-          badgeTag: curLevel.badgeTag || info.badgeTag || 'V1',
-          nameColor: curLevel.nameColor || info.nameColor || '',
-          nameEffect: curLevel.nameEffect || info.nameEffect || '',
-          badgeStyle: curLevel.badgeStyle || info.badgeStyle || 'gold',
-          pointMultiplier: Number(info.pointMultiplier || 1),
-          retroCardCount: Number(info.retroCardCount || 0),
-          levelDescription: curLevel && curLevel.description ? curLevel.description : ''
-        })
-      })
-      .catch(() => {})
+          memberLevelName: info.memberLevelName || '',
+          badgeTag: curLevel.badgeTag ?? info.badgeTag ?? '',
+          nameColor: curLevel.nameColor ?? info.nameColor ?? '',
+          nameEffect: curLevel.nameEffect ?? info.nameEffect ?? '',
+          badgeStyle: curLevel.badgeStyle ?? info.badgeStyle ?? '',
+          pointMultiplier: info.pointMultiplier,
+          retroCardCount: info.retroCardCount,
+          levelDescription: curLevel.description || ''
+        }) : {
+          points: info.points,
+          memberLevelName: info.memberLevelName || '',
+          badgeTag: curLevel.badgeTag ?? info.badgeTag ?? '',
+          pointMultiplier: info.pointMultiplier,
+          retroCardCount: info.retroCardCount,
+          levelDescription: curLevel.description || ''
+        }
+        this._hasSummary = true
+        const diff = {}
+        for (const k of Object.keys(summary)) {
+          if (this.data[k] !== summary[k]) {
+            diff[k] = summary[k]
+          }
+        }
+        if (Object.keys(diff).length > 0) {
+          this.setData(diff)
+        }
+        if (typeof displayCache?.writeDisplay === 'function') {
+          displayCache.writeDisplay(ticket.scope, 'summary', summary)
+        }
+      }).catch(() => {})
   },
 
   loadRewardMailUnread() {
-    callFunction('rewardMail', 'getUnreadCount')
-      .then((res) => this.setData({
+    if (!this._scope) return Promise.resolve()
+    const ticket = this.ticket('reward')
+    return callFunction('rewardMail', 'getUnreadCount').then(res => {
+      if (this.active(ticket)) this.setData({
         rewardMailUnreadCount: Number(res.unreadCount || 0),
         rewardMailUnclaimedCount: Number(res.unclaimedCount || 0)
-      }))
-      .catch(() => {})
+      })
+    }).catch(() => {})
+  },
+
+  loadUnread() {
+    if (!this._scope) return Promise.resolve()
+    clearTimeout(this._staffUnreadTimer)
+    const ticket = this.ticket('unread')
+    const client = callFunction('message', 'getUnreadSummary').then(res => {
+      if (!this.active(ticket)) return
+      const count = Math.max(0, Number(res.totalUnread) || 0)
+      this.setData({ messageUnreadCount: count, messageUnreadCountText: count > 99 ? '99+' : String(count), messageHasUnread: count > 0 })
+    }).catch(() => {})
+    const user = getCachedUser()
+    const staff = user && (user.roles || []).includes('staff') ? callFunction('staffMessage', 'getUnreadSummary').then(res => {
+      if (!this.active(ticket)) return
+      const count = Math.max(0, Number(res.totalUnread) || 0)
+      this.setData({ staffUnreadCount: count, staffUnreadCountText: count > 99 ? '99+' : String(count) })
+    }).catch(() => {}) : Promise.resolve(this.setData({ staffUnreadCount: 0, staffUnreadCountText: '0' }))
+    return Promise.all([client, staff]).finally(() => {
+      if (this.active(ticket)) this._staffUnreadTimer = setTimeout(() => this.loadUnread(), 30000)
+    })
   },
 
   openCheckin() {
-    ensureLogin({ content: '登录后可查看签到奖励和补签卡。' })
-      .then(() => wx.navigateTo({ url: '/pages/client/checkin/index' }))
+    return this.ensurePageLogin({ content: '登录后可查看签到奖励和补签卡。' })
+      .then(() => this.active(this._entryTicket) && wx.navigateTo({ url: '/pages/client/checkin/index' }))
       .catch(() => {})
   },
 
   openRewardMails() {
-    ensureLogin({ content: '登录后可领取会员奖励。' })
-      .then(() => wx.navigateTo({ url: '/pages/client/reward-mails/index' }))
+    return this.ensurePageLogin({ content: '登录后可领取会员奖励。' })
+      .then(() => this.active(this._entryTicket) && wx.navigateTo({ url: '/pages/client/reward-mails/index' }))
       .catch(() => {})
   },
 
   openQuestionnaires() {
-    ensureLogin({ content: '登录后可参与问卷调研。' })
-      .then(() => wx.navigateTo({ url: '/pages/client/questionnaires/list/index' }))
+    return this.ensurePageLogin({ content: '登录后可参与问卷调研。' })
+      .then(() => this.active(this._entryTicket) && wx.navigateTo({ url: '/pages/client/questionnaires/list/index' }))
       .catch(() => {})
   },
 
@@ -366,8 +563,9 @@ Page({
   goProtected(e) {
     const url = e.currentTarget.dataset.url
     if (!url) return
-    ensureLogin({ content: '登录后可查看订单和消息。' })
+    return this.ensurePageLogin({ content: '登录后可查看订单和消息。' })
       .then(() => {
+        if (!this.active(this._entryTicket)) return
         const pages = getCurrentPages()
         const current = pages[pages.length - 1]
         const currentRoute = current && current.route ? '/' + current.route : ''
@@ -380,11 +578,18 @@ Page({
   },
 
   openStaffEntry() {
-    ensureLogin({ content: '登录后可申请或进入多芙琳宠护端。' })
-      .then(() => callFunction('staff', 'getStaffProfile'))
+    let ticket
+    return this.ensurePageLogin({ content: '登录后可申请或进入多芙琳宠护端。' })
+      .then(() => {
+        if (!this.active(this._entryTicket)) return
+        ticket = this.ticket('staff')
+        return callFunction('staff', 'getStaffProfile')
+      })
       .then((profile) => {
-        this.applyStaffProfile(profile)
-        try { wx.setStorageSync('cached_staff_profile_data', profile) } catch (e) {}
+        if (!ticket || !this.active(ticket)) return
+        const minimal = { auditStatus: profile && profile.auditStatus || 'none', auditRemark: profile && profile.auditRemark || '' }
+        this.applyStaffProfile(minimal)
+        displayCache.writeDisplay(ticket.scope, 'staff', minimal)
         const status = profile && profile.auditStatus
         if (status === 'approved') {
           const app = getApp()
@@ -417,9 +622,15 @@ Page({
   },
 
   openAdmin() {
-    ensureLogin({ content: '登录后可进入管理端。' })
-      .then(() => callFunction('auth', 'me'))
+    let ticket
+    return this.ensurePageLogin({ content: '登录后可进入管理端。' })
+      .then(() => {
+        if (!this.active(this._entryTicket)) return
+        ticket = this.ticket('admin')
+        return callFunction('auth', 'me')
+      })
       .then((user) => {
+        if (!ticket || !this.active(ticket) || this.currentScope(user) !== ticket.scope) return
         const roles = Array.isArray(user.roles) ? user.roles : []
         if (!roles.includes('admin')) throw new Error('仅管理员可进入')
         setCachedUser(user)
@@ -431,50 +642,50 @@ Page({
   },
 
   openAddresses() {
-    ensureLogin({ content: '登录后可管理常用地址。' })
-      .then(() => wx.navigateTo({ url: '/pages/client/addresses/list/index' }))
+    return this.ensurePageLogin({ content: '登录后可管理常用地址。' })
+      .then(() => this.active(this._entryTicket) && wx.navigateTo({ url: '/pages/client/addresses/list/index' }))
       .catch(() => {})
   },
 
   openFavorites() {
-    ensureLogin({ content: '登录后可查看关注的宠托师。' })
-      .then(() => wx.navigateTo({ url: '/pages/client/sitters/favorites/index?from=profile' }))
+    return this.ensurePageLogin({ content: '登录后可查看关注的宠托师。' })
+      .then(() => this.active(this._entryTicket) && wx.navigateTo({ url: '/pages/client/sitters/favorites/index?from=profile' }))
       .catch(() => {})
   },
 
   openCoupons() {
-    ensureLogin({ content: '登录后可查看优惠券。' })
-      .then(() => wx.navigateTo({ url: '/pages/client/coupons/list/index' }))
+    return this.ensurePageLogin({ content: '登录后可查看优惠券。' })
+      .then(() => this.active(this._entryTicket) && wx.navigateTo({ url: '/pages/client/coupons/list/index' }))
       .catch(() => {})
   },
 
   openIncidents() {
-    ensureLogin({ content: '登录后可查看投诉和售后进度。' })
-      .then(() => wx.navigateTo({ url: '/pages/client/incidents/list/index' }))
+    return this.ensurePageLogin({ content: '登录后可查看投诉和售后进度。' })
+      .then(() => this.active(this._entryTicket) && wx.navigateTo({ url: '/pages/client/incidents/list/index' }))
       .catch(() => {})
   },
 
   openPoints() {
-    ensureLogin({ content: '登录后可查看积分。' })
-      .then(() => wx.navigateTo({ url: '/pages/client/points/index' }))
+    return this.ensurePageLogin({ content: '登录后可查看积分。' })
+      .then(() => this.active(this._entryTicket) && wx.navigateTo({ url: '/pages/client/points/index' }))
       .catch(() => {})
   },
 
   openAssets() {
-    ensureLogin({ content: '登录后可查看资产和邀请收益。' })
-      .then(() => wx.navigateTo({ url: '/pages/client/profile/assets/index' }))
+    return this.ensurePageLogin({ content: '登录后可查看资产和邀请收益。' })
+      .then(() => this.active(this._entryTicket) && wx.navigateTo({ url: '/pages/client/profile/assets/index' }))
       .catch(() => {})
   },
 
   editProfile() {
-    ensureLogin({ content: '登录后可编辑个人资料。' })
-      .then(() => wx.navigateTo({ url: '/pages/client/profile/edit/index?from=client' }))
+    return this.ensurePageLogin({ content: '登录后可编辑个人资料。' })
+      .then(() => this.active(this._entryTicket) && wx.navigateTo({ url: '/pages/client/profile/edit/index?from=client' }))
       .catch(() => {})
   },
 
   openSubscriptions() {
-    ensureLogin({ content: '登录后可管理通知订阅。' })
-      .then(() => wx.navigateTo({ url: '/pages/common/subscriptions/index?role=client' }))
+    return this.ensurePageLogin({ content: '登录后可管理通知订阅。' })
+      .then(() => this.active(this._entryTicket) && wx.navigateTo({ url: '/pages/common/subscriptions/index?role=client' }))
       .catch(() => {})
   },
 
@@ -483,8 +694,9 @@ Page({
   },
 
   openAccountSafety() {
-    ensureLogin({ content: '登录后可查看账号安全信息。' })
+    return this.ensurePageLogin({ content: '登录后可查看账号安全信息。' })
       .then(() => {
+        if (!this.active(this._entryTicket)) return
         wx.showModal({
           title: '账号安全',
           content: `${this.data.userName}\n${this.data.userMeta}\n\n当前版本使用微信 openid 作为登录凭证，不保存微信密码。`,
@@ -518,13 +730,15 @@ Page({
       this.setData({ savingTheme: false })
       return
     }
-    callFunction('auth', 'updateTheme', { themeKey: theme.value })
+    const ticket = this.ticket('theme')
+    return callFunction('auth', 'updateTheme', { themeKey: theme.value })
       .then((user) => {
+        if (!this.active(ticket) || this.currentScope(user) !== ticket.scope) return
         setCachedUser(user)
         this.applyUser(user)
       })
-      .catch(showError)
-      .finally(() => this.setData({ savingTheme: false }))
+      .catch(err => { if (this.active(ticket)) showError(err) })
+      .finally(() => { if (this.active(ticket)) this.setData({ savingTheme: false }) })
   },
 
   changeFont(e) {
@@ -535,39 +749,45 @@ Page({
       this.setData({ savingFont: false })
       return
     }
-    callFunction('auth', 'updateFont', { fontKey: font.value })
+    const ticket = this.ticket('font')
+    return callFunction('auth', 'updateFont', { fontKey: font.value })
       .then((user) => {
+        if (!this.active(ticket) || this.currentScope(user) !== ticket.scope) return
         setCachedUser(user)
         this.applyUser(user)
       })
-      .catch(showError)
-      .finally(() => this.setData({ savingFont: false }))
+      .catch(err => { if (this.active(ticket)) showError(err) })
+      .finally(() => { if (this.active(ticket)) this.setData({ savingFont: false }) })
   },
 
   togglePublicCheckinPhotos(e) {
     if (this.data.isGuest) return
     const hidePublicCheckinPhotos = e.detail.value === true
     this.setData({ savingPrivacy: true, hidePublicCheckinPhotos })
-    callFunction('auth', 'updatePrivacySettings', { hidePublicCheckinPhotos })
+    const ticket = this.ticket('privacy')
+    return callFunction('auth', 'updatePrivacySettings', { hidePublicCheckinPhotos })
       .then((user) => {
+        if (!this.active(ticket) || this.currentScope(user) !== ticket.scope) return
         setCachedUser(user)
         this.applyUser(user)
         wx.showToast({ title: '已保存', icon: 'none' })
       })
       .catch((err) => {
+        if (!this.active(ticket)) return
         this.setData({ hidePublicCheckinPhotos: !hidePublicCheckinPhotos })
         showError(err)
       })
-      .finally(() => this.setData({ savingPrivacy: false }))
+      .finally(() => { if (this.active(ticket)) this.setData({ savingPrivacy: false }) })
   },
 
   logout() {
+    const ticket = this.ticket('logout')
     wx.showModal({
       title: '退出登录',
       content: '退出后将以游客身份使用，需要登录的操作会再次提示微信登录。',
       confirmText: '退出',
       success: (res) => {
-        if (!res.confirm) return
+        if (!res.confirm || !this.active(ticket)) return
         logoutCurrentUser()
         this.applyGuest()
         wx.showToast({ title: '已退出登录' })

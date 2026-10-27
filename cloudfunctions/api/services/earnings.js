@@ -182,40 +182,66 @@ module.exports = function createService({
   async function refreshStaffEarnings(openid = '') {
     const time = now()
 
-    // 1. 回溯清洗存量被误标或历史遗留的模拟收益（状态为 available，但实为 mock 支付）
+    // 1. 回溯清洗存量被误标或历史遗留的模拟收益（状态为 available，但实为 mock 支付）以及已释放/驳回提现单残留的 withdrawRequestId
     try {
       const availQuery = openid ? { staffOpenid: openid, status: 'available' } : { status: 'available' }
-      const availableRows = (await db.collection('staff_earnings').where(availQuery).limit(100).get()).data || []
-      for (const earning of availableRows) {
-        let isMockEarning = earning.isMock === true || earning.paymentChannel === 'mock'
-        if (!isMockEarning && earning.isMock === undefined && earning.orderId) {
-          try {
-            const payments = (await db.collection('payments').where({ orderId: earning.orderId }).limit(2).get()).data || []
-            const succPayment = payments.find(p => p.status === 'success' || p.status === 'paid')
-            if (succPayment && succPayment.channel === 'mock') {
-              isMockEarning = true
-            } else {
-              const orderRes = await db.collection('orders').doc(earning.orderId).get().catch(() => ({ data: null }))
-              const orderData = orderRes && orderRes.data
-              if (orderData && (orderData.paymentChannel === 'mock' || orderData.isMockPayment === true)) {
+      let availCursor = ''
+      while (true) {
+        const where = { ...availQuery }
+        if (availCursor && db.command && typeof db.command.gt === 'function') where._id = db.command.gt(availCursor)
+        const res = await db.collection('staff_earnings').where(where).orderBy('_id', 'asc').limit(100).get()
+        const availableRows = res.data || []
+        for (const earning of availableRows) {
+          let isMockEarning = earning.isMock === true || earning.paymentChannel === 'mock'
+          if (!isMockEarning && earning.isMock === undefined && earning.orderId) {
+            try {
+              const payments = (await db.collection('payments').where({ orderId: earning.orderId }).limit(2).get()).data || []
+              const succPayment = payments.find(p => p.status === 'success' || p.status === 'paid')
+              if (succPayment && succPayment.channel === 'mock') {
                 isMockEarning = true
+              } else {
+                const orderRes = await db.collection('orders').doc(earning.orderId).get().catch(() => ({ data: null }))
+                const orderData = orderRes && orderRes.data
+                if (orderData && (orderData.paymentChannel === 'mock' || orderData.isMockPayment === true)) {
+                  isMockEarning = true
+                }
               }
-            }
-          } catch (_) {}
-        }
+            } catch (_) {}
+          }
 
-        if (isMockEarning) {
-          await db.collection('staff_earnings').doc(earning._id).update({
-            data: {
-              status: 'mock_settled',
-              isMock: true,
-              paymentChannel: 'mock',
-              isWithdrawable: false,
-              mockReason: '历史模拟测试订单自动订正隔离',
-              updatedAt: time
-            }
-          }).catch(() => {})
+          if (isMockEarning) {
+            await db.collection('staff_earnings').doc(earning._id).update({
+              data: {
+                status: 'mock_settled',
+                isMock: true,
+                paymentChannel: 'mock',
+                isWithdrawable: false,
+                mockReason: '历史模拟测试订单自动订正隔离',
+                updatedAt: time
+              }
+            }).catch(() => {})
+            continue
+          }
+
+          // 清理历史已驳回、已释放、转账失败或不存在提现单在 available 收益上残留的无效 withdrawRequestId
+          if (earning.withdrawRequestId) {
+            try {
+              const req = (await db.collection('withdraw_requests').doc(earning.withdrawRequestId).get().catch(() => ({ data: null }))).data
+              const isTerminalOrFailed = !req ||
+                ['rejected', 'paid', 'transfer_failed', 'failed', 'cancelled'].includes(req.status) ||
+                req.transferStatus === 'released' ||
+                req.transferStatus === 'failed' ||
+                (Array.isArray(req.earningIds) && !req.earningIds.includes(earning._id))
+              if (isTerminalOrFailed) {
+                await db.collection('staff_earnings').doc(earning._id).update({
+                  data: { withdrawRequestId: '', updatedAt: time }
+                }).catch(() => {})
+              }
+            } catch (_) {}
+          }
         }
+        if (availableRows.length < 100) break
+        availCursor = availableRows[availableRows.length - 1]._id
       }
     } catch (_) {}
 

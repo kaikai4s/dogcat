@@ -3,7 +3,7 @@ const { navMethods } = require('../../../utils/nav')
 const { createClientRequestId } = require('../../../utils/offlineQueue')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 
-const WECHAT_MIN_TRANSFER_AMOUNT = 0.01
+const WECHAT_MIN_TRANSFER_AMOUNT = 0.10
 const WECHAT_MAX_TRANSFER_AMOUNT = 200
 
 const earningStatusText = {
@@ -45,14 +45,18 @@ function money(value) {
 function withEarning(item) {
   const status = String(item.status || '').toLowerCase()
   const isMock = item.isMock === true || item.paymentChannel === 'mock' || status === 'mock_settled' || status === 'mock'
+  const deductAmount = Number(item.deductAmount || 0)
+  const hasDeduction = deductAmount > 0
+  const expectedAmount = Number(item.originalAmount != null ? item.originalAmount : (item.amount != null ? Number(item.amount) + deductAmount : 0))
   return {
     ...item,
     isMock,
     amountText: money(item.amount),
-    grossAmountText: money(item.grossAmount),
-    originalAmountText: money(item.originalAmount || item.amount),
-    deductAmountText: money(item.deductAmount || 0),
-    hasDeduction: Number(item.deductAmount || 0) > 0,
+    expectedAmountText: money(expectedAmount),
+    originalAmountText: money(expectedAmount),
+    deductAmountText: money(deductAmount),
+    deductReasonText: item.deductReason || '服务违规/出险扣除',
+    hasDeduction,
     statusText: isMock ? '模拟测试(不可提现)' : (earningStatusText[status] || '已记录')
   }
 }
@@ -75,8 +79,12 @@ Page({
   data: {
     themeClass: 'theme-day',
     activeTab: 'earnings',
+    earningFilterStatus: '',
     balance: null,
     earnings: [],
+    filteredEarnings: [],
+    availableEarningsCount: 0,
+    pendingEarningsCount: 0,
     withdraws: [],
     amount: '',
     submitting: false,
@@ -92,7 +100,24 @@ Page({
     }
   },
 
-    onPullDownRefresh() {
+  filterEarnings(e) {
+    const status = e.currentTarget.dataset.status || ''
+    const decoratedEarnings = this.data.earnings || []
+    const filteredEarnings = status
+      ? decoratedEarnings.filter((item) => {
+        if (status === 'available') return item.status === 'available' && !item.isMock
+        if (status === 'pending') return item.status === 'pending' && !item.isMock
+        if (status === 'settled') return ['withdrawing', 'withdrawn', 'settled'].includes(item.status) || item.isMock
+        return true
+      })
+      : decoratedEarnings
+    this.setData({
+      earningFilterStatus: status,
+      filteredEarnings
+    })
+  },
+
+  onPullDownRefresh() {
     Promise.resolve(this.load()).finally(() => wx.stopPullDownRefresh())
   },
 
@@ -117,6 +142,18 @@ Page({
         const maxAmount = quota.effectiveRemainingAmount === null || quota.effectiveRemainingAmount === undefined
           ? Number(balance.available || 0)
           : Math.min(Number(balance.available || 0), Number(quota.effectiveRemainingAmount || 0))
+        const decoratedEarnings = (earnings || []).map(withEarning)
+        const availableEarningsCount = decoratedEarnings.filter((item) => item.status === 'available' && !item.isMock).length
+        const pendingEarningsCount = decoratedEarnings.filter((item) => item.status === 'pending' && !item.isMock).length
+        const currentFilter = this.data.earningFilterStatus
+        const filteredEarnings = currentFilter
+          ? decoratedEarnings.filter((item) => {
+            if (currentFilter === 'available') return item.status === 'available' && !item.isMock
+            if (currentFilter === 'pending') return item.status === 'pending' && !item.isMock
+            if (currentFilter === 'settled') return ['withdrawing', 'withdrawn', 'settled'].includes(item.status) || item.isMock
+            return true
+          })
+          : decoratedEarnings
         this.setData({
           balance: {
             ...balance,
@@ -130,7 +167,10 @@ Page({
             minWithdrawAmountText: money(balance.minWithdrawAmount)
           },
           amount: maxAmount > 0 ? money(maxAmount) : '',
-          earnings: (earnings || []).map(withEarning),
+          earnings: decoratedEarnings,
+          filteredEarnings,
+          availableEarningsCount,
+          pendingEarningsCount,
           withdraws: (withdraws || []).map(withWithdraw)
         })
         this.autoSyncPendingTransfers((withdraws || []).map(withWithdraw))
@@ -151,7 +191,7 @@ Page({
       return wx.showToast({ title: '请输入正确的提现金额', icon: 'none' })
     }
     if (amount < WECHAT_MIN_TRANSFER_AMOUNT) {
-      return wx.showToast({ title: '微信零钱单笔最低 ¥0.01', icon: 'none' })
+      return wx.showToast({ title: '微信零钱单笔最低 ¥0.10', icon: 'none' })
     }
     if (amount > WECHAT_MAX_TRANSFER_AMOUNT) {
       return wx.showToast({ title: '微信零钱单笔最高 ¥200.00', icon: 'none' })

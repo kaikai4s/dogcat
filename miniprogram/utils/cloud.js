@@ -563,7 +563,7 @@ function clearPendingInvite() {
 
 function getCurrentUser(options = {}) {
   const cached = getCachedUser()
-  if (cached) return Promise.resolve(cached)
+  if (cached && !options.force) return Promise.resolve(cached)
   if (options.silent !== false && wx.getStorageSync(AUTH_LOGGED_OUT_KEY)) return Promise.resolve(null)
   const action = options.sessionOnly ? 'checkSession' : 'me'
   let pending = pendingUserRequests.get(action)
