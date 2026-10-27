@@ -562,9 +562,10 @@ Page({
       const notice = this.data.depositNotice
       const isRepay = notice.isRepay || Boolean(notice.reason)
       const modalTitle = notice.title || (isRepay ? '要求重新足额缴纳保证金' : '未缴纳履约保证金')
+      const amountText = (notice.amount != null && notice.amount !== '') ? `需缴纳 ¥${notice.amount}` : '需足额缴纳保证金'
       const modalContent = isRepay
-        ? `平台要求重新足额缴纳履约保证金（¥${notice.amount}）。\n原因：${notice.reason || '存在服务违规出险或保证金过低'}。\n足额缴纳后即可恢复接单与抢单资格，是否立即前往缴纳？`
-        : `根据平台规定，抢单/接单前需足额缴纳宠托师履约保证金（¥${notice.amount}），以保障服务履约质量与宠物安全。是否立即前往缴纳？`
+        ? `平台要求重新足额缴纳履约保证金（${amountText}）。\n原因：${notice.reason || '存在服务违规出险或保证金过低'}。\n足额缴纳后即可恢复接单与抢单资格，是否立即前往缴纳？`
+        : `根据平台规定，抢单/接单前需缴纳宠托师履约保证金（¥${notice.amount || 500}），以保障服务履约质量与宠物安全。是否立即前往缴纳？`
 
       wx.showModal({
         title: modalTitle,

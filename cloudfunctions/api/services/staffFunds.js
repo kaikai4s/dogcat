@@ -469,8 +469,9 @@ module.exports = function createService(context) {
 
     const isMock = paymentSettings.mode === 'mock' || (payment && payment.channel === 'mock') || (!payment && paymentSettings.mode !== 'wechat')
     const refundAmount = balance.available / 100
-    const createRefundNo = typeof context.createRefundNo === 'function' ? context.createRefundNo : (() => `R${crypto.randomBytes(15).toString('hex')}`)
-    const refundNo = createRefundNo()
+    // 构造具备唯一幂等性的退款单号，若原记录已发起过退款尝试则复用，杜绝重试导致微信商户重复出款
+    const deterministicRefundNo = `R${crypto.createHash('sha256').update(`staff_deposit_refund:${depositId}:${deposit.paidAt || deposit.createdAt || ''}`).digest('hex').slice(0, 24)}`
+    const refundNo = deposit.lastRefundNo || deterministicRefundNo
     const time = now()
 
     let paymentReference = ''
@@ -536,6 +537,7 @@ module.exports = function createService(context) {
         refundPaymentReference: paymentReference,
         refundConfirmationSource: confirmationSource,
         lastRefundReason: reason,
+        lastRefundNo: refundNo,
         updatedAt: time
       }
 

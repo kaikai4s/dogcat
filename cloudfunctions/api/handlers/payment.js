@@ -100,7 +100,9 @@ module.exports = function createHandler(context) {
       if (settings.payment.mode === 'mock') return { mock: true, orderId: data.orderId, paymentNo: payment.paymentNo, amount: payment.amount, message: '当前为模拟支付模式' }
 
       const config = getWechatPayConfig(settings)
-      if (payment.prepayId) return { mock: false, orderId: data.orderId, paymentNo: payment.paymentNo, amount: payment.amount, payParams: buildMiniProgramPayParams(payment.prepayId, config) }
+      const PREPAY_TTL_MS = 90 * 60 * 1000
+      const isPrepayExpired = payment.updatedAt && (Date.now() - new Date(payment.updatedAt).getTime() > PREPAY_TTL_MS)
+      if (payment.prepayId && !isPrepayExpired) return { mock: false, orderId: data.orderId, paymentNo: payment.paymentNo, amount: payment.amount, payParams: buildMiniProgramPayParams(payment.prepayId, config) }
       const requestBody = {
         appid: config.appId,
         mchid: config.mchId,
