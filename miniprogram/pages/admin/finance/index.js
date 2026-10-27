@@ -494,27 +494,59 @@ Page({
     const approved = e.currentTarget.dataset.approved === true || e.currentTarget.dataset.approved === 'true'
     wx.showModal({
       title: approved ? '审核通过退还保证金' : '驳回退出退款申请',
-      content: approved ? '确认审核通过？审核后进入待实际退款状态。' : '确认驳回该退出退款申请？',
+      content: approved ? '确认审核通过？系统将同时自动发起原路退款返还至宠托师付款账户。' : '确认驳回该退出退款申请？',
       editable: !approved,
       placeholderText: !approved ? '请输入驳回原因' : '',
       success: (res) => {
         if (!res.confirm) return
-        const reason = (!approved && res.content) ? res.content.trim() : (approved ? '审核通过全额退款' : '')
+        const reason = (!approved && res.content) ? res.content.trim() : (approved ? '审核通过并原路退款' : '')
         if (!approved && !reason) {
           wx.showToast({ title: '请填写驳回原因', icon: 'none' })
           return
         }
         wx.showLoading({ title: '处理中...', mask: true })
-        callFunction('admin', 'auditDepositRefund', { id, approved, reason })
-          .then(() => {
+        callFunction('admin', 'auditDepositRefund', { id, approved, reason, autoRefund: true })
+          .then((result) => {
             wx.hideLoading()
-            wx.showToast({ title: approved ? '已通过退款' : '已驳回' })
+            if (approved && result && result.status === 'refunded') {
+              wx.showToast({ title: '已自动原路退还', icon: 'success' })
+            } else {
+              wx.showToast({ title: approved ? '已通过退款审核' : '已驳回' })
+            }
             this.loadStaffFinance()
           })
           .catch((err) => {
             wx.hideLoading()
             showError(err)
           })
+      }
+    })
+  },
+
+  autoRefundDeposit(e) {
+    if (this.data.actionBusy) return
+    const id = e.currentTarget.dataset.id
+    const amount = e.currentTarget.dataset.amount || ''
+    if (!id) return
+    wx.showModal({
+      title: '自动原路退还保证金',
+      content: `确认将该笔保证金${amount ? '（¥' + amount + '）' : ''}自动原路退还至宠托师付款账户并清零余额？`,
+      confirmText: '立即退还',
+      success: (res) => {
+        if (!res.confirm || this.data.actionBusy) return
+        this.setData({ actionBusy: true })
+        wx.showLoading({ title: '正在发起原路退款...', mask: true })
+        callFunction('admin', 'autoRefundStaffDeposit', { id, reason: '管理员自动原路退还' })
+          .then(() => {
+            wx.hideLoading()
+            wx.showToast({ title: '已自动原路退还', icon: 'success' })
+            this.loadStaffFinance()
+          })
+          .catch((err) => {
+            wx.hideLoading()
+            showError(err)
+          })
+          .finally(() => this.setData({ actionBusy: false }))
       }
     })
   },

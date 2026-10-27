@@ -1,4 +1,5 @@
-module.exports = function createService({ db, crypto, now, safeText }) {
+module.exports = function createService(context) {
+  const { db, crypto, now, safeText } = context
   const key = (...parts) => crypto.createHash('sha256').update(JSON.stringify(parts)).digest('hex').slice(0, 32)
   function money(value, positive = false) {
     const number = Number(value)
@@ -379,5 +380,198 @@ module.exports = function createService({ db, crypto, now, safeText }) {
       return { depositId, status: 'paid', paymentNo }
     })
   }
-  return { reserveStaffDepositPayment, requestStaffDepositRefund, settleStaffDeposit, settleSupplyReimbursement, submitStaffSupplyOnce, recordStaffDepositPayment }
+
+  async function autoRefundStaffDeposit(admin, depositId, reason = '宠托师保证金退还', options = {}) {
+    if (!depositId) throw new Error('缺少保证金记录ID')
+
+    const deposit = (await db.collection('staff_deposits').doc(depositId).get().catch(() => ({ data: null })))?.data
+    if (!deposit) throw new Error('保证金记录不存在')
+
+    const balance = balances(deposit)
+    if (!balance.available || balance.available <= 0) {
+      throw new Error('当前保证金无可用退还余额')
+    }
+
+    await exitCheck(deposit.staffOpenid)
+
+    const { documentPages } = require('../utils/documentPages')
+    for await (const rows of documentPages(db, db.command, 'staff_earnings', { staffOpenid: deposit.staffOpenid })) {
+      if (rows.some(row => ['pending', 'available', 'withdrawing', 'frozen'].includes(row.status) && row.isMock !== true && row.paymentChannel !== 'mock' && money(row.amount) > 0)) {
+        throw new Error('尚有未结清收益，请先完成收益结算和转账，再退还保证金')
+      }
+    }
+    for await (const rows of documentPages(db, db.command, 'withdraw_requests', { staffOpenid: deposit.staffOpenid })) {
+      if (rows.some(row => ['pending', 'approved', 'processing', 'transferring', 'transfer_failed'].includes(row.status))) {
+        throw new Error('尚有未完成提现，请先在财务管理核对转账结果')
+      }
+    }
+
+    const payments = (await db.collection('payments').where({
+      orderId: depositId,
+      targetType: 'staff_deposit'
+    }).orderBy('createdAt', 'desc').limit(5).get().catch(() => ({ data: [] })))?.data || []
+    const payment = payments.find(p => p.status === 'success') || payments[0] || null
+
+    let settings = {}
+    try {
+      if (typeof context.getSystemSettings === 'function') {
+        settings = await context.getSystemSettings({ includeSecrets: true })
+      }
+    } catch (_) {}
+    const paymentSettings = (settings && settings.payment) || { mode: 'mock' }
+
+    const isMock = paymentSettings.mode === 'mock' || (payment && payment.channel === 'mock') || (!payment && paymentSettings.mode !== 'wechat')
+    const refundAmount = balance.available / 100
+    const createRefundNo = typeof context.createRefundNo === 'function' ? context.createRefundNo : (() => `R${crypto.randomBytes(15).toString('hex')}`)
+    const refundNo = createRefundNo()
+    const time = now()
+
+    let paymentReference = ''
+    let confirmationSource = 'auto_mock'
+    let refundChannel = isMock ? 'mock' : 'wechat'
+
+    if (!isMock) {
+      if (paymentSettings.refundEnabled === false) {
+        throw new Error('微信退款功能尚未启用，请在系统设置中开启或使用人工打款确认')
+      }
+      if (!payment || (!payment.wxTransactionId && !payment.paymentNo)) {
+        throw new Error('缺少原微信支付流水凭证，无法自动原路退款，请使用人工打款确认')
+      }
+      const getPayConfig = context.getWechatPayConfig
+      const wechatRequest = context.wechatPayRequest
+      if (typeof getPayConfig !== 'function' || typeof wechatRequest !== 'function') {
+        throw new Error('缺少微信退款网络网关支持')
+      }
+      const payConfig = getPayConfig(settings)
+      const refundBody = {
+        out_refund_no: refundNo,
+        reason: reason || '宠托师保证金退还',
+        amount: {
+          refund: balance.available,
+          total: Math.round(Number(payment.amount || deposit.paidAmount || deposit.amount) * 100),
+          currency: 'CNY'
+        },
+        ...(payment.wxTransactionId ? { transaction_id: payment.wxTransactionId } : { out_trade_no: payment.paymentNo })
+      }
+      let wxRes
+      try {
+        wxRes = await wechatRequest('POST', '/v3/refund/domestic/refunds', refundBody, payConfig)
+      } catch (err) {
+        throw new Error(`微信原路退款发起失败：${err.message || err}`)
+      }
+      paymentReference = (wxRes && (wxRes.refund_id || wxRes.out_refund_no)) || refundNo
+      confirmationSource = 'auto_wechat'
+    } else {
+      paymentReference = `MOCK_${refundNo}`
+      confirmationSource = 'auto_mock'
+    }
+
+    return db.runTransaction(async tx => {
+      const curDeposit = (await tx.collection('staff_deposits').doc(depositId).get().catch(() => ({ data: null }))).data
+      if (!curDeposit) throw new Error('保证金记录不存在')
+      const curBalance = balances(curDeposit)
+      if (curBalance.available !== balance.available) throw new Error('保证金余额已发生变动，请重新确认')
+
+      const profile = await profileFor(tx, curDeposit)
+      const patch = {
+        status: 'refunded',
+        statusText: isMock ? '已退还(模拟原路退还)' : '已微信原路退款',
+        refundStatus: 'success',
+        availableRefundAmount: 0,
+        refundedAmount: (curBalance.refunded + curBalance.available) / 100,
+        refundPaidAt: time,
+        refundPaidBy: admin.openid,
+        refundPaymentReference: paymentReference,
+        refundConfirmationSource: confirmationSource,
+        lastRefundReason: reason,
+        updatedAt: time
+      }
+
+      let otherDepositsPending = false
+      for await (const rows of documentPages(tx, db.command, 'staff_deposits', { staffOpenid: curDeposit.staffOpenid })) {
+        if (rows.some(row => row._id !== depositId && (
+          money(row.availableRefundAmount == null ? 0 : row.availableRefundAmount) > 0 ||
+          ['unpaid', 'refund_requested', 'refund_approved'].includes(row.status) ||
+          ['requested', 'approved', 'processing'].includes(row.refundStatus)
+        ))) otherDepositsPending = true
+      }
+
+      const profilePatch = otherDepositsPending
+        ? { exitStatus: 'approved', depositStatus: 'refund_approved', updatedAt: time }
+        : { exitStatus: 'exited', depositStatus: 'refunded', auditStatus: 'revoked', updatedAt: time }
+
+      await tx.collection('staff_deposits').doc(depositId).update({ data: patch })
+      await tx.collection('staff_profiles').doc(profile._id).update({ data: profilePatch })
+
+      if (!otherDepositsPending) {
+        const staffUserId = curDeposit.staffUserId || (profile && profile.userId)
+        let staffUser = null
+        if (staffUserId) {
+          staffUser = (await tx.collection('users').doc(staffUserId).get().catch(() => ({ data: null }))).data
+        }
+        if (!staffUser && curDeposit.staffOpenid) {
+          const userRes = await tx.collection('users').where({ openid: curDeposit.staffOpenid }).limit(1).get().catch(() => ({ data: [] }))
+          staffUser = userRes.data && userRes.data[0]
+        }
+        if (staffUser) {
+          const roles = (Array.isArray(staffUser.roles) ? staffUser.roles : ['client']).filter((r) => r !== 'staff')
+          const userUpdate = { roles: roles.length ? roles : ['client'], updatedAt: time }
+          if (staffUser.activeRole === 'staff') userUpdate.activeRole = 'client'
+          await tx.collection('users').doc(staffUser._id).update({ data: userUpdate })
+        }
+      }
+
+      const refundId = `refund_${crypto.createHash('sha256').update(`staff_deposit:${depositId}:${refundNo}`).digest('hex').slice(0, 32)}`
+      await tx.collection('refunds').doc(refundId).set({
+        data: {
+          orderId: depositId,
+          orderNo: curDeposit.paymentNo || depositId,
+          collectionName: 'staff_deposits',
+          targetType: 'staff_deposit',
+          paymentNo: payment ? (payment.paymentNo || '') : '',
+          wxTransactionId: payment ? (payment.wxTransactionId || '') : '',
+          refundNo,
+          wxRefundId: paymentReference,
+          openid: curDeposit.staffOpenid,
+          amount: curDeposit.paidAmount || curDeposit.amount,
+          refundAmount,
+          reason,
+          source: 'staff_deposit_auto_refund',
+          operatorOpenid: admin.openid,
+          status: 'success',
+          channel: refundChannel,
+          requestedAt: time,
+          succeededAt: time,
+          createdAt: time,
+          updatedAt: time
+        }
+      })
+
+      await log(tx, key(depositId, 'auto_refund', refundNo), admin, 'confirmDepositRefund', 'staff_deposit', depositId, curDeposit, {
+        financeAction: 'deposit_refunded',
+        refundNo,
+        refundAmount,
+        paymentReference,
+        confirmationSource
+      }, time, -refundAmount)
+
+      await depositEvent(tx, key(depositId, 'auto_refund', refundNo), curDeposit, admin.openid, 'refund', refundAmount, reason, time, {
+        operatorRole: 'admin',
+        refundNo,
+        confirmationSource
+      })
+
+      return {
+        id: depositId,
+        refundNo,
+        refundAmount,
+        channel: refundChannel,
+        confirmationSource,
+        status: 'refunded',
+        exitCompleted: !otherDepositsPending
+      }
+    })
+  }
+
+  return { reserveStaffDepositPayment, requestStaffDepositRefund, settleStaffDeposit, settleSupplyReimbursement, submitStaffSupplyOnce, recordStaffDepositPayment, autoRefundStaffDeposit }
 }

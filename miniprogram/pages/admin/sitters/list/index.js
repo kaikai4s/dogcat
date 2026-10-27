@@ -597,20 +597,38 @@ Page({
     const item = e.currentTarget.dataset.item
     if (!item?.depositId) return
     const response = await new Promise(resolve => wx.showModal({
-      title: '发起退还保证金', editable: true, placeholderText: '请填写退还原因（最多200字）',
-      content: `可退余额 ${item.depositBalanceText}。本操作提交退款审核，不会立即转账。审核通过后需完成实际退款并填写凭证；退出前须结清收益。`,
-      confirmText: '提交审核', success: resolve, fail: () => resolve({ confirm: false })
+      title: '退还宠托师保证金', editable: true, placeholderText: '请填写退还原因（最多200字）',
+      content: `可退余额 ${item.depositBalanceText}。系统将自动发起微信原路退款返还至宠托师付款账户，并将保证金余额清零。退出前须结清收益。`,
+      confirmText: '确认退款', success: resolve, fail: () => resolve({ confirm: false })
     }))
     if (!response.confirm || this.data.depositRefundBusy) return
-    const reason = String(response.content || '').trim()
-    if (!reason || reason.length > 200) return wx.showToast({ title: '请填写退还原因，最多200字', icon: 'none' })
+    const reason = String(response.content || '').trim() || '宠托师保证金退还'
+    if (reason.length > 200) return wx.showToast({ title: '请填写退还原因，最多200字', icon: 'none' })
     this.setData({ depositRefundBusy: true })
     try {
-      await callFunction('admin', 'requestStaffDepositRefund', { id: item.depositId, reason })
-      wx.showToast({ title: '已提交退款审核' })
-      wx.navigateTo({ url: `/pages/admin/finance/index?tab=deposits&action=refund&staffOpenid=${encodeURIComponent(item.openid)}` })
-    } catch (error) { showError(error) }
-    finally { this.setData({ depositRefundBusy: false }); this.load({ reset: true }) }
+      await callFunction('admin', 'autoRefundStaffDeposit', { id: item.depositId, reason })
+      wx.showToast({ title: '已自动原路退还', icon: 'success' })
+      this.load({ reset: true })
+    } catch (error) {
+      const msg = String(error.message || error)
+      if (msg.includes('缺少原微信支付流水凭证') || msg.includes('微信退款功能尚未启用')) {
+        wx.showModal({
+          title: '转入人工核销退款',
+          content: `${msg}。是否前往财务管理完成审核并录入凭证退款？`,
+          success: (mRes) => {
+            if (mRes.confirm) {
+              callFunction('admin', 'requestStaffDepositRefund', { id: item.depositId, reason }).catch(() => {})
+              wx.navigateTo({ url: `/pages/admin/finance/index?tab=deposits&action=refund&staffOpenid=${encodeURIComponent(item.openid)}` })
+            }
+          }
+        })
+      } else {
+        showError(error)
+      }
+    } finally {
+      this.setData({ depositRefundBusy: false })
+      this.load({ reset: true })
+    }
   },
 
   viewStaffFinance(e) {

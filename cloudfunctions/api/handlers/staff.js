@@ -1847,8 +1847,9 @@ module.exports = function createHandler(context) {
         await checkTextSecurity(openid, reason, { scene: 2, label: '保证金退款原因' })
       }
       await getUser(openid)
-      const res = await db.collection('staff_deposits').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').limit(1).get().catch(() => ({ data: [] }))
-      const deposit = res && res.data && res.data[0]
+      const res = await db.collection('staff_deposits').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').get().catch(() => ({ data: [] }))
+      const deposits = (res && res.data) || []
+      const deposit = deposits.find((d) => Number(d.availableRefundAmount || 0) > 0 && ['paid', 'partially_refunded'].includes(d.status)) || deposits[0]
       if (!deposit) throw new Error('暂无可退还保证金')
       return requestStaffDepositRefund(openid, deposit._id, reason)
     }

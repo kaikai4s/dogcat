@@ -3465,7 +3465,28 @@ module.exports = function createHandler(context) {
       if (reason && typeof checkTextSecurity === 'function') {
         await checkTextSecurity(openid, reason, { scene: 2, label: '保证金退款审核说明' })
       }
+      if (data.approved === true && data.autoRefund === true && typeof context.autoRefundStaffDeposit === 'function') {
+        try {
+          return await context.autoRefundStaffDeposit({ ...admin, openid }, data.id, reason || '审核通过并自动原路退款')
+        } catch (autoErr) {
+          const auditRes = await settleStaffDeposit({ ...admin, openid }, action, { ...data, reason })
+          return { ...auditRes, autoRefundFailed: true, autoRefundError: autoErr.message }
+        }
+      }
       return settleStaffDeposit({ ...admin, openid }, action, { ...data, reason })
+    }
+    if (action === 'autoRefundStaffDeposit') {
+      const id = safeText(data.id).trim()
+      const reason = safeText(data.reason || '管理员退还宠托师保证金').trim()
+      if (!id) throw new Error('请选择需要退还的保证金记录')
+      if (reason.length > 200) throw new Error('退还原因不能超过 200 字')
+      if (typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, reason, { scene: 2, label: '管理员自动退还保证金原因' })
+      }
+      if (typeof context.autoRefundStaffDeposit !== 'function') {
+        throw new Error('系统尚未装配自动退款服务')
+      }
+      return context.autoRefundStaffDeposit({ ...admin, openid }, id, reason)
     }
     if (action === 'confirmDepositRefund') {
       const proof = safeText(data.paymentReference).trim()
