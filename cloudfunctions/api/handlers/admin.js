@@ -184,21 +184,29 @@ module.exports = function createHandler(context) {
   function buildStaffFinanceSummary(earnings = [], withdraws = []) {
     const summary = {}
     const ensure = (openid) => {
-      if (!summary[openid]) summary[openid] = { available: 0, withdrawn: 0, withdrawHistory: [], withdrawCount: 0 }
+      if (!summary[openid]) summary[openid] = { available: 0, withdrawn: 0, withdrawHistory: [], withdrawCount: 0, hasUnsettledEarning: false, hasPendingWithdraw: false }
       return summary[openid]
     }
+    const unsettledEarningStatuses = new Set(['pending', 'available', 'withdrawing', 'frozen'])
     for (const earning of earnings) {
       const openid = earning.staffOpenid
       if (!openid || earning.isMock === true || earning.paymentChannel === 'mock') continue
       const target = ensure(openid)
       if (earning.status === 'available') target.available += Number(earning.amount || 0)
+      if (unsettledEarningStatuses.has(safeText(earning.status).trim()) && Math.round(Number(earning.amount || 0) * 100) > 0) {
+        target.hasUnsettledEarning = true
+      }
     }
+    const pendingWithdrawStatuses = new Set(['pending', 'approved', 'processing', 'transferring', 'transfer_failed'])
     for (const request of withdraws) {
       const openid = request.staffOpenid
       if (!openid) continue
       const target = ensure(openid)
       target.withdrawCount += 1
       if (request.status === 'paid') target.withdrawn += Number(request.amount || 0)
+      if (pendingWithdrawStatuses.has(safeText(request.status).trim())) {
+        target.hasPendingWithdraw = true
+      }
       target.withdrawHistory.push({
         _id: request._id,
         amount: Number(request.amount || 0),
@@ -1228,7 +1236,10 @@ module.exports = function createHandler(context) {
     }
     if (action === 'listStaffProfiles') {
       await refreshStaffEarnings()
-      const auditStatus = safeText(data.auditStatus).trim()
+      const rawAuditStatus = safeText(data.auditStatus).trim()
+      const isCanRevokeAuditStatus = rawAuditStatus === 'can_revoke'
+      const auditStatus = isCanRevokeAuditStatus ? 'approved' : rawAuditStatus
+      const canRevoke = safeText(data.canRevoke || (isCanRevokeAuditStatus ? 'yes' : '')).trim()
       const keyword = safeText(data.keyword).trim().toLowerCase()
       const page = Math.max(Number(data.page || 1), 1)
       const pageSize = Math.min(Math.max(Number(data.pageSize || 20), 1), 100)
@@ -1239,6 +1250,8 @@ module.exports = function createHandler(context) {
 
       const hasAdvancedFilter = Boolean(
         keyword ||
+        isCanRevokeAuditStatus ||
+        canRevoke === 'yes' || canRevoke === 'no' ||
         (data.minDeposit !== undefined && data.minDeposit !== '' && !isNaN(Number(data.minDeposit))) ||
         (data.maxDeposit !== undefined && data.maxDeposit !== '' && !isNaN(Number(data.maxDeposit))) ||
         (data.hasViolations === 'yes' || data.hasViolations === true || data.hasViolations === 'no' || data.hasViolations === false) ||
@@ -1283,12 +1296,12 @@ module.exports = function createHandler(context) {
           evidenceByStaff[key].push(ev)
         }
 
-        const depositByStaff = {}
-        const sortedDeposits = (allDeposits || []).slice().sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
-        for (const d of sortedDeposits) {
+        const depositsByStaff = {}
+        for (const d of (allDeposits || [])) {
           const key = d.staffOpenid || d.openid
           if (!key) continue
-          if (!depositByStaff[key]) depositByStaff[key] = d
+          if (!depositsByStaff[key]) depositsByStaff[key] = []
+          depositsByStaff[key].push(d)
         }
 
         return profiles.map((profile) => {
@@ -1316,18 +1329,42 @@ module.exports = function createHandler(context) {
             }
           })
 
-          const deposit = depositByStaff[profile.openid] || null
-          const depositBalance = deposit ? Number(deposit.availableRefundAmount || 0) : 0
-          const depositPaidAmount = deposit ? Number(deposit.paidAmount || 0) : 0
-          const depositForfeitedAmount = deposit ? Number(deposit.forfeitedAmount || 0) : 0
-          const depositStatus = profile.depositStatus || (deposit ? deposit.status : 'unpaid')
+          const staffDeposits = depositsByStaff[profile.openid] || []
+          staffDeposits.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+
+          const unsettledDeposit = staffDeposits.find((deposit) => {
+            const available = Math.round(Number(deposit.availableRefundAmount || 0) * 100)
+            const status = safeText(deposit.status).trim()
+            const refundStatus = safeText(deposit.refundStatus).trim()
+            return available > 0 || ['paid', 'partially_refunded', 'refund_requested', 'refund_approved'].includes(status) || ['requested', 'approved', 'processing'].includes(refundStatus)
+          })
+          const hasUnsettledDeposit = Boolean(unsettledDeposit)
+
+          let depositBalance = 0
+          for (const d of staffDeposits) {
+            depositBalance += Number(d.availableRefundAmount || 0)
+          }
+          depositBalance = Math.round(depositBalance * 100) / 100
+
+          const primaryDeposit = unsettledDeposit || staffDeposits[0] || null
+          const depositPaidAmount = staffDeposits.reduce((sum, d) => sum + Number(d.paidAmount || 0), 0)
+          const depositForfeitedAmount = staffDeposits.reduce((sum, d) => sum + Number(d.forfeitedAmount || 0), 0)
+          const depositStatus = profile.depositStatus || (primaryDeposit ? primaryDeposit.status : 'unpaid')
           const requireDepositRepay = profile.requireDepositRepay === true
-          const finance = financeSummary[profile.openid] || { available: 0, withdrawn: 0, withdrawHistory: [], withdrawCount: 0 }
+          const finance = financeSummary[profile.openid] || { available: 0, withdrawn: 0, withdrawHistory: [], withdrawCount: 0, hasUnsettledEarning: false, hasPendingWithdraw: false }
           const phoneFields = staffPhoneFields(user, profile)
+          const withdrawableAmount = Math.round(Number(finance.available || 0) * 100) / 100
+
+          const canRevokeStaff = (profile.auditStatus === 'approved') &&
+            depositBalance <= 0 &&
+            !hasUnsettledDeposit &&
+            !finance.hasPendingWithdraw &&
+            !finance.hasUnsettledEarning &&
+            withdrawableAmount <= 0
 
           return {
             _id: profile._id,
-            depositId: deposit ? (deposit._id || deposit.id) : '',
+            depositId: primaryDeposit ? (primaryDeposit._id || primaryDeposit.id) : '',
             openid: profile.openid || '',
             realName: profile.realName || '',
             phone: phoneFields.phone,
@@ -1364,10 +1401,12 @@ module.exports = function createHandler(context) {
             depositPaidAmount,
             depositForfeitedAmount,
             depositStatus,
+            hasUnsettledDeposit,
+            canRevokeStaff,
             requireDepositRepay,
             requireDepositRepayReason: profile.requireDepositRepayReason || '',
             requireDepositRepayAt: profile.requireDepositRepayAt || '',
-            withdrawableAmount: Math.round(Number(finance.available || 0) * 100) / 100,
+            withdrawableAmount,
             withdrawnAmount: Math.round(Number(finance.withdrawn || 0) * 100) / 100,
             withdrawCount: Number(finance.withdrawCount || 0),
             withdrawHistory: finance.withdrawHistory || []
@@ -1431,6 +1470,11 @@ module.exports = function createHandler(context) {
           if (item.problemOrderCount <= 0) return false
         } else if (data.hasViolations === 'no' || data.hasViolations === false) {
           if (item.problemOrderCount > 0) return false
+        }
+        if (canRevoke === 'yes' || isCanRevokeAuditStatus) {
+          if (!item.canRevokeStaff) return false
+        } else if (canRevoke === 'no') {
+          if (item.canRevokeStaff) return false
         }
         if (data.requireRepayStatus === 'yes') {
           if (!item.requireDepositRepay) return false

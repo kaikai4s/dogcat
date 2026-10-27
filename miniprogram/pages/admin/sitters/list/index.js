@@ -8,12 +8,16 @@ const statusTabs = [
   { label: '已通过', value: 'approved' },
   { label: '待审核', value: 'pending' },
   { label: '未通过', value: 'rejected' },
-  { label: '已移除', value: 'revoked' }
+  { label: '已移除', value: 'revoked' },
+  { label: '零保证金·可移除', value: 'can_revoke' }
 ]
 
 function withDisplay(profile, selectedIds = []) {
   const reviewCount = Number(profile.reviewCount || 0)
   const depositBalance = profile.depositBalance != null ? Number(profile.depositBalance) : 0
+  const canRevokeStaff = profile.canRevokeStaff !== undefined
+    ? Boolean(profile.canRevokeStaff)
+    : (profile.auditStatus === 'approved' && depositBalance <= 0)
   return {
     ...profile,
     depositId: profile.depositId || '',
@@ -31,7 +35,7 @@ function withDisplay(profile, selectedIds = []) {
     })),
     featuredActionText: profile.isFeatured ? '取消精选' : '设为精选',
     actionText: profile.auditStatus === 'pending' ? '去审核' : '查看资料',
-    canRevokeStaff: profile.auditStatus === 'approved',
+    canRevokeStaff,
     avatarText: (profile.userNickname || profile.realName || '托').slice(0, 1),
     expanded: false,
     selected: selectedIds.includes(profile._id)
@@ -52,6 +56,7 @@ Page({
     maxDeposit: '',
     hasViolations: '', // '' (全部) | 'yes' (仅有违规) | 'no' (无违规)
     requireRepayStatus: '', // '' (全部) | 'yes' (需补缴) | 'no' (正常)
+    canRevokeStatus: '', // '' (全部) | 'yes' (保证金为0·可移除) | 'no' (不可移除)
     showFilterPanel: false,
     selectedIds: [],
     selectedProfiles: [],
@@ -119,6 +124,7 @@ Page({
     callFunction('admin', 'listStaffProfiles', {
       keyword: this.data.keyword,
       auditStatus: this.data.auditStatus,
+      canRevoke: this.data.canRevokeStatus,
       minDeposit: this.data.minDeposit,
       maxDeposit: this.data.maxDeposit,
       hasViolations: this.data.hasViolations,
@@ -183,12 +189,18 @@ Page({
     this.setData({ requireRepayStatus: val })
   },
 
+  selectCanRevokeFilter(e) {
+    const val = e.currentTarget.dataset.value || ''
+    this.setData({ canRevokeStatus: val })
+  },
+
   resetFilter() {
     this.setData({
       minDeposit: '',
       maxDeposit: '',
       hasViolations: '',
-      requireRepayStatus: ''
+      requireRepayStatus: '',
+      canRevokeStatus: ''
     })
     this.load({ reset: true })
   },
@@ -608,6 +620,24 @@ Page({
   revokeStaff(e) {
     const staffProfileId = e.currentTarget.dataset.id
     if (!staffProfileId) return
+    const profile = (this.data.profiles || []).find((p) => p._id === staffProfileId)
+    if (profile && profile.canRevokeStaff === false) {
+      let reason = '该宠托师尚有未结清款项，无法直接移除身份。'
+      if (profile.depositBalance > 0) {
+        reason = `该宠托师保证金尚未结清（余额 ${profile.depositBalanceText}），请先退还或扣除保证金。`
+      } else if (profile.hasUnsettledDeposit) {
+        reason = '该宠托师存在待处理或审核中的保证金记录，请先在财务管理完成处理后再移除。'
+      } else if (profile.withdrawableAmount > 0) {
+        reason = `该宠托师尚有可提现收益 ${profile.withdrawableAmountText}，请先使用“收益转账结清”发起商家转账。`
+      }
+      wx.showModal({
+        title: '无法移除身份',
+        content: reason,
+        showCancel: false,
+        confirmText: '我知道了'
+      })
+      return
+    }
     wx.showModal({
       title: '移除宠托师身份',
       content: '确认后该用户会失去宠托师角色和接单资格。请先用“收益转账结清”发起商家微信转账，并处理保证金退还。仍有待结算、冻结或未到账资金时不能移除；历史收益账目会保留。',

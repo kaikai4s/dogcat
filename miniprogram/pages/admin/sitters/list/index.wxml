@@ -50,6 +50,15 @@
         </view>
       </view>
 
+      <view class="filter-row">
+        <view class="filter-label">身份移除条件：</view>
+        <view class="chip-group">
+          <view class="filter-chip {{canRevokeStatus === '' ? 'active' : ''}}" data-value="" bindtap="selectCanRevokeFilter">全部</view>
+          <view class="filter-chip {{canRevokeStatus === 'yes' ? 'active' : ''}}" data-value="yes" bindtap="selectCanRevokeFilter">保证金为0·可移除</view>
+          <view class="filter-chip {{canRevokeStatus === 'no' ? 'active' : ''}}" data-value="no" bindtap="selectCanRevokeFilter">不可移除(有余额/未结清)</view>
+        </view>
+      </view>
+
       <view class="filter-actions">
         <button class="mini-btn ghost-mini" bindtap="resetFilter">重置筛选</button>
         <button class="mini-btn primary-mini" bindtap="applyFilter">应用筛选</button>
@@ -93,6 +102,7 @@
           <view class="meta-chip">{{item.ratingText}}</view>
           <view class="meta-chip deposit-chip {{item.depositBalance < 100 ? 'danger-chip' : ''}}">保证金: {{item.depositBalanceText}}</view>
           <view class="meta-chip withdraw-chip">可提现: {{item.withdrawableAmountText}}</view>
+          <view class="meta-chip can-revoke-chip" wx:if="{{item.canRevokeStaff && item.auditStatus === 'approved'}}">可移除身份</view>
           <view class="meta-chip danger-chip" wx:if="{{item.requireDepositRepay}}">需重新缴纳保证金</view>
           <view class="meta-chip danger-chip" wx:if="{{item.problemOrderCount > 0}}">异常订单 {{item.problemOrderCount}}</view>
           <view class="meta-chip warning" wx:if="{{item.promotionStatus === 'pending'}}">转正审核中</view>
@@ -108,7 +118,7 @@
       <button class="mini-btn danger-mini" wx:if="{{item.auditStatus === 'approved' && item.depositBalance > 0}}" data-item="{{item}}" bindtap="openForfeitModal">扣除保证金</button>
       <button class="mini-btn ghost-mini" wx:if="{{item.depositBalance <= 0 && (adminSuper || adminPermissions.admin_listStaffDeposits)}}" data-url="/pages/admin/finance/index?tab=deposits&amp;action=refund&amp;staffOpenid={{item.openid}}" bindtap="go">保证金记录</button>
       <button class="mini-btn ghost-mini" wx:if="{{(item.staffLevel === 'certified') && (adminSuper || adminPermissions.admin_setSitterFeatured)}}" data-id="{{item._id}}" data-featured="{{item.isFeatured}}" bindtap="toggleFeatured">{{item.featuredActionText}}</button>
-      <button class="mini-btn danger-mini" wx:if="{{(item.canRevokeStaff) && (adminSuper || adminPermissions.admin_revokeStaff)}}" data-id="{{item._id}}" bindtap="revokeStaff">移除身份</button>
+      <button class="mini-btn danger-mini" wx:if="{{item.auditStatus === 'approved' && (adminSuper || adminPermissions.admin_revokeStaff)}}" data-id="{{item._id}}" bindtap="revokeStaff">移除身份</button>
       <button class="mini-btn ghost-mini" data-index="{{index}}" bindtap="toggleDetails">{{item.expanded ? '收起详情' : '展开详情'}}</button>
     </view>
 

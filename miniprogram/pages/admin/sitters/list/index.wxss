@@ -394,6 +394,13 @@
   font-weight: 850;
 }
 
+.can-revoke-chip {
+  background: #f0fdf4;
+  color: #16a34a;
+  border: 1rpx solid #bbf7d0;
+  font-weight: 850;
+}
+
 .withdraw-history {
   margin-top: 16rpx;
   padding: 14rpx 16rpx;
