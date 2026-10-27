@@ -1,3 +1,5 @@
+const { createHash } = require('crypto')
+const trainingQuizVersion = training => createHash('sha256').update(JSON.stringify([training.passScore, training.quiz])).digest('hex')
 const { requireStaffGender, normalizeStaffGenderRequirement, matchesStaffGender, assertStaffGenderMatches, isStaffProfileLocked } = require('../utils/staffGender')
 const { CARD_STYLE_FIELDS, validateCardStyleUpdate } = require('../utils/profileCardStyle')
 const { mapRefreshIds, visibleMapRows, mapConcurrent } = require('../utils/mapCards')
@@ -571,7 +573,7 @@ module.exports = function createHandler(context) {
       const videos = enabledTrainingVideos(training).map((video) => ({ ...video, watched: Boolean(progress[video.key] && progress[video.key].watched === true), watchedAt: progress[video.key] && progress[video.key].watchedAt || '' }))
       return {
         profile,
-        quiz: { unlocked: profile.auditStatus === 'approved' && videos.every(video => video.watched), questions: profile.auditStatus === 'approved' && videos.every(video => video.watched) ? publicTrainingQuiz(training.quiz) : [], passScore: training.passScore, passed: Boolean(profile.quizPassedAt), score: Number(profile.quizScore || 0), passedAt: profile.quizPassedAt || '' },
+        quiz: { version: trainingQuizVersion(training), unlocked: profile.auditStatus === 'approved' && videos.every(video => video.watched), questions: profile.auditStatus === 'approved' && videos.every(video => video.watched) ? publicTrainingQuiz(training.quiz) : [], passScore: training.passScore, passed: Boolean(profile.quizPassedAt), score: Number(profile.quizScore || 0), passedAt: profile.quizPassedAt || '' },
         videos,
         videoAuditGuide: normalizeVideoAuditGuide(training.videoAuditGuide),
         supplies: settings.staffSupplies || normalizeStaffSuppliesConfig(),
@@ -592,7 +594,9 @@ module.exports = function createHandler(context) {
       const training = settings.staffTraining || normalizeStaffTrainingConfig()
       if (!enabledTrainingVideos(training).every(video => profile.trainingVideoProgress && profile.trainingVideoProgress[video.key]?.watched === true)) throw new Error('请先完成全部培训视频观看后再答题')
       const questions = training.quiz || DEFAULT_STAFF_TRAINING_QUIZ
+      if (data.quizVersion && data.quizVersion !== trainingQuizVersion(training)) throw new Error('题目配置已更新，请刷新培训页后重新作答')
       const answers = data.answers || {}
+      if (questions.some(item => !item.options.some(option => option.value === answers[item.id]))) throw new Error('请完成当前全部题目；如题目已更新，请刷新培训页后重新作答')
       const correct = questions.filter((item) => safeText(answers[item.id]).trim() === item.answer).length
       const score = Math.round((correct / questions.length) * 100)
       const passed = score >= training.passScore

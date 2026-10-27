@@ -773,13 +773,41 @@
 
           <view class="section-title-row between"><text class="section-title">培训答题</text><button class="small-btn primary-btn" bindtap="addQuizQuestion">新增题目</button></view>
           <view class="field-item"><text class="label">及格分数</text><input class="input" type="number" value="{{settings.staffTraining.passScore}}" bindinput="trainingPassScoreInput" placeholder="1-100" /></view>
-          <view class="notice">员工端只会看到题目和选项，不会返回正确答案。</view>
+          <view class="notice">全部为单选题，当前已选 {{settings.staffTraining.quiz.length}} 道。员工端不会收到正确答案；调整后请保存设置。</view>
+          <view class="quiz-bank-toolbar">
+            <button class="small-btn primary-btn" bindtap="openQuizBank">{{quizBankOpen ? '收起默认题库' : '从默认题库选择'}}</button>
+            <button class="small-btn" bindtap="useAllDefaultQuestions">使用全部 {{defaultQuizBank.length}} 道默认题</button>
+          </view>
+          <view wx:if="{{quizBankOpen}}" class="quiz-bank-panel">
+            <view class="form-title">默认题库 · {{defaultQuizBank.length}} 道单选</view>
+            <view class="muted">勾选后加入当前试卷，不会覆盖已有题目。已加入的题目可在下方编辑。</view>
+            <input class="input quiz-bank-search" value="{{quizBankKeyword}}" bindinput="quizBankSearch" placeholder="搜索题目或分类，如：入户、牵引、隐私" />
+            <view class="quiz-bank-toolbar">
+              <button class="mini-btn" bindtap="selectAllQuizBank">全选搜索结果中未加入的题</button>
+              <text class="muted">已勾选 {{quizBankSelectedCount}} 道</text>
+            </view>
+            <scroll-view scroll-y class="quiz-bank-list">
+              <view class="quiz-bank-empty" wx:if="{{!quizBankRows.length}}">没有匹配题目，试试其他关键词</view>
+              <view class="quiz-bank-item {{b.included ? 'included' : ''}}" wx:for="{{quizBankRows}}" wx:key="id" wx:for-item="b">
+                <view class="quiz-bank-item-main" data-id="{{b.id}}" bindtap="toggleQuizBankQuestion">
+                  <checkbox checked="{{b.checked}}" disabled="{{b.included}}" color="#327a65" />
+                  <view><text class="quiz-bank-category">{{b.category || '基础规范'}} · 单选{{b.included ? ' · 已加入' : ''}}</text><view class="quiz-bank-question">{{b.question}}</view></view>
+                </view>
+                <view class="quiz-bank-preview">
+                  <view wx:for="{{b.options}}" wx:key="value" wx:for-item="bo">{{bo.value}}. {{bo.label}}</view>
+                  <view class="quiz-bank-answer">正确答案：{{b.answer}}</view>
+                </view>
+              </view>
+            </scroll-view>
+            <button class="primary-btn" disabled="{{!quizBankSelectedCount}}" bindtap="addSelectedDefaultQuestions">加入选中题目（{{quizBankSelectedCount}}）</button>
+          </view>
           <view class="quiz-edit-card" wx:for="{{settings.staffTraining.quiz}}" wx:key="id" wx:for-item="q" wx:for-index="qIndex">
             <view class="quiz-card-header">
-              <view class="form-title">题目 {{qIndex + 1}}</view>
-              <button class="mini-btn danger" data-index="{{qIndex}}" bindtap="deleteQuizQuestion">删除题目</button>
+              <view class="quiz-summary" data-id="{{q.id}}" bindtap="toggleQuizEditor"><text class="quiz-bank-category">第 {{qIndex + 1}} 题 · 单选 · {{q.category || '自定义'}} </text><view class="quiz-summary-title">{{q.question || '待填写题目'}}</view><text class="quiz-expand-label">{{quizEditorId === q.id ? '收起编辑 ↑' : '展开编辑 ↓'}}</text></view>
+              <button class="mini-btn danger" data-index="{{qIndex}}" bindtap="deleteQuizQuestion">移除</button>
             </view>
-            <view class="field-item"><text class="label">题干</text><input class="input" value="{{q.question}}" data-index="{{qIndex}}" bindinput="quizQuestionInput" placeholder="请输入题目内容" /></view>
+            <view wx:if="{{quizEditorId === q.id}}" class="quiz-editor-body">
+            <view class="field-item"><text class="label">题干</text><textarea class="input quiz-question-textarea" auto-height value="{{q.question}}" data-index="{{qIndex}}" bindinput="quizQuestionInput" placeholder="请输入题目内容" maxlength="500" /></view>
             <view class="field-item">
               <text class="label">正确答案</text>
               <radio-group class="radio-group" data-index="{{qIndex}}" bindchange="quizAnswerChange">
@@ -788,10 +816,11 @@
             </view>
             <view class="quiz-option-row" wx:for="{{q.options}}" wx:key="value" wx:for-item="opt" wx:for-index="optIndex">
               <view class="quiz-option-tag">{{opt.value}}</view>
-              <input class="input quiz-option-input" value="{{opt.label}}" data-question-index="{{qIndex}}" data-option-index="{{optIndex}}" bindinput="quizOptionInput" placeholder="选项内容" />
+              <textarea auto-height maxlength="300" class="input quiz-option-input" value="{{opt.label}}" data-question-index="{{qIndex}}" data-option-index="{{optIndex}}" bindinput="quizOptionInput" placeholder="选项内容" />
               <button class="mini-btn danger" data-question-index="{{qIndex}}" data-option-index="{{optIndex}}" bindtap="deleteQuizOption">删</button>
             </view>
             <button class="mini-btn primary" data-index="{{qIndex}}" bindtap="addQuizOption">添加选项</button>
+            </view>
           </view>
 
           <!-- 线上视频审核指引与管理员微信配置 -->

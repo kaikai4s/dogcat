@@ -1,3 +1,5 @@
+const legacyQuiz = require('../config/legacy-staff-training-quiz')
+
 module.exports = function createService({
   DEFAULT_DISPOSABLE_SUPPLY_ITEMS,
   DEFAULT_STAFF_TRAINING_PASS_SCORE,
@@ -68,15 +70,21 @@ module.exports = function createService({
       return {
         id: safeText(item.id).trim() || `q${index + 1}`,
         type: 'single',
+        category: safeText(item.category).trim(),
         question,
         options,
         answer
       }
     }).filter(Boolean)
 
+    // Upgrade only the untouched legacy five; explicit selections and custom exams stay intact.
+    const shape = rows => rows.map(({ id, question, options, answer }) => ({ id, question, options, answer }))
+    const legacyDefault = !training.quizBankVersion && JSON.stringify(shape(quiz)) === JSON.stringify(shape(legacyQuiz))
+    const effectiveQuiz = quiz.length && !legacyDefault ? quiz : DEFAULT_STAFF_TRAINING_QUIZ
     return {
       passScore,
-      quiz: quiz.length ? quiz : DEFAULT_STAFF_TRAINING_QUIZ,
+      quizBankVersion: 2,
+      quiz: effectiveQuiz.map(item => ({ ...item, options: item.options.map(option => ({ ...option })) })),
       videos: normalizeTrainingVideos(training.videos),
       videoAuditGuide: normalizeVideoAuditGuide(training.videoAuditGuide)
     }

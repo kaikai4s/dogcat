@@ -258,6 +258,7 @@ Page({
         this.setData({
           profile,
           quiz: res.quiz,
+          answers: this.data.quiz && this.data.quiz.version === res.quiz?.version ? this.data.answers : {},
           quizExpanded: res.quiz && res.quiz.unlocked === true && this.data.quizExpanded,
           watchedVideoCount: videos.filter(item => item.watched).length,
           videos,
@@ -352,12 +353,18 @@ Page({
       return
     }
     this.setData({ quizBusy: true })
-    callFunction('staff', 'submitTrainingQuiz', { answers: this.data.answers })
+    callFunction('staff', 'submitTrainingQuiz', { answers: this.data.answers, quizVersion: this.data.quiz.version })
       .then((res) => {
         wx.showToast({ title: res.passed ? '答题通过' : `得分${res.score}，请重试`, icon: 'none' })
         this.load()
       })
-      .catch(showError)
+      .catch(error => {
+        showError(error)
+        if (!this._unloaded && String(error.message || '').includes('题目配置已更新')) {
+          this.setData({ answers: {} })
+          this.load()
+        }
+      })
       .finally(() => { if (!this._unloaded) this.setData({ quizBusy: false }) })
   },
 

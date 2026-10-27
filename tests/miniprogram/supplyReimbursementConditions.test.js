@@ -28,6 +28,7 @@ function settingsPage() {
     }
   }
   page.data.loaded = true
+  page.data.settings.staffTraining.quiz = structuredClone(require('../../cloudfunctions/api/config/constants').DEFAULT_STAFF_TRAINING_QUIZ)
   return { page, calls, errors, completeSave: settings => pending[0](settings) }
 }
 

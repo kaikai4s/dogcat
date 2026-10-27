@@ -554,6 +554,13 @@ Page({
   data: {
     logisticsProviderLabels: ['聚合数据（常用快递查询）', '阿里云', '快递100'],
     loaded: false,
+    defaultQuizBank: [],
+    quizBankRows: [],
+    quizBankOpen: false,
+    quizBankKeyword: '',
+    quizBankSelection: [],
+    quizBankSelectedCount: 0,
+    quizEditorId: '',
     requiredItemsText: '',
     sceneReportInfosText: '[]',
     todayDate: new Date().toISOString().slice(0, 10),
@@ -675,6 +682,7 @@ Page({
         const activeTab = this.data.activeTransferTab || 'commission'
         this.setData({
           loaded: true,
+          defaultQuizBank: settings.staffTrainingQuestionBank || this.data.defaultQuizBank,
           requiredItemsText: normalized.staffSupplies.requiredItems.join('\n'),
           transferSceneTexts,
           sceneReportInfosText: transferSceneTexts[activeTab] || transferSceneTexts.commission
@@ -1346,6 +1354,73 @@ Page({
     })
   },
 
+  toggleQuizEditor(e) {
+    const id = e.currentTarget.dataset.id
+    this.setData({ quizEditorId: this.data.quizEditorId === id ? '' : id })
+  },
+
+  updateQuizBankRows() {
+    const keyword = this.data.quizBankKeyword.trim().toLowerCase()
+    const selected = new Set(this.data.quizBankSelection)
+    const existing = new Set((this.data.settings.staffTraining.quiz || []).map(q => q.id))
+    this.setData({ quizBankRows: this.data.defaultQuizBank
+      .filter(q => !keyword || `${q.question} ${q.category || '基础规范'}`.toLowerCase().includes(keyword))
+      .map(q => ({ ...q, checked: selected.has(q.id), included: existing.has(q.id) })),
+      quizBankSelectedCount: selected.size })
+  },
+
+  openQuizBank() {
+    if (!this.data.defaultQuizBank.length) return wx.showToast({ title: '题库未加载，请重新加载设置', icon: 'none' })
+    this.setData({ quizBankOpen: !this.data.quizBankOpen, quizBankKeyword: '', quizBankSelection: [] })
+    this.updateQuizBankRows()
+  },
+
+  quizBankSearch(e) {
+    this.setData({ quizBankKeyword: e.detail.value })
+    this.updateQuizBankRows()
+  },
+
+  toggleQuizBankQuestion(e) {
+    const id = e.currentTarget.dataset.id
+    if (!this.data.defaultQuizBank.some(q => q.id === id) || (this.data.settings.staffTraining.quiz || []).some(q => q.id === id)) return
+    const selected = new Set(this.data.quizBankSelection)
+    if (selected.has(id)) selected.delete(id)
+    else selected.add(id)
+    this.setData({ quizBankSelection: [...selected] })
+    this.updateQuizBankRows()
+  },
+
+  selectAllQuizBank() {
+    const selected = new Set(this.data.quizBankSelection)
+    this.data.quizBankRows.forEach(q => { if (!q.included) selected.add(q.id) })
+    this.setData({ quizBankSelection: [...selected] })
+    this.updateQuizBankRows()
+  },
+
+  addSelectedDefaultQuestions() {
+    const quiz = this.data.settings.staffTraining.quiz || []
+    const ids = new Set(quiz.map(q => q.id))
+    const selected = new Set(this.data.quizBankSelection)
+    const additions = this.data.defaultQuizBank.filter(q => selected.has(q.id) && !ids.has(q.id))
+    if (!additions.length) return wx.showToast({ title: '请选择尚未加入的题目', icon: 'none' })
+    this.setData({ ['settings.staffTraining.quiz']: [...quiz, ...JSON.parse(JSON.stringify(additions))],
+      ['settings.staffTraining.quizBankVersion']: 2, quizBankOpen: false, quizBankSelection: [], quizBankSelectedCount: 0 })
+    wx.showToast({ title: `已加入${additions.length}道，保存后生效`, icon: 'none' })
+  },
+
+  useAllDefaultQuestions() {
+    if (!this.data.defaultQuizBank.length) return
+    wx.showModal({ title: '使用全部默认题目',
+      content: `将用${this.data.defaultQuizBank.length}道默认单选题替换当前试卷，未保存的自定义题目会被移除。确认后仍需保存设置。`,
+      success: result => {
+        if (!result.confirm) return
+        this.setData({ ['settings.staffTraining.quiz']: JSON.parse(JSON.stringify(this.data.defaultQuizBank)),
+          ['settings.staffTraining.quizBankVersion']: 2, quizEditorId: '', quizBankOpen: false,
+          quizBankSelection: [], quizBankSelectedCount: 0 })
+      }
+    })
+  },
+
   trainingPassScoreInput(e) {
     const passScore = Math.min(Math.max(Math.round(Number(e.detail.value || 80)), 1), 100)
     this.setData({ ['settings.staffTraining.passScore']: passScore })
@@ -1359,8 +1434,9 @@ Page({
 
   addQuizQuestion() {
     const quiz = [...(this.data.settings.staffTraining.quiz || [])]
-    quiz.push(createEmptyQuizQuestion())
-    this.setData({ ['settings.staffTraining.quiz']: quiz })
+    const question = createEmptyQuizQuestion()
+    quiz.push(question)
+    this.setData({ ['settings.staffTraining.quiz']: quiz, quizEditorId: question.id })
   },
 
   deleteQuizQuestion(e) {
@@ -1416,9 +1492,11 @@ Page({
       wx.showToast({ title: '至少保留 2 个选项', icon: 'none' })
       return
     }
+    const correctIndex = options.findIndex(option => option.value === question.answer)
     options.splice(optionIndex, 1)
     const normalizedOptions = options.map((option, index) => ({ ...option, value: quizOptionValues[index] }))
-    const answer = normalizedOptions.some((option) => option.value === question.answer) ? question.answer : normalizedOptions[0].value
+    const answer = correctIndex === optionIndex ? normalizedOptions[0].value
+      : quizOptionValues[correctIndex > optionIndex ? correctIndex - 1 : correctIndex] || normalizedOptions[0].value
     quiz[questionIndex] = { ...question, options: normalizedOptions, answer }
     this.setData({ ['settings.staffTraining.quiz']: quiz })
   },
@@ -2061,6 +2139,18 @@ Page({
         return
       }
     }
+    const draftQuiz = this.data.settings.staffTraining.quiz || []
+    if (!draftQuiz.length) return showError(new Error('培训答题至少保留1道题'))
+    const ids = new Set()
+    for (const [index, q] of draftQuiz.entries()) {
+      if (!q.id || ids.has(q.id)) return showError(new Error(`第${index + 1}道题编号重复或缺失`))
+      ids.add(q.id)
+      if (!String(q.question || '').trim() || !Array.isArray(q.options) || q.options.length < 2 ||
+        q.options.some(option => !String(option.label || '').trim()) || !q.options.some(option => option.value === q.answer)) {
+        this.setData({ quizEditorId: q.id })
+        return showError(new Error(`请补全第${index + 1}道题的题干、选项和正确答案`))
+      }
+    }
     this.setData({ saving: true })
 
     const carousel = this.data.settings.homeHeroCarousel || {}
@@ -2131,6 +2221,7 @@ Page({
       staffTraining: {
         ...staffTraining,
         passScore: staffTraining.passScore,
+        quizBankVersion: 2,
         quiz: staffTraining.quiz || [],
         videos: trainingVideos,
         videoAuditGuide: staffTraining.videoAuditGuide || {}
@@ -2144,6 +2235,7 @@ Page({
       }
     }
 
+    delete payload.staffTrainingQuestionBank
     callFunction('admin', 'saveSystemSettings', payload)
       .then((settings) => {
         const normalized = {
@@ -2177,6 +2269,7 @@ Page({
         const currentTab = this.data.activeTransferTab || 'commission'
         this.setData({
           loaded: true,
+          defaultQuizBank: settings.staffTrainingQuestionBank || this.data.defaultQuizBank,
           requiredItemsText: normalized.staffSupplies.requiredItems.join('\n'),
           transferSceneTexts,
           sceneReportInfosText: transferSceneTexts[currentTab] || transferSceneTexts.commission

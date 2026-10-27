@@ -1,3 +1,4 @@
+const { DEFAULT_STAFF_TRAINING_QUIZ } = require('../config/constants')
 const { requireStaffGender } = require('../utils/staffGender')
 const { getOrderRefundState } = require('../utils/orderRefundState')
 
@@ -1074,7 +1075,8 @@ module.exports = function createHandler(context) {
       return { id: data.id, status: 'paid' }
     }
     if (action === 'getSystemSettings') {
-      return getSystemSettings()
+      // The answer-bearing bank is returned only by this authorized administrator route.
+      return { ...await getSystemSettings(), staffTrainingQuestionBank: DEFAULT_STAFF_TRAINING_QUIZ }
     }
     if (action === 'savePlaygroundSettings') {
       const current=await getSystemSettings({includeSecrets:true})
@@ -1088,7 +1090,7 @@ module.exports = function createHandler(context) {
       const saved = await saveSystemSettings(payload)
       const publicValue = normalizeSystemSettings(saved.value)
       await logAdmin(admin, 'platform_config', 'system_settings', 'saveSystemSettings', publicValue)
-      return publicValue
+      return { ...publicValue, staffTrainingQuestionBank: DEFAULT_STAFF_TRAINING_QUIZ }
     }
     if (action === 'updateVideoAuditGuide') {
       const currentSettings = await getSystemSettings({ includeSecrets: true })

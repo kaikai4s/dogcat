@@ -59,6 +59,7 @@ test('settings refuses to submit a truncated merchant private key', () => {
     callFunction() { assert.fail('Invalid key must not be submitted') }
   })
   page.data.loaded = true
+  page.data.settings.staffTraining.quiz = structuredClone(require('../../cloudfunctions/api/config/constants').DEFAULT_STAFF_TRAINING_QUIZ)
   page.data.settings.payment.privateKeyInput = keys.privateKey.slice(0, 140)
   page.save()
   assert.equal(errors.length, 1)
@@ -74,6 +75,7 @@ test('settings submits complete keys unchanged and allows blank inputs to keep s
       callFunction: (...args) => { calls.push(args); return new Promise(() => {}) }
     })
     page.data.loaded = true
+    page.data.settings.staffTraining.quiz = structuredClone(require('../../cloudfunctions/api/config/constants').DEFAULT_STAFF_TRAINING_QUIZ)
     Object.assign(page.data.settings.payment, inputs)
     page.save()
     assert.equal(calls.length, 1)
@@ -122,6 +124,7 @@ test('settings logistics panel submits a separate Juhe key and blocks read-only 
   assert.equal(patches.length, 0)
   page.data.adminSuper = true
   page.data.loaded = true
+  page.data.settings.staffTraining.quiz = structuredClone(require('../../cloudfunctions/api/config/constants').DEFAULT_STAFF_TRAINING_QUIZ)
   page.logisticsProviderChange({ detail: { value: '0' } })
   page.logisticsInput({ currentTarget: { dataset: { field: 'juheKeyInput' } }, detail: { value: '  TEST_JUHE_KEY_1234567890  ' } })
   page.save()

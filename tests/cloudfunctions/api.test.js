@@ -603,7 +603,7 @@ test('invalid staff training quiz config falls back to default quiz', async () =
 
   assert.equal(saved.ok, true)
   assert.equal(saved.data.staffTraining.passScore, 100)
-  assert.equal(saved.data.staffTraining.quiz.length, 5)
+  assert.equal(saved.data.staffTraining.quiz.length, 50)
   assert.equal(saved.data.staffTraining.quiz[0].answer, 'A')
 })
 

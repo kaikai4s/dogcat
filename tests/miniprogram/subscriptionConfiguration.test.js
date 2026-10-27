@@ -27,6 +27,7 @@ test('administrator cannot save template numbers or placeholders, but can leave 
     })
     page.setData = function (patch) { Object.assign(this.data, patch) }
     page.data.loaded = true
+    page.data.settings.staffTraining.quiz = structuredClone(require('../../cloudfunctions/api/config/constants').DEFAULT_STAFF_TRAINING_QUIZ)
     page.data.settings.subscription.templates.refundResult = value
     page.save()
     assert.equal(calls.length, allowed ? 1 : 0)
