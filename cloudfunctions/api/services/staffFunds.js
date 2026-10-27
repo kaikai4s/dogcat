@@ -442,7 +442,12 @@ module.exports = function createService(context) {
       if (typeof getPayConfig !== 'function' || typeof wechatRequest !== 'function') {
         throw new Error('缺少微信退款网络网关支持')
       }
-      const payConfig = getPayConfig(settings)
+      let payConfig
+      try {
+        payConfig = getPayConfig(settings)
+      } catch (cfgErr) {
+        throw new Error(`微信支付配置不完整：${cfgErr.message || cfgErr}`)
+      }
       const refundBody = {
         out_refund_no: refundNo,
         reason: reason || '宠托师保证金退还',

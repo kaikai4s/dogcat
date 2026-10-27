@@ -510,6 +510,12 @@ Page({
             wx.hideLoading()
             if (approved && result && result.status === 'refunded') {
               wx.showToast({ title: '已自动原路退还', icon: 'success' })
+            } else if (result && result.autoRefundFailed) {
+              wx.showModal({
+                title: '已通过审核，待人工退款',
+                content: `自动原路退款未完成：${result.autoRefundError || '请核实原支付渠道'}。已转为待实际退款状态，您可线下打款后点击“人工录入凭证确认退款”。`,
+                showCancel: false
+              })
             } else {
               wx.showToast({ title: approved ? '已通过退款审核' : '已驳回' })
             }

@@ -3476,7 +3476,14 @@ module.exports = function createHandler(context) {
       return settleStaffDeposit({ ...admin, openid }, action, { ...data, reason })
     }
     if (action === 'autoRefundStaffDeposit') {
-      const id = safeText(data.id).trim()
+      let id = safeText(data.id || data.depositId).trim()
+      const staffOpenid = safeText(data.staffOpenid).trim()
+      if (!id && staffOpenid) {
+        const dRes = await db.collection('staff_deposits').where({ staffOpenid }).orderBy('createdAt', 'desc').get().catch(() => ({ data: [] }))
+        const deposits = (dRes && dRes.data) || []
+        const target = deposits.find((d) => Number(d.availableRefundAmount || 0) > 0 && ['paid', 'partially_refunded', 'refund_requested', 'refund_approved'].includes(d.status)) || deposits[0]
+        if (target) id = target._id
+      }
       const reason = safeText(data.reason || '管理员退还宠托师保证金').trim()
       if (!id) throw new Error('请选择需要退还的保证金记录')
       if (reason.length > 200) throw new Error('退还原因不能超过 200 字')

@@ -113,7 +113,7 @@
     <view class="admin-summary-row sitter-action-row">
       <button wx:if="{{adminSuper || adminPermissions.admin_listStaffAudits}}" class="mini-btn" data-id="{{item._id}}" bindtap="detail">{{item.actionText}}</button>
       <button class="mini-btn" wx:if="{{adminSuper || adminPermissions.admin_settleStaffEarningsByWechat}}" data-id="{{item._id}}" bindtap="settleEarnings" disabled="{{settlementBusy}}" loading="{{settlementBusy && settlementStaffId === item._id}}">收益转账结清</button>
-      <button class="mini-btn ghost-mini" wx:if="{{item.depositBalance > 0 && (adminSuper || adminPermissions.admin_requestStaffDepositRefund)}}" data-item="{{item}}" bindtap="refundDeposit" disabled="{{depositRefundBusy}}">退还保证金</button>
+      <button class="mini-btn ghost-mini" wx:if="{{item.depositBalance > 0 && (adminSuper || adminPermissions.admin_autoRefundStaffDeposit || adminPermissions.admin_requestStaffDepositRefund)}}" data-item="{{item}}" bindtap="refundDeposit" disabled="{{depositRefundBusy}}">退还保证金</button>
       <button class="mini-btn ghost-mini" wx:if="{{adminSuper || adminPermissions.admin_listWithdrawRequests}}" data-openid="{{item.openid}}" bindtap="viewStaffFinance">查看转账</button>
       <button class="mini-btn danger-mini" wx:if="{{item.auditStatus === 'approved' && item.depositBalance > 0}}" data-item="{{item}}" bindtap="openForfeitModal">扣除保证金</button>
       <button class="mini-btn ghost-mini" wx:if="{{item.depositBalance <= 0 && (adminSuper || adminPermissions.admin_listStaffDeposits)}}" data-url="/pages/admin/finance/index?tab=deposits&amp;action=refund&amp;staffOpenid={{item.openid}}" bindtap="go">保证金记录</button>
