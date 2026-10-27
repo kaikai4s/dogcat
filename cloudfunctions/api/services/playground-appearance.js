@@ -45,11 +45,13 @@ module.exports=function createAppearance(context) {
         clientNextChanceNeeded: 0,
         isStaff: true,
         staffCompletedCount: 99,
-        staffEarnedChances: 99,
-        staffRequiredPerChance: 1,
-        totalEarnedChances: 132,
+        staffEarnedChances: 33,
+        staffRequiredPerChance: 3,
+        staffRemainder: 0,
+        staffNextChanceNeeded: 0,
+        totalEarnedChances: 66,
         totalUsedChances: 0,
-        availableChances: 132,
+        availableChances: 66,
         monthQuota: 1,
         monthUsedCount: 0,
         monthRemaining: 1,
@@ -80,12 +82,14 @@ module.exports=function createAppearance(context) {
       }
     }
 
-    // 机会规则：普通客户每完成3单获1次机会；宠托师每完成1次服务履约获1次机会
+    // 机会规则：普通客户每完成3单获1次机会；宠托师每完成3次服务履约获1次机会
     const clientEarnedChances = Math.floor(clientCompletedCount / 3)
     const clientRemainder = clientCompletedCount % 3
     const clientNextChanceNeeded = clientRemainder === 0 ? 3 : 3 - clientRemainder
 
-    const staffEarnedChances = isStaff ? staffCompletedCount : 0
+    const staffEarnedChances = isStaff ? Math.floor(staffCompletedCount / 3) : 0
+    const staffRemainder = isStaff ? staffCompletedCount % 3 : 0
+    const staffNextChanceNeeded = staffRemainder === 0 ? 3 : 3 - staffRemainder
     const totalEarnedChances = clientEarnedChances + staffEarnedChances
 
     // 统计历史消耗（状态为 pending / processing / completed 均计入消耗；draft 不消耗，rejected/cancelled 不占用消耗）
@@ -119,13 +123,13 @@ module.exports=function createAppearance(context) {
 
     if (totalEarnedChances === 0) {
       if (isStaff) {
-        unavailableReason = `未达到专属形象定制申请条件：普通客户每完成3笔服务订单可获1次机会（当前${clientRemainder}/3单）；宠托师每完成1次服务履约可获1次机会（当前${staffCompletedCount}/1单）。`
+        unavailableReason = `未达到专属形象定制申请条件：普通客户每完成3笔服务订单可获1次机会（当前${clientRemainder}/3单，还差${clientNextChanceNeeded}单）；宠托师每完成3次服务履约可获1次机会（当前${staffRemainder}/3单，还差${staffNextChanceNeeded}单）。`
       } else {
         unavailableReason = `未达到专属形象定制申请条件：普通客户每完成3笔服务订单可获1次定制机会（当前进度${clientRemainder}/3单，还差${clientNextChanceNeeded}单）。`
       }
     } else if (availableChances === 0) {
       if (isStaff) {
-        unavailableReason = `您累计获得的${totalEarnedChances}次形象定制机会已全部使用。普通客户每再完成3笔订单可增加1次机会（当前${clientRemainder}/3单，还差${clientNextChanceNeeded}单）；宠托师每再完成1笔服务履约可增加1次机会。`
+        unavailableReason = `您累计获得的${totalEarnedChances}次形象定制机会已全部使用。普通客户每再完成3笔订单可增加1次机会（当前${clientRemainder}/3单，还差${clientNextChanceNeeded}单）；宠托师每再完成3笔服务履约可增加1次机会（当前${staffRemainder}/3单，还差${staffNextChanceNeeded}单）。`
       } else {
         unavailableReason = `您累计获得的${totalEarnedChances}次形象定制机会已全部使用。每再完成3笔服务订单可增加1次定制机会（当前进度${clientRemainder}/3单，还差${clientNextChanceNeeded}单）。`
       }
@@ -146,7 +150,9 @@ module.exports=function createAppearance(context) {
       isStaff,
       staffCompletedCount,
       staffEarnedChances,
-      staffRequiredPerChance: 1,
+      staffRequiredPerChance: 3,
+      staffRemainder,
+      staffNextChanceNeeded,
       totalEarnedChances,
       totalUsedChances,
       availableChances,

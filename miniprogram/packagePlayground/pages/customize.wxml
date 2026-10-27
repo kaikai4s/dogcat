@@ -20,7 +20,7 @@
       </view>
       <view class="rule-item {{eligibility.staffEarnedChances > 0 ? 'rule-met' : ''}}" wx:if="{{eligibility.isStaff}}">
         <text class="rule-icon">{{eligibility.staffEarnedChances > 0 ? '✓' : '•'}}</text>
-        <text class="rule-text">宠托师履约：每完成1次服务获1次机会（累计履约{{eligibility.staffCompletedCount}}笔，获得{{eligibility.staffEarnedChances}}次）</text>
+        <text class="rule-text">宠托师履约：每完成3次服务获1次机会（累计履约{{eligibility.staffCompletedCount}}笔，已获{{eligibility.staffEarnedChances}}次；当前进度{{eligibility.staffRemainder}}/3单，还差{{eligibility.staffNextChanceNeeded}}单可再得1次）</text>
       </view>
       <view class="rule-item {{eligibility.monthRemaining > 0 ? 'rule-met' : 'rule-warn'}}">
         <text class="rule-icon">{{eligibility.monthRemaining > 0 ? '✓' : '!'}}</text>
