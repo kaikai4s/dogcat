@@ -248,14 +248,20 @@ module.exports = function createHandler(context) {
 
     const deposits = await readScopedDocuments('staff_deposits', { staffOpenid: target.openid }, '_id', 'asc')
     const unsettled = deposits.find((deposit) => {
-      const available = Math.round(Number(deposit.availableRefundAmount || 0) * 100)
+      const netAvailable = deposit.availableRefundAmount != null
+        ? Number(deposit.availableRefundAmount)
+        : (Number(deposit.paidAmount || 0) - Number(deposit.refundedAmount || 0) - Number(deposit.forfeitedAmount || 0))
+      const available = Math.round(Math.max(0, netAvailable) * 100)
       const status = safeText(deposit.status).trim()
       const refundStatus = safeText(deposit.refundStatus).trim()
       const isRefundInFlight = ['refund_requested', 'refund_approved'].includes(status) || ['requested', 'approved', 'processing'].includes(refundStatus)
       return available > 0 || isRefundInFlight
     })
     if (unsettled) {
-      const amount = Number(unsettled.availableRefundAmount || 0).toFixed(2)
+      const netAvailable = unsettled.availableRefundAmount != null
+        ? Number(unsettled.availableRefundAmount)
+        : (Number(unsettled.paidAmount || 0) - Number(unsettled.refundedAmount || 0) - Number(unsettled.forfeitedAmount || 0))
+      const amount = Math.max(0, netAvailable).toFixed(2)
       throw new Error(`该宠托师保证金尚未处理完成，可退余额 ¥${amount}。请先在财务管理完成扣除/退款后再移除宠托师身份`)
     }
   }
@@ -1334,7 +1340,10 @@ module.exports = function createHandler(context) {
           staffDeposits.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
 
           const unsettledDeposit = staffDeposits.find((deposit) => {
-            const available = Math.round(Number(deposit.availableRefundAmount || 0) * 100)
+            const netAvailable = deposit.availableRefundAmount != null
+              ? Number(deposit.availableRefundAmount)
+              : (Number(deposit.paidAmount || 0) - Number(deposit.refundedAmount || 0) - Number(deposit.forfeitedAmount || 0))
+            const available = Math.round(Math.max(0, netAvailable) * 100)
             const status = safeText(deposit.status).trim()
             const refundStatus = safeText(deposit.refundStatus).trim()
             const isRefundInFlight = ['refund_requested', 'refund_approved'].includes(status) || ['requested', 'approved', 'processing'].includes(refundStatus)
@@ -1344,7 +1353,10 @@ module.exports = function createHandler(context) {
 
           let depositBalance = 0
           for (const d of staffDeposits) {
-            depositBalance += Number(d.availableRefundAmount || 0)
+            const netAvailable = d.availableRefundAmount != null
+              ? Number(d.availableRefundAmount)
+              : (Number(d.paidAmount || 0) - Number(d.refundedAmount || 0) - Number(d.forfeitedAmount || 0))
+            depositBalance += Math.max(0, netAvailable)
           }
           depositBalance = Math.round(depositBalance * 100) / 100
 
