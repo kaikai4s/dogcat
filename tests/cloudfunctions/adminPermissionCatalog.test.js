@@ -45,6 +45,17 @@ test('new catalog endpoints are delegated explicitly; removing the group immedia
   db.state.admin_groups[0].enabled = false
   assert.equal((await call('admin', 'listOrderSessionMessages', { orderId: 'o' })).code, 'ADMIN_FORBIDDEN')
 })
+test('WeChat shop config can be read by a delegated admin without write access', async () => {
+  const appid = 'wx' + 'a'.repeat(16)
+  const { db, call } = setup(['adminMall.listProducts', 'adminMall.getShopConfig'], {
+    platform_configs: [{ _id: 'shop', key: 'wechat_shop', enabled: false, appid }]
+  })
+  assert.equal((await call('adminMall', 'getShopConfig')).data.appid, appid)
+  assert.equal((await call('adminMall', 'saveShopConfig', { enabled: true, appid })).code, 'ADMIN_FORBIDDEN')
+  assert.equal(db.state.platform_configs[0].enabled, false)
+  db.state.admin_groups[0].permissions.push('adminMall.saveShopConfig')
+  assert.equal((await call('adminMall', 'saveShopConfig', { enabled: true, appid })).ok, true)
+})
 test('community deletion needs a distinct admin grant even for an editor', async () => {
   const id = 'map_community_' + 'a'.repeat(24)
   const { db, call } = setup(['communityMap.listAdmin', 'communityMap.saveAdmin'], {

@@ -15,12 +15,60 @@ Page({
     pageSize: 10,
     hasMore: true,
     loading: false,
-    total: 0
+    total: 0,
+    localLoaded: false,
+    configLoaded: false,
+    shopConfigError: false,
+    shopSupported: true,
+    shopConfig: { enabled: false, appid: '' },
+    mallMode: 'local',
+    preferredMallMode: 'shop'
   },
 
   onLoad() {
-    this.loadCategories()
-    this.loadProducts({ reset: true })
+    this.loadShopConfig(true).then(() => {
+      if (this.data.mallMode === 'local') return this.loadLocalMall()
+    })
+  },
+
+  onShow() {
+    if (this.data.configLoaded) this.loadShopConfig(false)
+  },
+
+  loadShopConfig(initial) {
+    const requestId = (this._shopConfigRequestId || 0) + 1
+    this._shopConfigRequestId = requestId
+    const device = typeof wx.getDeviceInfo === 'function' ? wx.getDeviceInfo() :
+      (typeof wx.getSystemInfoSync === 'function' ? wx.getSystemInfoSync() : {})
+    const shopSupported = !/^(mac|windows)/i.test(device.platform || '') &&
+      (typeof wx.canIUse !== 'function' || wx.canIUse('store-home'))
+    return callFunction('mall', 'getShopConfig')
+      .then((shopConfig) => {
+        if (requestId !== this._shopConfigRequestId) return
+        const enabled = shopConfig.enabled === true && !!shopConfig.appid
+        const mode = enabled && shopSupported && this.data.preferredMallMode === 'shop' ? 'shop' : 'local'
+        const fellBack = this.data.mallMode === 'shop' && mode === 'local'
+        this.setData({ shopConfig: { enabled, appid: shopConfig.appid || '' }, shopSupported, mallMode: mode, configLoaded: true, shopConfigError: false })
+        if (fellBack && !this.data.localLoaded) return this.loadLocalMall()
+      })
+      .catch(() => {
+        if (requestId !== this._shopConfigRequestId) return
+        this.setData({ shopConfigError: true, configLoaded: true })
+        if (!initial && this.data.mallMode === 'local' && !this.data.localLoaded) return this.loadLocalMall()
+      })
+  },
+
+  retryShopConfig() { return this.loadShopConfig(false) },
+
+  loadLocalMall() {
+    return Promise.all([this.loadCategories(), this.loadProducts({ reset: true })])
+  },
+
+  switchMallMode(e) {
+    const mode = e.currentTarget.dataset.mode
+    if (!['local', 'shop'].includes(mode) || mode === this.data.mallMode || (mode === 'shop' && (!this.data.shopConfig.enabled || !this.data.shopSupported))) return
+    this.setData({ mallMode: mode, preferredMallMode: mode })
+    if (mode === 'local' && !this.data.localLoaded) return this.loadLocalMall()
   },
 
   onCustomRefresh() {
@@ -33,11 +81,14 @@ Page({
   },
 
   onPullDownRefresh() {
-    return Promise.all([this.loadCategories(), this.loadProducts({ reset: true })]).finally(() => wx.stopPullDownRefresh())
+    const request = this.data.mallMode === 'shop'
+      ? this.loadShopConfig(false)
+      : Promise.all([this.loadShopConfig(false), this.loadLocalMall()])
+    return Promise.resolve(request).finally(() => wx.stopPullDownRefresh())
   },
 
   onReachBottom() {
-    this.loadMore()
+    if (this.data.mallMode === 'local') this.loadMore()
   },
 
   loadCategories() {
@@ -59,7 +110,8 @@ Page({
           page: pageData.page,
           hasMore: pageData.hasMore,
           total: pageData.total,
-          loading: false
+          loading: false,
+          localLoaded: true
         })
       })
       .catch((error) => {

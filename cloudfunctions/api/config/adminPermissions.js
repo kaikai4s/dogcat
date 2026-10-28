@@ -12,7 +12,7 @@ const definitions = [
   ['marketing', '营销与会员', 'admin', 'listCouponTemplates:优惠券模板 saveCouponTemplate:编辑优惠券 deleteCouponTemplate:删除优惠券 issueCouponToUser:发放优惠券 issueCouponByLevels:分层发券 listMemberLevels:会员等级 saveMemberLevel:编辑会员等级 deleteMemberLevel:删除会员等级 listPetTitles:宠物头衔 savePetTitle:编辑头衔 deletePetTitle:删除头衔 listPetVaccineCertifications:宠物疫苗审核 auditPetVaccineCertification:审核疫苗认证 grantUserAssetCash:发放用户可提现零钱 grantPoints:调整积分 listPointLogs:积分流水 getCheckinMonthConfig:签到配置 saveCheckinMonthConfig:编辑签到配置 publishRewardMailByLevels:发放奖励 publishRetroCardMail:发放补签卡 publishPetTitleMail:发放头衔 saveLotteryActivity:编辑抽奖 listLotteryActivities:抽奖列表 toggleLotteryActivity:抽奖开关 deleteLotteryActivity:删除抽奖'],
   ['feedback', '反馈', 'admin', 'listFeedback:查看反馈 replyFeedback:回复反馈'],
   ['settings', '系统配置', 'admin', 'getSystemSettings:查看配置 listSubscriptionDeliveries:查看通知投递 retrySubscriptionDelivery:重试通知投递'],
-  ['mall', '商城', 'adminMall', 'listCategories:查看分类 saveCategory:编辑分类 deleteCategory:删除分类 listProducts:商品列表 saveProduct:编辑商品 toggleProductStatus:上下架 listOrders:订单列表 getOrderDetail:订单详情 listExpressCompanies:查看快递公司 queryOrderLogistics:查询订单物流 shipOrder:发货 updateOrderStatus:修改订单 refundOrder:退款 auditRefund:审核售后'],
+  ['mall', '商城', 'adminMall', 'listCategories:查看分类 saveCategory:编辑分类 deleteCategory:删除分类 listProducts:商品列表 saveProduct:编辑商品 toggleProductStatus:上下架 getShopConfig:查看微信小店配置 saveShopConfig:编辑微信小店配置 listOrders:订单列表 getOrderDetail:订单详情 listExpressCompanies:查看快递公司 queryOrderLogistics:查询订单物流 shipOrder:发货 updateOrderStatus:修改订单 refundOrder:退款 auditRefund:审核售后'],
   ['incidents', '纠纷', 'incident', 'listIncidents:纠纷列表 getIncidentDetail:纠纷详情 appendIncidentComment:留言 uploadIncidentEvidence:上传证据 updateIncidentStatus:更新状态 resolveIncident:标记解决 proposeResolution:处理方案 freezeStaffEarning:冻结收益 linkRefund:关联退款 closeIncident:结案扣减'],
   ['payments', '支付与活动维护', 'payment', 'createRefund:发起退款 listRefunds:查看退款 queryRefund:查询退款'],
   ['beauty', '选美活动管理', 'petBeauty', 'settleMonthlyRanking:结算月度排名 disqualifyPetBeautyCandidate:取消参赛资格 reinstatePetBeautyCandidate:恢复参赛资格 grantPetBeautyChampionPrize:发放冠军奖金 syncBeautyPhotoFlags:同步美照状态'],
@@ -124,6 +124,7 @@ depend('admin.sendSystemNotification admin.revokeSystemNotification', 'admin.lis
 depend('admin.retrySubscriptionDelivery', 'admin.getSystemSettings admin.listSubscriptionDeliveries')
 depend('adminMall.shipOrder adminMall.updateOrderStatus adminMall.refundOrder adminMall.auditRefund adminMall.queryOrderLogistics', 'adminMall.listOrders')
 depend('adminMall.saveProduct adminMall.toggleProductStatus adminMall.saveCategory adminMall.deleteCategory', 'adminMall.listProducts adminMall.listCategories')
+depend('adminMall.saveShopConfig', 'adminMall.getShopConfig adminMall.listProducts')
 depend('questionnaire.create', 'questionnaire.listAdmin')
 depend('questionnaire.update questionnaire.publish questionnaire.close questionnaire.delete questionnaire.clone questionnaire.responses questionnaire.detailAdmin', 'questionnaire.listAdmin')
 depend('questionnaire.update questionnaire.responses questionnaire.analyzeAI questionnaire.getAiReport', 'questionnaire.listAdmin questionnaire.detailAdmin')

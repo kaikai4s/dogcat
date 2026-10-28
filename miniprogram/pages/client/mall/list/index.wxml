@@ -1,10 +1,29 @@
-<dovlin-refresh id="dovlinRefresh" bind:refresh="onCustomRefresh" bind:scrolltolower="onReachBottom">
+<view wx:if="{{!configLoaded}}" class="mall-page"><view class="list-state">加载中...</view></view>
+<view wx:elif="{{shopConfig.enabled && shopSupported && mallMode === 'shop'}}" class="shop-page">
+  <view class="shop-bar">
+    <view class="shop-bar-title">微信小店</view>
+    <button class="shop-mode-switch" data-mode="local" bindtap="switchMallMode">平台商品</button>
+  </view>
+  <view wx:if="{{shopConfigError}}" class="shop-config-error">
+    <text>小店状态暂时无法更新。</text><button bindtap="retryShopConfig">重试</button>
+  </view>
+  <store-home class="wechat-shop-home" appid="{{shopConfig.appid}}" />
+</view>
+<dovlin-refresh wx:else id="dovlinRefresh" bind:refresh="onCustomRefresh" bind:scrolltolower="onReachBottom">
 <view class="mall-page">
+  <view wx:if="{{shopConfigError}}" class="shop-config-error">
+    <text>小店状态暂时无法更新。</text><button bindtap="retryShopConfig">重试</button>
+  </view>
+  <view wx:if="{{shopConfig.enabled && shopSupported}}" class="mall-mode-bar">
+    <text>平台商品</text>
+    <button class="shop-mode-switch" data-mode="shop" bindtap="switchMallMode">微信小店</button>
+  </view>
+  <view wx:if="{{shopConfig.enabled && !shopSupported}}" class="shop-unsupported">当前设备或微信版本暂不支持小店展示，请使用手机微信或升级微信。</view>
   <view class="mall-hero">
     <view class="mall-kicker">宠物用品商城</view>
     <view class="mall-title">给毛孩子挑点好物</view>
     <view class="mall-desc">主粮、零食、清洁用品一站选购。</view>
-    <view class="mall-actions"><button bindtap="cart">购物车</button><button bindtap="orders">商城订单</button></view>
+    <view class="mall-actions"><button bindtap="cart">购物车</button><button bindtap="orders">平台订单</button></view>
   </view>
 
   <view class="search-card">

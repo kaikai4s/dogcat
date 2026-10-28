@@ -169,6 +169,8 @@ Page({
     pageSize: 10,
     hasMore: true,
     loading: false,
+    shopConfig: { enabled: false, appid: '' },
+    shopSaving: false,
     uploadingImage: false,
     editingProduct: false,
     productForm: emptyProduct(),
@@ -192,7 +194,29 @@ Page({
     const products = nextState.products || this.data.products
     this.setData({ stats: categoryStats(categories, products) })
   },
-  loadAll() { this.loadCategories(); this.loadProducts({ reset: true }) },
+  loadAll() {
+    this.loadCategories()
+    this.loadProducts({ reset: true })
+    if (this.data.adminSuper || (this.data.adminPermissions && this.data.adminPermissions.adminMall_getShopConfig)) this.loadShopConfig()
+  },
+  loadShopConfig() {
+    return callFunction('adminMall', 'getShopConfig')
+      .then((shopConfig) => this.setData({ shopConfig }))
+      .catch(showError)
+  },
+  inputShopId(e) { this.setData({ 'shopConfig.appid': e.detail.value }) },
+  switchShop(e) { this.setData({ 'shopConfig.enabled': e.detail.value }) },
+  saveShopConfig() {
+    if (this.data.shopSaving || !(this.data.adminSuper || (this.data.adminPermissions && this.data.adminPermissions.adminMall_saveShopConfig))) return
+    this.setData({ shopSaving: true })
+    return callFunction('adminMall', 'saveShopConfig', this.data.shopConfig)
+      .then((shopConfig) => {
+        this.setData({ shopConfig })
+        wx.showToast({ title: '已保存', icon: 'success' })
+      })
+      .catch((error) => { showError(error); return this.loadShopConfig() })
+      .finally(() => this.setData({ shopSaving: false }))
+  },
   loadCategories() {
     callFunction('adminMall', 'listCategories')
       .then((categories) => {

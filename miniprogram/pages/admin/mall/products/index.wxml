@@ -12,6 +12,23 @@
     </view>
   </view>
 
+  <view class="shop-config-section" wx:if="{{adminSuper || adminPermissions.adminMall_getShopConfig}}">
+    <view class="shop-config-head">
+      <view>
+        <view class="section-title">微信小店</view>
+        <view class="muted">用户在小店内付款；小店订单不进入平台购物车和订单。</view>
+      </view>
+      <switch wx:if="{{adminSuper || adminPermissions.adminMall_saveShopConfig}}" checked="{{shopConfig.enabled}}" bindchange="switchShop" color="#207e6f" />
+      <text wx:else class="muted">{{shopConfig.enabled ? '已启用' : '未启用'}}</text>
+    </view>
+    <view class="shop-config-field">
+      <view class="form-label">微信小店 ID</view>
+      <input value="{{shopConfig.appid}}" placeholder="wx 开头的微信小店 ID" bindinput="inputShopId" disabled="{{!(adminSuper || adminPermissions.adminMall_saveShopConfig)}}" />
+      <view class="muted">在微信小店后台「店铺管理 → 基础信息 → 账号信息」查看。启用后商城优先展示小店。</view>
+    </view>
+    <button wx:if="{{adminSuper || adminPermissions.adminMall_saveShopConfig}}" class="shop-config-save" bindtap="saveShopConfig" loading="{{shopSaving}}" disabled="{{shopSaving}}">保存小店配置</button>
+  </view>
+
   <view class="toolbar sticky-toolbar">
     <button wx:if="{{adminSuper || adminPermissions.adminMall_saveCategory}}" class="tool-btn btn-secondary" bindtap="showCategory">+ 新增分类</button>
     <button wx:if="{{adminSuper || adminPermissions.adminMall_saveProduct}}" class="tool-btn btn-primary" bindtap="showProduct">+ 新增商品</button>

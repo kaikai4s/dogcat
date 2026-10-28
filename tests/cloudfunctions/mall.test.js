@@ -29,6 +29,65 @@ function createMallDb(overrides = {}) {
   })
 }
 
+test('WeChat shop config is admin-only, opt-in and separate from local mall inventory', async () => {
+  const db = createMallDb({
+    mall_products: [{ _id: 'local_1', name: '平台商品', coverFileId: 'cloud://mall/local.jpg', price: 20, stock: 1, status: 'on_sale' }]
+  })
+  const admin = loadCloudFunction('api', db, 'openid_admin')
+  const client = loadCloudFunction('api', db, 'openid_client')
+  const guest = loadCloudFunction('api', db, 'guest')
+  const request = (api, module, action, data = {}) => api.main({ module, action, data })
+  assert.deepEqual((await request(guest, 'mall', 'getShopConfig')).data, { enabled: false, appid: '' })
+  assert.equal((await request(client, 'adminMall', 'getShopConfig')).ok, false)
+  assert.equal((await request(admin, 'adminMall', 'saveShopConfig', { enabled: true })).ok, false)
+  assert.equal((await request(admin, 'adminMall', 'saveShopConfig', { enabled: true, appid: 'bad' })).ok, false)
+
+  const appid = 'wx' + '1'.repeat(16)
+  assert.equal((await request(admin, 'adminMall', 'saveShopConfig', { enabled: true, appid })).ok, true)
+  assert.deepEqual((await request(guest, 'mall', 'getShopConfig')).data, { enabled: true, appid })
+  assert.deepEqual((await request(admin, 'adminMall', 'getShopConfig')).data, { enabled: true, appid })
+  const local = await request(client, 'mall', 'listProducts')
+  assert.equal(local.data.list[0]._id, 'local_1')
+  assert.equal(db.state.mall_orders.length, 0)
+
+  assert.equal((await request(admin, 'adminMall', 'saveShopConfig', { enabled: false, appid })).ok, true)
+  assert.deepEqual((await request(guest, 'mall', 'getShopConfig')).data, { enabled: false, appid: '' })
+  assert.equal(db.state.platform_configs.filter(row => row.key === 'wechat_shop').length, 1)
+})
+
+test('concurrent first saves share one WeChat shop config document', async () => {
+  const db = createMallDb()
+  const admin = loadCloudFunction('api', db, 'openid_admin')
+  const appid = 'wx' + '2'.repeat(16)
+  const [first, second] = await Promise.all([
+    admin.main({ module: 'adminMall', action: 'saveShopConfig', data: { enabled: true, appid } }),
+    admin.main({ module: 'adminMall', action: 'saveShopConfig', data: { enabled: false, appid } })
+  ])
+  assert.equal(first.ok, true, first.message)
+  assert.equal(second.ok, true, second.message)
+  const configs = db.state.platform_configs.filter(row => row.key === 'wechat_shop')
+  assert.equal(configs.length, 1)
+  assert.equal(configs[0]._id, 'wechat_shop')
+})
+
+test('saving WeChat shop config replaces legacy duplicate records', async () => {
+  const oldAppid = 'wx' + '3'.repeat(16)
+  const appid = 'wx' + '4'.repeat(16)
+  const db = createMallDb({
+    platform_configs: [
+      { _id: 'legacy_1', key: 'wechat_shop', enabled: true, appid: oldAppid },
+      { _id: 'legacy_2', key: 'wechat_shop', enabled: false, appid: oldAppid }
+    ]
+  })
+  const admin = loadCloudFunction('api', db, 'openid_admin')
+  const guest = loadCloudFunction('api', db, 'guest')
+  assert.equal((await guest.main({ module: 'mall', action: 'getShopConfig' })).data.appid, oldAppid)
+  const saved = await admin.main({ module: 'adminMall', action: 'saveShopConfig', data: { enabled: true, appid } })
+  assert.equal(saved.ok, true, saved.message)
+  assert.deepEqual(db.state.platform_configs.filter(row => row.key === 'wechat_shop').map(row => row._id), ['wechat_shop'])
+  assert.deepEqual((await guest.main({ module: 'mall', action: 'getShopConfig' })).data, { enabled: true, appid })
+})
+
 test('mall supports product, cart, order, payment, shipping and receipt flow', async () => {
   const db = createMallDb()
   const adminFn = loadCloudFunction('api', db, 'openid_admin')

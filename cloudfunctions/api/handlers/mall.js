@@ -1,4 +1,5 @@
 const { sameShipment } = require('../utils/logisticsShipment')
+const { readWechatShopConfig } = require('../utils/wechatShopConfig')
 module.exports = function createHandler(context) {
   const {
     cancelUnpaidOrder,
@@ -53,6 +54,12 @@ module.exports = function createHandler(context) {
   }
 
   return async function mall(openid, action, data) {
+    if (action === 'getShopConfig') {
+      const config = await readWechatShopConfig(db)
+      return config.enabled === true && config.appid
+        ? { enabled: true, appid: config.appid }
+        : { enabled: false, appid: '' }
+    }
     if (action === 'listCategories') {
       const res = await db.collection('mall_categories').where({ enabled: true }).get()
       return (res.data || []).map(normalizeMallCategory).sort((a, b) => a.sortOrder - b.sortOrder)
