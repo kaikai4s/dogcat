@@ -141,9 +141,13 @@ test('pending supply waiver blocks deposit settlement; approved waiver avoids fe
   const eligibility = await f.staff.main({ module: 'staff', action: 'getSupplyReimbursementStatus' })
   assert.equal(eligibility.data.canApply, true)
   assert.equal(eligibility.data.deliveryMode, true)
-  const submit = await f.staff.main({ module: 'staff', action: 'submitSupplyReimbursement', data: { remark: '申请减免' } })
+  const withoutConsent = await f.staff.main({ module: 'staff', action: 'submitSupplyReimbursement', data: { remark: '申请减免' } })
+  assert.equal(withoutConsent.ok, false)
+  assert.match(withoutConsent.message, /勾选/)
+  const submit = await f.staff.main({ module: 'staff', action: 'submitSupplyReimbursement', data: { remark: '申请减免', rulesConfirmed: true } })
   assert.equal(submit.ok, true, submit.message)
   assert.equal(submit.data.benefitType, 'supply_fee_waiver')
+  assert.ok(submit.data.rulesConfirmedAt)
   const pending = await refund(f, id)
   assert.equal(pending.ok, false)
   assert.match(pending.message, /正在审核/)
@@ -168,4 +172,29 @@ test('the server rejects enabling supply shipping with an invalid fee, including
     assert.match(result.message, /用品费用/)
     assert.equal(f.db.state.platform_configs[0].value.staffSupplies.supplyFeeAmount, 120)
   }
+})
+
+test('both configured reimbursement paths remain available under the consent snapshot', async () => {
+  const f = setup()
+  const config = f.db.state.platform_configs[0].value.staffSupplies
+  config.reimbursementMode = 'either'
+  config.reimbursementOrderCount = 3
+  config.reimbursementInviteCount = 2
+  const id = await paid(f)
+  await ship(f, id)
+  config.reimbursementMode = 'order_count'
+  config.reimbursementOrderCount = 50
+  const depositStatus = await f.staff.main({ module: 'staff', action: 'getDepositStatus' })
+  assert.equal(depositStatus.ok, true, depositStatus.message)
+  assert.equal(depositStatus.data.supplyQualification.mode, 'either')
+  assert.deepEqual(depositStatus.data.supplyQualification.conditions.map(item => item.requiredCount), [3, 2])
+  f.db.state.user_invites.push(
+    { _id: 'invite_1', inviterOpenid: 'staff', eligibleForSupplyReimbursement: true },
+    { _id: 'invite_2', inviterOpenid: 'staff', eligibleForSupplyReimbursement: true }
+  )
+  const eligibility = await f.staff.main({ module: 'staff', action: 'getSupplyReimbursementStatus' })
+  assert.equal(eligibility.ok, true, eligibility.message)
+  assert.equal(eligibility.data.qualification.mode, 'either')
+  assert.deepEqual(eligibility.data.qualification.conditions.map(item => item.met), [false, true])
+  assert.equal(eligibility.data.canApply, true)
 })

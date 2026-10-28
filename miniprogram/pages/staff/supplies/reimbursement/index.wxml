@@ -6,6 +6,17 @@
     <view class="desc">平台首次用品费用减免；微信小店销售与此独立。</view>
   </view>
 
+  <view class="qualification-panel" wx:if="{{qualification && qualification.conditions && qualification.conditions.length}}">
+    <view class="qualification-title"><text class="remix-icon ri-file-list-3-line"></text><text>首次用品{{deliveryMode ? '费用减免' : '报销'}}资格</text></view>
+    <view class="qualification-summary">{{qualification.mode === 'either' ? '以下两项满足任意一项即可申请' : '达到以下条件即可申请'}}；还需正式认证{{deliveryMode ? '、平台首次用品已发货' : ''}}。</view>
+    <view class="condition-row {{item.met ? 'met' : ''}}" wx:for="{{qualification.conditions}}" wx:key="mode">
+      <view class="condition-number">{{index + 1}}</view>
+      <view class="condition-main"><view class="condition-name">{{item.mode === 'invite_count' ? '有效邀请绑定' : '完成服务订单'}}：{{item.requiredCount === 0 ? '不设数量门槛' : (item.requiredCount + (item.mode === 'invite_count' ? ' 人' : ' 笔'))}}</view><view class="condition-progress">当前 {{item.progressCount}} / {{item.requiredCount}}</view></view>
+      <text class="condition-status">{{item.met ? '已满足' : '未满足'}}</text>
+    </view>
+    <view class="qualification-result">{{qualification.qualificationMet ? '数量条件已满足，仍须通过申请审核' : '数量条件尚未满足'}}</view>
+  </view>
+
   <view class="card">
     <view class="card-title">申请前请确认</view>
     <view class="guide-box">
@@ -31,11 +42,6 @@
     <view class="muted">{{supplies.serviceReminder}}</view>
     <view class="muted" wx:if="{{supplies.reimbursementEnabled === false && !shipmentDepositId}}">平台暂未开放报销申请。</view>
     <view class="muted" wx:if="{{profile && profile.staffLevel !== 'certified'}}">当前尚未正式认证，暂不能提交申请。</view>
-    <block wx:if="{{qualification && qualification.conditions}}">
-      <view class="muted" wx:if="{{qualification.mode === 'either'}}">报销资格：以下条件满足任意一项即可。</view>
-      <view class="muted" wx:for="{{qualification.conditions}}" wx:key="mode">{{item.mode === 'invite_count' ? '有效邀请绑定人数' : '已完成订单数'}}：{{item.progressCount}} / {{item.requiredCount}}（{{item.met ? '已达标' : '未达标'}}）</view>
-    </block>
-    <view class="muted" wx:elif="{{qualification && !qualification.qualificationMet}}">报销资格进度：{{qualification.progressCount}} / {{qualification.requiredCount}}（{{qualification.mode === 'invite_count' ? '有效邀请绑定人数' : '已完成订单数'}}）</view>
     <view class="muted" wx:if="{{deliveryMode && !purchaseMet}}">平台首次用品发货后才可申请费用减免。</view>
     <view class="muted" wx:elif="{{supplies.purchaseRequired && !purchaseMet}}">请先在平台线上店铺购买一次性用品，完成支付后再申请。</view>
   </view>
@@ -68,6 +74,7 @@
   <view class="card" wx:if="{{canApply}}">
     <view class="card-title">{{deliveryMode ? '申请首次用品费用减免' : '提交线上店铺采购报销'}}</view>
     <view class="privacy-notice">{{deliveryMode ? '仅平台寄送的首次用品可申请减免。审核通过后，退出退押金时不扣用品费用；申请待审期间暂缓退款结算。' : '报销金额由平台后台统一设置，每位宠托师仅可申请一次。请先在平台线上店铺购买一次性用品并选择已支付订单。'}}</view>
+    <checkbox-group wx:if="{{deliveryMode}}" class="rules-consent" bindchange="agreeRules"><label class="rules-consent-row"><checkbox value="agreed" checked="{{rulesAgreed}}" disabled="{{busy || uploading || loading}}" /><text>我已阅读上方资格与减免结算规则（必选）</text></label></checkbox-group>
     <picker wx:if="{{!deliveryMode && eligibleMallOrders.length}}" mode="selector" range-key="orderNo" range="{{eligibleMallOrders}}" bindchange="selectMallOrder">
       <view class="form-input">{{mallOrderId ? '已选择线上订单' : '请选择线上用品订单'}}</view>
     </picker>
@@ -81,7 +88,7 @@
     <view class="muted">{{deliveryMode ? '本次用品费用以确认时金额为准' : '本次固定报销金额：¥' + (supplies.reimbursementAmount || supplies.maxReimbursementAmount)}}</view>
     <view class="field-label">申请备注</view>
     <textarea class="form-textarea" value="{{remark}}" bindinput="inputRemark" placeholder="可填写采购明细、日期及其他说明" maxlength="500" disabled="{{busy || uploading}}" />
-    <button class="primary-btn" bindtap="submit" loading="{{busy}}" disabled="{{busy || uploading || loading}}">{{deliveryMode ? '提交费用减免申请' : '提交报销申请'}}</button>
+    <button class="primary-btn" bindtap="submit" loading="{{busy}}" disabled="{{busy || uploading || loading || (deliveryMode && !rulesAgreed)}}">{{deliveryMode ? '提交费用减免申请' : '提交报销申请'}}</button>
   </view>
   <view class="card muted" wx:elif="{{!loading && !loadError}}">当前不可提交新申请。需正式认证、平台开放且服务端确认具备首次报销资格；已有申请请查看上方进度。</view>
 

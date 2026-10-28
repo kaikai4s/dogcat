@@ -41,6 +41,7 @@ Page({
     mallOrderId: '',
     purchaseMet: false,
     canApply: false,
+    rulesAgreed: false,
     loading: false,
     loadError: false,
     busy: false,
@@ -73,7 +74,7 @@ Page({
 
   async load(query = false) {
     if (this.data.loading) return
-    this.setData({ loading: true, loadError: false, canApply: false, canConfirmTransfer: false })
+    this.setData({ loading: true, loadError: false, canApply: false, canConfirmTransfer: false, rulesAgreed: false })
     try {
       // Query refreshes the merchant transfer; the status endpoint is authoritative.
       if (query) {
@@ -219,6 +220,10 @@ Page({
 
   async submit() {
     if (!this.data.canApply || this.data.loading || this.data.busy || this.data.uploading) return
+    if (this.data.deliveryMode && !this.data.rulesAgreed) {
+      wx.showToast({ title: '请先阅读并勾选费用减免规则', icon: 'none' })
+      return
+    }
     const purchaseRequired = this.data.supplies && this.data.supplies.purchaseRequired === true && !this.data.deliveryMode
     if (purchaseRequired && !this.data.mallOrderId) {
       wx.showToast({ title: '请选择线上用品订单', icon: 'none' })
@@ -230,6 +235,7 @@ Page({
       await callFunction('staff', 'submitSupplyReimbursement', {
         mediaFileIds: this.data.receipts.map((item) => item.fileId),
         mallOrderId: this.data.deliveryMode ? '' : this.data.mallOrderId,
+        rulesConfirmed: this.data.deliveryMode && this.data.rulesAgreed,
         remark: this.data.remark.trim(),
         clientRequestId: `req_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
       })
@@ -242,6 +248,10 @@ Page({
       await this.load()
       this.setData({ busy: false })
     }
+  },
+
+  agreeRules(e) {
+    this.setData({ rulesAgreed: e.detail.value.includes('agreed') })
   },
 
   async confirmTransfer() {

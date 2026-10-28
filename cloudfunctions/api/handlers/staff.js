@@ -1765,6 +1765,10 @@ module.exports = function createHandler(context) {
       const firstSupplyDeposit = profile?.supplyShipmentDepositId && profile.supplyShipmentDepositId !== deposit?._id
         ? (await db.collection('staff_deposits').doc(profile.supplyShipmentDepositId).get().catch(() => ({ data: null }))).data : null
       const firstSupplyShipment = firstSupplyDeposit?.staffOpenid === openid ? firstSupplyDeposit.supplyShipment || null : deposit?.supplyShipment || null
+      const confirmedSupplyTerms = firstSupplyDeposit?.staffOpenid === openid
+        ? firstSupplyDeposit.supplyReimbursementTerms
+        : deposit?.supplyPolicyAcceptedAt ? deposit.supplyReimbursementTerms : null
+      const supplyQualification = getSupplyReimbursementQualification(confirmedSupplyTerms || supplies, 0, 0)
       if (deposit) {
         delete deposit.lastForfeitImages
         delete deposit.evidenceImages
@@ -1808,6 +1812,7 @@ module.exports = function createHandler(context) {
         supplyDeliveryRequired: supplies.shippingEnabled && !profile?.supplyShipmentDepositId,
         firstSupplyShipment,
         firstSupplyFeeAmount: firstSupplyDeposit?.staffOpenid === openid ? firstSupplyDeposit.supplyFeeAmount : deposit?.supplyFeeAmount,
+        supplyQualification: { mode: supplyQualification.mode, conditions: supplyQualification.conditions },
         deposit,
         profile,
         canPay,
@@ -1992,6 +1997,7 @@ module.exports = function createHandler(context) {
       }
       const mallOrderId = safeText(data.mallOrderId).trim()
       if (deliveryMode && !hasShipment) throw new Error('首次用品尚未发货，暂不可申请费用减免')
+      if (deliveryMode && data.rulesConfirmed !== true) throw new Error('请先阅读并勾选首次用品费用减免规则')
       if (mallOrderId && !deliveryMode) {
         const mallOrder = (await db.collection('mall_orders').doc(mallOrderId).get().catch(() => ({ data: null }))).data
         if (!mallOrder || mallOrder.clientOpenid !== openid || !['paid', 'pending_ship', 'shipped', 'completed', 'received'].includes(mallOrder.status)) throw new Error('请选择本人已支付的线上用品订单')
@@ -2020,6 +2026,8 @@ module.exports = function createHandler(context) {
         purchaseVerified: Boolean(mallOrderId),
         amountSource: mallOrderId || data.amount === undefined ? 'config' : 'legacy',
         amount,
+        rulesConfirmedAt: deliveryMode ? time : null,
+        rulesVersion: deliveryMode ? 1 : null,
         approvedAmount: null,
         remark,
         clientRequestId,

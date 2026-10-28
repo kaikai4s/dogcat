@@ -18,10 +18,14 @@
   <view class="card">
     <view class="card-title">入驻保证金与退出退款</view>
     <view class="guide-box warning-box" wx:if="{{depositState && depositState.supplyDeliveryRequired && depositState.deposit && depositState.deposit.status === 'paid' && !depositState.deposit.supplyPolicyAcceptedAt}}">已缴押金用户：平台首次用品寄送适用新规则，请在下方核对收货地址和用品费用后主动确认。暂不确认不会发货或扣用品费用，仍可按原缴纳规则申请退出退款。</view>
-    <view class="muted">资料审核通过后，按平台配置缴纳可退保证金；金额以服务端展示为准，不设默认金额。</view>
-    <view class="guide-box">
-      <view>未领取平台首次用品的，退出时按原保证金规则结算；已确认并收到平台用品的，按用品费用减免审核结果结算。</view>
-      <view>微信小店商品与平台寄送的首次用品互不关联。</view>
+    <view class="policy-summary" wx:if="{{depositState}}">
+      <view class="policy-heading"><text class="remix-icon ri-shield-check-line"></text><text>缴费与退出规则 · 请先阅读</text></view>
+      <view class="policy-line">保证金 ¥{{depositState.config.amount}}，退出时按可退余额和有效扣除记录结算。</view>
+      <view class="policy-line">未确认用品规则或用品未发货，不收取首次用品费用；确认并发货后，按减免审核结果结算。</view>
+      <view class="policy-line">微信小店商品与平台寄送的首次用品互不关联。</view>
+      <checkbox-group wx:if="{{depositState.canPay}}" bindchange="agreeDeposit" class="policy-consent">
+        <label class="consent-row"><checkbox value="agreed" checked="{{depositAgreed}}" disabled="{{depositBusy || depositLoading}}" /><text class="consent-copy">我已阅读并同意以上保证金与退出规则（必选）</text></label>
+      </checkbox-group>
     </view>
     <view class="muted" wx:if="{{depositLoading}}">正在获取保证金状态...</view>
     <view class="muted" wx:if="{{depositError}}">状态获取失败，请刷新后再操作。</view>
@@ -55,26 +59,19 @@
       </view>
       <view class="muted" wx:else>暂无保证金缴纳记录。</view>
 
-      <!-- 保证金变动明细与变更描述 -->
-      <view class="deposit-events-section" wx:if="{{depositState.events && depositState.events.length}}">
-        <view class="events-title"><text class="remix-icon ri-file-list-3-line"></text> 保证金变动明细与变更描述</view>
-        <view class="event-item-card" wx:for="{{depositState.events}}" wx:key="_id">
-          <view class="event-row-head">
-            <view class="event-type-badge {{item.type === 'pay' ? 'badge-green' : (item.type === 'forfeit' ? 'badge-red' : 'badge-gray')}}">{{item.typeName}}</view>
-            <view class="event-amount {{item.type === 'pay' ? 'amount-plus' : (item.type === 'forfeit' ? 'amount-minus' : '')}}">{{item.amountText}}</view>
-          </view>
-          <view class="event-desc">{{item.reason || '无具体说明'}}</view>
-          <view class="event-time">{{beijingTime.format(item.createdAt)}}</view>
-        </view>
-      </view>
-
       <view class="rule-text" wx:if="{{!depositState.supplies.shippingEnabled && !(depositState.deposit && depositState.deposit.supplyShipment)}}">{{depositState.config.rulesText}}</view>
       <view class="rule-text" wx:if="{{!depositState.supplies.shippingEnabled && !(depositState.deposit && depositState.deposit.supplyShipment)}}">{{depositState.config.refundRulesText}}</view>
       <view class="rule-text" wx:else>首次用品费用按本人确认时的金额和实际发货、减免审核结果结算；未确认或未发货不扣用品费，未同意新规则的已缴用户仍可按原缴纳规则退出。</view>
       <view class="rule-text">{{depositState.config.forfeitRulesText}}</view>
       <view class="supply-delivery" wx:if="{{depositState.supplies.shippingEnabled || depositState.firstSupplyShipment}}">
-        <view class="card-title">平台首次用品寄送</view>
-        <view class="warning-text">用品费用 ¥{{depositState.firstSupplyShipment ? depositState.firstSupplyFeeAmount : (depositState.deposit && depositState.deposit.supplyPolicyAcceptedAt ? depositState.deposit.supplyFeeAmount : depositState.supplies.supplyFeeAmount)}}。认证后符合条件可申请费用减免；审核通过，退出退押金时不扣；未申请或未通过，已发货用品费用从可退押金中结算。申请待审先暂停结算。微信小店订单不参与此流程。</view>
+        <view class="supply-policy-head"><text class="remix-icon ri-shopping-bag-3-line"></text><text>平台首次用品 · 必读</text></view>
+        <view class="supply-fee">确认时的用品费用 <text>¥{{depositState.firstSupplyShipment ? depositState.firstSupplyFeeAmount : (depositState.deposit && depositState.deposit.supplyPolicyAcceptedAt ? depositState.deposit.supplyFeeAmount : depositState.supplies.supplyFeeAmount)}}</text></view>
+        <view class="supply-policy-line">确认规则并由平台发货后，退出退款时按减免结果结算；审核通过不扣用品费，未申请或未通过则扣除。申请待审时暂缓结算。</view>
+        <view class="supply-policy-line">未确认或未发货不扣用品费。微信小店商品不参与此流程。</view>
+        <view class="supply-qualification" wx:if="{{depositState.supplyQualification && depositState.supplyQualification.conditions.length}}">
+          <view class="supply-qualification-title">费用减免资格：正式认证且平台用品发货后，{{depositState.supplyQualification.mode === 'either' ? '以下两项满足任意一项' : '满足以下条件'}}即可申请</view>
+          <view class="supply-qualification-line" wx:for="{{depositState.supplyQualification.conditions}}" wx:key="mode">{{index + 1}}. {{item.mode === 'invite_count' ? '有效邀请绑定' : '完成服务订单'}}：{{item.requiredCount === 0 ? '不设数量门槛' : (item.requiredCount + (item.mode === 'invite_count' ? ' 人' : ' 笔'))}}</view>
+        </view>
         <view class="muted" wx:if="{{depositState.deposit && depositState.deposit.supplyPolicyAcceptedAt}}">已确认用品规则，费用按确认时金额固定。</view>
         <view class="muted" wx:if="{{depositState.firstSupplyShipment}}">已发货：{{depositState.firstSupplyShipment.expressCompany}} · {{depositState.firstSupplyShipment.trackingNo}}</view>
         <button class="ghost-btn" wx:if="{{depositState.firstSupplyShipment}}" bindtap="copySupplyTracking">复制快递单号</button>
@@ -82,26 +79,34 @@
         <view class="muted" wx:if="{{supplyLogistics}}">{{supplyLogistics.stateText || supplyLogistics.message}}</view>
         <view class="muted" wx:for="{{supplyLogistics.traces}}" wx:key="index">{{item.time || item.datetime}} {{item.context || item.description}}</view>
         <block wx:if="{{depositState.supplyDeliveryRequired && (depositState.canPay || (depositState.deposit && depositState.deposit.status === 'paid' && !depositState.deposit.supplyShipment))}}">
+          <checkbox-group bindchange="agreeSupply" class="policy-consent supply-consent"><label class="consent-row"><checkbox value="agreed" checked="{{supplyAgreed}}" disabled="{{depositBusy || depositLoading}}" /><text class="consent-copy">我已阅读并同意以上用品费用与减免结算规则（必选）</text></label></checkbox-group>
           <button class="ghost-btn" bindtap="chooseSupplyAddress" disabled="{{depositBusy}}">选择微信收货地址</button>
           <view class="field-label">收件人</view><input class="supply-address-input" value="{{supplyAddress.name}}" data-field="name" bindinput="supplyAddressInput" placeholder="收件人姓名" maxlength="40" />
           <view class="field-label">收件手机号</view><input class="supply-address-input" type="number" value="{{supplyAddress.phone}}" data-field="phone" bindinput="supplyAddressInput" placeholder="11 位手机号" maxlength="11" />
           <view class="field-label">省 / 市 / 区</view>
           <view class="supply-region"><input class="supply-address-input" value="{{supplyAddress.province}}" data-field="province" bindinput="supplyAddressInput" placeholder="省" /><input class="supply-address-input" value="{{supplyAddress.city}}" data-field="city" bindinput="supplyAddressInput" placeholder="市" /><input class="supply-address-input" value="{{supplyAddress.district}}" data-field="district" bindinput="supplyAddressInput" placeholder="区" /></view>
           <view class="field-label">详细地址</view><input class="supply-address-input" value="{{supplyAddress.detail}}" data-field="detail" bindinput="supplyAddressInput" placeholder="街道、门牌号" maxlength="100" />
-          <checkbox-group bindchange="agreeSupply"><label class="acknowledgement"><checkbox value="agreed" checked="{{supplyAgreed}}" />我已核对收货地址，知悉平台首次用品费用及退押金时的减免／结算方式；不确认则不发货、不扣用品费，已缴押金仍可按原规则申请退款。</label></checkbox-group>
           <button class="primary-btn" wx:if="{{depositState.deposit && depositState.deposit.status === 'paid'}}" bindtap="confirmSupplyDelivery" disabled="{{!supplyAgreed || depositBusy}}">确认规则并提交收货地址</button>
         </block>
       </view>
       <block wx:if="{{depositState.canPay}}">
-        <checkbox-group bindchange="agreeDeposit">
-          <label class="acknowledgement"><checkbox value="agreed" checked="{{depositAgreed}}" disabled="{{depositBusy || depositLoading}}" />我已阅读并同意保证金缴纳与退出规则；首次用品费用按上方单独确认的规则结算。</label>
-        </checkbox-group>
         <button class="primary-btn" bindtap="payDeposit" loading="{{depositBusy}}" disabled="{{!depositAgreed || (depositState.supplyDeliveryRequired && !supplyAgreed) || depositBusy || depositLoading || depositState.config.amount == null}}">{{depositState.needsRepay ? '重新足额缴纳保证金' : '微信支付保证金'}}</button>
       </block>
       <block wx:if="{{depositState.canRequestRefund}}">
         <textarea class="refund-input" placeholder="请填写自愿退出及退款原因" value="{{refundReason}}" bindinput="inputRefundReason" maxlength="500" disabled="{{depositBusy}}" />
         <button class="ghost-btn" bindtap="requestRefund" disabled="{{depositBusy || depositLoading}}">申请退出 / 保证金退款</button>
       </block>
+      <view class="deposit-events-section" wx:if="{{depositState.events && depositState.events.length}}">
+        <view class="events-title"><text class="remix-icon ri-file-list-3-line"></text> 保证金变动明细与变更描述</view>
+        <view class="event-item-card" wx:for="{{depositState.events}}" wx:key="_id">
+          <view class="event-row-head">
+            <view class="event-type-badge {{item.type === 'pay' ? 'badge-green' : (item.type === 'forfeit' ? 'badge-red' : 'badge-gray')}}">{{item.typeName}}</view>
+            <view class="event-amount {{item.type === 'pay' ? 'amount-plus' : (item.type === 'forfeit' || item.type === 'supply_fee' ? 'amount-minus' : '')}}">{{item.amountText}}</view>
+          </view>
+          <view class="event-desc">{{item.reason || '无具体说明'}}</view>
+          <view class="event-time">{{beijingTime.format(item.createdAt)}}</view>
+        </view>
+      </view>
     </block>
     <button class="ghost-btn" bindtap="loadDeposit" disabled="{{depositBusy || depositLoading}}">刷新保证金及退款状态</button>
     <view class="muted" wx:if="{{depositState.paymentSyncPending}}">微信支付结果暂未核实，请稍后刷新状态，勿重复支付。</view>
@@ -117,7 +122,7 @@
     </view>
     <view class="muted">{{depositState.supplies.auditNotice}}</view>
     <view class="muted">{{depositState.supplies.serviceReminder}}</view>
-    <button class="ghost-btn" bindtap="goReimbursement">首次用品费用减免 / 查看进度</button>
+    <button class="ghost-btn supply-rules-link" bindtap="goReimbursement"><text>查看减免资格与进度</text><text class="remix-icon ri-arrow-right-s-line"></text></button>
   </view>
 
   <view class="card">

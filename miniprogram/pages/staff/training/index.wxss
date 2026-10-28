@@ -55,6 +55,27 @@ button[disabled] { opacity: .55; }
 .supply-buy-btn { display: inline-flex; align-items: center; gap: 6rpx; padding: 6rpx 16rpx; border-radius: 999rpx; background: #fff0e2; color: #e9672f; font-size: 22rpx; font-weight: 850; flex-shrink: 0; }
 .supply-buy-btn:active { opacity: 0.8; transform: scale(0.96); }
 
+.policy-summary { margin: 20rpx 0; padding: 24rpx; border: 2rpx solid #e9a475; border-radius: 16rpx; background: #fff5eb; box-sizing: border-box; }
+.policy-heading, .supply-policy-head { display: flex; align-items: center; gap: 12rpx; color: #883d1c; font-size: 29rpx; font-weight: 900; line-height: 1.4; }
+.policy-heading .remix-icon, .supply-policy-head .remix-icon { flex-shrink: 0; font-size: 34rpx; }
+.policy-line, .supply-policy-line { margin-top: 12rpx; font-size: 25rpx; line-height: 1.55; color: #563f34; overflow-wrap: anywhere; }
+.policy-consent { margin-top: 22rpx; padding-top: 20rpx; border-top: 1rpx solid #e9c7ad; }
+.consent-row { display: flex; align-items: flex-start; gap: 12rpx; width: 100%; box-sizing: border-box; }
+.consent-row checkbox { flex-shrink: 0; margin-top: 2rpx; transform: scale(.82); transform-origin: top left; }
+.consent-copy { flex: 1; min-width: 0; font-size: 26rpx; line-height: 1.55; font-weight: 800; color: #743819; overflow-wrap: anywhere; }
+.supply-delivery { border: 2rpx solid #e9a475; border-radius: 16rpx; background: #fff8f1; padding: 24rpx; box-sizing: border-box; }
+.supply-fee { margin-top: 16rpx; color: #563f34; font-size: 26rpx; line-height: 1.4; }
+.supply-fee text { color: #b4491e; font-size: 34rpx; font-weight: 900; }
+.supply-qualification { margin-top: 20rpx; padding-top: 18rpx; border-top: 1rpx solid #e9c7ad; }
+.supply-qualification-title { font-size: 26rpx; font-weight: 900; line-height: 1.5; color: #234e42; }
+.supply-qualification-line { margin-top: 8rpx; color: #31574c; font-size: 25rpx; line-height: 1.5; overflow-wrap: anywhere; }
+.supply-region { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10rpx; }
+.supply-region .supply-address-input:last-child { grid-column: 1 / -1; }
+.supply-consent { border-top-color: #e9c7ad; }
+.supply-delivery .ghost-btn, .supply-delivery .primary-btn { width: 100%; box-sizing: border-box; min-height: 76rpx; height: auto; padding: 14rpx 20rpx; line-height: 1.4; white-space: normal; }
+.supply-rules-link { width: 100%; box-sizing: border-box; min-height: 76rpx; height: auto; padding: 14rpx 20rpx; line-height: 1.4; gap: 10rpx; font-size: 26rpx; }
+.supply-rules-link text:first-child { min-width: 0; white-space: normal; }
+
 .video-head-row {
   display: flex;
   align-items: center;
