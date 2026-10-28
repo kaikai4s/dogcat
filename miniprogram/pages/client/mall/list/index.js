@@ -20,6 +20,7 @@ Page({
     configLoaded: false,
     shopConfigError: false,
     shopSupported: true,
+    shopPreviewMode: false,
     shopConfig: { enabled: false, appid: '' },
     mallMode: 'local',
     preferredMallMode: 'shop'
@@ -40,6 +41,7 @@ Page({
     this._shopConfigRequestId = requestId
     const device = typeof wx.getDeviceInfo === 'function' ? wx.getDeviceInfo() :
       (typeof wx.getSystemInfoSync === 'function' ? wx.getSystemInfoSync() : {})
+    const shopPreviewMode = device.platform === 'devtools'
     const shopSupported = !/^(mac|windows)/i.test(device.platform || '') &&
       (typeof wx.canIUse !== 'function' || wx.canIUse('store-home'))
     return callFunction('mall', 'getShopConfig')
@@ -48,7 +50,7 @@ Page({
         const enabled = shopConfig.enabled === true && !!shopConfig.appid
         const mode = enabled && shopSupported && this.data.preferredMallMode === 'shop' ? 'shop' : 'local'
         const fellBack = this.data.mallMode === 'shop' && mode === 'local'
-        this.setData({ shopConfig: { enabled, appid: shopConfig.appid || '' }, shopSupported, mallMode: mode, configLoaded: true, shopConfigError: false })
+        this.setData({ shopConfig: { enabled, appid: shopConfig.appid || '' }, shopSupported, shopPreviewMode, mallMode: mode, configLoaded: true, shopConfigError: false })
         if (fellBack && !this.data.localLoaded) return this.loadLocalMall()
       })
       .catch(() => {

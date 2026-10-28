@@ -1,22 +1,31 @@
 <view wx:if="{{!configLoaded}}" class="mall-page"><view class="list-state">加载中...</view></view>
 <view wx:elif="{{shopConfig.enabled && shopSupported && mallMode === 'shop'}}" class="shop-page">
-  <view class="shop-bar">
-    <view class="shop-bar-title">微信小店</view>
-    <button class="shop-mode-switch" data-mode="local" bindtap="switchMallMode">平台商品</button>
+  <view class="mall-switcher">
+    <view class="mall-switcher-tab active">微信小店</view>
+    <view class="mall-switcher-tab" data-mode="local" bindtap="switchMallMode">平台商品</view>
   </view>
   <view wx:if="{{shopConfigError}}" class="shop-config-error">
     <text>小店状态暂时无法更新。</text><button bindtap="retryShopConfig">重试</button>
   </view>
+  <view class="shop-section-head">
+    <view class="shop-section-title">店铺首页</view>
+    <view class="shop-section-subtitle">商品与支付由微信小店提供</view>
+  </view>
   <store-home class="wechat-shop-home" appid="{{shopConfig.appid}}" />
+  <view wx:if="{{shopPreviewMode}}" class="shop-preview-note">当前为开发工具预览，店铺商品和交易请以手机微信实测为准。</view>
+  <view class="shop-order-note">
+    <text class="shop-order-title">订单与售后</text>
+    <text class="shop-order-detail">微信小店订单请在小店内查看；平台订单在「平台商品」中查看。</text>
+  </view>
 </view>
 <dovlin-refresh wx:else id="dovlinRefresh" bind:refresh="onCustomRefresh" bind:scrolltolower="onReachBottom">
 <view class="mall-page">
   <view wx:if="{{shopConfigError}}" class="shop-config-error">
     <text>小店状态暂时无法更新。</text><button bindtap="retryShopConfig">重试</button>
   </view>
-  <view wx:if="{{shopConfig.enabled && shopSupported}}" class="mall-mode-bar">
-    <text>平台商品</text>
-    <button class="shop-mode-switch" data-mode="shop" bindtap="switchMallMode">微信小店</button>
+  <view wx:if="{{shopConfig.enabled && shopSupported}}" class="mall-switcher local-switcher">
+    <view class="mall-switcher-tab" data-mode="shop" bindtap="switchMallMode">微信小店</view>
+    <view class="mall-switcher-tab active">平台商品</view>
   </view>
   <view wx:if="{{shopConfig.enabled && !shopSupported}}" class="shop-unsupported">当前设备或微信版本暂不支持小店展示，请使用手机微信或升级微信。</view>
   <view class="mall-hero">

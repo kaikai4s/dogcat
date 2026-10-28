@@ -69,6 +69,20 @@ test('Juhe posts official carrier code, tracking number and only the last four p
   assert.equal(requests.length, 2)
 })
 
+test('staff supplies use the shipping phone and cache traces on the deposit, not mall orders', async () => {
+  const { db, logistics, requests } = setup()
+  db.state.staff_deposits = [{ _id: 'staff-deposit', supplyShipment: {
+    expressCompany: '顺丰速运', trackingNo: 'SF1234567890', shippedAt: '2026-10-23T01:00:00Z'
+  } }]
+  const result = await logistics.queryOrderLogistics({ _id: 'staff-deposit', expressCompany: '顺丰速运',
+    trackingNo: 'SF1234567890', shippedAt: '2026-10-23T01:00:00Z',
+    shippingAddress: { contactPhone: '13812340007' } }, 'staff_deposits')
+  assert.equal(requests[1].params.get('receiverPhone'), '0007')
+  assert.equal(result.traces.length, 2)
+  assert.equal(db.state.staff_deposits[0].supplyLogisticsCache.trackingNo, 'SF1234567890')
+  assert.equal(db.state.mall_orders[0].logisticsCache, undefined)
+})
+
 for (const detail of ['SIGNED', 'REJECTED', 'SEND_BACK', 'FAILED', null]) {
   test(`Juhe final status ${detail} marks delivered only for SIGNED`, async () => {
     const { logistics } = setup({ detail, final: '1' })

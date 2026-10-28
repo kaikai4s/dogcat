@@ -147,6 +147,16 @@
       <view class="info-row"><view class="label">可退金额</view><view class="price">¥{{item.availableRefundAmountText}}</view></view>
       <view class="info-row" wx:if="{{item.refundedAmount > 0}}"><view class="label">已退金额</view><view class="value">¥{{item.refundedAmountText}}</view></view>
       <view class="info-row" wx:if="{{item.forfeitedAmount > 0}}"><view class="label">已没收金额</view><view class="value danger">¥{{item.forfeitedAmountText}}</view></view>
+      <view class="info-row" wx:if="{{item.supplyPolicyAcceptedAt}}"><view class="label">首次用品规则</view><view class="value">已确认 · 费用 ¥{{item.supplyFeeAmountText}}</view></view>
+      <view class="info-row" wx:if="{{item.supplyFeeDeductedAmount > 0}}"><view class="label">已结算用品费用</view><view class="value">¥{{item.supplyFeeDeductedAmountText}}</view></view>
+      <view class="info-row" wx:if="{{item.approvedRefundAmount != null}}"><view class="label">核准退押金</view><view class="value">¥{{item.approvedRefundAmountText}}</view></view>
+      <view class="info-row" wx:if="{{item.supplyAddress}}"><view class="label">用品收货地址</view><view class="value">{{item.supplyAddress.name}} {{item.supplyAddress.phone}} · {{item.supplyAddress.province}}{{item.supplyAddress.city}}{{item.supplyAddress.district}}{{item.supplyAddress.detail}}</view></view>
+      <view class="info-row" wx:if="{{item.supplyShipment}}"><view class="label">用品物流</view><view class="value">{{item.supplyShipment.expressCompany}} · {{item.supplyShipment.trackingNo}}</view></view>
+      <block wx:if="{{item.status === 'paid' && item.supplyPolicyAcceptedAt && !item.supplyShipment && (adminSuper || adminPermissions.admin_shipStaffSupplies)}}">
+        <input class="ship-input" placeholder="快递公司（如顺丰速运）" data-id="{{item._id}}" data-field="expressCompany" bindinput="supplyShipInput" maxlength="40" />
+        <input class="ship-input" placeholder="快递单号" data-id="{{item._id}}" data-field="trackingNo" bindinput="supplyShipInput" maxlength="80" />
+        <button class="ghost-btn full-btn" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="shipStaffSupplies">确认首次用品发货</button>
+      </block>
       <view class="info-row" wx:if="{{item.refundReason}}"><view class="label">退出退款原因</view><view class="value">{{item.refundReason}}</view></view>
       <view class="info-row" wx:if="{{item.lastForfeitReason}}"><view class="label">最近没收原因</view><view class="value">{{item.lastForfeitReason}}</view></view>
       <view class="info-row" wx:if="{{item.lastForfeitImages && item.lastForfeitImages.length}}">
@@ -173,7 +183,7 @@
   <block wx:if="{{financeTabs.supplies && activeTab === 'supplies'}}">
     <view class="card record-card" wx:for="{{supplies}}" wx:key="_id">
       <view class="record-head">
-        <view class="record-title">首次用品报销</view>
+      <view class="record-title">{{item.benefitType === 'supply_fee_waiver' ? '首次用品费用减免' : '首次用品报销'}}</view>
         <view class="badge {{item.status === 'paid' ? 'green' : (item.status === 'approved' ? 'pink' : 'gray')}}">{{item.statusText || item.status}}</view>
       </view>
       <view class="info-row"><view class="label">申请人</view><view class="value">{{item.staffRealName || item.staffNickname || item.staffOpenid}}</view></view>
@@ -197,7 +207,8 @@
         <button wx:if="{{adminSuper || adminPermissions.admin_auditSupplyReimbursement}}" class="ghost-btn compact-btn" data-id="{{item._id}}" data-approved="false" bindtap="auditSupplyReimbursement">驳回申请</button>
         <button wx:if="{{adminSuper || adminPermissions.admin_auditSupplyReimbursement}}" class="primary-btn compact-btn" data-id="{{item._id}}" data-approved="true" data-amount="{{item.amount}}" data-amount-source="{{item.amountSource}}" bindtap="auditSupplyReimbursement">按后台金额通过</button>
       </view>
-      <button class="primary-btn full-btn" wx:if="{{(item.status === 'approved') && (adminSuper || adminPermissions.admin_paySupplyReimbursement)}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="paySupplyReimbursement">确认已实际打款</button>
+      <button class="primary-btn full-btn" wx:if="{{(item.status === 'approved') && item.benefitType !== 'supply_fee_waiver' && (adminSuper || adminPermissions.admin_paySupplyReimbursement)}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="paySupplyReimbursement">确认已实际打款</button>
+      <view class="muted" wx:if="{{item.status === 'approved' && item.benefitType === 'supply_fee_waiver'}}">减免已生效，退出时在保证金结算中体现，无需单独打款。</view>
     </view>
     <view class="empty-state" wx:if="{{!supplies.length}}">{{appliedKeyword ? '暂无与“' + appliedKeyword + '”匹配的用品报销记录。' : '暂无用品报销记录。'}}</view>
   </block>

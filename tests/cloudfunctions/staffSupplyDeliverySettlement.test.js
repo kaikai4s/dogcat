@@ -1,0 +1,171 @@
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const { createCollectionStore, loadCloudFunction } = require('./helpers')
+
+const address = { name: '李小宠', phone: '13900001111', province: '上海市', city: '上海市', district: '浦东新区', detail: '幸福路 18 号' }
+
+function setup() {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'u_admin', openid: 'admin', roles: ['admin'], status: 'active' },
+      { _id: 'u_staff', openid: 'staff', roles: ['client', 'staff'], status: 'active' }
+    ],
+    staff_profiles: [{ _id: 'profile', openid: 'staff', userId: 'u_staff', auditStatus: 'approved', staffLevel: 'certified', exitStatus: 'none', depositStatus: 'unpaid' }],
+    staff_deposits: [], staff_deposit_events: [], staff_supply_reimbursements: [],
+    finance_logs: [], admin_operation_logs: [], orders: [], order_incidents: [], user_invites: [], mall_orders: [],
+    platform_configs: [{ _id: 'cfg', key: 'system_settings', value: {
+      staffDeposit: { enabled: true, amount: 500 },
+      staffSupplies: { shippingEnabled: true, supplyFeeAmount: 120, reimbursementEnabled: true,
+        reimbursementMode: 'order_count', reimbursementOrderCount: 0, purchaseRequired: true },
+      payment: { mode: 'mock' }
+    } }]
+  })
+  return { db, staff: loadCloudFunction('api', db, 'staff'), admin: loadCloudFunction('api', db, 'admin') }
+}
+
+async function paid(fixture) {
+  const result = await fixture.staff.main({ module: 'staff', action: 'createDepositPayment', data: {
+    agreed: true, acceptSupplyPolicy: true, supplyAddress: address
+  } })
+  assert.equal(result.ok, true, result.message)
+  const deposit = fixture.db.state.staff_deposits[0]
+  assert.equal(deposit.supplyFeeAmount, 120)
+  assert.deepEqual(deposit.supplyAddress, address)
+  return deposit._id
+}
+
+async function ship(fixture, id) {
+  const result = await fixture.admin.main({ module: 'admin', action: 'shipStaffSupplies', data: {
+    id, expressCompany: '顺丰速运', trackingNo: 'SF123456789'
+  } })
+  assert.equal(result.ok, true, result.message)
+}
+
+async function refund(fixture, id) {
+  const requested = await fixture.staff.main({ module: 'staff', action: 'requestDepositRefund', data: { reason: '退出服务' } })
+  assert.equal(requested.ok, true, requested.message)
+  return fixture.admin.main({ module: 'admin', action: 'auditDepositRefund', data: { id, approved: true } })
+}
+
+test('unconfirmed existing deposit and accepted-but-unshipped deposit keep full refund', async () => {
+  const f = setup()
+  // Simulate an existing paid deposit under the old agreement.
+  const legacy = { _id: 'legacy', staffOpenid: 'staff', staffUserId: 'u_staff', staffProfileId: 'profile',
+    status: 'paid', paidAmount: 500, amount: 500, refundedAmount: 0, forfeitedAmount: 0, availableRefundAmount: 500 }
+  f.db.state.staff_deposits.push(legacy)
+  const status = await f.staff.main({ module: 'staff', action: 'getDepositStatus' })
+  assert.equal(status.data.deposit.supplyPolicyAcceptedAt, undefined)
+  const rejected = await f.admin.main({ module: 'admin', action: 'shipStaffSupplies', data: { id: 'legacy', expressCompany: '顺丰速运', trackingNo: 'SF123' } })
+  assert.equal(rejected.ok, false)
+  let audit = await refund(f, 'legacy')
+  assert.equal(audit.ok, true, audit.message)
+  assert.equal(audit.data.approvedRefundAmount, 500)
+
+  const g = setup()
+  const id = await paid(g)
+  audit = await refund(g, id)
+  assert.equal(audit.ok, true, audit.message)
+  assert.equal(audit.data.approvedRefundAmount, 500)
+  assert.equal(g.db.state.staff_deposits[0].supplyFeeDeductedAmount, 0)
+})
+
+test('existing paid staff must actively accept the fee before shipping, then sees the original fee snapshot', async () => {
+  const f = setup()
+  const old = { _id: 'old', staffOpenid: 'staff', staffUserId: 'u_staff', staffProfileId: 'profile',
+    status: 'paid', paidAmount: 500, amount: 500, refundedAmount: 0, forfeitedAmount: 0, availableRefundAmount: 500 }
+  f.db.state.staff_deposits.push(old)
+  const declined = await f.staff.main({ module: 'staff', action: 'confirmSupplyDelivery', data: { supplyAddress: address } })
+  assert.equal(declined.ok, false)
+  const accepted = await f.staff.main({ module: 'staff', action: 'confirmSupplyDelivery', data: {
+    acceptSupplyPolicy: true, supplyAddress: address
+  } })
+  assert.equal(accepted.ok, true, accepted.message)
+  assert.equal(f.db.state.staff_deposits[0].supplyFeeAmount, 120)
+  f.db.state.platform_configs[0].value.staffSupplies.supplyFeeAmount = 180
+  await ship(f, 'old')
+  assert.equal(f.db.state.staff_deposits[0].supplyFeeAmount, 120)
+  const audit = await refund(f, 'old')
+  assert.equal(audit.ok, true, audit.message)
+  assert.equal(audit.data.approvedRefundAmount, 380)
+})
+
+test('shipped supplies are charged once at refund audit, separately from forfeit; auto refund cannot bypass', async () => {
+  const f = setup()
+  const id = await paid(f)
+  await ship(f, id)
+  const duplicate = await f.admin.main({ module: 'admin', action: 'shipStaffSupplies', data: { id, expressCompany: '顺丰速运', trackingNo: 'SF999' } })
+  assert.equal(duplicate.ok, false)
+  const tracking = await f.staff.main({ module: 'staff', action: 'querySupplyDeliveryLogistics', data: { depositId: id } })
+  assert.equal(tracking.ok, true, tracking.message)
+  assert.equal(tracking.data.trackingNo, 'SF123456789')
+  const bypass = await f.admin.main({ module: 'admin', action: 'autoRefundStaffDeposit', data: { id } })
+  assert.equal(bypass.ok, false)
+  const audit = await refund(f, id)
+  assert.equal(audit.ok, true, audit.message)
+  assert.equal(audit.data.approvedRefundAmount, 380)
+  assert.equal(f.db.state.staff_deposits[0].supplyFeeDeductedAmount, 120)
+  assert.equal(f.db.state.staff_deposits[0].forfeitedAmount, 0)
+  assert.equal(f.db.state.staff_deposit_events.filter(event => event.type === 'supply_fee').length, 1)
+  const confirmed = await f.admin.main({ module: 'admin', action: 'confirmDepositRefund', data: {
+    id, paymentConfirmed: true, paymentReference: 'refund-proof'
+  } })
+  assert.equal(confirmed.ok, true, confirmed.message)
+  assert.equal(f.db.state.staff_deposits[0].refundedAmount, 380)
+  assert.equal(f.db.state.staff_deposits[0].supplyFeeDeductedAmount, 120)
+})
+
+test('automatic refund after fee audit uses the net amount and never charges a second time', async () => {
+  const f = setup()
+  const id = await paid(f)
+  await ship(f, id)
+  const audit = await refund(f, id)
+  assert.equal(audit.ok, true, audit.message)
+  const paidBack = await f.admin.main({ module: 'admin', action: 'autoRefundStaffDeposit', data: { id } })
+  assert.equal(paidBack.ok, true, paidBack.message)
+  assert.equal(paidBack.data.refundAmount, 380)
+  const deposit = f.db.state.staff_deposits[0]
+  assert.equal(deposit.refundedAmount, 380)
+  assert.equal(deposit.supplyFeeDeductedAmount, 120)
+  assert.equal(f.db.state.refunds[0].refundAmount, 380)
+})
+
+test('pending supply waiver blocks deposit settlement; approved waiver avoids fee and separate payout', async () => {
+  const f = setup()
+  const id = await paid(f)
+  await ship(f, id)
+  // A later settings change must not erase the qualification promised at consent.
+  const config = f.db.state.platform_configs[0].value.staffSupplies
+  config.shippingEnabled = false
+  config.reimbursementEnabled = false
+  config.reimbursementOrderCount = 50
+  const eligibility = await f.staff.main({ module: 'staff', action: 'getSupplyReimbursementStatus' })
+  assert.equal(eligibility.data.canApply, true)
+  assert.equal(eligibility.data.deliveryMode, true)
+  const submit = await f.staff.main({ module: 'staff', action: 'submitSupplyReimbursement', data: { remark: '申请减免' } })
+  assert.equal(submit.ok, true, submit.message)
+  assert.equal(submit.data.benefitType, 'supply_fee_waiver')
+  const pending = await refund(f, id)
+  assert.equal(pending.ok, false)
+  assert.match(pending.message, /正在审核/)
+  const approve = await f.admin.main({ module: 'admin', action: 'auditSupplyReimbursement', data: { id: submit.data._id, approved: true } })
+  assert.equal(approve.ok, true, approve.message)
+  const pay = await f.admin.main({ module: 'admin', action: 'paySupplyReimbursement', data: { id: submit.data._id, paymentConfirmed: true, paymentReference: 'proof' } })
+  assert.equal(pay.ok, false)
+  const audit = await f.admin.main({ module: 'admin', action: 'auditDepositRefund', data: { id, approved: true } })
+  assert.equal(audit.ok, true, audit.message)
+  assert.equal(audit.data.approvedRefundAmount, 500)
+  assert.equal(f.db.state.staff_deposits[0].supplyFeeDeductedAmount, 0)
+})
+
+test('the server rejects enabling supply shipping with an invalid fee, including direct admin configuration calls', async () => {
+  const f = setup()
+  const original = f.db.state.platform_configs[0].value
+  for (const supplyFeeAmount of [0, 500, 600]) {
+    const result = await f.admin.main({ module: 'admin', action: 'saveSystemSettings', data: { settings: {
+      ...original, staffSupplies: { ...original.staffSupplies, supplyFeeAmount }
+    } } })
+    assert.equal(result.ok, false, `fee ${supplyFeeAmount} must be rejected`)
+    assert.match(result.message, /用品费用/)
+    assert.equal(f.db.state.platform_configs[0].value.staffSupplies.supplyFeeAmount, 120)
+  }
+})

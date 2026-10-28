@@ -17,10 +17,11 @@
 
   <view class="card">
     <view class="card-title">入驻保证金与退出退款</view>
+    <view class="guide-box warning-box" wx:if="{{depositState && depositState.supplyDeliveryRequired && depositState.deposit && depositState.deposit.status === 'paid' && !depositState.deposit.supplyPolicyAcceptedAt}}">已缴押金用户：平台首次用品寄送适用新规则，请在下方核对收货地址和用品费用后主动确认。暂不确认不会发货或扣用品费用，仍可按原缴纳规则申请退出退款。</view>
     <view class="muted">资料审核通过后，按平台配置缴纳可退保证金；金额以服务端展示为准，不设默认金额。</view>
     <view class="guide-box">
-      <view>自愿退出全额退还保证金；有效管理员没收决定涉及的部分除外。</view>
-      <view>首次物资报销由平台另行出资，通过商家转账发放，不是保证金退款。后续每次物资采购均自费。</view>
+      <view>未领取平台首次用品的，退出时按原保证金规则结算；已确认并收到平台用品的，按用品费用减免审核结果结算。</view>
+      <view>微信小店商品与平台寄送的首次用品互不关联。</view>
     </view>
     <view class="muted" wx:if="{{depositLoading}}">正在获取保证金状态...</view>
     <view class="muted" wx:if="{{depositError}}">状态获取失败，请刷新后再操作。</view>
@@ -49,6 +50,7 @@
         <view wx:if="{{depositState.deposit.paidAmount != null}}">已缴总额：¥{{depositState.deposit.paidAmount}}</view>
         <view wx:if="{{depositState.deposit.forfeitedAmount > 0}}" style="color: #ef4444;">累计违规扣除：¥{{depositState.deposit.forfeitedAmount}}</view>
         <view wx:if="{{depositState.deposit.refundedAmount > 0}}">已退款金额：¥{{depositState.deposit.refundedAmount}}</view>
+        <view wx:if="{{depositState.deposit.supplyFeeDeductedAmount > 0}}">已结算首次用品费用：¥{{depositState.deposit.supplyFeeDeductedAmount}}</view>
         <view wx:if="{{depositState.deposit.refundStatus}}">退款状态：{{depositState.deposit.refundStatusText || '退款处理中'}}</view>
       </view>
       <view class="muted" wx:else>暂无保证金缴纳记录。</view>
@@ -66,14 +68,35 @@
         </view>
       </view>
 
-      <view class="rule-text">{{depositState.config.rulesText}}</view>
-      <view class="rule-text">{{depositState.config.refundRulesText}}</view>
+      <view class="rule-text" wx:if="{{!depositState.supplies.shippingEnabled && !(depositState.deposit && depositState.deposit.supplyShipment)}}">{{depositState.config.rulesText}}</view>
+      <view class="rule-text" wx:if="{{!depositState.supplies.shippingEnabled && !(depositState.deposit && depositState.deposit.supplyShipment)}}">{{depositState.config.refundRulesText}}</view>
+      <view class="rule-text" wx:else>首次用品费用按本人确认时的金额和实际发货、减免审核结果结算；未确认或未发货不扣用品费，未同意新规则的已缴用户仍可按原缴纳规则退出。</view>
       <view class="rule-text">{{depositState.config.forfeitRulesText}}</view>
+      <view class="supply-delivery" wx:if="{{depositState.supplies.shippingEnabled || depositState.firstSupplyShipment}}">
+        <view class="card-title">平台首次用品寄送</view>
+        <view class="warning-text">用品费用 ¥{{depositState.firstSupplyShipment ? depositState.firstSupplyFeeAmount : (depositState.deposit && depositState.deposit.supplyPolicyAcceptedAt ? depositState.deposit.supplyFeeAmount : depositState.supplies.supplyFeeAmount)}}。认证后符合条件可申请费用减免；审核通过，退出退押金时不扣；未申请或未通过，已发货用品费用从可退押金中结算。申请待审先暂停结算。微信小店订单不参与此流程。</view>
+        <view class="muted" wx:if="{{depositState.deposit && depositState.deposit.supplyPolicyAcceptedAt}}">已确认用品规则，费用按确认时金额固定。</view>
+        <view class="muted" wx:if="{{depositState.firstSupplyShipment}}">已发货：{{depositState.firstSupplyShipment.expressCompany}} · {{depositState.firstSupplyShipment.trackingNo}}</view>
+        <button class="ghost-btn" wx:if="{{depositState.firstSupplyShipment}}" bindtap="copySupplyTracking">复制快递单号</button>
+        <button class="ghost-btn" wx:if="{{depositState.firstSupplyShipment}}" bindtap="querySupplyLogistics" disabled="{{depositBusy}}">查询用品物流</button>
+        <view class="muted" wx:if="{{supplyLogistics}}">{{supplyLogistics.stateText || supplyLogistics.message}}</view>
+        <view class="muted" wx:for="{{supplyLogistics.traces}}" wx:key="index">{{item.time || item.datetime}} {{item.context || item.description}}</view>
+        <block wx:if="{{depositState.supplyDeliveryRequired && (depositState.canPay || (depositState.deposit && depositState.deposit.status === 'paid' && !depositState.deposit.supplyShipment))}}">
+          <button class="ghost-btn" bindtap="chooseSupplyAddress" disabled="{{depositBusy}}">选择微信收货地址</button>
+          <view class="field-label">收件人</view><input class="supply-address-input" value="{{supplyAddress.name}}" data-field="name" bindinput="supplyAddressInput" placeholder="收件人姓名" maxlength="40" />
+          <view class="field-label">收件手机号</view><input class="supply-address-input" type="number" value="{{supplyAddress.phone}}" data-field="phone" bindinput="supplyAddressInput" placeholder="11 位手机号" maxlength="11" />
+          <view class="field-label">省 / 市 / 区</view>
+          <view class="supply-region"><input class="supply-address-input" value="{{supplyAddress.province}}" data-field="province" bindinput="supplyAddressInput" placeholder="省" /><input class="supply-address-input" value="{{supplyAddress.city}}" data-field="city" bindinput="supplyAddressInput" placeholder="市" /><input class="supply-address-input" value="{{supplyAddress.district}}" data-field="district" bindinput="supplyAddressInput" placeholder="区" /></view>
+          <view class="field-label">详细地址</view><input class="supply-address-input" value="{{supplyAddress.detail}}" data-field="detail" bindinput="supplyAddressInput" placeholder="街道、门牌号" maxlength="100" />
+          <checkbox-group bindchange="agreeSupply"><label class="acknowledgement"><checkbox value="agreed" checked="{{supplyAgreed}}" />我已核对收货地址，知悉平台首次用品费用及退押金时的减免／结算方式；不确认则不发货、不扣用品费，已缴押金仍可按原规则申请退款。</label></checkbox-group>
+          <button class="primary-btn" wx:if="{{depositState.deposit && depositState.deposit.status === 'paid'}}" bindtap="confirmSupplyDelivery" disabled="{{!supplyAgreed || depositBusy}}">确认规则并提交收货地址</button>
+        </block>
+      </view>
       <block wx:if="{{depositState.canPay}}">
         <checkbox-group bindchange="agreeDeposit">
-          <label class="acknowledgement"><checkbox value="agreed" checked="{{depositAgreed}}" disabled="{{depositBusy || depositLoading}}" />我已阅读并同意上述缴纳、退出全额退款及有效管理员没收规则，知悉首次物资报销独立于保证金，需正式认证后申请，后续采购自费。</label>
+          <label class="acknowledgement"><checkbox value="agreed" checked="{{depositAgreed}}" disabled="{{depositBusy || depositLoading}}" />我已阅读并同意保证金缴纳与退出规则；首次用品费用按上方单独确认的规则结算。</label>
         </checkbox-group>
-        <button class="primary-btn" bindtap="payDeposit" loading="{{depositBusy}}" disabled="{{!depositAgreed || depositBusy || depositLoading || depositState.config.amount == null}}">{{depositState.needsRepay ? '重新足额缴纳保证金' : '微信支付保证金'}}</button>
+        <button class="primary-btn" bindtap="payDeposit" loading="{{depositBusy}}" disabled="{{!depositAgreed || (depositState.supplyDeliveryRequired && !supplyAgreed) || depositBusy || depositLoading || depositState.config.amount == null}}">{{depositState.needsRepay ? '重新足额缴纳保证金' : '微信支付保证金'}}</button>
       </block>
       <block wx:if="{{depositState.canRequestRefund}}">
         <textarea class="refund-input" placeholder="请填写自愿退出及退款原因" value="{{refundReason}}" bindinput="inputRefundReason" maxlength="500" disabled="{{depositBusy}}" />
@@ -90,11 +113,11 @@
     <view class="guide-box">
       <view>视频审核必须准备：一次性手套、一次性口罩、一次性鞋套宠物安全消毒液。</view>
       <view>审核标准严格，备齐物资不代表必然通过，其他不符合要求的情况也可能导致审核失败。</view>
-      <view>未获得正式认证不得报销，实习宠托师不具备报销资格。正式认证后仅首次物资可申请平台报销，后续每次采购均由本人承担。</view>
+      <view>未获得正式认证不得申请首次用品费用减免；达到资格并通过审核后，退出结算不扣首次用品费用。后续用品由本人承担。</view>
     </view>
     <view class="muted">{{depositState.supplies.auditNotice}}</view>
     <view class="muted">{{depositState.supplies.serviceReminder}}</view>
-    <button class="ghost-btn" bindtap="goReimbursement">首次物资报销 / 查看进度</button>
+    <button class="ghost-btn" bindtap="goReimbursement">首次用品费用减免 / 查看进度</button>
   </view>
 
   <view class="card">

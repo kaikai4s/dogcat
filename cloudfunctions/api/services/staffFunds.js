@@ -23,7 +23,7 @@ module.exports = function createService(context) {
     if (!profile || profile.openid !== record.staffOpenid) throw new Error('宠托师资料归属不匹配')
     return profile
   }
-  async function reserveStaffDepositPayment(user, snapshot, requestedAmount, channel, clientRequestId = '') {
+  async function reserveStaffDepositPayment(user, snapshot, requestedAmount, channel, clientRequestId = '', supplyConsent = null) {
     money(requestedAmount, true)
     return db.runTransaction(async tx => {
       const profile = await profileFor(tx, { staffOpenid: user.openid, staffProfileId: snapshot._id })
@@ -68,12 +68,21 @@ module.exports = function createService(context) {
           staffProfileId: profile._id, amount: money(requestedAmount, true) / 100, paidAmount: 0, refundedAmount: 0,
           forfeitedAmount: 0, availableRefundAmount: 0, status: 'unpaid', statusText: '待支付', refundStatus: '',
           clientRequestId, createdAt: time, updatedAt: time }
+        if (supplyConsent) Object.assign(deposit, { supplyAddress: supplyConsent.address, supplyFeeAmount: supplyConsent.feeAmount,
+          supplyReimbursementTerms: supplyConsent.reimbursementTerms, supplyPolicyAcceptedAt: time, supplyPolicyVersion: 1 })
         const { _id, ...value } = deposit
         await tx.collection('staff_deposits').doc(_id).set({ data: value })
       } else if (deposit.status === 'unpaid' && money(deposit.amount, true) !== money(requestedAmount, true)) {
         const newAmount = money(requestedAmount, true) / 100
         await tx.collection('staff_deposits').doc(deposit._id).update({ data: { amount: newAmount, updatedAt: time } })
         deposit.amount = newAmount
+      }
+      if (deposit.status === 'unpaid' && supplyConsent && !deposit.supplyShipment) {
+        await tx.collection('staff_deposits').doc(deposit._id).update({ data: {
+          supplyAddress: supplyConsent.address, supplyFeeAmount: supplyConsent.feeAmount,
+          supplyReimbursementTerms: supplyConsent.reimbursementTerms,
+          supplyPolicyAcceptedAt: time, supplyPolicyVersion: 1, updatedAt: time
+        } })
       }
       const payments = (await db.collection('payments').where({ orderId: deposit._id, targetType: 'staff_deposit' }).limit(2).get()).data
       if (payments.length > 1) {
@@ -118,9 +127,53 @@ module.exports = function createService(context) {
     const paid = money(deposit.paidAmount)
     const refunded = money(deposit.refundedAmount)
     const forfeited = money(deposit.forfeitedAmount)
+    const supplyFee = money(deposit.supplyFeeDeductedAmount == null ? 0 : deposit.supplyFeeDeductedAmount)
     const available = money(deposit.availableRefundAmount)
-    if (!Number.isSafeInteger(refunded + forfeited + available) || paid !== refunded + forfeited + available) throw new Error('保证金余额不一致，请先对账')
-    return { paid, refunded, forfeited, available }
+    if (!Number.isSafeInteger(refunded + forfeited + supplyFee + available) || paid !== refunded + forfeited + supplyFee + available) throw new Error('保证金余额不一致，请先对账')
+    return { paid, refunded, forfeited, supplyFee, available }
+  }
+  async function confirmStaffSupplyPolicy(openid, address, feeAmount, reimbursementTerms) {
+    return db.runTransaction(async tx => {
+      const candidates = (await db.collection('staff_deposits').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').limit(2).get()).data
+      const deposit = candidates.find(row => row.status === 'paid' || row.status === 'partially_refunded')
+      if (!deposit) throw new Error('请先完成保证金支付')
+      const current = await optional(tx, 'staff_deposits', deposit._id)
+      if (current.supplyShipment) throw new Error('用品已经发货，收货地址不可修改')
+      if (['requested', 'approved', 'processing'].includes(current.refundStatus)) throw new Error('退出退款处理中，不可修改用品地址')
+      const fee = current.supplyPolicyAcceptedAt ? money(current.supplyFeeAmount, true) : money(feeAmount, true)
+      if (fee >= balances(current).available) throw new Error('用品费用不能达到或超过当前可退押金')
+      const time = now()
+      await tx.collection('staff_deposits').doc(current._id).update({ data: {
+        supplyAddress: address, supplyFeeAmount: fee / 100,
+        supplyReimbursementTerms: current.supplyReimbursementTerms || reimbursementTerms,
+        supplyPolicyAcceptedAt: current.supplyPolicyAcceptedAt || time,
+        supplyPolicyVersion: 1, updatedAt: time
+      } })
+      return { depositId: current._id, acceptedAt: current.supplyPolicyAcceptedAt || time }
+    })
+  }
+  async function shipStaffSupplies(admin, depositId, expressCompany, trackingNo) {
+    return db.runTransaction(async tx => {
+      const deposit = await optional(tx, 'staff_deposits', depositId)
+      if (!deposit) throw new Error('保证金记录不存在')
+      if (deposit.supplyShipment) {
+        if (deposit.supplyShipment.expressCompany === expressCompany && deposit.supplyShipment.trackingNo === trackingNo) return deposit.supplyShipment
+        throw new Error('用品已发货，不可重复发货')
+      }
+      if (deposit.status !== 'paid' || !deposit.supplyPolicyAcceptedAt || !deposit.supplyAddress) throw new Error('须先完成押金支付及用品规则确认')
+      const profile = await profileFor(tx, deposit)
+      if (profile.supplyShipmentDepositId) throw new Error('该宠托师已发过首次用品')
+      const existingApps = (await db.collection('staff_supply_reimbursements').where({ staffOpenid: deposit.staffOpenid }).limit(1).get()).data
+      if (existingApps.length) throw new Error('已有首次用品报销记录，请先处理历史记录，避免重复发放')
+      if (money(deposit.supplyFeeAmount, true) >= balances(deposit).available) throw new Error('用品费用不能达到或超过可退押金')
+      const time = now()
+      const shipment = { expressCompany, trackingNo, shippedAt: time, shippedBy: admin.openid }
+      await tx.collection('staff_deposits').doc(depositId).update({ data: { supplyShipment: shipment, updatedAt: time } })
+      await tx.collection('staff_profiles').doc(profile._id).update({ data: { supplyShipmentDepositId: depositId, updatedAt: time } })
+      await log(tx, key('supply_shipped', depositId), admin, 'shipStaffSupplies', 'staff_deposit', depositId, deposit,
+        { expressCompany, trackingNo, supplyFeeAmount: deposit.supplyFeeAmount }, time)
+      return shipment
+    })
   }
   async function log(tx, id, admin, action, targetType, targetId, record, detail, time, delta = null) {
     await tx.collection('admin_operation_logs').doc(id).set({ data: {
@@ -209,6 +262,7 @@ module.exports = function createService(context) {
         if (!['paid', 'partially_refunded'].includes(deposit.status) || ['requested', 'approved', 'processing'].includes(deposit.refundStatus)) throw new Error('当前保证金状态不可没收，请先处理退款申请')
         amount = money(data.amount, true)
         if (amount > balance.available) throw new Error('没收金额不能大于当前可用保证金余额')
+        if (deposit.supplyShipment && !deposit.supplyFeeSettledAt && amount + money(deposit.supplyFeeAmount, true) >= balance.available) throw new Error('请保留足够余额用于用品费用和退出退款结算')
         const available = (balance.available - amount) / 100
         patch = { forfeitedAmount: (balance.forfeited + amount) / 100, availableRefundAmount: available,
           status: available === 0 ? 'forfeited' : deposit.status, statusText: available === 0 ? '已全额没收' : `部分没收（余¥${available}）`,
@@ -224,7 +278,25 @@ module.exports = function createService(context) {
         if (data.approved === true) {
           await exitCheck(deposit.staffOpenid)
           if (!balance.available) throw new Error('暂无可退还保证金')
-          patch = { status: 'refund_approved', statusText: '审核通过，待实际退款', refundStatus: 'approved', approvedRefundAmount: balance.available / 100 }
+          let supplyFee = 0
+          if (deposit.supplyShipment && deposit.supplyPolicyAcceptedAt && !deposit.supplyFeeSettledAt) {
+            const apps = (await db.collection('staff_supply_reimbursements').where({ staffOpenid: deposit.staffOpenid }).limit(2).get()).data
+            const app = apps.find(item => item.depositId === targetDepositId && item.benefitType === 'supply_fee_waiver')
+            if (app && app.status === 'pending') throw new Error('首次用品费用减免正在审核，请先处理申请')
+            supplyFee = app && app.status === 'approved' ? 0 : money(deposit.supplyFeeAmount, true)
+            if (supplyFee >= balance.available) throw new Error('用品费用不低于可退押金，请人工对账后处理')
+          }
+          patch = { status: 'refund_approved', statusText: '审核通过，待实际退款', refundStatus: 'approved',
+            supplyFeeSettledAt: deposit.supplyShipment && deposit.supplyPolicyAcceptedAt ? time : deposit.supplyFeeSettledAt || null,
+            supplyFeeDeductedAmount: (balance.supplyFee + supplyFee) / 100,
+            availableRefundAmount: (balance.available - supplyFee) / 100,
+            approvedRefundAmount: (balance.available - supplyFee) / 100 }
+          if (supplyFee) {
+            const feeId = key('supply_fee', targetDepositId)
+            await log(tx, feeId, admin, 'settleStaffSupplyFee', 'staff_deposit', targetDepositId, deposit,
+              { supplyFeeAmount: supplyFee / 100, financeAction: 'staff_supply_fee' }, time, 0)
+            await depositEvent(tx, feeId, deposit, admin.openid, 'supply_fee', supplyFee / 100, '首次用品费用', time)
+          }
           profilePatch = { exitStatus: 'approved', depositStatus: 'refund_approved' }
         } else {
           if (!reason) throw new Error('请填写驳回原因')
@@ -263,6 +335,8 @@ module.exports = function createService(context) {
       } else throw new Error('未知保证金操作')
       const result = { id: targetDepositId, status: patch.status, refundStatus: patch.refundStatus || deposit.refundStatus,
         availableRefundAmount: patch.availableRefundAmount ?? deposit.availableRefundAmount,
+        approvedRefundAmount: patch.approvedRefundAmount ?? deposit.approvedRefundAmount,
+        supplyFeeDeductedAmount: patch.supplyFeeDeductedAmount ?? deposit.supplyFeeDeductedAmount ?? 0,
         ...(action === 'confirmDepositRefund' ? { exitCompleted: profilePatch.exitStatus === 'exited' } : {}) }
       await tx.collection('staff_deposits').doc(targetDepositId).update({ data: { ...patch, updatedAt: time } })
       await tx.collection('staff_profiles').doc(profile._id).update({ data: { ...profilePatch, updatedAt: time } })
@@ -340,6 +414,7 @@ module.exports = function createService(context) {
       const app = (await tx.collection('staff_supply_reimbursements').doc(data.id).get().catch(() => ({ data: null }))).data
       if (!app) throw new Error('报销申请不存在')
       const paying = action === 'paySupplyReimbursement'
+      if (paying && app.benefitType === 'supply_fee_waiver') throw new Error('用品费用减免不单独打款，请在退押金时结算')
       const target = paying ? 'paid' : data.approved === true ? 'approved' : 'rejected'
       if (!paying && target === 'approved' && app.amountSource === 'config' && data.approvedAmount !== undefined && money(data.approvedAmount, true) !== money(app.amount, true)) {
         throw new Error('审批报销金额不能大于宠托师申请金额；报销金额由后台配置固定，管理员不能修改申请金额')
@@ -357,7 +432,7 @@ module.exports = function createService(context) {
       const time = now()
       const patch = paying ? { status: target, statusText: '已人工确认打款', transferStatus: 'MANUAL_CONFIRMED', paymentReference: proof,
         paymentConfirmationSource: 'manual', paidAmount: amount / 100, paidAt: time, paidBy: admin.openid }
-        : { status: target, statusText: target === 'approved' ? '审核通过，等待打款' : '审核驳回', approvedAmount: target === 'approved' ? amount / 100 : null,
+        : { status: target, statusText: target === 'approved' ? (app.benefitType === 'supply_fee_waiver' ? '用品费用减免已通过' : '审核通过，等待打款') : '审核驳回', approvedAmount: target === 'approved' ? amount / 100 : null,
           auditRemark: reason, rejectReason: target === 'rejected' ? reason : '', auditedAt: time, auditedBy: admin.openid }
       await tx.collection('staff_supply_reimbursements').doc(data.id).update({ data: { ...patch, updatedAt: time } })
       await tx.collection('staff_profiles').doc(profile._id).update({ data: { supplyReimbursementStatus: target, updatedAt: time } })
@@ -441,6 +516,7 @@ module.exports = function createService(context) {
 
     const deposit = (await db.collection('staff_deposits').doc(depositId).get().catch(() => ({ data: null })))?.data
     if (!deposit) throw new Error('保证金记录不存在')
+    if (deposit.supplyShipment && !deposit.supplyFeeSettledAt) throw new Error('请先审核退押金并结算首次用品费用，再进行自动退款')
 
     const balance = balances(deposit)
     if (!balance.available || balance.available <= 0) {
@@ -534,6 +610,7 @@ module.exports = function createService(context) {
           throw new Error(`微信原路退款发起失败：${err.message || err}`)
         }
       }
+      if (wxRes?.status !== 'SUCCESS') throw new Error('微信原路退款尚未成功，请稍后按同一退款单号重新核实，勿人工重复退款')
       paymentReference = (wxRes && (wxRes.refund_id || wxRes.out_refund_no)) || refundNo
       confirmationSource = 'auto_wechat'
     } else {
@@ -649,5 +726,5 @@ module.exports = function createService(context) {
     })
   }
 
-  return { reserveStaffDepositPayment, requestStaffDepositRefund, settleStaffDeposit, settleSupplyReimbursement, submitStaffSupplyOnce, recordStaffDepositPayment, autoRefundStaffDeposit }
+  return { reserveStaffDepositPayment, confirmStaffSupplyPolicy, shipStaffSupplies, requestStaffDepositRefund, settleStaffDeposit, settleSupplyReimbursement, submitStaffSupplyOnce, recordStaffDepositPayment, autoRefundStaffDeposit }
 }

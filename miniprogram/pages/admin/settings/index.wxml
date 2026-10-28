@@ -14,8 +14,8 @@
     <navigator class="admin-compact-card setting-overview-card" url="/pages/admin/playground/index"><view class="admin-summary-title">宠物庄园管理</view><view class="setting-summary-line">拼单优惠、宠物状态、地面及庄园素材统一管理 ›</view></navigator>
     <view class="admin-compact-card setting-overview-card" data-panel="staffPolicy" bindtap="openSettingModal">
       <view class="admin-summary-title">宠托师保证金与用品报销</view>
-      <view class="setting-summary-line">保证金{{settings.staffDeposit.enabled ? '已启用' : '未启用'}} · ¥{{settings.staffDeposit.amount}}；用品报销独立由平台出资，绝不扣减保证金。</view>
-      <view class="setting-summary-line">正式认证后仅首次申请可报销，实习阶段不可申请。</view>
+      <view class="setting-summary-line">保证金{{settings.staffDeposit.enabled ? '已启用' : '未启用'}} · ¥{{settings.staffDeposit.amount}}；首次用品{{settings.staffSupplies.shippingEnabled ? '平台寄送，费用 ¥' + settings.staffSupplies.supplyFeeAmount : '寄送未启用'}}。</view>
+      <view class="setting-summary-line">确认并发货后可申请用品费用减免，审核通过则退出结算不扣用品费。</view>
     </view>
     <view class="admin-compact-card setting-overview-card" data-panel="staffZhima" bindtap="openSettingModal">
       <view class="admin-summary-row">
@@ -310,7 +310,7 @@
           <view class="muted">范围 224～11200 米，填写整数。草地自动铺满；已有房屋不能因缩小地面而被移出边界。保存后重新进入乐园生效。</view>
         </view>
         <view wx:if="{{activeSettingPanel === 'staffPolicy'}}" class="setting-modal-section">
-          <view class="policy-notice">自愿退出时保证金全额原路退回，仅减去管理员有记录依据的违规没收及已退部分。用品报销不占用、不抵扣保证金。</view>
+          <view class="policy-notice">已确认并发货的首次用品按确认时费用与减免审核结果结算；未确认或未发货不扣用品费。用品费用与违规没收分别记账。</view>
           <view class="field-item"><text class="label">保证金金额（元，精确到分）</text><input class="input" type="digit" value="{{settings.staffDeposit.amount}}" data-field="staffDeposit.amount" bindinput="staffPolicyInput" /></view>
           <view class="compact-toggle-row"><text>启用保证金（必须先配置正数金额）</text><switch checked="{{settings.staffDeposit.enabled}}" bindchange="staffDepositToggle" /></view>
           <view class="field-item"><text class="label">保证金说明</text><textarea class="input textarea-input" maxlength="-1" value="{{settings.staffDeposit.rulesText}}" data-field="staffDeposit.rulesText" bindinput="staffPolicyInput" /></view>
@@ -319,6 +319,8 @@
           <view class="section-title">平台出资的用品报销与一次性必备物品</view>
           <view class="policy-notice">只有正式认证（不是实习）后首次申请可报销。视频审核必查手套、口罩、鞋套、宠物安全消毒用品；用品齐全不代表考核通过，严格考核未通过不报销。</view>
           <view class="compact-toggle-row"><text>启用用品报销申请</text><switch checked="{{settings.staffSupplies.reimbursementEnabled}}" data-field="staffSupplies.reimbursementEnabled" bindchange="staffPolicyInput" /></view>
+          <view class="compact-toggle-row"><text>平台寄送首次用品并按新规则结算</text><switch checked="{{settings.staffSupplies.shippingEnabled}}" data-field="staffSupplies.shippingEnabled" bindchange="staffPolicyInput" /></view>
+          <view class="field-item"><text class="label">首次用品费用（元）</text><input class="input" type="digit" value="{{settings.staffSupplies.supplyFeeAmount}}" data-field="staffSupplies.supplyFeeAmount" bindinput="staffPolicyInput" /><view class="muted">仅对确认规则且已发货的用品生效；通过费用减免审核后退押金时不扣。</view></view>
           <view class="field-item"><text class="label">固定报销金额（元）</text><input class="input" type="digit" value="{{settings.staffSupplies.reimbursementAmount}}" data-field="staffSupplies.reimbursementAmount" bindinput="staffPolicyInput" /></view>
           <view class="field-item"><text class="label">报销资格方式（可多选）</text><checkbox-group bindchange="reimbursementModesChange"><label class="radio-label"><checkbox value="order_count" checked="{{settings.staffSupplies.reimbursementMode === 'order_count' || settings.staffSupplies.reimbursementMode === 'either'}}" /> 完成订单数</label><label class="radio-label"><checkbox value="invite_count" checked="{{settings.staffSupplies.reimbursementMode === 'invite_count' || settings.staffSupplies.reimbursementMode === 'either'}}" /> 邀请绑定人数</label></checkbox-group></view>
           <view class="muted">勾选的条件满足任意一项即可申请报销；数量为 0 表示该项不设门槛。邀请人数仅统计具备报销资格的有效绑定。</view>

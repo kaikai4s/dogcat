@@ -86,7 +86,7 @@ function parseAmount(value) {
 
 function decorateStaffFinance(item) {
   const result = { ...item, id: item._id || item.id }
-  ;['amount', 'paidAmount', 'refundedAmount', 'forfeitedAmount', 'availableRefundAmount', 'approvedAmount'].forEach((key) => {
+  ;['amount', 'paidAmount', 'refundedAmount', 'forfeitedAmount', 'supplyFeeAmount', 'supplyFeeDeductedAmount', 'availableRefundAmount', 'approvedRefundAmount', 'approvedAmount'].forEach((key) => {
     result[`${key}Text`] = item[key] === undefined || item[key] === null ? '待核实' : money(item[key])
   })
   result.refundPending = ['pending', 'requested', 'refund_requested', 'refund_pending'].includes(item.refundStatus) || ['refund_requested', 'refund_pending'].includes(item.status)
@@ -152,6 +152,7 @@ Page({
     forfeitStaffName: '',
     forfeitEvidences: [],
     forfeitImages: [],
+    supplyShipDrafts: {},
     startDate: monthStart(),
     endDate: today(),
     keyword: '',
@@ -796,6 +797,28 @@ Page({
 
   confirmDepositRefund(e) {
     this.confirmStaffPayment(e.currentTarget.dataset.id, 'confirmDepositRefund', '确认保证金已退还')
+  },
+  supplyShipInput(e) {
+    const id = e.currentTarget.dataset.id
+    const field = e.currentTarget.dataset.field
+    if (id && ['expressCompany', 'trackingNo'].includes(field)) this.setData({ [`supplyShipDrafts.${id}.${field}`]: e.detail.value })
+  },
+  shipStaffSupplies(e) {
+    const id = e.currentTarget.dataset.id
+    const draft = this.data.supplyShipDrafts[id] || {}
+    const expressCompany = String(draft.expressCompany || '').trim()
+    const trackingNo = String(draft.trackingNo || '').trim()
+    if (!expressCompany || !trackingNo || this.data.actionBusy) return wx.showToast({ title: '请填写物流公司和单号', icon: 'none' })
+    wx.showModal({ title: '确认首次用品发货', content: `${expressCompany}：${trackingNo}。提交后不可重复发货，请核对收件地址和物流单号。`,
+      success: async res => {
+        if (!res.confirm || this.data.actionBusy) return
+        this.setData({ actionBusy: true })
+        try {
+          await callFunction('admin', 'shipStaffSupplies', { id, expressCompany, trackingNo })
+          wx.showToast({ title: '已记录发货', icon: 'none' })
+          await this.loadStaffFinance()
+        } catch (error) { showError(error) } finally { this.setData({ actionBusy: false }) }
+      } })
   },
 
   confirmStaffPayment(id, action, title) {

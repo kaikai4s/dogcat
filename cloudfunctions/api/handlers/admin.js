@@ -117,6 +117,7 @@ module.exports = function createHandler(context) {
     releaseFailedWithdrawal,
     markWechatWithdrawalFailed,
     settleStaffDeposit,
+    shipStaffSupplies,
     settleSupplyReimbursement,
     safeUserSummary,
     saveSystemSettings,
@@ -251,7 +252,7 @@ module.exports = function createHandler(context) {
     const unsettled = deposits.find((deposit) => {
       const netAvailable = deposit.availableRefundAmount != null
         ? Number(deposit.availableRefundAmount)
-        : (Number(deposit.paidAmount || 0) - Number(deposit.refundedAmount || 0) - Number(deposit.forfeitedAmount || 0))
+        : (Number(deposit.paidAmount || 0) - Number(deposit.refundedAmount || 0) - Number(deposit.forfeitedAmount || 0) - Number(deposit.supplyFeeDeductedAmount || 0))
       const available = Math.round(Math.max(0, netAvailable) * 100)
       const status = safeText(deposit.status).trim()
       const refundStatus = safeText(deposit.refundStatus).trim()
@@ -261,7 +262,7 @@ module.exports = function createHandler(context) {
     if (unsettled) {
       const netAvailable = unsettled.availableRefundAmount != null
         ? Number(unsettled.availableRefundAmount)
-        : (Number(unsettled.paidAmount || 0) - Number(unsettled.refundedAmount || 0) - Number(unsettled.forfeitedAmount || 0))
+        : (Number(unsettled.paidAmount || 0) - Number(unsettled.refundedAmount || 0) - Number(unsettled.forfeitedAmount || 0) - Number(unsettled.supplyFeeDeductedAmount || 0))
       const amount = Math.max(0, netAvailable).toFixed(2)
       throw new Error(`该宠托师保证金尚未处理完成，可退余额 ¥${amount}。请先在财务管理完成扣除/退款后再移除宠托师身份`)
     }
@@ -1344,7 +1345,7 @@ module.exports = function createHandler(context) {
           const unsettledDeposit = staffDeposits.find((deposit) => {
             const netAvailable = deposit.availableRefundAmount != null
               ? Number(deposit.availableRefundAmount)
-              : (Number(deposit.paidAmount || 0) - Number(deposit.refundedAmount || 0) - Number(deposit.forfeitedAmount || 0))
+              : (Number(deposit.paidAmount || 0) - Number(deposit.refundedAmount || 0) - Number(deposit.forfeitedAmount || 0) - Number(deposit.supplyFeeDeductedAmount || 0))
             const available = Math.round(Math.max(0, netAvailable) * 100)
             const status = safeText(deposit.status).trim()
             const refundStatus = safeText(deposit.refundStatus).trim()
@@ -1357,7 +1358,7 @@ module.exports = function createHandler(context) {
           for (const d of staffDeposits) {
             const netAvailable = d.availableRefundAmount != null
               ? Number(d.availableRefundAmount)
-              : (Number(d.paidAmount || 0) - Number(d.refundedAmount || 0) - Number(d.forfeitedAmount || 0))
+              : (Number(d.paidAmount || 0) - Number(d.refundedAmount || 0) - Number(d.forfeitedAmount || 0) - Number(d.supplyFeeDeductedAmount || 0))
             depositBalance += Math.max(0, netAvailable)
           }
           depositBalance = Math.round(depositBalance * 100) / 100
@@ -3465,6 +3466,13 @@ module.exports = function createHandler(context) {
         }
       })
       return list.filter((d) => !keyword || matchFinanceRecord(d, keyword, searchContext))
+    }
+    if (action === 'shipStaffSupplies') {
+      const id = safeText(data.id).trim()
+      const expressCompany = safeText(data.expressCompany).trim()
+      const trackingNo = safeText(data.trackingNo).trim()
+      if (!id || !expressCompany || !trackingNo || expressCompany.length > 40 || trackingNo.length > 80 || !/^[a-zA-Z0-9-]+$/.test(trackingNo)) throw new Error('请填写有效的快递公司和快递单号')
+      return shipStaffSupplies({ ...admin, openid }, id, expressCompany, trackingNo)
     }
     if (action === 'requestStaffDepositRefund') {
       const id = safeText(data.id).trim()

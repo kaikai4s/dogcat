@@ -101,6 +101,18 @@ test('temporary failure keeps current shop and does not override an explicit loc
   assert.equal(page.data.shopConfigError, false)
 })
 
+test('development tool preview is identified without changing shop availability', async () => {
+  const preview = setup({ platform: 'devtools' })
+  preview.page.onLoad()
+  await flush()
+  assert.equal(preview.page.data.shopPreviewMode, true)
+  assert.equal(preview.page.data.mallMode, 'shop')
+  const device = setup({ platform: 'ios' })
+  device.page.onLoad()
+  await flush()
+  assert.equal(device.page.data.shopPreviewMode, false)
+})
+
 test('native shop component and local cart are rendered in mutually exclusive branches', () => {
   const markup = fs.readFileSync(path.join(root, 'index.wxml'), 'utf8')
   assert.match(markup, /wx:elif="\{\{shopConfig\.enabled && shopSupported && mallMode === 'shop'\}\}"/)
@@ -108,4 +120,8 @@ test('native shop component and local cart are rendered in mutually exclusive br
   assert.match(markup, /<dovlin-refresh\s+wx:else/)
   assert.match(markup, /bindtap="cart"/)
   assert.match(markup, /bindtap="retryShopConfig"/)
+  assert.match(markup, /class="mall-switcher-tab active">微信小店/)
+  assert.match(markup, /wx:if="\{\{shopPreviewMode\}\}"/)
+  const styles = fs.readFileSync(path.join(root, 'index.wxss'), 'utf8')
+  assert.doesNotMatch(styles, /\.wechat-shop-home\{[^}]*min-height/)
 })

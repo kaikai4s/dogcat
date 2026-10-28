@@ -1,4 +1,4 @@
-const { callFunction, showError } = require('../../../utils/cloud')
+const { callFunction, showError, requirePrivacyAuthorize } = require('../../../utils/cloud')
 const { withStaffWorkflowText, formatDateTime } = require('../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { copyText } = require('../../../utils/clipboard')
@@ -63,6 +63,9 @@ Page({
     depositError: false,
     depositBusy: false,
     depositAgreed: false,
+    supplyAgreed: false,
+    supplyAddress: { name: '', phone: '', province: '', city: '', district: '', detail: '' },
+    supplyLogistics: null,
     refundReason: '',
     supplyItems: [
       { name: '一次性手套', description: '足量自备', purchaseUrl: '' },
@@ -110,14 +113,14 @@ Page({
   async loadDeposit() {
     if (this._unloaded) return null
     const version = this._depositLoadVersion = (this._depositLoadVersion || 0) + 1
-    this.setData({ depositLoading: true, depositError: false, depositAgreed: false })
+    this.setData({ depositLoading: true, depositError: false, depositAgreed: false, supplyAgreed: false })
     try {
       const depositState = await callFunction('staff', 'getDepositStatus')
       if (depositState && depositState.deposit) {
         depositState.deposit = normalizeDeposit(depositState.deposit)
       }
       if (version !== this._depositLoadVersion || this._unloaded) return null
-      this.setData({ depositState })
+      this.setData({ depositState, supplyAddress: depositState?.deposit?.supplyAddress || this.data.supplyAddress })
       return depositState
     } catch (error) {
       if (version !== this._depositLoadVersion || this._unloaded) return null
@@ -130,6 +133,52 @@ Page({
 
   agreeDeposit(e) {
     this.setData({ depositAgreed: e.detail.value.includes('agreed') })
+  },
+  agreeSupply(e) {
+    this.setData({ supplyAgreed: e.detail.value.includes('agreed') })
+  },
+  supplyAddressInput(e) {
+    const field = e.currentTarget.dataset.field
+    if (['name', 'phone', 'province', 'city', 'district', 'detail'].includes(field)) this.setData({ [`supplyAddress.${field}`]: e.detail.value })
+  },
+  async chooseSupplyAddress() {
+    try {
+      await requirePrivacyAuthorize()
+      const address = await new Promise((resolve, reject) => wx.chooseAddress({ success: resolve, fail: reject }))
+      this.setData({ supplyAddress: {
+        name: address.userName || '', phone: address.telNumber || '', province: address.provinceName || '',
+        city: address.cityName || '', district: address.countyName || '', detail: address.detailInfo || ''
+      } })
+    } catch (error) {
+      if (!String(error?.errMsg || error?.message || '').includes('cancel')) showError(error)
+    }
+  },
+  async confirmSupplyDelivery() {
+    if (this.data.depositBusy || this.data.depositLoading || !this.data.supplyAgreed) return
+    const fee = this.data.depositState?.deposit?.supplyPolicyAcceptedAt
+      ? this.data.depositState.deposit.supplyFeeAmount : this.data.depositState?.supplies?.supplyFeeAmount
+    const confirmed = await new Promise(resolve => wx.showModal({ title: '确认首次用品规则',
+      content: `平台寄送首次用品，费用 ¥${fee}。通过费用减免审核，退出退押金时不扣；未申请或未通过则从可退押金中结算。未确认不发货、不扣用品费，仍可按原规则申请退出。请核对收货地址。`,
+      success: res => resolve(res.confirm), fail: () => resolve(false) }))
+    if (!confirmed) return
+    this.setData({ depositBusy: true })
+    try {
+      await callFunction('staff', 'confirmSupplyDelivery', { acceptSupplyPolicy: true, supplyAddress: this.data.supplyAddress })
+      wx.showToast({ title: '已确认，等待发货', icon: 'none' })
+      await this.loadDeposit()
+    } catch (error) { showError(error) } finally { this.setData({ depositBusy: false }) }
+  },
+  async querySupplyLogistics() {
+    const depositId = this.data.depositState?.profile?.supplyShipmentDepositId || this.data.depositState?.deposit?._id
+    if (!depositId || this.data.depositBusy) return
+    this.setData({ depositBusy: true })
+    try {
+      const result = await callFunction('staff', 'querySupplyDeliveryLogistics', { depositId })
+      this.setData({ supplyLogistics: result })
+    } catch (error) { showError(error) } finally { this.setData({ depositBusy: false }) }
+  },
+  copySupplyTracking() {
+    copyText(this.data.depositState?.firstSupplyShipment?.trackingNo || '')
   },
 
   inputRefundReason(e) {
@@ -148,11 +197,23 @@ Page({
       wx.showToast({ title: '请先阅读并勾选保证金缴纳规则', icon: 'none' })
       return
     }
+    const supplies = state.supplies || {}
+    if (state.supplyDeliveryRequired && !this.data.supplyAgreed) {
+      wx.showToast({ title: '请确认首次用品规则及地址', icon: 'none' })
+      return
+    }
+    if (state.supplyDeliveryRequired) {
+      const confirmed = await new Promise(resolve => wx.showModal({ title: '确认押金与用品费用',
+        content: `保证金 ¥${state.config.amount}；平台寄送首次用品费用 ¥${supplies.supplyFeeAmount}。退出时如用品费用减免未通过，将从可退押金中结算。请确认收货地址。`,
+        success: res => resolve(res.confirm), fail: () => resolve(false) }))
+      if (!confirmed) return
+    }
     this.setData({ depositBusy: true })
     let paymentSubmitted = false
     wx.showLoading({ title: '创建支付...', mask: true })
     try {
-      const result = await callFunction('staff', 'createDepositPayment', { agreed: true })
+      const result = await callFunction('staff', 'createDepositPayment', { agreed: true,
+        acceptSupplyPolicy: state.supplyDeliveryRequired === true, supplyAddress: this.data.supplyAddress })
       wx.hideLoading()
       if (result.paid) {
         paymentSubmitted = true
@@ -201,7 +262,9 @@ Page({
     }
     wx.showModal({
       title: '申请退出并退还保证金',
-      content: '自愿退出全额退还保证金，存在有效管理员没收决定的部分除外。物资报销是独立的平台出资商家转账，不属于保证金退款。是否提交？',
+      content: state.deposit?.supplyShipment && state.deposit?.supplyPolicyAcceptedAt
+        ? `可退押金 ¥${state.deposit.availableRefundAmount}；预计用品费用 ¥${state.supplyFeeDue || 0}（减免申请待审时先不结算）。审核通过后按结算明细退款，是否提交？`
+        : '未确认并收取首次用品，不扣用品费用；其他有效扣除按记录结算。是否提交？',
       success: async (res) => {
         if (!res.confirm || this.data.depositBusy) return
         this.setData({ depositBusy: true })

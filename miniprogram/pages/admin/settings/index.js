@@ -52,9 +52,9 @@ function normalizeStaffDeposit(deposit = {}) {
     ...deposit,
     enabled: deposit.enabled === true && validAmount(deposit.amount),
     amount: validAmount(deposit.amount, true) ? Number(deposit.amount) : 0,
-    rulesText: deposit.rulesText || '保证金金额以平台配置为准；用品报销由平台独立出资，绝不扣减保证金。',
-    refundRulesText: deposit.refundRulesText || '自愿退出时保证金全额原路退回；仅扣除管理员已记录依据、金额和原因的违规没收部分，已退金额不重复退还。',
-    forfeitRulesText: deposit.forfeitRulesText || '仅管理员可根据有据可查的违规事实没收保证金，必须记录依据、金额和原因；不得以用品报销为由扣减。'
+    rulesText: deposit.rulesText || '保证金金额以平台配置为准，首次用品寄送与费用由宠托师另行确认。',
+    refundRulesText: deposit.refundRulesText || '未确认或未发货的首次用品不收取费用；已发货的按确认时费用及减免审核结果结算，可退余额以审核明细为准。',
+    forfeitRulesText: deposit.forfeitRulesText || '违规没收须有依据和记录；首次用品费用单列，不计入违规没收。'
   }
 }
 
@@ -126,6 +126,8 @@ function normalizeStaffSupplies(supplies = {}) {
   return {
     ...supplies,
     reimbursementEnabled: supplies.reimbursementEnabled === true,
+    shippingEnabled: supplies.shippingEnabled === true,
+    supplyFeeAmount: validAmount(supplies.supplyFeeAmount, true) ? Number(supplies.supplyFeeAmount) : 0,
     reimbursementAmount: validAmount(supplies.reimbursementAmount, true) ? Number(supplies.reimbursementAmount) : (validAmount(supplies.maxReimbursementAmount, true) ? Number(supplies.maxReimbursementAmount) : 200),
     reimbursementMode: ['order_count', 'invite_count', 'either'].includes(supplies.reimbursementMode) ? supplies.reimbursementMode : 'order_count',
     reimbursementOrderCount: Math.max(0, Number(supplies.reimbursementOrderCount || 0)),
@@ -2050,6 +2052,8 @@ Page({
     const deposit = this.data.settings.staffDeposit
     if (!validAmount(deposit.amount, !deposit.enabled)) return showError(new Error('保证金金额须为有效金额，最多两位小数；启用时必须大于 0'))
     if (!validAmount(this.data.settings.staffSupplies.reimbursementAmount)) return showError(new Error('固定报销金额须为有效金额'))
+    if (!validAmount(this.data.settings.staffSupplies.supplyFeeAmount, true)) return showError(new Error('首次用品费用须为有效金额'))
+    if (this.data.settings.staffSupplies.shippingEnabled && (!Number(this.data.settings.staffSupplies.supplyFeeAmount) || Number(this.data.settings.staffSupplies.supplyFeeAmount) >= Number(deposit.amount))) return showError(new Error('启用平台寄送时，用品费用必须大于 0 且小于保证金'))
     if (!['order_count', 'invite_count', 'either'].includes(this.data.settings.staffSupplies.reimbursementMode)) return showError(new Error('请至少选择一种报销资格方式'))
     for (const [field, label] of [['reimbursementOrderCount', '需完成订单数量'], ['reimbursementInviteCount', '需邀请绑定人数']]) {
       if (!validReimbursementCount(this.data.settings.staffSupplies[field])) return showError(new Error(`${label}须为有效的非负整数，不设门槛请填写 0`))

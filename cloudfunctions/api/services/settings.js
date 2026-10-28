@@ -440,6 +440,12 @@ module.exports = function createService({
     const existing = await db.collection('platform_configs').where({ key: 'system_settings' }).limit(1).get()
     const previousValue = existing.data[0] ? existing.data[0].value : {}
     const value = normalizeSystemSettings(settings, { includeSecrets: true, existingSettings: previousValue, existingPayment: previousValue.payment || {} })
+    if (value.staffSupplies.shippingEnabled && (
+      !Number.isFinite(value.staffSupplies.supplyFeeAmount) ||
+      value.staffSupplies.supplyFeeAmount <= 0 ||
+      !value.staffDeposit.enabled ||
+      value.staffSupplies.supplyFeeAmount >= value.staffDeposit.amount
+    )) throw new Error('【首次用品寄送】用品费用必须大于0且小于已启用的保证金金额')
     if (settings.playground) {
       const world = require('./playground-world')
       await db.runTransaction(async tx => {
