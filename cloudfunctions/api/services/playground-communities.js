@@ -11,7 +11,7 @@ const normalize = value => {
 }
 module.exports = function createCommunities({ db, normalizeCityName = value => String(value || '').trim().replace(/市$/, '') }) {
   function selectable(row) {
-    return row && /^map_community_[a-f0-9]{24}$/.test(row._id) && row.key === 'service_community' && row.enabled === true &&
+    return row && /^map_community_[a-f0-9]{24}$/.test(row._id) && row.key === 'service_community' && row.enabled === true && !row.retiredAt &&
       typeof row.name === 'string' && row.name.trim() && row.latitude != null && row.longitude != null &&
       Number.isFinite(Number(row.latitude)) && Number.isFinite(Number(row.longitude)) &&
       Math.abs(Number(row.latitude)) <= 85 && Math.abs(Number(row.longitude)) <= 180 &&
@@ -29,6 +29,18 @@ module.exports = function createCommunities({ db, normalizeCityName = value => S
     if (!selectable(row)) throw new Error('小区尚未启用或已停用，请重新选择')
     return fromManaged(row)
   }
+  async function entry(value, user, store = db) {
+    if (!value?.serviceCommunityId) return { community: normalize(value), retired: false }
+    const id = String(value.serviceCommunityId)
+    if (!/^map_community_[a-f0-9]{24}$/.test(id)) throw new Error('小区编号无效')
+    const row = await readOptionalDocument(store, 'platform_configs', id)
+    if (selectable(row)) return { community: fromManaged(row), retired: false }
+    if (row?.retiredAt && row.key === 'service_community' &&
+      user?.residentialCommunity?.serviceCommunityId === id) {
+      return { community: fromManaged(row), retired: true }
+    }
+    throw new Error('小区尚未启用或已删除，请重新选择')
+  }
   async function readPlots(where) {
     const rows = []
     let cursor = ''
@@ -41,12 +53,12 @@ module.exports = function createCommunities({ db, normalizeCityName = value => S
     } while (cursor)
     return rows
   }
-  async function info(value) {
-    const community = await resolve(value)
+  async function info(value, user) {
+    const { community, retired } = await entry(value, user)
     if (!community) throw new Error('请选择有效小区')
     const id = world.communityId({ residentialCommunity: community })
     const rows = await readPlots({ kind: 'plot', communityId: id })
-    return { id, community, residentCount: new Set(rows.map(row => row.ownerOpenid)).size }
+    return { id, community, residentCount: new Set(rows.map(row => row.ownerOpenid)).size, retired }
   }
   async function list(user, data = {}) {
     const keyword = String(data.keyword || '').trim().toLowerCase().slice(0, 100)
@@ -102,5 +114,5 @@ module.exports = function createCommunities({ db, normalizeCityName = value => S
     const page = Math.max(1, Math.floor(Number(data.page) || 1)), pageSize = 20
     return { list: items.slice((page - 1) * pageSize, page * pageSize), hasMore: page * pageSize < items.length, page }
   }
-  return { list, info, resolve }
+  return { list, info, resolve, entry }
 }

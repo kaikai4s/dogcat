@@ -106,6 +106,8 @@ function rankingViewData(ranking, activeIndices = {}) {
 Page({
   data: {
     themeClass: 'theme-day',
+    rankingMaintenance: false,
+    maintenanceLoading: true,
     monthKey: '',
     currentMonthKey: '',
     selectedMonthIndex: 0,
@@ -193,8 +195,27 @@ Page({
   onShow() {
     this.updateContestTitle()
     this.applyCurrentTheme()
-    this.loadHome()
-    this.loadHistoryMonths()
+    if (typeof cloud.loadSystemSettings !== 'function') {
+      this.setData({ maintenanceLoading: false })
+      this.loadHome()
+      this.loadHistoryMonths()
+      return
+    }
+    this.setData({ maintenanceLoading: true })
+    return cloud.loadSystemSettings().then((settings) => {
+      const paused = settings.maintenance?.petRanking === true
+      this.setData({ rankingMaintenance: paused, maintenanceLoading: false })
+      if (paused) return
+      this.loadHome()
+      this.loadHistoryMonths()
+    }).catch((error) => {
+      this.setData({ maintenanceLoading: false })
+      showError(error)
+    })
+  },
+
+  backFromMaintenance() {
+    wx.navigateBack({ delta: 1, fail: () => wx.redirectTo({ url: '/pages/client/home/index' }) })
   },
 
   applyCurrentTheme() {
@@ -487,17 +508,19 @@ Page({
       })
       .catch((err) => {
         this._votingLock = false
-        this.setData({ animatingPetId: '', votingPetId: '' })
-        showError(err)
+        this.setData({ animatingPetId: '', votingPetId: '', loading: false })
+        if (err.code === 'MODULE_MAINTENANCE' || String(err.message || '').includes('正在维护中')) {
+          this.setData({ rankingMaintenance: true })
+        } else showError(err)
       })
   },
 
   onPullDownRefresh() {
-    this.loadHome()
-    wx.stopPullDownRefresh()
+    return Promise.resolve(this.onShow()).finally(() => wx.stopPullDownRefresh())
   },
 
   onShareAppMessage() {
+    if (this.data.rankingMaintenance) return { title: '宠物排行榜维护中', path: '/pages/client/home/index' }
     const inviteCode = this.data.inviteCode || ''
     const inviterOpenid = this.data.userOpenid || ''
     const title = this.data.pageTitle ? `${this.data.pageTitle}火热进行中，快来为我家宝贝投上一票吧！` : '晒出爱宠萌照，快来为我家宝贝投上一票吧！'

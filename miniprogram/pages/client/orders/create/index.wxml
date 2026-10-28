@@ -1,4 +1,11 @@
-<view class="page order-create-page {{themeClass}} {{fontClass}}">
+<view wx:if="{{!bookingMaintenance && !maintenanceLoading}}" class="page order-create-page {{themeClass}} {{fontClass}}">
+  <view class="booking-notice-ticker" wx:if="{{noticeTicker.enabled && noticeTicker.items.length}}">
+    <text class="remix-icon ri-notification-3-line"></text><text class="booking-ticker-label">公告</text>
+    <swiper class="booking-ticker-swiper" vertical="{{true}}" circular="{{noticeTicker.items.length > 1}}" autoplay="{{noticeTicker.items.length > 1}}" interval="4500" duration="400" disable-touch="{{noticeTicker.items.length < 2}}">
+      <swiper-item wx:for="{{noticeTicker.items}}" wx:key="*this" data-text="{{item}}" bindtap="showNoticeTickerItem"><view class="booking-ticker-item">{{item}}</view></swiper-item>
+    </swiper>
+    <text class="remix-icon ri-arrow-right-s-line"></text>
+  </view>
   <view class="booking-hero">
     <view class="booking-badge">立即预约</view>
     <view class="booking-title">安排一次安心上门照护</view>
@@ -714,6 +721,14 @@
         <button class="primary confirm-sheet-btn" bindtap="confirmCalendarSelection">确定选择</button>
       </view>
     </view>
+  </view>
+</view>
+<view wx:else class="module-maintenance-screen {{themeClass}}">
+  <view class="module-maintenance-inner" wx:if="{{!maintenanceLoading}}">
+    <text class="remix-icon ri-time-line module-maintenance-icon"></text>
+    <view class="module-maintenance-title">预约下单正在维护</view>
+    <view class="module-maintenance-description">预约下单功能暂时不可使用，正在维护中。已有订单仍可在订单页查看。</view>
+    <button class="module-maintenance-back" bindtap="backFromMaintenance">返回</button>
   </view>
 </view>
 <view wx:if="{{bookingNotice}}" class="booking-notice" role="alert">

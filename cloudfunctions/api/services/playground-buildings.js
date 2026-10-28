@@ -186,7 +186,7 @@ async function readCatalog(db) {
       reportPoints:Number.isInteger(item.reportPoints)?item.reportPoints:5,
       resolveReward:(!row||row.rewardsVersion===2)&&Number.isInteger(item.resolveReward)?item.resolveReward:10,
       weeklySalary:(!row||row.rewardsVersion===2)&&Number.isInteger(item.weeklySalary)?item.weeklySalary:20})),
-    plotSizes:row&&row.plotSizes||DEFAULT_PLOT_SIZES}
+    plotSizes:DEFAULT_PLOT_SIZES.map((size)=>({...size,...(row&&row.plotSizes||[]).find((item)=>item.size===size.size)}))}
 
 }
 
@@ -369,10 +369,24 @@ module.exports = function createBuildingsService(context) {
     if(!DEFAULT_PLOT_SIZES.some((p)=>p.size===size))throw new Error('无效的绿地规格')
     const ids=levelIds(data.unlockLevelIds)
     await validateLevels(db,ids)
+    const grants = data.levelGrants === undefined ? undefined : data.levelGrants
+    if (grants !== undefined && (!Array.isArray(grants) || grants.length !== ids.length ||
+      grants.some((entry) => !entry || !ids.includes(entry.levelId) || !Number.isInteger(entry.count) || entry.count < 1 || entry.count > 100) ||
+      new Set(grants.map((entry) => entry.levelId)).size !== ids.length)) {
+      throw new Error('每个已选等级的新增地皮数量须为1至100块的整数')
+    }
     return transaction(db,async(tx)=>{
       const current=await readCatalog(tx)
       if(current.revision!==data.revision)throw new Error('配置已更新，请刷新后重试')
-      const plotSizes=DEFAULT_PLOT_SIZES.map((p)=>({...p,...current.plotSizes.find((v)=>v.size===p.size),...(p.size===size?{unlockLevelIds:ids}:{})}))
+      const plotSizes=DEFAULT_PLOT_SIZES.map((p)=>{
+        const option={...p,...current.plotSizes.find((v)=>v.size===p.size)}
+        if (p.size===size) {
+          option.unlockLevelIds=ids
+          if (ids.length && grants !== undefined) option.levelGrants=grants
+          else delete option.levelGrants
+        }
+        return option
+      })
       const next={...current,rewardsVersion:2,plotSizes,revision:current.revision+1,updatedBy:openid,updatedAt:now()}
       await tx.collection(COLLECTION).doc(ID).set({data:next})
       return next

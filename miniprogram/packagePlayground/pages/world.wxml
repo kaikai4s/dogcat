@@ -8,6 +8,10 @@
       <view class="subtitle"><text>{{visiting ? '正在访问' : hasAvatar ? '我的小区' : '待建庭院'}} · 切换 ▾</text><text class="resident-count">已入住 {{residentCount}} 人</text></view>
     </view>
   </view>
+  <view class="retired-community-notice" style="top: {{top + 65}}px" wx:if="{{communityRetired && !loading && !error}}">
+    <view class="retired-community-copy"><text class="retired-community-title">小区已从目录删除</text><text>原住户可继续活动；新住户和访客不可进入，请适时搬迁。</text></view>
+    <button bindtap="moveFromRetiredCommunity">搬迁说明</button>
+  </view>
   <view class="error" wx:if="{{error}}">
     <view>场景加载失败</view><view class="detail">{{error}}</view>
     <button bindtap="initialize">重新加载</button>

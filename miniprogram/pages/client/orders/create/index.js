@@ -1,6 +1,6 @@
 const { uploadImage } = require('../../../../utils/image-upload')
 const cloud = require('../../../../utils/cloud') || {}
-const { callFunction, showError, requestSubscribeTemplates, loadSystemSettings } = cloud
+const { callFunction, showError, requestSubscribeTemplates, loadSystemSettings, getCachedSystemSettings } = cloud
 const showLoading = (opts) => {
   if (typeof cloud.showLoading === 'function') return cloud.showLoading(opts)
   if (typeof wx !== 'undefined' && typeof wx.showLoading === 'function') return wx.showLoading(opts)
@@ -428,6 +428,9 @@ function getInitialServiceTime() {
 
 typeof Page === 'function' ? Page({
   data: {
+    noticeTicker: { enabled: false, items: [] },
+    bookingMaintenance: false,
+    maintenanceLoading: true,
     themeClass: 'theme-day',
     user: null,
     pets: [],
@@ -572,22 +575,38 @@ typeof Page === 'function' ? Page({
 
   onShow() {
     this.applyCurrentTheme()
+    const cached = getCachedSystemSettings()
+    this.setData({ noticeTicker: cached.noticeTicker || { enabled: false, items: [] }, bookingMaintenance: cached.maintenance?.booking === true, maintenanceLoading: true })
     this.consumeSelectedCoupon()
     this.updateMinTime()
-    loadSystemSettings().then((settings) => {
+    return loadSystemSettings().then((settings) => {
+      const paused = settings.maintenance?.booking === true
+      this.setData({ noticeTicker: settings.noticeTicker || { enabled: false, items: [] }, bookingMaintenance: paused, maintenanceLoading: false })
+      if (paused) return null
       this.initPricingSurcharges(settings && settings.pricingSurcharges)
-    }).catch(() => null)
-    return ensureLogin({ content: '登录后可创建预约订单。' })
+      return ensureLogin({ content: '登录后可创建预约订单。' })
+    })
       .then((user) => {
+        if (!user) return
         this.setData({ user })
         return this.loadPageData()
       }, () => {
         // Let ensureLogin finish its login navigation; data errors must not send users home.
       })
       .catch((error) => {
+        this.setData({ maintenanceLoading: false })
         console.error('[booking initialization failed]', error)
         showError(error)
       })
+  },
+
+  backFromMaintenance() {
+    wx.navigateBack({ delta: 1, fail: () => wx.redirectTo({ url: '/pages/client/home/index' }) })
+  },
+
+  showNoticeTickerItem(e) {
+    const text = e.currentTarget.dataset.text
+    if (text) wx.showModal({ title: '平台公告', content: text, showCancel: false })
   },
 
   updateMinTime() {

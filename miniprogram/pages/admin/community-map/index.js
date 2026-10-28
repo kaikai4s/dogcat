@@ -49,7 +49,7 @@ Page({
   },
   edit(e) {
     const row = this.data.rows.find(item => item._id === e.currentTarget.dataset.id)
-    if (row) this.openForm({ ...row, id: row._id, aliasesText: (row.aliases || []).join('\n'), confirmPublic: false })
+    if (row && !row.retiredAt) this.openForm({ ...row, id: row._id, aliasesText: (row.aliases || []).join('\n'), confirmPublic: false })
   },
   async editExisting(e) {
     const row = this.data.rows.find(item => item._id === e.currentTarget.dataset.id)
@@ -60,7 +60,7 @@ Page({
       const result = await callFunction('communityMap', 'listAdmin', { id: row.existingId, paginated: true })
       if (this._closed || token !== this._editToken) return
       const existing = result.list[0]
-      if (!existing) throw new Error('小区资料已变化，请刷新')
+      if (!existing || existing.retiredAt) throw new Error('小区已删除，请刷新')
       this.openForm({ ...existing, id: existing._id, aliasesText: (existing.aliases || []).join('\n'), confirmPublic: false,
         applicationIds: row.applicationIds || [] })
     } catch (error) { if (!this._closed && token === this._editToken) showError(error) }
@@ -110,6 +110,26 @@ Page({
     finally { if (!this._closed) this.setData({ busy: false }) }
   },
   canRejectApplications() { return !!(this.data.adminSuper || this.data.adminPermissions?.communityMap_rejectApplication) },
+  canDeleteCommunity() { return !!(this.data.adminSuper || this.data.adminPermissions?.communityMap_deleteAdmin) },
+  async deleteCommunity(e) {
+    if (this._closed || this.data.busy || this.data.form || this.data.rejectForm || !this.canDeleteCommunity()) return
+    const row = this.data.rows.find(item => item._id === e.currentTarget.dataset.id)
+    if (this.data.view !== 'catalog' || !row || row.retiredAt) return
+    this.setData({ busy: true })
+    try {
+      const confirmation = await new Promise((resolve, reject) => wx.showModal({
+        title: `删除“${row.name}”？`,
+        content: '删除后不会清除已入住用户的庭院或活动，但不再接受新住户和访客。原住户会看到搬迁提醒，搬迁需自行先拆除庭院。此操作不能恢复。',
+        confirmText: '确认删除', confirmColor: '#b34232', success: resolve, fail: reject
+      }))
+      if (this._closed || !confirmation.confirm || !this.canDeleteCommunity()) return
+      await callFunction('communityMap', 'deleteAdmin', { id: row._id, editVersion: row.editVersion })
+      if (this._closed) return
+      wx.showToast({ title: '小区已删除，原住户可继续活动', icon: 'none' })
+      await this.load()
+    } catch (error) { if (!this._closed) showError(error) }
+    finally { if (!this._closed) this.setData({ busy: false }) }
+  },
   rejectCandidate(e) {
     if (this._closed || this.data.busy || this.data.form || this.data.rejectForm || !this.canRejectApplications()) return
     const row = this.data.rows.find(item => item._id === e.currentTarget.dataset.id)

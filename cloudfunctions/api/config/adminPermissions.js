@@ -1,5 +1,5 @@
 const definitions = [
-  ['communityMap', '小区地图', 'communityMap', 'listAdmin:查看公共小区 saveAdmin:维护公共小区 rejectApplication:驳回新增申请'],
+  ['communityMap', '小区地图', 'communityMap', 'listAdmin:查看公共小区 saveAdmin:维护公共小区 deleteAdmin:删除公共小区 rejectApplication:驳回新增申请'],
   ['buildings','乐园建筑与土地','playgroundBuilding','list:查看配置 prepareUpload:上传建筑素材 save:保存建筑 remove:删除建筑 savePlotAccess:配置土地等级'],
   ['farm', '农作物管理', 'playgroundFarm', 'list:查看农作物 prepareUpload:上传阶段素材 save:保存及上下架 remove:删除植物'],
   ['playground', '乐园形象定制', 'playgroundAppearance', 'listAdmin:申请列表 detailAdmin:查看照片 prepareUpload:上传图集 publish:发布专属形象 reject:退回申请 disableAppearance:作废专属形象 enableAppearance:重新启用专属形象'],
@@ -53,7 +53,9 @@ for (const [id, label, from, names] of splitGroups) {
   groups.splice(groups.indexOf(source) + 1, 0, { id, label, module: source.module, actions })
 }
 const sensitive = new Set(('communityMap.rejectApplication order.checkOverdueOrders staff.checkUpcomingReminders admin.refundOrder admin.batchDeleteOrders admin.deleteUser admin.hardDeleteUser admin.revokeStaff admin.settleStaffEarningsByWechat admin.auditWithdrawRequest admin.auditUserAssetWithdrawal admin.retryWithdrawTransfer admin.releaseFailedWithdraw admin.markWithdrawPaid admin.batchRequireDepositRepay admin.requestStaffDepositRefund admin.auditDepositRefund admin.confirmDepositRefund admin.autoRefundStaffDeposit admin.forfeitStaffDeposit admin.auditSupplyReimbursement admin.paySupplyReimbursement admin.grantPoints admin.grantUserAssetCash admin.issueCouponToUser admin.issueCouponByLevels admin.publishRewardMailByLevels admin.publishRetroCardMail admin.publishPetTitleMail admin.resetDefaultServicePrices admin.resetDefaultServiceCheckinRules admin.sendSystemNotification adminMall.refundOrder adminMall.auditRefund incident.freezeStaffEarning incident.closeIncident payment.createRefund petBeauty.settleMonthlyRanking petBeauty.grantPetBeautyChampionPrize questionnaire.retryReward questionnaire.retryAllRewards').split(' '))
+sensitive.add('communityMap.deleteAdmin')
 const details = {
+  'communityMap.deleteAdmin': '从公开目录删除小区，阻止新访客及新住户进入，保留原住户庄园并持续提醒搬迁。',
   'communityMap.rejectApplication': '填写原因并永久驳回新增小区申请，通过系统通知告知原申请人；同一小区不再接受申请。',
   'admin.dashboard': '查看全平台订单数量、待审核数量及经营汇总，包含跨业务统计。',
   'admin.getAdminNotificationBadge': '查看后台通知未读数及紧急待办摘要。',

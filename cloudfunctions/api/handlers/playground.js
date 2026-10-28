@@ -23,7 +23,7 @@ module.exports = function createHandler(context) {
       return result
     }
     if (action === 'listCommunities') return require('../services/playground-communities')(context).list(user, data)
-    if (action === 'getCommunityInfo') return require('../services/playground-communities')(context).info(data.community || user.residentialCommunity)
+    if (action === 'getCommunityInfo') return require('../services/playground-communities')(context).info(data.community || user.residentialCommunity, user)
     if (action === 'listCommunityGroupBuys') return require('../services/playground-group-buy')(context).list(openid)
     if (action === 'getPublicPetCare') return require('../services/playground-care')(context).publicCare(openid, data)
     if (action === 'syncScene') return shared.sync(openid, data)
@@ -63,19 +63,26 @@ module.exports = function createHandler(context) {
       // Include the home and occupied gardens: ordinary buildings can be added
       // to either. Complete projections also work before distant chunks load.
       await world.own(openid)
-      const buildablePlots = []
+      const ownedPlots = []
       let cursor = ''
       do {
-        const query = { kind: 'plot', ownerOpenid: openid, ...(data.sceneId ? { communityId: data.sceneId } : {}), ...(cursor ? { _id: db.command.gt(cursor) } : {}) }
+        const query = { kind: 'plot', ownerOpenid: openid, ...(cursor ? { _id: db.command.gt(cursor) } : {}) }
         const page = (await db.collection('pet_playground_plots').where(query).orderBy('_id', 'asc').limit(100).get()).data || []
-        buildablePlots.push(...page.filter((p) => !p.demolished).map((p) => world.publicPlot(p, openid)))
+        ownedPlots.push(...page.filter((p) => !p.demolished))
         cursor = page.length === 100 ? page[page.length - 1]._id : ''
       } while (cursor)
+      const buildablePlots = (data.sceneId ? ownedPlots.filter((p) => p.communityId === data.sceneId) : ownedPlots).map((p) => world.publicPlot(p, openid))
       const emptyPlots = buildablePlots.filter((p) => p.isNewPlot && !placedBuildings(p).some(isPublicBuilding))
+      const ownedBySize = ownedPlots.filter((p) => p.isNewPlot).reduce((counts,p) => ({...counts,[p.size]:(counts[p.size]||0)+1}),{})
       return {
         ...catalog,
         buildings: catalog.buildings.map((b) => decorate(b, access)),
-        plotSizes: catalog.plotSizes.map((p) => decorate(p, access)),
+        plotSizes: catalog.plotSizes.map((p) => {
+          const option = decorate(p, access)
+          return option.allowance === undefined ? option : {...option, ownedCount:ownedBySize[p.size]||0,
+            unlocked:option.unlocked && (ownedBySize[p.size]||0)<option.allowance,
+            unlockText:option.unlocked && (ownedBySize[p.size]||0)>=option.allowance ? `已达${option.allowance}块上限` : option.unlockText}
+        }),
         memberLevelName: access.memberLevelName,
         emptyPlots,
         buildablePlots

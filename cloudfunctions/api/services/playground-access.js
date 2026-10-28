@@ -16,11 +16,25 @@ function levelIds(value) {
   return [...new Set(value)]
 }
 function unlocked(item, access) {
-  return item.enabled !== false && (!(item.unlockLevelIds || []).length || item.unlockLevelIds.includes(access.memberLevel))
+  if (item.enabled === false) return false
+  if (Array.isArray(item.levelGrants)) return plotAllowance(item, access) > 0
+  return !(item.unlockLevelIds || []).length || item.unlockLevelIds.includes(access.memberLevel)
+}
+function plotAllowance(item, access) {
+  if (!Array.isArray(item.levelGrants)) return null
+  const rank = access.levels.findIndex((level) => level._id === access.memberLevel)
+  if (rank < 0) return 0
+  return item.levelGrants.reduce((total, grant) => {
+    const grantedRank = access.levels.findIndex((level) => level._id === grant.levelId)
+    return total + (grantedRank >= 0 && grantedRank <= rank ? grant.count : 0)
+  }, 0)
 }
 function decorate(item, access) {
   const ids = item.unlockLevelIds || []
-  return { ...item, unlocked: unlocked(item, access), unlockText: ids.length
+  const allowance = plotAllowance(item, access)
+  return { ...item, unlocked: unlocked(item, access), ...(allowance === null ? {} : { allowance }), unlockText: allowance !== null
+    ? allowance ? `最多可拥有${allowance}块` : '当前等级未解锁'
+    : ids.length
     ? ids.map((id) => (access.levels.find((l) => l._id === id) || {}).name || '已移除的等级').join('、') + '可用'
     : '所有会员可用' }
 }
@@ -28,4 +42,4 @@ async function validateLevels(db, ids) {
   const levels = (await db.collection('member_levels').get()).data || []
   if (ids.some((id) => !levels.some((l) => l._id === id))) throw new Error('所选会员等级已变化，请刷新后重新选择')
 }
-module.exports = { memberAccess, levelIds, unlocked, decorate, validateLevels }
+module.exports = { memberAccess, levelIds, unlocked, plotAllowance, decorate, validateLevels }

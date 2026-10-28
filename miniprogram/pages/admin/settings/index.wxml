@@ -6,6 +6,10 @@
   </view>
 
   <view class="settings-grid">
+    <view class="admin-compact-card setting-overview-card" data-panel="maintenance" bindtap="openSettingModal">
+      <view class="admin-summary-row"><view class="admin-summary-main"><view class="admin-summary-title">功能维护</view><view class="admin-summary-sub">{{settingSummary.maintenance}}</view></view><view class="meta-chip {{settings.maintenance.petRanking || settings.maintenance.booking || settings.maintenance.invitation ? 'warning' : 'success'}}">{{settings.maintenance.petRanking || settings.maintenance.booking || settings.maintenance.invitation ? '维护中' : '正常'}}</view></view>
+      <view class="setting-summary-line">单独暂停排行榜、预约下单及分享邀请；不影响已有订单和历史收益。</view>
+    </view>
     <navigator wx:if="{{adminSuper}}" class="admin-compact-card setting-overview-card" url="/pages/admin/config-migration/index"><view class="admin-summary-title">配置导入与导出</view><view class="setting-summary-line">导出全部配置，跨环境预览导入，自动保留备份 ›</view></navigator>
     <navigator class="admin-compact-card setting-overview-card" url="/pages/admin/playground/index"><view class="admin-summary-title">宠物庄园管理</view><view class="setting-summary-line">拼单优惠、宠物状态、地面及庄园素材统一管理 ›</view></navigator>
     <view class="admin-compact-card setting-overview-card" data-panel="staffPolicy" bindtap="openSettingModal">
@@ -143,6 +147,11 @@
       <view class="setting-summary-line">配置签到中心邀请好友分享标题和封面。</view>
     </view>
 
+    <view class="admin-compact-card setting-overview-card" data-panel="noticeTicker" bindtap="openSettingModal">
+      <view class="admin-summary-row"><view class="admin-summary-main"><view class="admin-summary-title">用户端消息滚动栏</view><view class="admin-summary-sub">{{settingSummary.noticeTicker}}</view></view><view class="meta-chip chip-primary">编辑</view></view>
+      <view class="setting-summary-line">发布后在首页顶部和预约下单页显示。</view>
+    </view>
+
     <view class="admin-compact-card setting-overview-card" data-panel="settlementReliability" bindtap="openSettingModal">
       <view class="admin-summary-row">
         <view class="admin-summary-main">
@@ -222,12 +231,13 @@
     </view>
   </view>
 
-  <button wx:if="{{adminSuper}}" class="primary save-settings-btn" disabled="{{saving}}" bindtap="save">{{saving ? '保存中...' : '保存全局设置'}}</button>
+  <button wx:if="{{adminSuper}}" class="primary save-settings-btn" disabled="{{saving || uploadingTrainingVideo || uploadingTrainingPoster || uploadingInvitationShareImage || uploadingCheckinShareImage}}" bindtap="save">{{saving ? '保存中...' : '保存全局设置'}}</button>
 
   <view class="modal-backdrop" wx:if="{{showSettingModal}}" bindtap="closeSettingModal" catchtouchmove="noop">
     <view class="modal-card settings-modal-card" catchtap="noop">
       <view class="modal-header">
         <view class="modal-title" wx:if="{{activeSettingPanel === 'pricingSurcharges'}}">特殊日期与时段加价</view>
+        <view class="modal-title" wx:if="{{activeSettingPanel === 'maintenance'}}">功能维护</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'realNameVerification'}}">宠托师实名核验 (聚合数据)</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'staffZhima'}}">宠托师芝麻信用准入</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'staffPolicy'}}">保证金与用品报销</view>
@@ -239,6 +249,7 @@
         <view class="modal-title" wx:if="{{activeSettingPanel === 'subscription'}}">订阅消息</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'customerService'}}">客服与转接</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'checkinShare'}}">签到分享卡片</view>
+        <view class="modal-title" wx:if="{{activeSettingPanel === 'noticeTicker'}}">用户端消息滚动栏</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'settlementReliability'}}">结算与可靠性</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'invitation'}}">邀请活动与用户资产</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'carousel'}}">首页顶部轮播</view>
@@ -249,6 +260,12 @@
       </view>
 
       <scroll-view scroll-y class="modal-scroll-body settings-modal-scroll">
+        <view wx:if="{{activeSettingPanel === 'maintenance'}}" class="setting-modal-section">
+          <view class="module-switch-row"><view><view class="label">宠物排行榜维护</view><view class="muted">暂停查看排行榜、活动入口及投票；已获称号不受影响。</view></view><switch checked="{{settings.maintenance.petRanking}}" disabled="{{!adminSuper}}" data-key="petRanking" bindchange="toggleMaintenance" /></view>
+          <view class="module-switch-row"><view><view class="label">预约下单维护</view><view class="muted">暂停服务订单报价、创建及待支付订单付款；已有订单可继续查看和履约，商城不受影响。</view></view><switch checked="{{settings.maintenance.booking}}" disabled="{{!adminSuper}}" data-key="booking" bindchange="toggleMaintenance" /></view>
+          <view class="module-switch-row"><view><view class="label">分享赚取佣金维护</view><view class="muted">暂停新邀请绑定与收益获取；已有收益仍可查看、提现。</view></view><switch checked="{{settings.maintenance.invitation}}" disabled="{{!adminSuper}}" data-key="invitation" bindchange="toggleMaintenance" /></view>
+          <view class="notice">开启表示进入维护状态；点击底部“保存全局设置”后生效。</view>
+        </view>
         <view wx:if="{{activeSettingPanel === 'staffZhima'}}" class="setting-modal-section">
           <view class="policy-notice">开启后，宠托师申请入驻必须填写支付宝芝麻信用分，且分数必须达到平台配置的最低门槛。申请人需上传【芝麻信用分截图】和【支付宝个人主页截图】以便管理员审核核对实名信息。</view>
           
@@ -616,6 +633,16 @@
             </view>
             <view class="checkin-share-file" wx:if="{{settings.checkinShare.imageUrl}}">{{settings.checkinShare.imageUrl}}</view>
           </view>
+        </view>
+
+        <view wx:if="{{activeSettingPanel === 'noticeTicker'}}" class="setting-modal-section">
+          <view class="compact-toggle-row"><text>显示消息滚动栏</text><switch checked="{{settings.noticeTicker.enabled}}" bindchange="toggleNoticeTicker" /></view>
+          <view class="field-item" wx:for="{{settings.noticeTicker.items}}" wx:key="index">
+            <text class="label">消息 {{index + 1}}</text>
+            <textarea class="input textarea-input" maxlength="120" value="{{item}}" data-index="{{index}}" bindinput="noticeTickerInput" placeholder="输入要向用户展示的注意事项" />
+            <button class="btn btn-outline btn-xs" data-index="{{index}}" bindtap="removeNoticeTickerItem">删除消息</button>
+          </view>
+          <button class="btn btn-outline" bindtap="addNoticeTickerItem">添加消息</button>
         </view>
 
         <view wx:if="{{activeSettingPanel === 'settlementReliability'}}" class="setting-modal-section">
@@ -996,7 +1023,7 @@
 
       <view class="modal-actions">
         <button class="ghost" style="flex: 1;" bindtap="closeSettingModal">关闭</button>
-        <button wx:if="{{adminSuper}}" class="primary" style="flex: 2;" disabled="{{saving}}" bindtap="save">{{saving ? '保存中...' : '保存设置'}}</button>
+        <button wx:if="{{adminSuper}}" class="primary" style="flex: 2;" disabled="{{saving || uploadingTrainingVideo || uploadingTrainingPoster || uploadingInvitationShareImage || uploadingCheckinShareImage}}" bindtap="save">{{saving ? '保存中...' : '保存设置'}}</button>
       </view>
     </view>
   </view>

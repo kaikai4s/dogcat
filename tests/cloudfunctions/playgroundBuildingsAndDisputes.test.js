@@ -496,6 +496,29 @@ test('membership controls new plots and canonical buildings without any token de
   await assert.rejects(()=>service.remove('admin',{id:clinic.id,revision:0}),/其他管理员/)
 })
 
+test('per-size plot grants accumulate across membership levels and are enforced on the server', async () => {
+  const f = fixture(), service = createBuildingsService(f.context)
+  await f.build()
+  await f.db.collection('member_levels').doc('silver').set({ data: { name: '白银', minPoints: 50 } })
+  await f.db.collection('member_levels').doc('gold').set({ data: { name: '黄金', minPoints: 100 } })
+  const granted = await service.savePlotAccess('admin', {
+    revision: 0, size: 48, unlockLevelIds: ['silver', 'gold'],
+    levelGrants: [{ levelId: 'silver', count: 1 }, { levelId: 'gold', count: 1 }]
+  })
+  assert.equal(granted.plotSizes.find((plot) => plot.size === 48).levelGrants.length, 2)
+  await assert.rejects(() => f.plots.claim('a', f.user('a'), { x: 600, z: 600, size: 48, isNewPlot: true }), /会员等级/)
+  await f.db.collection('users').doc('user_a').update({ data: { memberLevel: 'silver' } })
+  await f.plots.claim('a', f.user('a'), { x: 600, z: 600, size: 48, isNewPlot: true })
+  await assert.rejects(() => f.plots.claim('a', f.user('a'), { x: 800, z: 600, size: 48, isNewPlot: true }), /上限/)
+  await f.db.collection('users').doc('user_a').update({ data: { memberLevel: 'gold' } })
+  await f.plots.claim('a', f.user('a'), { x: 800, z: 600, size: 48, isNewPlot: true })
+  await assert.rejects(() => f.plots.claim('a', f.user('a'), { x: 1000, z: 600, size: 48, isNewPlot: true }), /上限/)
+  await f.plots.claim('a', f.user('a'), { x: 1000, z: 600, size: 64, isNewPlot: true })
+  await assert.rejects(() => service.savePlotAccess('admin', {
+    revision: granted.revision, size: 48, unlockLevelIds: ['gold'], levelGrants: [{ levelId: 'gold', count: 0 }]
+  }), /1至100/)
+})
+
 test('construction preserves decorative plants and rejects a building footprint that would cover them',async()=>{
   const f=fixture(),a=await f.build(),yard=await f.plots.claim('a',f.user('a'),{x:504,z:280,size:48,isNewPlot:true})
   const tile=farmLayout(yard).slice().sort((a,b)=>Math.hypot(a.x-yard.x,a.z-yard.z)-Math.hypot(b.x-yard.x,b.z-yard.z))[0]

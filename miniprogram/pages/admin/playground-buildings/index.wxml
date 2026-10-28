@@ -41,7 +41,22 @@
     </view>
   </view>
 
-  <view class="building-list" wx:if="{{!form && !loading}}"><view class="title">新地皮会员解锁</view><text class="subtitle">每个规格单独保存，不选等级表示所有会员可用。</text><view class="building-card" wx:for="{{plotSizes}}" wx:key="size"><view><text>{{item.label}}</text><checkbox-group data-size="{{item.size}}" bindchange="plotLevelsChange"><label wx:for="{{item.choices}}" wx:for-item="level" wx:key="_id"><checkbox value="{{level._id}}" checked="{{level.checked}}" />{{level.name}}</label></checkbox-group><button wx:if="{{adminSuper || adminPermissions.playgroundBuilding_savePlotAccess}}" data-size="{{item.size}}" bindtap="savePlotLevels" disabled="{{busy}}">保存此规格</button></view></view></view>
+  <view class="building-list" wx:if="{{!form && !loading}}">
+    <view class="title">新地皮会员解锁</view>
+    <text class="subtitle">每个规格单独配置。勾选等级后填写该等级新增块数；高等级累计获得低等级配额。不选则该规格不限数量。</text>
+    <view class="building-card plot-access-card" wx:for="{{plotSizes}}" wx:key="size" wx:for-item="plot">
+      <view class="plot-access-content">
+        <text class="card-title">{{plot.label}}</text>
+        <checkbox-group data-size="{{plot.size}}" bindchange="plotLevelsChange">
+          <view class="plot-level-row" wx:for="{{plot.choices}}" wx:for-item="level" wx:key="_id">
+            <label class="plot-level-label"><checkbox value="{{level._id}}" checked="{{level.checked}}" />{{level.name}}</label>
+            <view class="plot-level-count" wx:if="{{level.checked}}"><input type="number" value="{{level.count}}" data-size="{{plot.size}}" data-id="{{level._id}}" bindinput="plotCountChange" /><text>块</text></view>
+          </view>
+        </checkbox-group>
+        <button wx:if="{{adminSuper || adminPermissions.playgroundBuilding_savePlotAccess}}" data-size="{{plot.size}}" bindtap="savePlotLevels" disabled="{{busy}}">保存此规格</button>
+      </view>
+    </view>
+  </view>
   <!-- 编辑/新建弹窗 -->
   <view class="modal-backdrop" wx:if="{{form}}">
     <view class="modal-card">

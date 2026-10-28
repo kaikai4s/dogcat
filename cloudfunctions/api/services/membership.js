@@ -248,12 +248,14 @@ module.exports = function createService({
       }
       return currentUser
     }
+    if (!data.inviteCode && !data.inviterOpenid) return currentUser
+    const systemSettings = await getSystemSettings()
+    if (systemSettings.maintenance?.invitation === true) return currentUser
     const inviter = await resolveInviter(data)
     if (!inviter || inviter.openid === currentUser.openid) return currentUser
 
     const inviteDocId = `invite_${currentUser.openid}`
     const bindingSource = safeText(data.bindingSource || (data.inviteCode ? 'share' : 'manual')).trim() || 'manual'
-    const systemSettings = await getSystemSettings().catch(() => ({}))
     const rewardAmount = invitationRewardSnapshot(systemSettings)
     let inviterStaffEligibleAt = ''
     try {

@@ -687,3 +687,4 @@
   50% { transform: scale(1.015); }
   100% { transform: scale(1); }
 }
+.invitation-maintenance-tip{margin:20rpx 0 8rpx;padding:20rpx 24rpx;background:#fff4e6;border-left:5rpx solid #bd6a38;color:#67442c;font-size:25rpx;line-height:1.6;overflow-wrap:break-word}

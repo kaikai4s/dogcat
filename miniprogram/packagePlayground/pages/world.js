@@ -77,6 +77,7 @@ Page({
     joystickRunning: false,
     hasCommunity: false,
     communityName: '',
+    communityRetired: false,
     hasPlot: false,
     visiting: false,
     hasHomeElsewhere: false,
@@ -217,6 +218,7 @@ Page({
         selectedPetId: '',
         selectedPetName: '',
         residentCount: 0,
+        communityRetired: false,
         showPetScale: false,
         settingsOpen: false,
         socialOpen: false,
@@ -237,6 +239,7 @@ Page({
               hasCommunity: Boolean(overview.hasCommunity),
               communityName:
                 (overview.userCommunity && overview.userCommunity.name) || '',
+              communityRetired: Boolean(overview.scene && overview.scene.communityRetired),
               hasPlot: Boolean(overview.plot),
               hasAvatar: Boolean(overview.scene && overview.scene.hasAvatar),
               vehicleSpeed:overview.scene&&overview.scene.vehicleSpeed||2,
@@ -676,6 +679,17 @@ Page({
     if(this.data.visiting) actions.push({title:'迁入当前小区',run:()=>this.settleCommunity()})
     if(this.data.hasPlot) actions.push({title:'拆除我的庭院',run:()=>this.demolishPlot()})
     wx.showActionSheet({itemList:actions.map((a)=>a.title),success:(r)=>actions[r.tapIndex].run()})
+  },
+  moveFromRetiredCommunity() {
+    if (this.data.hasPlot) {
+      wx.showModal({
+        title: '搬迁到新小区',
+        content: '原庄园和庭院仍可照常使用，不会自动删除。搬迁前，请在小区菜单中选择“拆除我的庭院”；庭院布置会清除，宠物档案保留。随后即可选择新小区安置庭院。',
+        confirmText: '打开小区菜单', success: result => { if (result.confirm && this.visible) this.communityActions() }
+      })
+      return
+    }
+    this.chooseCommunityAndBuild()
   },
   openUserTitles() {
     this.joystickEnd()

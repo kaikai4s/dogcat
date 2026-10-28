@@ -111,7 +111,10 @@ Page({
         const buildings = result.buildings || []
         this.setData({
           levels:result.levels||[],
-          plotSizes:(result.plotSizes||[]).map((p)=>({...p,choices:(result.levels||[]).map((l)=>({...l,checked:(p.unlockLevelIds||[]).includes(l._id)}))})),
+          plotSizes:(result.plotSizes||[]).map((p)=>({...p,choices:(result.levels||[]).map((l)=>({
+            ...l,checked:(p.unlockLevelIds||[]).includes(l._id),
+            count:((p.levelGrants||[]).find((g)=>g.levelId===l._id)||{}).count||1
+          }))})),
           buildings,
           displayBuildings: this.filterBuildings(buildings, this.data.activeCategory),
           revision: result.revision || 0
@@ -182,17 +185,27 @@ Page({
       'form.category': found.category || 'public'
     })
   },
-  levelsChange(e){this.setData({'form.unlockLevelIds':e.detail.value})},
+  levelsChange(e){this.setData({'form.unlockLevelIds':e.detail.value,levelChoices:this.data.levelChoices.map((l)=>({...l,checked:e.detail.value.includes(l._id)}))})},
   plotLevelsChange(e) {
     const size=Number(e.currentTarget.dataset.size)
-    this.setData({plotSizes:this.data.plotSizes.map((p)=>p.size===size?{...p,unlockLevelIds:e.detail.value}:p)})
+    this.setData({plotSizes:this.data.plotSizes.map((p)=>p.size===size?{
+      ...p,unlockLevelIds:e.detail.value,choices:p.choices.map((l)=>({...l,checked:e.detail.value.includes(l._id)}))
+    }:p)})
+  },
+  plotCountChange(e) {
+    const size=Number(e.currentTarget.dataset.size), id=e.currentTarget.dataset.id
+    this.setData({plotSizes:this.data.plotSizes.map((p)=>p.size===size?{
+      ...p,choices:p.choices.map((l)=>l._id===id?{...l,count:e.detail.value}:l)
+    }:p)})
   },
   async savePlotLevels(e) {
     if(this.data.busy||!can(this.data.adminAccess,'playgroundBuilding.savePlotAccess'))return
     const plot=this.data.plotSizes.find((p)=>p.size===Number(e.currentTarget.dataset.size))
     if(!plot)return
+    const levelGrants=plot.choices.filter((l)=>l.checked).map((l)=>({levelId:l._id,count:Number(l.count)}))
+    if(levelGrants.some((g)=>!Number.isInteger(g.count)||g.count<1||g.count>100))return showError(new Error('每个等级的地皮数量须为1至100块整数'))
     this.setData({busy:true})
-    try {const result=await callFunction('playgroundBuilding','savePlotAccess',{size:plot.size,unlockLevelIds:plot.unlockLevelIds,revision:this.data.revision});this.setData({revision:result.revision});wx.showToast({title:'已保存',icon:'success'})}
+    try {const result=await callFunction('playgroundBuilding','savePlotAccess',{size:plot.size,unlockLevelIds:plot.unlockLevelIds,levelGrants,revision:this.data.revision});this.setData({revision:result.revision});wx.showToast({title:'已保存',icon:'success'})}
     catch(error){showError(error)}finally{if(!this.closed)this.setData({busy:false})}
   },
   enabledChange(e) {

@@ -305,6 +305,8 @@ function getCachedSystemSettings() {
     subscription: normalizeSubscriptionConfig(cached.subscription),
     homeHeroCarousel: normalizeHomeHeroCarousel(cached.homeHeroCarousel),
     homePage: normalizeHomePageConfig(cached.homePage),
+    noticeTicker: cached.noticeTicker || { enabled: false, items: [] },
+    maintenance: { petRanking: cached.maintenance?.petRanking === true, booking: cached.maintenance?.booking === true, invitation: cached.maintenance?.invitation === true },
     staffSupplies: cached.staffSupplies || null
   }
 }
@@ -317,6 +319,8 @@ function setCachedSystemSettings(settings) {
     subscription: normalizeSubscriptionConfig(source.subscription),
     homeHeroCarousel: normalizeHomeHeroCarousel(source.homeHeroCarousel),
     homePage: normalizeHomePageConfig(source.homePage),
+    noticeTicker: source.noticeTicker || { enabled: false, items: [] },
+    maintenance: { petRanking: source.maintenance?.petRanking === true, booking: source.maintenance?.booking === true, invitation: source.maintenance?.invitation === true },
     staffSupplies: source.staffSupplies || null
   }
   wx.setStorageSync(SYSTEM_SETTINGS_STORAGE_KEY, normalized)
