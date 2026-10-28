@@ -535,6 +535,24 @@ test('choosing a new community after demolition starts placement without requiri
   assert.equal(toasts.length,0)
 })
 
+test('retired home notice explains relocation without demolishing plots automatically',()=>{
+  const {page}=pageFixture()
+  let menu=0,choice=0
+  page.visible=true
+  page.communityActions=()=>{menu++}
+  page.chooseCommunityAndBuild=()=>{choice++}
+  page.data.hasPlot=true
+  page.moveFromRetiredCommunity()
+  assert.equal(menu,1)
+  assert.equal(choice,0)
+  page.data.hasPlot=false
+  page.moveFromRetiredCommunity()
+  assert.equal(choice,1)
+  const template=require('node:fs').readFileSync(require.resolve('../../miniprogram/packagePlayground/pages/world.wxml'),'utf8')
+  assert.match(template,/communityRetired && !loading && !error/)
+  assert.match(template,/新住户和访客不可进入/)
+})
+
 
 test('wash action sends scene credentials and clears dirt only after server acknowledgement',async()=>{
   const packets=[];let fail=true,cleaned=0,sent=0

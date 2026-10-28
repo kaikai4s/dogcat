@@ -13,7 +13,17 @@
         <view class="binding-note">发布后仅替换本申请对象的形象。同一套图集不能再次绑定给其他角色或宠物。</view><button wx:if="{{adminSuper || (adminPermissions.playgroundAppearance_publish && adminPermissions.playgroundAppearance_prepareUpload)}}" class="publish-button" bindtap="publish" loading="{{busy}}" disabled="{{busy || !walk}}">{{busy ? progress : '上传并发布专属形象'}}</button>
       </view>
       <view wx:if="{{detail.canProcess && (adminSuper || adminPermissions.playgroundAppearance_reject)}}" class="reject-section"><view class="section-title">照片不足或暂不能制作</view><textarea value="{{reason}}" maxlength="500" placeholder="说明需要补充哪些照片或未通过原因" bindinput="inputReason" disabled="{{busy}}"/><button wx:if="{{adminSuper || adminPermissions.playgroundAppearance_reject}}" bindtap="reject" disabled="{{busy}}">退回申请</button></view>
-      <view wx:if="{{detail.reason}}" class="binding-note">处理说明：{{detail.reason}}</view><view wx:if="{{detail.status === 'completed'}}" class="binding-note">这套形象已专属绑定，不能更换绑定对象。需要更新形象时，由该用户重新申请。</view>
+      <view wx:if="{{detail.reason}}" class="binding-note">处理说明：{{detail.reason}}</view>
+      <view wx:if="{{detail.status === 'completed'}}" class="completed-manage-box">
+        <view class="binding-note {{detail.appearanceDisabled ? 'disabled-warning' : ''}}">
+          <text wx:if="{{!detail.appearanceDisabled}}">✅ 专属形象正常生效中。这套形象已专属绑定，不能更换绑定对象。</text>
+          <text wx:if="{{detail.appearanceDisabled}}">⚠️ 专属形象已暂扣作废{{detail.appearanceDisabledReason ? '（说明：' + detail.appearanceDisabledReason + '）' : ''}}，庄园中显示通用外观。</text>
+        </view>
+        <view style="margin-top: 18rpx; display: flex; gap: 16rpx;">
+          <button class="danger-button" style="background: #993322; color: #fff;" wx:if="{{!detail.appearanceDisabled && (adminSuper || adminPermissions.playgroundAppearance_disableAppearance)}}" bindtap="disableAppearance" disabled="{{busy}}">暂扣作废专属形象</button>
+          <button class="publish-button" wx:if="{{detail.appearanceDisabled && (adminSuper || adminPermissions.playgroundAppearance_enableAppearance)}}" bindtap="enableAppearance" disabled="{{busy}}">重新启用专属形象</button>
+        </view>
+      </view>
     </scroll-view>
   </view></view>
 </view>

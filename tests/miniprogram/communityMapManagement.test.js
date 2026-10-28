@@ -49,6 +49,31 @@ test('rejection requires separate permission and application IDs, including for 
   assert.match(template, /永久不可再次申请/)
 })
 
+test('community deletion requires its own permission and preserves the old residents in confirmation', async () => {
+  let modal
+  const row = { _id: 'map_community_' + 'a'.repeat(24), name: '花园', editVersion: 4 }
+  const data = { view: 'catalog', rows: [row], adminPermissions: { communityMap_deleteAdmin: true } }
+  const blocked = fixture('admin', { data: { ...data, adminPermissions: { communityMap_saveAdmin: true } } })
+  await blocked.page.deleteCommunity(tap(row._id))
+  assert.equal(blocked.requests.length, 0)
+  const { page, requests } = fixture('admin', { data, wx: { showModal(args) { modal = args } } })
+  const pending = page.deleteCommunity(tap(row._id))
+  assert.match(modal.content, /不会清除已入住用户的庭院/)
+  assert.match(modal.content, /不再接受新住户和访客/)
+  assert.equal(requests.length, 0)
+  modal.success({ confirm: true }); await settle()
+  assert.equal(requests.length, 1)
+  assert.equal(requests[0].action, 'deleteAdmin')
+  assert.equal(requests[0].data.editVersion, 4)
+  requests[0].resolve({ id: row._id, retired: true }); await settle()
+  assert.equal(requests[1].action, 'listAdmin')
+  requests[1].resolve({ list: [], total: 0, hasMore: false }); await pending
+  assert.equal(page.data.busy, false)
+  const template = fs.readFileSync(require.resolve('../../miniprogram/pages/admin/community-map/index.wxml'), 'utf8')
+  assert.match(template, /communityMap_deleteAdmin/)
+  assert.match(template, /data-view="retired"/)
+})
+
 test('rejection validates reason, confirms permanent effect, prevents reentry and refreshes candidates', async () => {
   let modal
   const { page, requests, errors } = fixture('admin', { data: rejectionData(), wx: { showModal(args) { modal = args } } })

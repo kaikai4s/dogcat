@@ -58,16 +58,35 @@ async function expireUnacceptedOrder(orderId, order, time = now(), forceGroupExp
     }, 'client', `order_cancelled:expired:${orderId}`).catch(error => console.error('[expire-order-notification]', { orderId, message: error.message }))
   }
   if (isGroup && order.groupBuyId) {
-    await db.collection('pet_playground_groups').doc(order.groupBuyId).update({
-      data: {
-        status: 'cancelled',
-        deadline: time,
-        cancelReason: '服务开始前2小时无人接单，拼单已自动取消',
-        updatedAt: time
+    let shouldProcessSiblings = !forceGroupExpire
+    try {
+      const groupRes = await db.collection('pet_playground_groups').where({
+        _id: order.groupBuyId,
+        status: db.command.neq('cancelled')
+      }).update({
+        data: {
+          status: 'cancelled',
+          deadline: time,
+          cancelReason: '服务开始前2小时无人接单，拼单已自动取消',
+          updatedAt: time
+        }
+      })
+      if (groupRes && groupRes.stats && groupRes.stats.updated === 0 && !forceGroupExpire) {
+        // 其他并发实例已处理过该拼单组取消
+        shouldProcessSiblings = false
       }
-    }).catch(() => {})
+    } catch (_) {
+      await db.collection('pet_playground_groups').doc(order.groupBuyId).update({
+        data: {
+          status: 'cancelled',
+          deadline: time,
+          cancelReason: '服务开始前2小时无人接单，拼单已自动取消',
+          updatedAt: time
+        }
+      }).catch(() => {})
+    }
 
-    if (!forceGroupExpire) {
+    if (shouldProcessSiblings) {
       const siblingRes = await db.collection('orders').where({
         groupBuyId: order.groupBuyId,
         status: ORDER_STATUS.PAID,

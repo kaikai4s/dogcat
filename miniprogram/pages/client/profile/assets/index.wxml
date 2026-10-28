@@ -27,17 +27,18 @@
         <view class="section-title">我的邀请码</view>
         <view class="section-subtitle">邀请好友注册，获得活动收益</view>
       </view>
-      <button class="share-btn" open-type="share">分享邀请</button>
+      <button wx:if="{{!invitationMaintenance && !maintenanceLoading}}" class="share-btn" open-type="share">分享邀请</button>
     </view>
-    <view class="code-box">
+    <view wx:if="{{invitationMaintenance && !maintenanceLoading}}" class="invitation-maintenance-tip" role="alert">分享赚取佣金功能暂时不可使用，正在维护中。历史收益与提现不受影响。</view>
+    <view wx:if="{{!invitationMaintenance && !maintenanceLoading}}" class="code-box">
       <text class="invite-code">{{inviteCode || '生成中'}}</text>
       <button class="copy-code-btn" bindtap="copyInviteCode" disabled="{{!inviteCode}}">复制邀请码</button>
     </view>
-    <view wx:if="{{!summary || !summary.inviterOpenid}}" class="bind-row">
+    <view wx:if="{{!invitationMaintenance && !maintenanceLoading && (!summary || !summary.inviterOpenid)}}" class="bind-row">
       <input class="bind-input" placeholder="输入他人邀请码" value="{{bindCode}}" bindinput="inputBindCode" />
       <button class="bind-btn" bindtap="bindInvite">绑定</button>
     </view>
-    <view wx:else class="bound-tip">
+    <view wx:elif="{{summary && summary.inviterOpenid}}" class="bound-tip">
       <text class="remix-icon ri-checkbox-circle-fill"></text>
       <view class="bound-text">
         <view>已绑定邀请码，绑定后不可修改。</view>
@@ -159,6 +160,11 @@
             <text class="remix-icon ri-refresh-line"></text>
             <text>查询微信转账状态</text>
           </button>
+
+          <view class="withdraw-hint-box" wx:if="{{item.status === 'transferring' && !item.canConfirmTransfer}}" style="margin-top: 16rpx; padding: 16rpx 20rpx; background: #f0fdf4; border-radius: 12rpx; color: #166534; font-size: 24rpx; display: flex; align-items: center; gap: 8rpx;">
+            <text class="remix-icon ri-information-line"></text>
+            <text>后台审核已通过，系统已自动发起微信打款，资金将自动转入微信零钱，无需手动确认。</text>
+          </view>
 
           <!-- 提现详情明细 -->
           <view class="withdraw-item-details">

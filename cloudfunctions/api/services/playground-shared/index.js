@@ -194,7 +194,9 @@ module.exports = function createShared(context) {
     config:()=>service.config(),access:(...args)=>social.access(...args),nextEpoch:(...args)=>live.nextEpoch(...args),
     response:({actor,car,records=[]})=>({actor:{...publicRecord(actor),version:version(actor)},vehicle:{...publicRecord(car),version:version(car)},records:records.filter(Boolean).map((r)=>({...publicRecord(r),version:version(r)})),serverTime:now()})})
   async function enter(openid,user,data,pets) {
-    const community=await require('../playground-communities')(context).resolve(data.community || user.residentialCommunity || null)
+    const communities=require('../playground-communities')(context)
+    const choice=data.community || user.residentialCommunity || null
+    const {community}=await communities.entry(choice,user)
     const id=world.communityId({residentialCommunity:community}) || 'solo_'+world.hash(openid)
     await rides.prepareEntry(openid,id)
     await service.own(openid)
@@ -206,6 +208,8 @@ module.exports = function createShared(context) {
     const residentEpoch=await live.nextEpoch(id,residentId(openid),stamp)
     const state=await transaction(db,async(tx)=>{
       const currentUser=(await tx.collection('users').doc(user._id).get()).data||user
+      const currentEntry=await communities.entry(data.community || currentUser.residentialCommunity || null,currentUser,tx)
+      if((world.communityId({residentialCommunity:currentEntry.community})||'solo_'+world.hash(openid))!==id) throw new Error('小区资料已更新，请重新进入')
       const old=await read(tx,presenceId(openid))
       const resident=await read(tx,residentId(openid))
       const currentHome=await service.ownInTransaction(tx,openid)
@@ -245,7 +249,7 @@ module.exports = function createShared(context) {
       await tx.collection(COLLECTION).doc(presenceId(openid)).set({data:actor})
       if(savedResident) await tx.collection(COLLECTION).doc(residentId(openid)).set({data:savedResident})
       else if(!currentHome && resident) await tx.collection(COLLECTION).doc(residentId(openid)).remove()
-      return {...actor,home:currentHome,own:currentOwn,resident:savedResident,old,allowed,vehicle}
+      return {...actor,home:currentHome,own:currentOwn,resident:savedResident,old,allowed,vehicle,entry:currentEntry}
     })
     if(state.old && state.old.communityId!==id) await live.publish(state.old.communityId,{id:presenceId(openid),kind:'presence',deleted:true})
     await publish({...state,_id:presenceId(openid)})
@@ -254,7 +258,7 @@ module.exports = function createShared(context) {
     const socialState=await social.state(openid)
     return {session,playerId:presenceId(openid),name:state.name,nameColor:state.nameColor,userTitle:state.userTitle,sceneId:id,realtimeCollection:'pet_playground_live',serverTime:now(),social:socialState,allowedPlotIds:state.allowed,position:state.position,characterType:state.characterType,appearance:state.appearance,hasAvatar:state.active,
       vehicleId:state.vehicleId||'',vehicleRole:state.vehicleRole||'',facing:state.facing||'sw',mirrored:!!state.mirrored,vehicleSpeed:Math.max(2,Math.min(5,Number(user.playgroundVehicleSpeed)||2)),
-      community,visiting:id!==(world.communityId(user)||'solo_'+world.hash(openid)),hasHomeElsewhere:!!state.home&&!state.own,
+      community:state.entry.community,communityRetired:state.entry.retired,visiting:id!==(world.communityId(user)||'solo_'+world.hash(openid)),hasHomeElsewhere:!!state.home&&!state.own,
       homeCommunity:user.residentialCommunity||null,plot:state.own?service.publicPlot({...state.own,_id:state.own.plotId},openid):null}
   }
   async function sync(openid,data) {

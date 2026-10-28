@@ -1,4 +1,5 @@
-module.exports = function createService({ db, crypto, now, safeText }) {
+module.exports = function createService(context) {
+  const { db, crypto, now, safeText } = context
   const key = (...parts) => crypto.createHash('sha256').update(JSON.stringify(parts)).digest('hex').slice(0, 32)
   function money(value, positive = false) {
     const number = Number(value)
@@ -22,22 +23,40 @@ module.exports = function createService({ db, crypto, now, safeText }) {
     if (!profile || profile.openid !== record.staffOpenid) throw new Error('宠托师资料归属不匹配')
     return profile
   }
-  async function reserveStaffDepositPayment(user, snapshot, requestedAmount, channel, clientRequestId = '') {
+  async function reserveStaffDepositPayment(user, snapshot, requestedAmount, channel, clientRequestId = '', supplyConsent = null) {
     money(requestedAmount, true)
     return db.runTransaction(async tx => {
       const profile = await profileFor(tx, { staffOpenid: user.openid, staffProfileId: snapshot._id })
-      if (profile.auditStatus !== 'approved' || ['requested', 'approved', 'exited'].includes(profile.exitStatus)) throw new Error('当前资料状态不支持缴纳保证金')
+      if (profile.auditStatus !== 'approved') throw new Error('资料审核通过后方可缴纳保证金')
       const candidates = (await db.collection('staff_deposits').where({ staffOpenid: user.openid }).orderBy('createdAt', 'desc').limit(2).get()).data
       let deposit = profile.currentDepositId ? await optional(tx, 'staff_deposits', profile.currentDepositId) : null
       if (!deposit && candidates[0]) deposit = await optional(tx, 'staff_deposits', candidates[0]._id)
       if (deposit && deposit.staffOpenid !== user.openid) throw new Error('保证金归属不匹配')
+
+      const isExitPending = ['requested', 'approved'].includes(profile.exitStatus) && deposit && ['refund_requested', 'refund_approved'].includes(deposit.status)
+      if (isExitPending) throw new Error('保证金退还流程处理中，暂不可缴纳保证金')
+
       for (const candidate of candidates) {
         if (deposit && candidate._id === deposit._id) continue
         const other = await optional(tx, 'staff_deposits', candidate._id)
-        if (other && other.status === 'unpaid') throw new Error('存在多笔保证金记录，请先对账')
+        if (other && other.status === 'unpaid') {
+          if (!deposit) {
+            deposit = other
+          } else {
+            await tx.collection('staff_deposits').doc(other._id).update({
+              data: { status: 'superseded', statusText: '已失效', updatedAt: now() }
+            })
+          }
+        }
       }
       const repeat = deposit && clientRequestId && deposit.clientRequestId === clientRequestId
-      const needsRepay = profile.requireDepositRepay === true || ['supplement_required', 'forfeited'].includes(profile.depositStatus) || deposit?.status === 'forfeited'
+      const isRefunded = profile.depositStatus === 'refunded' || deposit?.status === 'refunded'
+      const needsRepay = profile.requireDepositRepay === true ||
+        ['supplement_required', 'forfeited', 'refunded'].includes(profile.depositStatus) ||
+        ['forfeited', 'refunded'].includes(deposit?.status) ||
+        isRefunded ||
+        (deposit && Number(deposit.availableRefundAmount || 0) <= 0 && Number(deposit.paidAmount || 0) > 0)
+
       if (deposit && deposit.status !== 'unpaid' && !(repeat && deposit.status === 'paid')) {
         if (!needsRepay || ['refund_requested', 'refund_approved'].includes(deposit.status)) throw new Error('您已足额缴纳保证金或记录正在处理中，无需重复缴纳')
         deposit = null
@@ -49,13 +68,39 @@ module.exports = function createService({ db, crypto, now, safeText }) {
           staffProfileId: profile._id, amount: money(requestedAmount, true) / 100, paidAmount: 0, refundedAmount: 0,
           forfeitedAmount: 0, availableRefundAmount: 0, status: 'unpaid', statusText: '待支付', refundStatus: '',
           clientRequestId, createdAt: time, updatedAt: time }
+        if (supplyConsent) Object.assign(deposit, { supplyAddress: supplyConsent.address, supplyFeeAmount: supplyConsent.feeAmount,
+          supplyReimbursementTerms: supplyConsent.reimbursementTerms, supplyPolicyAcceptedAt: time, supplyPolicyVersion: 1 })
         const { _id, ...value } = deposit
         await tx.collection('staff_deposits').doc(_id).set({ data: value })
+      } else if (deposit.status === 'unpaid' && money(deposit.amount, true) !== money(requestedAmount, true)) {
+        const newAmount = money(requestedAmount, true) / 100
+        await tx.collection('staff_deposits').doc(deposit._id).update({ data: { amount: newAmount, updatedAt: time } })
+        deposit.amount = newAmount
+      }
+      if (deposit.status === 'unpaid' && supplyConsent && !deposit.supplyShipment) {
+        await tx.collection('staff_deposits').doc(deposit._id).update({ data: {
+          supplyAddress: supplyConsent.address, supplyFeeAmount: supplyConsent.feeAmount,
+          supplyReimbursementTerms: supplyConsent.reimbursementTerms,
+          supplyPolicyAcceptedAt: time, supplyPolicyVersion: 1, updatedAt: time
+        } })
       }
       const payments = (await db.collection('payments').where({ orderId: deposit._id, targetType: 'staff_deposit' }).limit(2).get()).data
-      if (payments.length > 1) throw new Error('保证金支付记录重复，请先对账')
+      if (payments.length > 1) {
+        for (let i = 1; i < payments.length; i++) {
+          await tx.collection('payments').doc(payments[i]._id).update({ data: { status: 'superseded', updatedAt: time } })
+        }
+      }
       let payment = payments[0] ? await optional(tx, 'payments', payments[0]._id) : null
-      if (payment && (payment.channel !== channel || money(payment.amount, true) !== money(deposit.amount, true) || !['pending', 'success'].includes(payment.status))) throw new Error('保证金支付状态异常，请先对账')
+      if (payment && payment.status === 'pending' && (payment.channel !== channel || money(payment.amount, true) !== money(deposit.amount, true))) {
+        payment.channel = channel
+        payment.amount = deposit.amount
+        payment.prepayId = ''
+        await tx.collection('payments').doc(payment._id).update({
+          data: { channel, amount: deposit.amount, prepayId: '', updatedAt: time }
+        })
+      } else if (payment && !['pending', 'success'].includes(payment.status)) {
+        payment = null
+      }
       if (!payment) {
         payment = { _id: key('deposit_payment', deposit._id), orderId: deposit._id, depositId: deposit._id,
           targetType: 'staff_deposit', openid: user.openid, paymentNo: `P${crypto.randomBytes(15).toString('hex')}`,
@@ -72,7 +117,7 @@ module.exports = function createService({ db, crypto, now, safeText }) {
   }
   async function exitCheck(openid) {
     const orders = await db.collection('orders').where({ staffOpenid: openid,
-      status: db.command.in(['paid', 'assigned', 'on_the_way', 'in_service', 'day_completed']) }).limit(1).get()
+      status: db.command.in(['paid', 'assigned', 'on_the_way', 'in_service', 'day_completed', 'pending_staff_confirm', 'service_suspended', 'refund_pending']) }).limit(1).get()
     if (orders.data.length) throw new Error('尚有未完成订单，暂不可退出退款')
     const incidents = await db.collection('order_incidents').where({ staffOpenid: openid,
       status: db.command.in(['open', 'investigating', 'triaging', 'waiting_client', 'waiting_staff', 'processing', 'refund_pending']) }).limit(1).get()
@@ -82,9 +127,53 @@ module.exports = function createService({ db, crypto, now, safeText }) {
     const paid = money(deposit.paidAmount)
     const refunded = money(deposit.refundedAmount)
     const forfeited = money(deposit.forfeitedAmount)
+    const supplyFee = money(deposit.supplyFeeDeductedAmount == null ? 0 : deposit.supplyFeeDeductedAmount)
     const available = money(deposit.availableRefundAmount)
-    if (!Number.isSafeInteger(refunded + forfeited + available) || paid !== refunded + forfeited + available) throw new Error('保证金余额不一致，请先对账')
-    return { paid, refunded, forfeited, available }
+    if (!Number.isSafeInteger(refunded + forfeited + supplyFee + available) || paid !== refunded + forfeited + supplyFee + available) throw new Error('保证金余额不一致，请先对账')
+    return { paid, refunded, forfeited, supplyFee, available }
+  }
+  async function confirmStaffSupplyPolicy(openid, address, feeAmount, reimbursementTerms) {
+    return db.runTransaction(async tx => {
+      const candidates = (await db.collection('staff_deposits').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').limit(2).get()).data
+      const deposit = candidates.find(row => row.status === 'paid' || row.status === 'partially_refunded')
+      if (!deposit) throw new Error('请先完成保证金支付')
+      const current = await optional(tx, 'staff_deposits', deposit._id)
+      if (current.supplyShipment) throw new Error('用品已经发货，收货地址不可修改')
+      if (['requested', 'approved', 'processing'].includes(current.refundStatus)) throw new Error('退出退款处理中，不可修改用品地址')
+      const fee = current.supplyPolicyAcceptedAt ? money(current.supplyFeeAmount, true) : money(feeAmount, true)
+      if (fee >= balances(current).available) throw new Error('用品费用不能达到或超过当前可退押金')
+      const time = now()
+      await tx.collection('staff_deposits').doc(current._id).update({ data: {
+        supplyAddress: address, supplyFeeAmount: fee / 100,
+        supplyReimbursementTerms: current.supplyReimbursementTerms || reimbursementTerms,
+        supplyPolicyAcceptedAt: current.supplyPolicyAcceptedAt || time,
+        supplyPolicyVersion: 1, updatedAt: time
+      } })
+      return { depositId: current._id, acceptedAt: current.supplyPolicyAcceptedAt || time }
+    })
+  }
+  async function shipStaffSupplies(admin, depositId, expressCompany, trackingNo) {
+    return db.runTransaction(async tx => {
+      const deposit = await optional(tx, 'staff_deposits', depositId)
+      if (!deposit) throw new Error('保证金记录不存在')
+      if (deposit.supplyShipment) {
+        if (deposit.supplyShipment.expressCompany === expressCompany && deposit.supplyShipment.trackingNo === trackingNo) return deposit.supplyShipment
+        throw new Error('用品已发货，不可重复发货')
+      }
+      if (deposit.status !== 'paid' || !deposit.supplyPolicyAcceptedAt || !deposit.supplyAddress) throw new Error('须先完成押金支付及用品规则确认')
+      const profile = await profileFor(tx, deposit)
+      if (profile.supplyShipmentDepositId) throw new Error('该宠托师已发过首次用品')
+      const existingApps = (await db.collection('staff_supply_reimbursements').where({ staffOpenid: deposit.staffOpenid }).limit(1).get()).data
+      if (existingApps.length) throw new Error('已有首次用品报销记录，请先处理历史记录，避免重复发放')
+      if (money(deposit.supplyFeeAmount, true) >= balances(deposit).available) throw new Error('用品费用不能达到或超过可退押金')
+      const time = now()
+      const shipment = { expressCompany, trackingNo, shippedAt: time, shippedBy: admin.openid }
+      await tx.collection('staff_deposits').doc(depositId).update({ data: { supplyShipment: shipment, updatedAt: time } })
+      await tx.collection('staff_profiles').doc(profile._id).update({ data: { supplyShipmentDepositId: depositId, updatedAt: time } })
+      await log(tx, key('supply_shipped', depositId), admin, 'shipStaffSupplies', 'staff_deposit', depositId, deposit,
+        { expressCompany, trackingNo, supplyFeeAmount: deposit.supplyFeeAmount }, time)
+      return shipment
+    })
   }
   async function log(tx, id, admin, action, targetType, targetId, record, detail, time, delta = null) {
     await tx.collection('admin_operation_logs').doc(id).set({ data: {
@@ -101,14 +190,60 @@ module.exports = function createService({ db, crypto, now, safeText }) {
       operatorOpenid: actor, operatorRole: type === 'refund_request' ? 'staff' : 'admin', type, amount, reason, createdAt: time, ...extra
     } })
   }
+  async function supplyRefundBreakdown(reader, deposit) {
+    const balance = balances(deposit)
+    const chargeable = Boolean(deposit.supplyPolicyAcceptedAt && deposit.supplyShipment)
+    let application = null
+    if (chargeable) {
+      const apps = (await reader.collection('staff_supply_reimbursements').where({
+        staffOpenid: deposit.staffOpenid, depositId: deposit._id, benefitType: 'supply_fee_waiver'
+      }).limit(2).get()).data
+      if (apps.length > 1) throw new Error('首次用品报销记录重复，请先核对')
+      application = apps[0] || null
+    }
+    const settled = Boolean(deposit.supplyFeeSettledAt)
+    const pending = chargeable && !settled && application?.status === 'pending'
+    const completed = application?.status === 'approved'
+    const due = chargeable && !settled && !completed ? money(deposit.supplyFeeAmount, true) : 0
+    const status = application?.status || (chargeable ? 'not_applied' : deposit.supplyPolicyAcceptedAt ? 'not_shipped' : 'not_applicable')
+    const statusText = { approved: '已完成报销，用品费已减免', pending: '报销审核中，暂缓退款',
+      rejected: '报销未通过，需扣用品费', not_applied: '未申请报销，需扣用品费',
+      not_shipped: '用品未发货，不扣用品费', not_applicable: '未确认首次用品，不扣用品费' }[status] || '报销状态待核对'
+    const blockedReason = pending ? '首次用品费用减免正在审核，请先处理申请'
+      : due >= balance.available && due > 0 ? '用品费用不低于可退押金，请人工对账后处理' : ''
+    return {
+      id: deposit._id, status: deposit.status, refundStatus: deposit.refundStatus || '',
+      availableRefundAmount: balance.available / 100, supplyFeeAmount: chargeable ? money(deposit.supplyFeeAmount, true) / 100 : 0,
+      supplyFeeDeductedAmount: balance.supplyFee / 100, supplyFeeDue: due / 100,
+      estimatedRefundAmount: blockedReason ? null : (balance.available - due) / 100,
+      reimbursementStatus: status, reimbursementStatusText: settled ? (balance.supplyFee ? '用品费用已结算扣除' : '用品费用已减免') : statusText,
+      supplyFeeSettled: settled, reimbursementCompleted: completed, blocked: Boolean(blockedReason), blockedReason,
+      canRequestRefund: !blockedReason && balance.available > 0 && ['paid', 'partially_refunded'].includes(deposit.status) && !['requested', 'approved', 'processing', 'success'].includes(deposit.refundStatus)
+    }
+  }
+  async function getStaffDepositRefundPreview(depositId) {
+    const deposit = (await db.collection('staff_deposits').doc(depositId).get()).data
+    if (!deposit) throw new Error('保证金记录不存在')
+    return supplyRefundBreakdown(db, deposit)
+  }
   async function requestStaffDepositRefund(openid, depositId, reason, admin = null) {
     return db.runTransaction(async tx => {
       const deposit = (await tx.collection('staff_deposits').doc(depositId).get().catch(() => ({ data: null }))).data
       if (!deposit || deposit.staffOpenid !== openid) throw new Error('保证金归属不匹配')
       if (deposit.refundStatus === 'requested') return { success: true, status: deposit.status }
       if (!['paid', 'partially_refunded'].includes(deposit.status) || !balances(deposit).available) throw new Error('暂无可退还保证金')
+      const preview = await supplyRefundBreakdown(tx, deposit)
+      if (admin && preview.blocked) throw new Error(preview.blockedReason)
       const profile = await profileFor(tx, deposit)
-      const user = (await tx.collection('users').doc(deposit.staffUserId).get().catch(() => ({ data: null }))).data
+      const staffUserId = deposit.staffUserId || (profile && profile.userId)
+      let user = null
+      if (staffUserId) {
+        user = (await tx.collection('users').doc(staffUserId).get().catch(() => ({ data: null }))).data
+      }
+      if (!user && (deposit.staffOpenid || openid)) {
+        const userRes = await tx.collection('users').where({ openid: deposit.staffOpenid || openid }).limit(1).get().catch(() => ({ data: [] }))
+        user = userRes.data && userRes.data[0]
+      }
       if (!user || user.openid !== openid) throw new Error('用户归属不匹配')
       await exitCheck(openid)
       const time = now()
@@ -189,6 +324,7 @@ module.exports = function createService({ db, crypto, now, safeText }) {
         if (!['paid', 'partially_refunded'].includes(deposit.status) || ['requested', 'approved', 'processing'].includes(deposit.refundStatus)) throw new Error('当前保证金状态不可没收，请先处理退款申请')
         amount = money(data.amount, true)
         if (amount > balance.available) throw new Error('没收金额不能大于当前可用保证金余额')
+        if (deposit.supplyShipment && !deposit.supplyFeeSettledAt && amount + money(deposit.supplyFeeAmount, true) >= balance.available) throw new Error('请保留足够余额用于用品费用和退出退款结算')
         const available = (balance.available - amount) / 100
         patch = { forfeitedAmount: (balance.forfeited + amount) / 100, availableRefundAmount: available,
           status: available === 0 ? 'forfeited' : deposit.status, statusText: available === 0 ? '已全额没收' : `部分没收（余¥${available}）`,
@@ -204,7 +340,20 @@ module.exports = function createService({ db, crypto, now, safeText }) {
         if (data.approved === true) {
           await exitCheck(deposit.staffOpenid)
           if (!balance.available) throw new Error('暂无可退还保证金')
-          patch = { status: 'refund_approved', statusText: '审核通过，待实际退款', refundStatus: 'approved', approvedRefundAmount: balance.available / 100 }
+          const preview = await supplyRefundBreakdown(tx, deposit)
+          if (preview.blocked) throw new Error(preview.blockedReason)
+          const supplyFee = money(preview.supplyFeeDue)
+          patch = { status: 'refund_approved', statusText: '审核通过，待实际退款', refundStatus: 'approved',
+            supplyFeeSettledAt: deposit.supplyShipment && deposit.supplyPolicyAcceptedAt ? time : deposit.supplyFeeSettledAt || null,
+            supplyFeeDeductedAmount: (balance.supplyFee + supplyFee) / 100,
+            availableRefundAmount: (balance.available - supplyFee) / 100,
+            approvedRefundAmount: (balance.available - supplyFee) / 100 }
+          if (supplyFee) {
+            const feeId = key('supply_fee', targetDepositId)
+            await log(tx, feeId, admin, 'settleStaffSupplyFee', 'staff_deposit', targetDepositId, deposit,
+              { supplyFeeAmount: supplyFee / 100, financeAction: 'staff_supply_fee' }, time, 0)
+            await depositEvent(tx, feeId, deposit, admin.openid, 'supply_fee', supplyFee / 100, '首次用品费用', time)
+          }
           profilePatch = { exitStatus: 'approved', depositStatus: 'refund_approved' }
         } else {
           if (!reason) throw new Error('请填写驳回原因')
@@ -215,6 +364,7 @@ module.exports = function createService({ db, crypto, now, safeText }) {
       } else if (action === 'confirmDepositRefund') {
         if (!['refund_approved', ...(gatewayRefund ? ['refunding'] : [])].includes(deposit.status) ||
             !['approved', ...(gatewayRefund ? ['processing'] : [])].includes(deposit.refundStatus)) throw new Error('仅已审核退款可确认付款')
+        if (deposit.supplyPolicyAcceptedAt && deposit.supplyShipment && !deposit.supplyFeeSettledAt) throw new Error('首次用品费用尚未结算，请先核对报销并结算后退款')
         let exitBlocked = await hasUnsettledFunds(tx, deposit.staffOpenid)
         if (gatewayRefund) {
           // A successful gateway refund must be booked even if exit is still
@@ -249,6 +399,8 @@ module.exports = function createService({ db, crypto, now, safeText }) {
       } else throw new Error('未知保证金操作')
       const result = { id: targetDepositId, status: patch.status, refundStatus: patch.refundStatus || deposit.refundStatus,
         availableRefundAmount: patch.availableRefundAmount ?? deposit.availableRefundAmount,
+        approvedRefundAmount: patch.approvedRefundAmount ?? deposit.approvedRefundAmount,
+        supplyFeeDeductedAmount: patch.supplyFeeDeductedAmount ?? deposit.supplyFeeDeductedAmount ?? 0,
         ...(action === 'confirmDepositRefund' ? { exitCompleted: profilePatch.exitStatus === 'exited' } : {}) }
       await tx.collection('staff_deposits').doc(targetDepositId).update({ data: { ...patch, updatedAt: time } })
       await tx.collection('staff_profiles').doc(profile._id).update({ data: { ...profilePatch, updatedAt: time } })
@@ -338,6 +490,7 @@ module.exports = function createService({ db, crypto, now, safeText }) {
       const app = (await tx.collection('staff_supply_reimbursements').doc(data.id).get().catch(() => ({ data: null }))).data
       if (!app) throw new Error('报销申请不存在')
       const paying = action === 'paySupplyReimbursement'
+      if (paying && app.benefitType === 'supply_fee_waiver') throw new Error('用品费用减免不单独打款，请在退押金时结算')
       const target = paying ? 'paid' : data.approved === true ? 'approved' : 'rejected'
       if (!paying && target === 'approved' && app.amountSource === 'config' && data.approvedAmount !== undefined && money(data.approvedAmount, true) !== money(app.amount, true)) {
         throw new Error('审批报销金额不能大于宠托师申请金额；报销金额由后台配置固定，管理员不能修改申请金额')
@@ -355,7 +508,7 @@ module.exports = function createService({ db, crypto, now, safeText }) {
       const time = now()
       const patch = paying ? { status: target, statusText: '已人工确认打款', transferStatus: 'MANUAL_CONFIRMED', paymentReference: proof,
         paymentConfirmationSource: 'manual', paidAmount: amount / 100, paidAt: time, paidBy: admin.openid }
-        : { status: target, statusText: target === 'approved' ? '审核通过，等待打款' : '审核驳回', approvedAmount: target === 'approved' ? amount / 100 : null,
+        : { status: target, statusText: target === 'approved' ? (app.benefitType === 'supply_fee_waiver' ? '用品费用减免已通过' : '审核通过，等待打款') : '审核驳回', approvedAmount: target === 'approved' ? amount / 100 : null,
           auditRemark: reason, rejectReason: target === 'rejected' ? reason : '', auditedAt: time, auditedBy: admin.openid }
       await tx.collection('staff_supply_reimbursements').doc(data.id).update({ data: { ...patch, updatedAt: time } })
       await tx.collection('staff_profiles').doc(profile._id).update({ data: { supplyReimbursementStatus: target, updatedAt: time } })
@@ -404,11 +557,23 @@ module.exports = function createService({ db, crypto, now, safeText }) {
       if (!profile.currentDepositId || profile.currentDepositId === depositId) await tx.collection('staff_profiles').doc(profile._id).update({ data: {
         depositStatus: 'paid',
         depositRequired: true,
+        exitStatus: 'none',
         requireDepositRepay: false,
         requireDepositRepayReason: '',
         requireDepositRepayAt: '',
         updatedAt: time
       } })
+      const staffUserId = deposit.staffUserId || profile.userId
+      if (staffUserId) {
+        const staffUser = (await tx.collection('users').doc(staffUserId).get().catch(() => ({ data: null }))).data
+        if (staffUser) {
+          const roles = Array.isArray(staffUser.roles) ? [...staffUser.roles] : ['client']
+          if (!roles.includes('staff')) {
+            roles.push('staff')
+            await tx.collection('users').doc(staffUser._id).update({ data: { roles, updatedAt: time } })
+          }
+        }
+      }
       await depositEvent(tx, key(depositId, 'paid'), deposit, deposit.staffOpenid, 'pay', amount, '缴纳宠托师入驻保证金', time)
       await tx.collection('finance_logs').doc(key(depositId, 'paid')).set({ data: {
         action: 'deposit_paid', targetType: 'staff_deposit', targetId: depositId, staffOpenid: deposit.staffOpenid,
@@ -421,5 +586,221 @@ module.exports = function createService({ db, crypto, now, safeText }) {
       return { depositId, status: 'paid', paymentNo }
     })
   }
-  return { reserveStaffDepositPayment, requestStaffDepositRefund, settleStaffDeposit, settleSupplyReimbursement, submitStaffSupplyOnce, recordStaffDepositPayment, recordStaffDepositRefundSuccess, finalizeStaffDepositExit }
+
+  async function autoRefundStaffDeposit(admin, depositId, reason = '宠托师保证金退还', options = {}) {
+    if (!depositId) throw new Error('缺少保证金记录ID')
+
+    const deposit = (await db.collection('staff_deposits').doc(depositId).get().catch(() => ({ data: null })))?.data
+    if (!deposit) throw new Error('保证金记录不存在')
+    if (deposit.supplyShipment && !deposit.supplyFeeSettledAt) throw new Error('请先审核退押金并结算首次用品费用，再进行自动退款')
+
+    const balance = balances(deposit)
+    if (!balance.available || balance.available <= 0) {
+      throw new Error('当前保证金无可用退还余额')
+    }
+
+    await exitCheck(deposit.staffOpenid)
+
+    const { documentPages } = require('../utils/documentPages')
+    for await (const rows of documentPages(db, db.command, 'staff_earnings', { staffOpenid: deposit.staffOpenid })) {
+      if (rows.some(row => ['pending', 'available', 'withdrawing', 'frozen'].includes(row.status) && row.isMock !== true && row.paymentChannel !== 'mock' && money(row.amount) > 0)) {
+        throw new Error('尚有未结清收益，请先完成收益结算和转账，再退还保证金')
+      }
+    }
+    for await (const rows of documentPages(db, db.command, 'withdraw_requests', { staffOpenid: deposit.staffOpenid })) {
+      if (rows.some(row => ['pending', 'approved', 'processing', 'transferring', 'transfer_failed'].includes(row.status))) {
+        throw new Error('尚有未完成提现，请先在财务管理核对转账结果')
+      }
+    }
+
+    const payments = (await db.collection('payments').where({
+      orderId: depositId,
+      targetType: 'staff_deposit'
+    }).orderBy('createdAt', 'desc').limit(5).get().catch(() => ({ data: [] })))?.data || []
+    const payment = payments.find(p => p.status === 'success') || payments[0] || null
+
+    let settings = {}
+    try {
+      if (typeof context.getSystemSettings === 'function') {
+        settings = await context.getSystemSettings({ includeSecrets: true })
+      }
+    } catch (_) {}
+    const paymentSettings = (settings && settings.payment) || { mode: 'mock' }
+
+    const isMock = paymentSettings.mode === 'mock' || (payment && payment.channel === 'mock') || (!payment && paymentSettings.mode !== 'wechat')
+    const refundAmount = balance.available / 100
+    // 构造具备唯一幂等性的退款单号，若原记录已发起过退款尝试则复用，杜绝重试导致微信商户重复出款
+    const deterministicRefundNo = `R${crypto.createHash('sha256').update(`staff_deposit_refund:${depositId}:${deposit.paidAt || deposit.createdAt || ''}`).digest('hex').slice(0, 24)}`
+    const refundNo = deposit.lastRefundNo || deterministicRefundNo
+    const time = now()
+
+    let paymentReference = ''
+    let confirmationSource = 'auto_mock'
+    let refundChannel = isMock ? 'mock' : 'wechat'
+
+    if (!isMock) {
+      if (paymentSettings.refundEnabled === false) {
+        throw new Error('微信退款功能尚未启用，请在系统设置中开启或使用人工打款确认')
+      }
+      if (!payment || (!payment.wxTransactionId && !payment.paymentNo)) {
+        throw new Error('缺少原微信支付流水凭证，无法自动原路退款，请使用人工打款确认')
+      }
+      const getPayConfig = context.getWechatPayConfig
+      const wechatRequest = context.wechatPayRequest
+      if (typeof getPayConfig !== 'function' || typeof wechatRequest !== 'function') {
+        throw new Error('缺少微信退款网络网关支持')
+      }
+      let payConfig
+      try {
+        payConfig = getPayConfig(settings)
+      } catch (cfgErr) {
+        throw new Error(`微信支付配置不完整：${cfgErr.message || cfgErr}`)
+      }
+      const refundBody = {
+        out_refund_no: refundNo,
+        reason: reason || '宠托师保证金退还',
+        amount: {
+          refund: balance.available,
+          total: Math.round(Number(payment.amount || deposit.paidAmount || deposit.amount) * 100),
+          currency: 'CNY'
+        },
+        ...(payment.wxTransactionId ? { transaction_id: payment.wxTransactionId } : { out_trade_no: payment.paymentNo })
+      }
+      let wxRes
+      try {
+        wxRes = await wechatRequest('POST', '/v3/refund/domestic/refunds', refundBody, payConfig)
+      } catch (err) {
+        const errMsg = String(err && (err.message || err.errMsg || err) || '').toLowerCase()
+        const isDuplicateOrExists = /already|exist|duplicate|out_trade_no_used|trade_state_error|已退款|已存在|重复/.test(errMsg)
+        let recovered = false
+        if (isDuplicateOrExists) {
+          try {
+            const queryRes = await wechatRequest('GET', `/v3/refund/domestic/refunds/out-refund-no/${encodeURIComponent(refundNo)}`, null, payConfig)
+            if (queryRes && (queryRes.status === 'SUCCESS' || queryRes.status === 'PROCESSING' || queryRes.refund_id)) {
+              wxRes = queryRes
+              recovered = true
+            }
+          } catch (_) {}
+        }
+        if (!recovered) {
+          throw new Error(`微信原路退款发起失败：${err.message || err}`)
+        }
+      }
+      if (wxRes?.status !== 'SUCCESS') throw new Error('微信原路退款尚未成功，请稍后按同一退款单号重新核实，勿人工重复退款')
+      paymentReference = (wxRes && (wxRes.refund_id || wxRes.out_refund_no)) || refundNo
+      confirmationSource = 'auto_wechat'
+    } else {
+      paymentReference = `MOCK_${refundNo}`
+      confirmationSource = 'auto_mock'
+    }
+
+    return db.runTransaction(async tx => {
+      const curDeposit = (await tx.collection('staff_deposits').doc(depositId).get().catch(() => ({ data: null }))).data
+      if (!curDeposit) throw new Error('保证金记录不存在')
+      const curBalance = balances(curDeposit)
+      if (curBalance.available !== balance.available) throw new Error('保证金余额已发生变动，请重新确认')
+
+      const profile = await profileFor(tx, curDeposit)
+      const patch = {
+        status: 'refunded',
+        statusText: isMock ? '已退还(模拟原路退还)' : '已微信原路退款',
+        refundStatus: 'success',
+        availableRefundAmount: 0,
+        refundedAmount: (curBalance.refunded + curBalance.available) / 100,
+        refundPaidAt: time,
+        refundPaidBy: admin.openid,
+        refundPaymentReference: paymentReference,
+        refundConfirmationSource: confirmationSource,
+        lastRefundReason: reason,
+        lastRefundNo: refundNo,
+        updatedAt: time
+      }
+
+      let otherDepositsPending = false
+      for await (const rows of documentPages(tx, db.command, 'staff_deposits', { staffOpenid: curDeposit.staffOpenid })) {
+        if (rows.some(row => row._id !== depositId && (
+          money(row.availableRefundAmount == null ? 0 : row.availableRefundAmount) > 0 ||
+          ['unpaid', 'refund_requested', 'refund_approved'].includes(row.status) ||
+          ['requested', 'approved', 'processing'].includes(row.refundStatus)
+        ))) otherDepositsPending = true
+      }
+
+      const profilePatch = otherDepositsPending
+        ? { exitStatus: 'approved', depositStatus: 'refund_approved', updatedAt: time }
+        : { exitStatus: 'exited', depositStatus: 'refunded', auditStatus: 'revoked', updatedAt: time }
+
+      await tx.collection('staff_deposits').doc(depositId).update({ data: patch })
+      await tx.collection('staff_profiles').doc(profile._id).update({ data: profilePatch })
+
+      if (!otherDepositsPending) {
+        const staffUserId = curDeposit.staffUserId || (profile && profile.userId)
+        let staffUser = null
+        if (staffUserId) {
+          staffUser = (await tx.collection('users').doc(staffUserId).get().catch(() => ({ data: null }))).data
+        }
+        if (!staffUser && curDeposit.staffOpenid) {
+          const userRes = await tx.collection('users').where({ openid: curDeposit.staffOpenid }).limit(1).get().catch(() => ({ data: [] }))
+          staffUser = userRes.data && userRes.data[0]
+        }
+        if (staffUser) {
+          const roles = (Array.isArray(staffUser.roles) ? staffUser.roles : ['client']).filter((r) => r !== 'staff')
+          const userUpdate = { roles: roles.length ? roles : ['client'], updatedAt: time }
+          if (staffUser.activeRole === 'staff') userUpdate.activeRole = 'client'
+          await tx.collection('users').doc(staffUser._id).update({ data: userUpdate })
+        }
+      }
+
+      const refundId = `refund_${crypto.createHash('sha256').update(`staff_deposit:${depositId}:${refundNo}`).digest('hex').slice(0, 32)}`
+      await tx.collection('refunds').doc(refundId).set({
+        data: {
+          orderId: depositId,
+          orderNo: curDeposit.paymentNo || depositId,
+          collectionName: 'staff_deposits',
+          targetType: 'staff_deposit',
+          paymentNo: payment ? (payment.paymentNo || '') : '',
+          wxTransactionId: payment ? (payment.wxTransactionId || '') : '',
+          refundNo,
+          wxRefundId: paymentReference,
+          openid: curDeposit.staffOpenid,
+          amount: curDeposit.paidAmount || curDeposit.amount,
+          refundAmount,
+          reason,
+          source: 'staff_deposit_auto_refund',
+          operatorOpenid: admin.openid,
+          status: 'success',
+          channel: refundChannel,
+          requestedAt: time,
+          succeededAt: time,
+          createdAt: time,
+          updatedAt: time
+        }
+      })
+
+      await log(tx, key(depositId, 'auto_refund', refundNo), admin, 'confirmDepositRefund', 'staff_deposit', depositId, curDeposit, {
+        financeAction: 'deposit_refunded',
+        refundNo,
+        refundAmount,
+        paymentReference,
+        confirmationSource
+      }, time, -refundAmount)
+
+      await depositEvent(tx, key(depositId, 'auto_refund', refundNo), curDeposit, admin.openid, 'refund', refundAmount, reason, time, {
+        operatorRole: 'admin',
+        refundNo,
+        confirmationSource
+      })
+
+      return {
+        id: depositId,
+        refundNo,
+        refundAmount,
+        channel: refundChannel,
+        confirmationSource,
+        status: 'refunded',
+        exitCompleted: !otherDepositsPending
+      }
+    })
+  }
+
+  return { reserveStaffDepositPayment, confirmStaffSupplyPolicy, shipStaffSupplies, getStaffDepositRefundPreview, requestStaffDepositRefund, settleStaffDeposit, settleSupplyReimbursement, submitStaffSupplyOnce, recordStaffDepositPayment, recordStaffDepositRefundSuccess, finalizeStaffDepositExit, autoRefundStaffDeposit }
 }

@@ -12,7 +12,7 @@ module.exports = function createMapCommunities({ db, crypto, hasCoordinate, calc
     return db.RegExp({ regexp: `^\\s*(?:[^省]{2,12}省|内蒙古自治区|广西壮族自治区|西藏自治区|宁夏回族自治区|新疆维吾尔自治区)?${escaped}(?:市|特别行政区|地区|盟|自治州)?\\s*$`, options: '' })
   }
   function publicCommunity(row) {
-    if (!row || row.key !== key || row.enabled !== true || !hasCoordinate(row.latitude, row.longitude) || Math.abs(Number(row.latitude)) > 85) return null
+    if (!row || row.key !== key || row.retiredAt || row.enabled !== true || !hasCoordinate(row.latitude, row.longitude) || Math.abs(Number(row.latitude)) > 85) return null
     return { _id: row._id, name: row.name, city: row.city, district: row.district || '',
       latitude: Number(row.latitude), longitude: Number(row.longitude), revision: Number(row.revision || 1) }
   }
@@ -117,7 +117,7 @@ module.exports = function createMapCommunities({ db, crypto, hasCoordinate, calc
         : !hasCoordinate(latitude, longitude) ? '服务地址缺少有效坐标，请重新选址'
         : previousId && !activeCommunityIds.has(previousId) ? '原关联小区已停用或不存在，请重新选择'
         : existing.length > 1 ? '同名小区，需核对位置'
-        : existing.length === 1 ? (existing[0].enabled ? '服务地址超出自动匹配距离，请核对公共点或下单时直接选择' : '已维护但未启用') : '尚未维护公共小区'
+        : existing.length === 1 ? (existing[0].retiredAt ? '该小区已删除，不接受新住户' : existing[0].enabled ? '服务地址超出自动匹配距离，请核对公共点或下单时直接选择' : '已维护但未启用') : '尚未维护公共小区'
       pending.push({ sourceCity, name, baseKey, district: parts.district, existing, kind, reason })
     }
     for (const order of orders) add(order, 'orderCount')
@@ -139,7 +139,7 @@ module.exports = function createMapCommunities({ db, crypto, hasCoordinate, calc
         const existing = entry.existing.filter(row => !district || !row.district || row.district === district)
         groups.set(groupKey, { _id: 'map_candidate_' + crypto.createHash('sha256').update(groupKey).digest('hex').slice(0, 24),
           name: entry.name, city: entry.sourceCity, district, orderCount: 0, staffCount: 0, applicationCount: 0, applicationIds: [],
-          existingId: existing.length === 1 ? existing[0]._id : '',
+          existingId: existing.length === 1 ? existing[0]._id : '', existingRetired: existing.length === 1 && !!existing[0].retiredAt,
           reason: entry.reason })
       }
       groups.get(groupKey)[entry.kind]++

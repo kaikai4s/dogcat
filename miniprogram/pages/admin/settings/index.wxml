@@ -6,12 +6,16 @@
   </view>
 
   <view class="settings-grid">
+    <view class="admin-compact-card setting-overview-card" data-panel="maintenance" bindtap="openSettingModal">
+      <view class="admin-summary-row"><view class="admin-summary-main"><view class="admin-summary-title">功能维护</view><view class="admin-summary-sub">{{settingSummary.maintenance}}</view></view><view class="meta-chip {{settings.maintenance.petRanking || settings.maintenance.booking || settings.maintenance.invitation ? 'warning' : 'success'}}">{{settings.maintenance.petRanking || settings.maintenance.booking || settings.maintenance.invitation ? '维护中' : '正常'}}</view></view>
+      <view class="setting-summary-line">单独暂停排行榜、预约下单及分享邀请；不影响已有订单和历史收益。</view>
+    </view>
     <navigator wx:if="{{adminSuper}}" class="admin-compact-card setting-overview-card" url="/pages/admin/config-migration/index"><view class="admin-summary-title">配置导入与导出</view><view class="setting-summary-line">导出全部配置，跨环境预览导入，自动保留备份 ›</view></navigator>
     <navigator class="admin-compact-card setting-overview-card" url="/pages/admin/playground/index"><view class="admin-summary-title">宠物庄园管理</view><view class="setting-summary-line">拼单优惠、宠物状态、地面及庄园素材统一管理 ›</view></navigator>
     <view class="admin-compact-card setting-overview-card" data-panel="staffPolicy" bindtap="openSettingModal">
       <view class="admin-summary-title">宠托师保证金与用品报销</view>
-      <view class="setting-summary-line">保证金{{settings.staffDeposit.enabled ? '已启用' : '未启用'}} · ¥{{settings.staffDeposit.amount}}；用品报销独立由平台出资，绝不扣减保证金。</view>
-      <view class="setting-summary-line">正式认证后仅首次申请可报销，实习阶段不可申请。</view>
+      <view class="setting-summary-line">保证金{{settings.staffDeposit.enabled ? '已启用' : '未启用'}} · ¥{{settings.staffDeposit.amount}}；首次用品{{settings.staffSupplies.shippingEnabled ? '平台寄送，费用 ¥' + settings.staffSupplies.supplyFeeAmount : '寄送未启用'}}。</view>
+      <view class="setting-summary-line">确认并发货后可申请用品费用减免，审核通过则退出结算不扣用品费。</view>
     </view>
     <view class="admin-compact-card setting-overview-card" data-panel="staffZhima" bindtap="openSettingModal">
       <view class="admin-summary-row">
@@ -143,6 +147,11 @@
       <view class="setting-summary-line">配置签到中心邀请好友分享标题和封面。</view>
     </view>
 
+    <view class="admin-compact-card setting-overview-card" data-panel="noticeTicker" bindtap="openSettingModal">
+      <view class="admin-summary-row"><view class="admin-summary-main"><view class="admin-summary-title">用户端消息滚动栏</view><view class="admin-summary-sub">{{settingSummary.noticeTicker}}</view></view><view class="meta-chip chip-primary">编辑</view></view>
+      <view class="setting-summary-line">发布后在首页顶部和预约下单页显示。</view>
+    </view>
+
     <view class="admin-compact-card setting-overview-card" data-panel="settlementReliability" bindtap="openSettingModal">
       <view class="admin-summary-row">
         <view class="admin-summary-main">
@@ -222,12 +231,13 @@
     </view>
   </view>
 
-  <button wx:if="{{adminSuper}}" class="primary save-settings-btn" disabled="{{saving}}" bindtap="save">{{saving ? '保存中...' : '保存全局设置'}}</button>
+  <button wx:if="{{adminSuper}}" class="primary save-settings-btn" disabled="{{saving || uploadingTrainingVideo || uploadingTrainingPoster || uploadingInvitationShareImage || uploadingCheckinShareImage}}" bindtap="save">{{saving ? '保存中...' : '保存全局设置'}}</button>
 
   <view class="modal-backdrop" wx:if="{{showSettingModal}}" bindtap="closeSettingModal" catchtouchmove="noop">
     <view class="modal-card settings-modal-card" catchtap="noop">
       <view class="modal-header">
         <view class="modal-title" wx:if="{{activeSettingPanel === 'pricingSurcharges'}}">特殊日期与时段加价</view>
+        <view class="modal-title" wx:if="{{activeSettingPanel === 'maintenance'}}">功能维护</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'realNameVerification'}}">宠托师实名核验 (聚合数据)</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'staffZhima'}}">宠托师芝麻信用准入</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'staffPolicy'}}">保证金与用品报销</view>
@@ -239,6 +249,7 @@
         <view class="modal-title" wx:if="{{activeSettingPanel === 'subscription'}}">订阅消息</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'customerService'}}">客服与转接</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'checkinShare'}}">签到分享卡片</view>
+        <view class="modal-title" wx:if="{{activeSettingPanel === 'noticeTicker'}}">用户端消息滚动栏</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'settlementReliability'}}">结算与可靠性</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'invitation'}}">邀请活动与用户资产</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'carousel'}}">首页顶部轮播</view>
@@ -249,6 +260,12 @@
       </view>
 
       <scroll-view scroll-y class="modal-scroll-body settings-modal-scroll">
+        <view wx:if="{{activeSettingPanel === 'maintenance'}}" class="setting-modal-section">
+          <view class="module-switch-row"><view><view class="label">宠物排行榜维护</view><view class="muted">暂停查看排行榜、活动入口及投票；已获称号不受影响。</view></view><switch checked="{{settings.maintenance.petRanking}}" disabled="{{!adminSuper}}" data-key="petRanking" bindchange="toggleMaintenance" /></view>
+          <view class="module-switch-row"><view><view class="label">预约下单维护</view><view class="muted">暂停服务订单报价、创建及待支付订单付款；已有订单可继续查看和履约，商城不受影响。</view></view><switch checked="{{settings.maintenance.booking}}" disabled="{{!adminSuper}}" data-key="booking" bindchange="toggleMaintenance" /></view>
+          <view class="module-switch-row"><view><view class="label">分享赚取佣金维护</view><view class="muted">暂停新邀请绑定与收益获取；已有收益仍可查看、提现。</view></view><switch checked="{{settings.maintenance.invitation}}" disabled="{{!adminSuper}}" data-key="invitation" bindchange="toggleMaintenance" /></view>
+          <view class="notice">开启表示进入维护状态；点击底部“保存全局设置”后生效。</view>
+        </view>
         <view wx:if="{{activeSettingPanel === 'staffZhima'}}" class="setting-modal-section">
           <view class="policy-notice">开启后，宠托师申请入驻必须填写支付宝芝麻信用分，且分数必须达到平台配置的最低门槛。申请人需上传【芝麻信用分截图】和【支付宝个人主页截图】以便管理员审核核对实名信息。</view>
           
@@ -293,7 +310,7 @@
           <view class="muted">范围 224～11200 米，填写整数。草地自动铺满；已有房屋不能因缩小地面而被移出边界。保存后重新进入乐园生效。</view>
         </view>
         <view wx:if="{{activeSettingPanel === 'staffPolicy'}}" class="setting-modal-section">
-          <view class="policy-notice">自愿退出时保证金全额原路退回，仅减去管理员有记录依据的违规没收及已退部分。用品报销不占用、不抵扣保证金。</view>
+          <view class="policy-notice">已确认并发货的首次用品按确认时费用与减免审核结果结算；未确认或未发货不扣用品费。用品费用与违规没收分别记账。</view>
           <view class="field-item"><text class="label">保证金金额（元，精确到分）</text><input class="input" type="digit" value="{{settings.staffDeposit.amount}}" data-field="staffDeposit.amount" bindinput="staffPolicyInput" /></view>
           <view class="compact-toggle-row"><text>启用保证金（必须先配置正数金额）</text><switch checked="{{settings.staffDeposit.enabled}}" bindchange="staffDepositToggle" /></view>
           <view class="field-item"><text class="label">保证金说明</text><textarea class="input textarea-input" maxlength="-1" value="{{settings.staffDeposit.rulesText}}" data-field="staffDeposit.rulesText" bindinput="staffPolicyInput" /></view>
@@ -302,6 +319,8 @@
           <view class="section-title">平台出资的用品报销与一次性必备物品</view>
           <view class="policy-notice">只有正式认证（不是实习）后首次申请可报销。视频审核必查手套、口罩、鞋套、宠物安全消毒用品；用品齐全不代表考核通过，严格考核未通过不报销。</view>
           <view class="compact-toggle-row"><text>启用用品报销申请</text><switch checked="{{settings.staffSupplies.reimbursementEnabled}}" data-field="staffSupplies.reimbursementEnabled" bindchange="staffPolicyInput" /></view>
+          <view class="compact-toggle-row"><text>平台寄送首次用品并按新规则结算</text><switch checked="{{settings.staffSupplies.shippingEnabled}}" data-field="staffSupplies.shippingEnabled" bindchange="staffPolicyInput" /></view>
+          <view class="field-item"><text class="label">首次用品费用（元）</text><input class="input" type="digit" value="{{settings.staffSupplies.supplyFeeAmount}}" data-field="staffSupplies.supplyFeeAmount" bindinput="staffPolicyInput" /><view class="muted">仅对确认规则且已发货的用品生效；通过费用减免审核后退押金时不扣。</view></view>
           <view class="field-item"><text class="label">固定报销金额（元）</text><input class="input" type="digit" value="{{settings.staffSupplies.reimbursementAmount}}" data-field="staffSupplies.reimbursementAmount" bindinput="staffPolicyInput" /></view>
           <view class="field-item"><text class="label">报销资格方式（可多选）</text><checkbox-group bindchange="reimbursementModesChange"><label class="radio-label"><checkbox value="order_count" checked="{{settings.staffSupplies.reimbursementMode === 'order_count' || settings.staffSupplies.reimbursementMode === 'either'}}" /> 完成订单数</label><label class="radio-label"><checkbox value="invite_count" checked="{{settings.staffSupplies.reimbursementMode === 'invite_count' || settings.staffSupplies.reimbursementMode === 'either'}}" /> 邀请绑定人数</label></checkbox-group></view>
           <view class="muted">勾选的条件满足任意一项即可申请报销；数量为 0 表示该项不设门槛。邀请人数仅统计具备报销资格的有效绑定。</view>
@@ -618,6 +637,16 @@
           </view>
         </view>
 
+        <view wx:if="{{activeSettingPanel === 'noticeTicker'}}" class="setting-modal-section">
+          <view class="compact-toggle-row"><text>显示消息滚动栏</text><switch checked="{{settings.noticeTicker.enabled}}" bindchange="toggleNoticeTicker" /></view>
+          <view class="field-item" wx:for="{{settings.noticeTicker.items}}" wx:key="index">
+            <text class="label">消息 {{index + 1}}</text>
+            <textarea class="input textarea-input" maxlength="120" value="{{item}}" data-index="{{index}}" bindinput="noticeTickerInput" placeholder="输入要向用户展示的注意事项" />
+            <button class="btn btn-outline btn-xs" data-index="{{index}}" bindtap="removeNoticeTickerItem">删除消息</button>
+          </view>
+          <button class="btn btn-outline" bindtap="addNoticeTickerItem">添加消息</button>
+        </view>
+
         <view wx:if="{{activeSettingPanel === 'settlementReliability'}}" class="setting-modal-section">
           <view class="field-item"><text class="label">宠托师订单收益分成比例</text><input class="input" type="digit" value="{{settings.settlement.staffCommissionRate}}" data-field="staffCommissionRate" bindinput="settlementInput" placeholder="例如 0.70 表示 70%" /></view>
           <view class="notice">订单完成后按此比例生成宠托师收益；输入 0-1 之间的小数，最多两位小数。</view>
@@ -773,13 +802,41 @@
 
           <view class="section-title-row between"><text class="section-title">培训答题</text><button class="small-btn primary-btn" bindtap="addQuizQuestion">新增题目</button></view>
           <view class="field-item"><text class="label">及格分数</text><input class="input" type="number" value="{{settings.staffTraining.passScore}}" bindinput="trainingPassScoreInput" placeholder="1-100" /></view>
-          <view class="notice">员工端只会看到题目和选项，不会返回正确答案。</view>
+          <view class="notice">全部为单选题，当前已选 {{settings.staffTraining.quiz.length}} 道。员工端不会收到正确答案；调整后请保存设置。</view>
+          <view class="quiz-bank-toolbar">
+            <button class="small-btn primary-btn" bindtap="openQuizBank">{{quizBankOpen ? '收起默认题库' : '从默认题库选择'}}</button>
+            <button class="small-btn" bindtap="useAllDefaultQuestions">使用全部 {{defaultQuizBank.length}} 道默认题</button>
+          </view>
+          <view wx:if="{{quizBankOpen}}" class="quiz-bank-panel">
+            <view class="form-title">默认题库 · {{defaultQuizBank.length}} 道单选</view>
+            <view class="muted">勾选后加入当前试卷，不会覆盖已有题目。已加入的题目可在下方编辑。</view>
+            <input class="input quiz-bank-search" value="{{quizBankKeyword}}" bindinput="quizBankSearch" placeholder="搜索题目或分类，如：入户、牵引、隐私" />
+            <view class="quiz-bank-toolbar">
+              <button class="mini-btn" bindtap="selectAllQuizBank">全选搜索结果中未加入的题</button>
+              <text class="muted">已勾选 {{quizBankSelectedCount}} 道</text>
+            </view>
+            <scroll-view scroll-y class="quiz-bank-list">
+              <view class="quiz-bank-empty" wx:if="{{!quizBankRows.length}}">没有匹配题目，试试其他关键词</view>
+              <view class="quiz-bank-item {{b.included ? 'included' : ''}}" wx:for="{{quizBankRows}}" wx:key="id" wx:for-item="b">
+                <view class="quiz-bank-item-main" data-id="{{b.id}}" bindtap="toggleQuizBankQuestion">
+                  <checkbox checked="{{b.checked}}" disabled="{{b.included}}" color="#327a65" />
+                  <view><text class="quiz-bank-category">{{b.category || '基础规范'}} · 单选{{b.included ? ' · 已加入' : ''}}</text><view class="quiz-bank-question">{{b.question}}</view></view>
+                </view>
+                <view class="quiz-bank-preview">
+                  <view wx:for="{{b.options}}" wx:key="value" wx:for-item="bo">{{bo.value}}. {{bo.label}}</view>
+                  <view class="quiz-bank-answer">正确答案：{{b.answer}}</view>
+                </view>
+              </view>
+            </scroll-view>
+            <button class="primary-btn" disabled="{{!quizBankSelectedCount}}" bindtap="addSelectedDefaultQuestions">加入选中题目（{{quizBankSelectedCount}}）</button>
+          </view>
           <view class="quiz-edit-card" wx:for="{{settings.staffTraining.quiz}}" wx:key="id" wx:for-item="q" wx:for-index="qIndex">
             <view class="quiz-card-header">
-              <view class="form-title">题目 {{qIndex + 1}}</view>
-              <button class="mini-btn danger" data-index="{{qIndex}}" bindtap="deleteQuizQuestion">删除题目</button>
+              <view class="quiz-summary" data-id="{{q.id}}" bindtap="toggleQuizEditor"><text class="quiz-bank-category">第 {{qIndex + 1}} 题 · 单选 · {{q.category || '自定义'}} </text><view class="quiz-summary-title">{{q.question || '待填写题目'}}</view><text class="quiz-expand-label">{{quizEditorId === q.id ? '收起编辑 ↑' : '展开编辑 ↓'}}</text></view>
+              <button class="mini-btn danger" data-index="{{qIndex}}" bindtap="deleteQuizQuestion">移除</button>
             </view>
-            <view class="field-item"><text class="label">题干</text><input class="input" value="{{q.question}}" data-index="{{qIndex}}" bindinput="quizQuestionInput" placeholder="请输入题目内容" /></view>
+            <view wx:if="{{quizEditorId === q.id}}" class="quiz-editor-body">
+            <view class="field-item"><text class="label">题干</text><textarea class="input quiz-question-textarea" auto-height value="{{q.question}}" data-index="{{qIndex}}" bindinput="quizQuestionInput" placeholder="请输入题目内容" maxlength="500" /></view>
             <view class="field-item">
               <text class="label">正确答案</text>
               <radio-group class="radio-group" data-index="{{qIndex}}" bindchange="quizAnswerChange">
@@ -788,10 +845,11 @@
             </view>
             <view class="quiz-option-row" wx:for="{{q.options}}" wx:key="value" wx:for-item="opt" wx:for-index="optIndex">
               <view class="quiz-option-tag">{{opt.value}}</view>
-              <input class="input quiz-option-input" value="{{opt.label}}" data-question-index="{{qIndex}}" data-option-index="{{optIndex}}" bindinput="quizOptionInput" placeholder="选项内容" />
+              <textarea auto-height maxlength="300" class="input quiz-option-input" value="{{opt.label}}" data-question-index="{{qIndex}}" data-option-index="{{optIndex}}" bindinput="quizOptionInput" placeholder="选项内容" />
               <button class="mini-btn danger" data-question-index="{{qIndex}}" data-option-index="{{optIndex}}" bindtap="deleteQuizOption">删</button>
             </view>
             <button class="mini-btn primary" data-index="{{qIndex}}" bindtap="addQuizOption">添加选项</button>
+            </view>
           </view>
 
           <!-- 线上视频审核指引与管理员微信配置 -->
@@ -967,7 +1025,7 @@
 
       <view class="modal-actions">
         <button class="ghost" style="flex: 1;" bindtap="closeSettingModal">关闭</button>
-        <button wx:if="{{adminSuper}}" class="primary" style="flex: 2;" disabled="{{saving}}" bindtap="save">{{saving ? '保存中...' : '保存设置'}}</button>
+        <button wx:if="{{adminSuper}}" class="primary" style="flex: 2;" disabled="{{saving || uploadingTrainingVideo || uploadingTrainingPoster || uploadingInvitationShareImage || uploadingCheckinShareImage}}" bindtap="save">{{saving ? '保存中...' : '保存设置'}}</button>
       </view>
     </view>
   </view>

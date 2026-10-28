@@ -1,6 +1,7 @@
 <view class="page staff-profile-page {{themeClass}} {{fontClass}}">
   <staff-active-service-banner />
-  <view class="staff-hero">
+  <!-- 真实宠托师头部 -->
+  <view class="staff-hero" wx:if="{{!loadingProfile || profile}}">
     <view class="hero-badge">多芙琳宠护 · 宠托师中心</view>
     <view class="profile-user-row">
       <view class="avatar-level-wrap">
@@ -12,26 +13,87 @@
         <view class="profile-name-row">
           <text class="profile-name {{nameEffect && nameEffect !== 'none' ? 'name-effect-' + nameEffect : ''}}" style="{{nameColor ? 'color: ' + nameColor + ';' : ''}}">{{displayName}}</text>
           <text class="member-badge badge-{{badgeStyle || 'gold'}}" wx:if="{{badgeTag || memberLevelName}}">{{badgeTag || memberLevelName}}</text>
-          <view class="badge pink">{{statusTitle}}</view>
+          <view class="badge pink" wx:if="{{statusTitle}}">{{statusTitle}}</view>
         </view>
-        <view class="profile-sub">{{statusTip}}</view>
+        <view class="profile-sub" wx:if="{{statusTip}}">{{statusTip}}</view>
       </view>
     </view>
   </view>
+
+  <!-- 头部骨架屏：无缓存且加载中时展示，避免闪烁“未入驻” -->
+  <view class="staff-hero staff-hero-skeleton" wx:else>
+    <view class="skeleton-shimmer skeleton-hero-badge"></view>
+    <view class="profile-user-row">
+      <view class="avatar-level-wrap">
+        <view class="profile-avatar skeleton-shimmer skeleton-avatar"></view>
+      </view>
+      <view class="profile-user-info">
+        <view class="profile-name-row">
+          <view class="skeleton-shimmer skeleton-name"></view>
+          <view class="skeleton-shimmer skeleton-status-badge"></view>
+        </view>
+        <view class="skeleton-shimmer skeleton-sub-text"></view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 卡片骨架屏：无缓存且加载中时占位，杜绝 Layout Shift 布局抖动 -->
+  <block wx:if="{{loadingProfile && !profile}}">
+    <!-- 收益钱包骨架卡片 -->
+    <view class="card earnings-wallet-card skeleton-wallet-card">
+      <view class="wallet-head">
+        <view class="skeleton-shimmer skeleton-wallet-title"></view>
+        <view class="skeleton-shimmer skeleton-wallet-link"></view>
+      </view>
+      <view class="wallet-stats">
+        <view class="wallet-stat-item">
+          <view class="skeleton-shimmer skeleton-wallet-stat-num"></view>
+          <view class="skeleton-shimmer skeleton-wallet-stat-lbl"></view>
+        </view>
+        <view class="wallet-stat-item">
+          <view class="skeleton-shimmer skeleton-wallet-stat-num"></view>
+          <view class="skeleton-shimmer skeleton-wallet-stat-lbl"></view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 接单服务设置骨架卡片 -->
+    <view class="card config-summary-card skeleton-config-card">
+      <view class="card-head-between">
+        <view class="skeleton-shimmer skeleton-config-title"></view>
+        <view class="skeleton-shimmer skeleton-config-btn"></view>
+      </view>
+      <view class="info-list">
+        <view class="info-row" wx:for="{{[1, 2, 3]}}" wx:key="*this">
+          <view class="skeleton-shimmer skeleton-row-lbl"></view>
+          <view class="skeleton-shimmer skeleton-row-val"></view>
+        </view>
+      </view>
+    </view>
+  </block>
 
   <!-- 未缴纳履约保证金警示条 -->
   <view class="notice-card deposit-warning-notice" wx:if="{{depositNotice && depositNotice.needDeposit}}">
     <view class="notice-main">
       <view class="notice-title">
         <text class="remix-icon {{depositNotice.isRepay ? 'ri-alarm-warning-fill' : 'ri-shield-keyhole-fill'}} notice-icon"></text>
-        <text>{{depositNotice.title || '未缴纳履约保证金'}}</text>
-
+        <text class="notice-title-text">{{depositNotice.title || (depositNotice.isRepay ? '要求重新足额缴纳保证金' : '未缴纳履约保证金')}}</text>
       </view>
-      <view class="notice-desc">{{depositNotice.message || '未缴纳履约保证金暂无法抢单与被指定接单，请尽快完成缴纳。'}}</view>
+      <view class="deposit-reason-box" wx:if="{{depositNotice.isRepay && (depositNotice.reason || depositNotice.repayReason)}}">
+        <text class="deposit-reason-label">原因：</text>
+        <text class="deposit-reason-text">{{depositNotice.reason || depositNotice.repayReason}}</text>
+      </view>
+      <view class="notice-desc">{{depositNotice.message || (depositNotice.isRepay ? '足额缴纳后即可恢复接单与抢单资格。' : '未缴纳履约保证金暂无法抢单与被指定接单，请尽快完成缴纳。')}}</view>
     </view>
     <view class="deposit-notice-footer">
-      <view class="deposit-notice-amount" wx:if="{{depositNotice.amount}}"><text>应缴保证金</text><text class="deposit-notice-price">¥{{depositNotice.amount}}</text></view>
-      <button class="notice-btn deposit-btn" data-url="/pages/staff/training/index" bindtap="go">{{depositNotice.isRepay ? '去补缴' : '去缴纳'}}</button>
+      <view class="deposit-notice-amount" wx:if="{{depositNotice.amount}}">
+        <text class="deposit-amount-label">需缴纳额度</text>
+        <view class="deposit-amount-val">
+          <text class="deposit-amount-symbol">¥</text>
+          <text class="deposit-amount-num">{{depositNotice.amount}}</text>
+        </view>
+      </view>
+      <button class="notice-btn deposit-btn" data-url="/pages/staff/training/index" bindtap="go">{{depositNotice.isRepay ? '重新足额缴纳' : '去缴纳'}}</button>
     </view>
   </view>
 

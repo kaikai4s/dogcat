@@ -50,6 +50,15 @@
         </view>
       </view>
 
+      <view class="filter-row">
+        <view class="filter-label">身份移除条件：</view>
+        <view class="chip-group">
+          <view class="filter-chip {{canRevokeStatus === '' ? 'active' : ''}}" data-value="" bindtap="selectCanRevokeFilter">全部</view>
+          <view class="filter-chip {{canRevokeStatus === 'yes' ? 'active' : ''}}" data-value="yes" bindtap="selectCanRevokeFilter">保证金为0·可移除</view>
+          <view class="filter-chip {{canRevokeStatus === 'no' ? 'active' : ''}}" data-value="no" bindtap="selectCanRevokeFilter">不可移除(有余额/未结清)</view>
+        </view>
+      </view>
+
       <view class="filter-actions">
         <button class="mini-btn ghost-mini" bindtap="resetFilter">重置筛选</button>
         <button class="mini-btn primary-mini" bindtap="applyFilter">应用筛选</button>
@@ -93,6 +102,7 @@
           <view class="meta-chip">{{item.ratingText}}</view>
           <view class="meta-chip deposit-chip {{item.depositBalance < 100 ? 'danger-chip' : ''}}">保证金: {{item.depositBalanceText}}</view>
           <view class="meta-chip withdraw-chip">可提现: {{item.withdrawableAmountText}}</view>
+          <view class="meta-chip can-revoke-chip" wx:if="{{item.canRevokeStaff && item.auditStatus === 'approved'}}">可移除身份</view>
           <view class="meta-chip danger-chip" wx:if="{{item.requireDepositRepay}}">需重新缴纳保证金</view>
           <view class="meta-chip danger-chip" wx:if="{{item.problemOrderCount > 0}}">异常订单 {{item.problemOrderCount}}</view>
           <view class="meta-chip warning" wx:if="{{item.promotionStatus === 'pending'}}">转正审核中</view>
@@ -109,7 +119,7 @@
       <button class="mini-btn danger-mini" wx:if="{{item.auditStatus === 'approved' && item.depositBalance > 0}}" data-item="{{item}}" bindtap="openForfeitModal">扣除保证金</button>
       <button class="mini-btn ghost-mini" wx:if="{{item.depositBalance <= 0 && (adminSuper || adminPermissions.admin_listStaffDeposits)}}" data-url="/pages/admin/finance/index?tab=deposits&amp;action=refund&amp;staffOpenid={{item.openid}}" bindtap="go">保证金记录</button>
       <button class="mini-btn ghost-mini" wx:if="{{(item.staffLevel === 'certified') && (adminSuper || adminPermissions.admin_setSitterFeatured)}}" data-id="{{item._id}}" data-featured="{{item.isFeatured}}" bindtap="toggleFeatured">{{item.featuredActionText}}</button>
-      <button class="mini-btn danger-mini" wx:if="{{(item.canRevokeStaff) && (adminSuper || adminPermissions.admin_revokeStaff)}}" data-id="{{item._id}}" bindtap="revokeStaff">移除身份</button>
+      <button class="mini-btn danger-mini" wx:if="{{item.auditStatus === 'approved' && (adminSuper || adminPermissions.admin_revokeStaff)}}" data-id="{{item._id}}" bindtap="revokeStaff">移除身份</button>
       <button class="mini-btn ghost-mini" data-index="{{index}}" bindtap="toggleDetails">{{item.expanded ? '收起详情' : '展开详情'}}</button>
     </view>
 
@@ -287,6 +297,34 @@
         <button class="ghost-btn" bindtap="closeForfeitModal">取消</button>
         <button wx:if="{{adminSuper || adminPermissions.admin_forfeitStaffDeposit}}" class="danger-btn" loading="{{forfeiting}}" disabled="{{forfeiting}}" bindtap="submitForfeitDeposit">确认扣除</button>
       </view>
+    </view>
+  </view>
+
+  <view class="modal-mask" wx:if="{{showDepositRefundModal}}" catchtouchmove="noop">
+    <view class="modal-card deposit-refund-card">
+      <view class="modal-title">退还保证金 · 结算核对</view>
+      <scroll-view scroll-y class="deposit-refund-body">
+        <view class="refund-staff-name">{{depositRefundStaff.realName || depositRefundStaff.userNickname || '宠托师'}}</view>
+        <view class="refund-loading" wx:if="{{depositRefundPreviewLoading}}">正在核对报销与保证金余额…</view>
+        <view class="refund-blocked" wx:if="{{depositRefundError}}">{{depositRefundError}}</view>
+        <block wx:if="{{depositRefundPreview}}">
+        <view class="refund-reimbursement-status {{depositRefundPreview.reimbursementCompleted ? 'refund-status-completed' : ''}}">{{depositRefundPreview.reimbursementStatusText}}</view>
+        <view class="refund-breakdown-row"><text>此笔保证金余额</text><text>¥{{depositRefundPreview.availableRefundAmountText}}</text></view>
+        <view class="refund-breakdown-row"><text>首次用品费用</text><text>¥{{depositRefundPreview.supplyFeeAmountText}}</text></view>
+        <view class="refund-breakdown-row" wx:if="{{depositRefundPreview.supplyFeeDeductedAmount > 0}}"><text>此前已扣用品费</text><text>¥{{depositRefundPreview.supplyFeeDeductedAmountText}}</text></view>
+        <view class="refund-breakdown-row refund-deduction"><text>本次应扣用品费</text><text>{{depositRefundPreview.blocked ? '待核定' : '− ¥' + depositRefundPreview.supplyFeeDueText}}</text></view>
+        <view class="refund-breakdown-row refund-net"><text>预计实际退还</text><text>{{depositRefundPreview.estimatedRefundAmount == null ? '待核定' : '¥' + depositRefundPreview.estimatedRefundAmountText}}</text></view>
+        <view class="refund-blocked" wx:if="{{depositRefundPreview.blocked}}">{{depositRefundPreview.blockedReason}}</view>
+        <view class="muted" wx:else>已报销通过则减免用品费；未申请或审核未通过则扣除。未确认或未发货不扣。多笔保证金逐笔结算，实际退款以审核明细为准。</view>
+        <button class="refund-status-link" wx:if="{{depositRefundPreview.reimbursementStatus === 'pending' && (adminSuper || adminPermissions.admin_listSupplyReimbursements)}}" bindtap="viewDepositReimbursement">前往处理用品报销 <text class="remix-icon ri-arrow-right-s-line"></text></button>
+        <button class="refund-status-link" wx:if="{{depositRefundPreview.canRequestRefund === false && !depositRefundPreview.blocked && (adminSuper || adminPermissions.admin_listStaffDeposits)}}" bindtap="viewDepositRefundFinance">此笔已进入退款流程或已结清，查看财务记录 <text class="remix-icon ri-arrow-right-s-line"></text></button>
+        <view class="form-label">退还原因（必填）</view>
+        <textarea class="refund-reason-input" placeholder="请填写退还原因" value="{{depositRefundReason}}" bindinput="inputDepositRefundReason" maxlength="200" disabled="{{depositRefundBusy || depositRefundPreview.canRequestRefund === false}}" />
+        <view class="muted">提交后进入财务退款审核；微信支付的保证金审核通过后按净额原路退还，其他渠道须登记实际退款凭证。</view>
+        </block>
+      </scroll-view>
+      <button class="refund-refresh" bindtap="refreshDepositRefundPreview" loading="{{depositRefundPreviewLoading}}" disabled="{{depositRefundBusy || depositRefundPreviewLoading}}">刷新报销与退款状态</button>
+      <view class="modal-actions"><button class="ghost-btn" bindtap="closeDepositRefundModal" disabled="{{depositRefundBusy}}">关闭</button><button class="primary-btn" bindtap="submitDepositRefund" loading="{{depositRefundBusy}}" disabled="{{depositRefundBusy || depositRefundPreviewLoading || !depositRefundPreview || depositRefundPreview.blocked || depositRefundPreview.canRequestRefund === false || !depositRefundReason || depositRefundPreview.estimatedRefundAmount <= 0}}">提交退款审核</button></view>
     </view>
   </view>
 

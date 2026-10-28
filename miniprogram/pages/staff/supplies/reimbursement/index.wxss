@@ -109,6 +109,24 @@
   margin-bottom: 16rpx;
 }
 
+.qualification-panel { margin-top: 24rpx; padding: 24rpx; border: 2rpx solid #86baa6; border-radius: 16rpx; background: #edf7f2; box-sizing: border-box; }
+.qualification-title { display: flex; align-items: center; gap: 12rpx; color: #205342; font-size: 30rpx; font-weight: 900; line-height: 1.4; }
+.qualification-title .remix-icon { flex-shrink: 0; font-size: 34rpx; }
+.qualification-summary { margin-top: 12rpx; color: #31574c; font-size: 25rpx; line-height: 1.55; font-weight: 700; overflow-wrap: anywhere; }
+.condition-row { display: flex; align-items: flex-start; gap: 14rpx; padding: 18rpx 0; border-top: 1rpx solid #cee6d9; }
+.qualification-summary + .condition-row { margin-top: 18rpx; }
+.condition-number { display: flex; flex-shrink: 0; align-items: center; justify-content: center; width: 36rpx; height: 36rpx; border-radius: 50%; background: #d8ebe2; color: #205342; font-size: 22rpx; font-weight: 900; }
+.condition-main { flex: 1; min-width: 0; }
+.condition-name { font-size: 26rpx; font-weight: 850; color: #263b31; line-height: 1.4; overflow-wrap: anywhere; }
+.condition-progress { margin-top: 5rpx; font-size: 23rpx; color: #526d5f; line-height: 1.4; }
+.condition-status { flex-shrink: 0; margin-top: 2rpx; font-size: 22rpx; font-weight: 800; color: #9b5129; }
+.condition-row.met .condition-status { color: #18744e; }
+.qualification-result { padding-top: 12rpx; border-top: 1rpx solid #cee6d9; font-size: 24rpx; line-height: 1.5; color: #205342; font-weight: 800; }
+.rules-consent { margin: 18rpx 0; padding: 18rpx; border: 1rpx solid #dfb693; border-radius: 12rpx; background: #fff8f0; }
+.rules-consent-row { display: flex; align-items: flex-start; gap: 12rpx; width: 100%; box-sizing: border-box; }
+.rules-consent-row checkbox { flex-shrink: 0; margin-top: 2rpx; transform: scale(.82); transform-origin: top left; }
+.rules-consent-row text { flex: 1; min-width: 0; font-size: 25rpx; line-height: 1.5; font-weight: 800; color: #743819; overflow-wrap: anywhere; }
+
 .receipt-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

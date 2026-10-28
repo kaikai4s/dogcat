@@ -1,3 +1,5 @@
+const { assertModuleAvailable } = require('../services/moduleMaintenance')
+
 module.exports = function createHandler(context) {
   const {
     authorizeAdmin,
@@ -79,6 +81,7 @@ module.exports = function createHandler(context) {
     if (action === 'createPayment') {
       const { order, collectionName, orderType } = await requireClientPayableOrder(openid, data.orderId, '无权支付该订单')
       const settings = await getSystemSettings({ includeSecrets: true })
+      if (orderType !== 'mall' && order.paymentStatus !== 'paid') await assertModuleAvailable(async () => settings, 'booking')
       if (settings.payment.enabled === false) throw new Error('支付功能暂未开启')
       assertPaymentModeAllowed(settings.payment)
       if (order.paymentStatus === 'paid') return { orderId: data.orderId, status: 'paid', paid: true }
@@ -100,7 +103,9 @@ module.exports = function createHandler(context) {
       if (settings.payment.mode === 'mock') return { mock: true, orderId: data.orderId, paymentNo: payment.paymentNo, amount: payment.amount, message: '当前为模拟支付模式' }
 
       const config = getWechatPayConfig(settings)
-      if (payment.prepayId) return { mock: false, orderId: data.orderId, paymentNo: payment.paymentNo, amount: payment.amount, payParams: buildMiniProgramPayParams(payment.prepayId, config) }
+      const PREPAY_TTL_MS = 90 * 60 * 1000
+      const isPrepayExpired = payment.updatedAt && (Date.now() - new Date(payment.updatedAt).getTime() > PREPAY_TTL_MS)
+      if (payment.prepayId && !isPrepayExpired) return { mock: false, orderId: data.orderId, paymentNo: payment.paymentNo, amount: payment.amount, payParams: buildMiniProgramPayParams(payment.prepayId, config) }
       const requestBody = {
         appid: config.appId,
         mchid: config.mchId,
@@ -138,6 +143,7 @@ module.exports = function createHandler(context) {
     if (action === 'mockPayOrder') {
       const { order, orderType } = await requireClientPayableOrder(openid, data.orderId, '无权支付该订单')
       const settings = await getSystemSettings()
+      if (orderType !== 'mall' && order.paymentStatus !== 'paid') await assertModuleAvailable(async () => settings, 'booking')
       assertPaymentModeAllowed(settings.payment)
       if (settings.payment.mode !== 'mock') throw new Error('当前未开启模拟支付')
       if (order.paymentStatus === 'paid') return { orderId: data.orderId, status: 'paid' }

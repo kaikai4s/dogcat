@@ -502,3 +502,117 @@
   margin-left: 14rpx;
 }
 
+/* ================= 管理端控制台核心面板骨架预加载 ================= */
+.skeleton-stats-grid .skeleton-stat-card {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-height: 142rpx !important;
+  box-sizing: border-box !important;
+}
+
+.skeleton-stat-num {
+  width: 72rpx;
+  height: 46rpx;
+  border-radius: 10rpx;
+  margin-bottom: 12rpx;
+}
+
+.skeleton-stat-lbl {
+  width: 126rpx;
+  height: 24rpx;
+  border-radius: 6rpx;
+}
+
+.skeleton-panel-card {
+  margin-top: 20rpx;
+  padding: 28rpx;
+  box-sizing: border-box;
+}
+
+.skeleton-title-line {
+  width: 160rpx;
+  height: 38rpx;
+  border-radius: 8rpx;
+}
+
+.skeleton-sub-line {
+  width: 240rpx;
+  height: 24rpx;
+  border-radius: 6rpx;
+}
+
+.skeleton-badge-box {
+  width: 130rpx;
+  height: 44rpx;
+  border-radius: 12rpx;
+}
+
+.skeleton-month-pill {
+  width: 120rpx;
+  height: 40rpx;
+  border-radius: 999rpx;
+}
+
+.skeleton-legend-pill {
+  width: 86rpx;
+  height: 24rpx;
+  border-radius: 6rpx;
+}
+
+.skeleton-chart-box {
+  height: 240rpx;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 20rpx 8rpx 0;
+  gap: 16rpx;
+  box-sizing: border-box;
+}
+
+.skeleton-chart-col {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10rpx;
+}
+
+.skeleton-chart-col .skeleton-bar {
+  width: 100%;
+  max-width: 44rpx;
+  border-radius: 12rpx 12rpx 4rpx 4rpx;
+  background-color: #f1ebd8;
+}
+
+.skeleton-bar-label {
+  width: 28rpx;
+  height: 20rpx;
+  border-radius: 4rpx;
+}
+
+.skeleton-revenue-stat {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-height: 132rpx !important;
+  box-sizing: border-box !important;
+}
+
+.skeleton-revenue-num {
+  width: 140rpx;
+  height: 42rpx;
+  border-radius: 8rpx;
+  margin-bottom: 12rpx;
+}
+
+.skeleton-revenue-lbl {
+  width: 110rpx;
+  height: 24rpx;
+  border-radius: 6rpx;
+}
+

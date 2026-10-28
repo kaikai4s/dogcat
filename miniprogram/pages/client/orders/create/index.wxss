@@ -1,4 +1,10 @@
 /* Client order create: stepped booking architecture */
+.module-maintenance-screen{min-height:100vh;box-sizing:border-box;padding:calc(140rpx + env(safe-area-inset-top)) 40rpx 80rpx;background:#f7faf9;color:#25332e;text-align:center}
+.module-maintenance-inner{max-width:620rpx;margin:0 auto}
+.module-maintenance-icon{font-size:68rpx;color:#c46636}
+.module-maintenance-title{margin-top:28rpx;font-size:34rpx;font-weight:700}
+.module-maintenance-description{margin-top:20rpx;font-size:26rpx;line-height:1.7;color:#62736e}
+.module-maintenance-back{margin:48rpx auto 0;max-width:320rpx;border-radius:8rpx;background:#2f7562;color:white;font-size:28rpx}
 .order-community-box{margin:24rpx 0;padding:24rpx;min-width:0;border:1rpx solid #eedfd2;border-radius:20rpx;background:#fffaf4;box-sizing:border-box}
 .order-community-box .muted{font-size:24rpx;line-height:1.6;overflow-wrap:break-word}
 .order-community-city{padding:18rpx 0;color:#8a4e26;font-size:26rpx}
@@ -22,6 +28,12 @@
   color: #2d211a;
   overflow-x: hidden;
 }
+
+.booking-notice-ticker { display: flex; align-items: center; gap: 10rpx; min-width: 0; height: 76rpx; padding: 0 30rpx; background: #fff4df; border-bottom: 1rpx solid #f2ddba; box-sizing: border-box; }
+.booking-notice-ticker .remix-icon { width: 30rpx; height: 30rpx; font-size: 28rpx; color: #bb5831; }
+.booking-ticker-label { flex-shrink: 0; font-size: 23rpx; font-weight: 800; color: #ac4f2c; }
+.booking-ticker-swiper { flex: 1; min-width: 0; height: 56rpx; }
+.booking-ticker-item { height: 56rpx; line-height: 56rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 25rpx; }
 
 .order-create-page::before,
 .order-create-page::after {

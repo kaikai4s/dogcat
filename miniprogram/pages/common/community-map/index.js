@@ -1,5 +1,5 @@
 const { callFunction, showError, getSelectedLocation, saveSelectedLocation, requirePrivacyAuthorize, ensureLogin, requestSubscribeTemplates, subscribeIdentityChange, getCloudEnv, isLoginRequiredError } = require('../../../utils/cloud')
-const { clusterCommunities, inRegion, validPoint, locationCity, viewportKey, readViewport, storeViewport } = require('./utils')
+const { clusterCommunities, inRegion, validPoint, safeDecodeCity, locationCity, viewportKey, readViewport, storeViewport } = require('./utils')
 
 const VIEWPORT_STORAGE = 'communityMapViewportsV1'
 function getCurrentLocation() {
@@ -29,7 +29,8 @@ Page({
       : (typeof getApp === 'function' ? getApp()?.globalData?.activeRole : '')
     const point = getSelectedLocation()
     const reducedMotion = wx.getStorageSync('communityMapReducedMotion') === true
-    this.setData({ mode: this._entryRole === 'staff' ? 'orders' : 'sitters', city: options.city || locationCity(point),
+    const city = safeDecodeCity(options.city) || locationCity(point)
+    this.setData({ mode: this._entryRole === 'staff' ? 'orders' : 'sitters', city,
       filterDate: options.date || '', orderKind: options.kind || 'all', staffGenderRequirement: options.gender || 'any',
       genderIndex: options.gender === 'female' ? 1 : options.gender === 'male' ? 2 : 0,
       inServiceRange: options.inServiceRange === '1', inServiceTime: options.inServiceTime === '1',
@@ -95,7 +96,7 @@ Page({
     this._reference = mode === 'orders' ? reference : this._entryReference || getSelectedLocation()
     this.setData({ mode, canFindOrders, checkingIdentity: false, hasReference: validPoint(this._reference),
       referenceName: this._reference?.name || (validPoint(this._reference) ? '已选参考位置' : '选择参考位置'),
-      ...(!this.data.city && profile?.serviceCity ? { city: profile.serviceCity } : {}) })
+      ...(!this.data.city && profile?.serviceCity ? { city: safeDecodeCity(profile.serviceCity) } : {}) })
     this._initialized = true; this._initializing = false
     if (!this._fitted || this._viewportKey !== this.viewKey()) this.restoreViewport()
     await this.refresh(this._loaded === true)
@@ -160,13 +161,15 @@ Page({
       else this.refresh(true)
     }, 20000)
   },
-  inputCity(e) { this._cityDraft = String(e.detail.value).trim() },
+  inputCity(e) { this._cityDraft = safeDecodeCity(e.detail.value) },
   confirmCity() {
     if (this.interactionLocked()) return
-    if (this._cityDraft !== undefined && this._cityDraft !== this.data.city) {
+    const targetCity = this._cityDraft !== undefined ? safeDecodeCity(this._cityDraft) : this.data.city
+    if (this._cityDraft !== undefined && targetCity !== this.data.city) {
       this.cancelLocate(); this.saveViewport()
       this.closePanel(); this._communities = []; this._region = null; this._cameraSeq++
-      this.setData({ city: this._cityDraft, markers: [], visibleCount: 0, communityCount: 0, unmatchedCount: 0, updatedText: '' })
+      this.setData({ city: targetCity, markers: [], visibleCount: 0, communityCount: 0, unmatchedCount: 0, updatedText: '' })
+      this._cityDraft = undefined
       this._fitted = false; this._viewport = null; this.restoreViewport(false, true)
     }
     this.refresh()

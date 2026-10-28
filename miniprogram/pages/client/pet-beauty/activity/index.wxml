@@ -1,5 +1,5 @@
 <wxs module="cardDrag" src="./card-stack.wxs" />
-<view class="page pet-beauty-page view-{{rankView}} {{themeClass}}">
+<view wx:if="{{!rankingMaintenance && !maintenanceLoading}}" class="page pet-beauty-page view-{{rankView}} {{themeClass}}">
   <!-- 活动海报 & 冠军大奖专区 -->
   <view class="beauty-poster-section">
     <!-- 运营上传的定制活动海报 (完整呈现2.5:1或16:9横屏海报，不裁切内容，骨骼预加载，轻薄磨砂角标不挡画面) -->
@@ -576,6 +576,14 @@
         </button>
       </view>
     </view>
+  </view>
+</view>
+<view wx:else class="ranking-maintenance-screen {{themeClass}}">
+  <view wx:if="{{!maintenanceLoading}}" class="ranking-maintenance-inner">
+    <text class="remix-icon ri-time-line ranking-maintenance-icon"></text>
+    <view class="ranking-maintenance-title">宠物排行榜正在维护</view>
+    <view class="ranking-maintenance-description">宠物排行榜功能暂时不可使用，正在维护中。</view>
+    <button class="ranking-maintenance-back" bindtap="backFromMaintenance">返回</button>
   </view>
 </view>
 <global-loading />

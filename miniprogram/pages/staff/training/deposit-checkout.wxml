@@ -1,0 +1,80 @@
+<view class="deposit-modal-mask" wx:if="{{depositModal}}" catchtouchmove="noop">
+  <view class="deposit-modal-card" role="dialog" aria-modal="true" aria-label="保证金缴纳确认">
+    <view class="deposit-modal-header">
+      <view>
+        <view class="deposit-modal-step">{{depositModal === 'rules' ? '01 · 阅读并确认' : '02 · 收货信息与支付'}}</view>
+        <view class="deposit-modal-title">{{depositModal === 'rules' ? (depositState.supplyDeliveryRequired ? '首次用品报销说明' : '保证金缴纳说明') : '确认收货地址'}}</view>
+      </view>
+      <button class="deposit-modal-close" bindtap="closeDepositModal" disabled="{{depositBusy || choosingSupplyAddress}}" aria-label="关闭弹窗"><text class="remix-icon ri-close-line"></text></button>
+    </view>
+    <scroll-view scroll-y enhanced class="deposit-modal-body">
+      <view class="checkout-inline-error" wx:if="{{checkoutError}}">{{checkoutError}}</view>
+      <block wx:if="{{depositModal === 'rules'}}">
+        <view class="checkout-cost-summary">
+          <view><text class="muted">{{depositIntent === 'payment' ? '本次支付保证金' : '已缴保证金'}}</text><text class="checkout-deposit-price">¥{{depositIntent === 'payment' ? depositState.config.amount : depositState.deposit.paidAmount}}</text></view>
+          <view wx:if="{{depositState.supplyDeliveryRequired}}"><text class="muted">首次用品费用</text><text>¥{{depositState.checkoutSupplyFeeAmount}}</text></view>
+          <view class="checkout-cost-tip" wx:if="{{depositState.supplyDeliveryRequired}}">用品费按报销结果在退出退款时结算，本次支付为保证金。</view>
+        </view>
+        <view class="policy-summary">
+          <view class="policy-heading"><text class="remix-icon ri-shield-check-line"></text><text>保证金与退出规则</text></view>
+          <view class="policy-line">退出时按可退余额和有效扣除记录结算。</view>
+          <view class="policy-line">{{depositState.config.rulesText}}</view>
+          <view class="policy-line">{{depositState.config.forfeitRulesText}}</view>
+          <view class="policy-line" wx:if="{{!depositState.supplyDeliveryRequired}}">{{depositState.config.refundRulesText}}</view>
+          <checkbox-group bindchange="agreeDeposit" class="policy-consent">
+            <label class="consent-row"><checkbox value="agreed" checked="{{depositAgreed}}" disabled="{{depositBusy || depositLoading}}" /><text class="consent-copy">我已阅读并同意保证金与退出规则（必选）</text></label>
+          </checkbox-group>
+        </view>
+        <view class="deposit-rule-section" wx:if="{{depositState.supplyDeliveryRequired || depositIntent === 'delivery'}}">
+          <view class="checkout-rule-heading"><text class="checkout-rule-number">1</text><text>如何报销</text></view>
+          <view class="supply-policy-line">平台寄送首次用品。在“首次用品报销”提交申请，审核通过后减免该笔用品费，退还保证金时不扣；不单独打款。每人仅限首次申请，后续用品自行承担。</view>
+          <view class="checkout-rule-heading"><text class="checkout-rule-number">2</text><text>需要满足的条件</text></view>
+          <view class="supply-policy-line">正式成为认证宠托师且平台用品已发货。备齐用品参加审核不代表必然通过认证。</view>
+          <view class="supply-qualification" wx:if="{{depositState.supplyQualification.conditions.length}}">
+            <view class="supply-qualification-title">{{depositState.supplyQualification.mode === 'either' ? '以下两项满足任意一项' : '满足以下条件'}}即可申请</view>
+            <view class="supply-qualification-line" wx:for="{{depositState.supplyQualification.conditions}}" wx:key="mode">{{item.mode === 'invite_count' ? '有效邀请绑定' : '完成服务订单'}}：{{item.requiredCount === 0 ? '不设数量门槛' : (item.requiredCount + (item.mode === 'invite_count' ? ' 人' : ' 笔'))}}</view>
+          </view>
+          <view class="deposit-deduction-notice">
+            <view class="strong-text">未完成报销，退款时扣用品费</view>
+            <view>用品已发货但未申请报销或审核未通过，退还保证金时扣除 ¥{{depositState.checkoutSupplyFeeAmount}}；报销审核中暂缓结算。未确认或未发货不扣用品费。</view>
+          </view>
+          <checkbox-group bindchange="agreeSupply" class="policy-consent supply-consent">
+            <label class="consent-row"><checkbox value="agreed" checked="{{supplyAgreed}}" disabled="{{depositBusy || depositLoading}}" /><text class="consent-copy">我已理解报销条件，并同意未完成报销时从保证金中扣除对应用品费（必选）</text></label>
+          </checkbox-group>
+        </view>
+      </block>
+      <block wx:elif="{{depositModal === 'address'}}">
+        <view class="checkout-consent-done"><text class="remix-icon ri-checkbox-circle-fill"></text><text>已确认首次用品报销与扣费规则</text></view>
+        <button class="ghost-btn checkout-choose-address" bindtap="chooseSupplyAddress" loading="{{choosingSupplyAddress}}" disabled="{{depositBusy || choosingSupplyAddress}}"><text class="remix-icon ri-map-pin-line"></text><text>选择微信收货地址</text></button>
+        <view class="checkout-manual-label">也可手动填写</view>
+        <view class="field-label">收件人</view>
+        <input class="supply-address-input {{supplyAddressErrors.name ? 'input-invalid' : ''}}" value="{{supplyAddress.name}}" data-field="name" bindinput="supplyAddressInput" placeholder="收件人姓名" maxlength="40" focus="{{supplyAddressFocus === 'name'}}" disabled="{{depositBusy || choosingSupplyAddress}}" cursor-spacing="24" />
+        <view class="checkout-field-error" wx:if="{{supplyAddressErrors.name}}">{{supplyAddressErrors.name}}</view>
+        <view class="field-label">收件手机号</view>
+        <input class="supply-address-input {{supplyAddressErrors.phone ? 'input-invalid' : ''}}" type="number" value="{{supplyAddress.phone}}" data-field="phone" bindinput="supplyAddressInput" placeholder="11位手机号" maxlength="11" focus="{{supplyAddressFocus === 'phone'}}" disabled="{{depositBusy || choosingSupplyAddress}}" cursor-spacing="24" />
+        <view class="checkout-field-error" wx:if="{{supplyAddressErrors.phone}}">{{supplyAddressErrors.phone}}</view>
+        <view class="field-label">所在地区</view>
+        <picker mode="region" value="{{supplyRegion}}" bindchange="supplyRegionChange" disabled="{{depositBusy || choosingSupplyAddress}}">
+          <view class="checkout-region-picker {{supplyAddressErrors.region ? 'input-invalid' : ''}}"><text class="{{supplyAddress.province ? '' : 'muted'}}">{{supplyAddress.province ? supplyAddress.province + ' / ' + supplyAddress.city + ' / ' + supplyAddress.district : '请选择省、市、区县'}}</text><text class="remix-icon ri-arrow-right-s-line"></text></view>
+        </picker>
+        <view class="checkout-field-error" wx:if="{{supplyAddressErrors.region}}">{{supplyAddressErrors.region}}</view>
+        <view class="field-label">详细地址</view>
+        <input class="supply-address-input {{supplyAddressErrors.detail ? 'input-invalid' : ''}}" value="{{supplyAddress.detail}}" data-field="detail" bindinput="supplyAddressInput" placeholder="街道、小区、楼栋及门牌号" maxlength="100" focus="{{supplyAddressFocus === 'detail'}}" disabled="{{depositBusy || choosingSupplyAddress}}" cursor-spacing="24" />
+        <view class="checkout-field-error" wx:if="{{supplyAddressErrors.detail}}">{{supplyAddressErrors.detail}}</view>
+        <view class="deposit-address-note">{{depositIntent === 'payment' ? '确认后创建保证金支付，支付成功后由平台安排寄送。' : '提交后由平台安排寄送，请核对收货信息。'}}</view>
+      </block>
+    </scroll-view>
+    <view class="deposit-modal-footer">
+      <button class="ghost-btn checkout-refresh" wx:if="{{checkoutNeedsRefresh}}" bindtap="reloadDepositCheckout" loading="{{depositLoading}}" disabled="{{depositBusy || depositLoading}}">刷新状态并重新确认</button>
+      <block wx:elif="{{depositModal === 'rules'}}">
+        <view class="checkout-footer-hint" wx:if="{{!depositAgreed || (depositState.supplyDeliveryRequired && !supplyAgreed)}}">请阅读并勾选以上规则后继续</view>
+        <button class="primary-btn" bindtap="continueDepositRules" disabled="{{!depositAgreed || (depositState.supplyDeliveryRequired && !supplyAgreed) || depositBusy || depositLoading}}">{{depositState.supplyDeliveryRequired || depositIntent === 'delivery' ? '同意规则，填写收货地址' : '同意规则并支付保证金'}}</button>
+      </block>
+      <block wx:else>
+        <view class="checkout-footer-total" wx:if="{{depositIntent === 'payment'}}"><text>本次支付保证金</text><text>¥{{depositState.config.amount}}</text></view>
+        <button class="primary-btn" bindtap="confirmAddressAndPay" loading="{{depositBusy}}" disabled="{{depositBusy || depositLoading || choosingSupplyAddress}}">{{depositIntent === 'payment' ? '确认收货地址并支付保证金' : '确认收货地址并提交'}}</button>
+        <view class="deposit-back" bindtap="backToDepositRules">返回查看规则</view>
+      </block>
+    </view>
+  </view>
+</view>

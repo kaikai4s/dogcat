@@ -394,6 +394,13 @@
   font-weight: 850;
 }
 
+.can-revoke-chip {
+  background: #f0fdf4;
+  color: #16a34a;
+  border: 1rpx solid #bbf7d0;
+  font-weight: 850;
+}
+
 .withdraw-history {
   margin-top: 16rpx;
   padding: 14rpx 16rpx;
@@ -744,3 +751,19 @@
 .settlement-note { margin: 20rpx 0; padding: 18rpx; background: #f5f7fa; border-radius: 16rpx; color: #657083; font-size: 24rpx; line-height: 1.7; }
 
 .settlement-progress { flex-wrap: wrap; }
+.modal-card.deposit-refund-card { max-height: 88vh; display: flex; flex-direction: column; overflow: hidden; padding-bottom: calc(28rpx + env(safe-area-inset-bottom)); }
+.deposit-refund-body { height: 58vh; min-height: 0; flex: 1; box-sizing: border-box; }
+.refund-staff-name { margin: 20rpx 0 12rpx; font-size: 28rpx; font-weight: 800; }
+.refund-reimbursement-status { padding: 18rpx; margin-bottom: 12rpx; border-radius: 16rpx; color: #9a3412; background: #fff7ed; line-height: 1.6; }
+.refund-breakdown-row { display: flex; align-items: baseline; justify-content: space-between; gap: 20rpx; padding: 16rpx 0; font-size: 26rpx; }
+.refund-deduction { color: #c2410c; }
+.refund-net { margin-top: 12rpx; padding-top: 24rpx; border-top: 1rpx solid #fed7aa; font-size: 32rpx; font-weight: 900; }
+.refund-blocked { padding: 20rpx; margin: 16rpx 0; border-radius: 16rpx; color: #b91c1c; background: #fef2f2; line-height: 1.6; }
+.refund-reason-input { min-height: 150rpx; box-sizing: border-box; }
+.refund-status-completed { color: #166534; background: #edf8ef; }
+.refund-loading { padding: 22rpx 0; font-size: 25rpx; color: #7a6a5e; }
+.refund-refresh, .refund-status-link { width: 100%; margin-top: 18rpx; border: 0; background: transparent; color: #c65b20; font-size: 24rpx; line-height: 1.6; padding: 12rpx 0; white-space: normal; }
+.refund-refresh::after, .refund-status-link::after { border: 0; }
+.deposit-refund-card .modal-actions { flex-shrink: 0; margin-top: 14rpx; }
+.refund-breakdown-row { flex-wrap: wrap; overflow-wrap: anywhere; }
+.refund-blocked { overflow-wrap: anywhere; }

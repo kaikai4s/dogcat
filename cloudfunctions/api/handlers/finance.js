@@ -35,7 +35,13 @@ module.exports = function createHandler(context) {
       await refreshStaffEarnings(openid)
       const status = safeText(data.status).trim()
       const rows = await readAll('staff_earnings', { staffOpenid: openid })
-      return rows.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).filter((item) => !status || item.status === status)
+      return rows
+        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+        .filter((item) => !status || item.status === status)
+        .map((item) => {
+          const { grossAmount, ...safeItem } = item
+          return safeItem
+        })
     }
     if (action === 'listMyWithdraws') {
       await getUser(openid)

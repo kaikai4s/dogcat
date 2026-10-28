@@ -1,7 +1,7 @@
 const { transaction } = require('./playground-transaction')
 const crypto = require('crypto')
 const nameColors = require('./playground-name-colors')
-const {memberAccess,unlocked}=require('./playground-access')
+const {memberAccess,unlocked,plotAllowance}=require('./playground-access')
 const { placedBuildings, withBuildings, isPublicBuilding, validateBuildingPlacement } = require('./playground-shared/plot-buildings')
 const SIZE = 112
 const STEP = 56
@@ -128,8 +128,9 @@ async function updateCommunity(db, openid, userId, community, extra = {}, checkT
     await checkTextSecurity(openid, fields.map(key => String(community[key] || '').trim()).filter(Boolean).join('\n'), { scene: 2, label: '小区名称和地址' })
   }
   return transaction(db,async (tx) => {
+    const currentUser = community?.serviceCommunityId ? (await tx.collection('users').doc(userId).get()).data : null
     const savedCommunity = community?.serviceCommunityId
-      ? await require('./playground-communities')({ db: tx }).resolve(community, tx) : community
+      ? (await require('./playground-communities')({ db: tx }).entry(community, currentUser, tx)).community : community
     const placed = await read(tx, ownerId(openid))
     if (
       placed &&
@@ -326,6 +327,17 @@ module.exports = {
         if(isNewPlot) {
           const option=catalog.plotSizes.find((p)=>p.size===plotSize)
           if(!option||!unlocked(option,access))throw new Error('当前会员等级尚未解锁该绿地规格')
+          const allowance = plotAllowance(option,access)
+          if (allowance !== null) {
+            let count = 0, cursor = ''
+            do {
+              const query = {kind:'plot',ownerOpenid:openid,size:plotSize,...(cursor?{_id:db.command.gt(cursor)}:{})}
+              const page = (await tx.collection('pet_playground_plots').where(query).orderBy('_id','asc').limit(100).get()).data || []
+              count += page.filter((plot)=>plot.isNewPlot && !plot.demolished).length
+              cursor = page.length===100 ? page[page.length-1]._id : ''
+            } while (cursor && count < allowance)
+            if (count >= allowance) throw new Error(`该规格地皮已达当前会员上限（${allowance}块）`)
+          }
         }
         let building=null
         if(data.buildingId||data.buildingType&&!['yard','residential'].includes(data.buildingType)) {

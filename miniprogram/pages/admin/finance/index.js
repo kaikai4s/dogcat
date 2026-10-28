@@ -74,6 +74,25 @@ function decorate(item) {
   }
 }
 
+function matchClientKeyword(item, kw) {
+  if (!kw) return true
+  const k = String(kw).trim().toLowerCase()
+  if (!k) return true
+  const checks = [
+    item.staffPhone, item.accountPhone, item.certifiedPhone, item.phone, item.userPhone, item.contactPhone,
+    item._id, item.id, item.orderId, item.orderNo, item.paymentNo, item.refundNo, item.outBillNo,
+    item.outTradeNo, item.transactionId, item.wechatTransferBillNo, item.paymentReference, item.targetId,
+    item.staffRealName, item.staffNickname, item.userNickname, item.accountName
+  ]
+  if (checks.some((val) => val && String(val).toLowerCase().includes(k))) return true
+  if (Array.isArray(item.problemOrders)) {
+    if (item.problemOrders.some((p) => p && (String(p.orderId || '').toLowerCase().includes(k) || String(p.orderNo || '').toLowerCase().includes(k)))) {
+      return true
+    }
+  }
+  return false
+}
+
 function parseAmount(value) {
   const text = String(value).trim()
   const amount = Number(text)
@@ -83,7 +102,7 @@ function parseAmount(value) {
 
 function decorateStaffFinance(item) {
   const result = { ...item, id: item._id || item.id }
-  ;['amount', 'paidAmount', 'refundedAmount', 'forfeitedAmount', 'availableRefundAmount', 'approvedAmount'].forEach((key) => {
+  ;['amount', 'paidAmount', 'refundedAmount', 'forfeitedAmount', 'supplyFeeAmount', 'supplyFeeDeductedAmount', 'availableRefundAmount', 'approvedRefundAmount', 'approvedAmount'].forEach((key) => {
     result[`${key}Text`] = item[key] === undefined || item[key] === null ? '待核实' : money(item[key])
   })
   result.refundPending = ['pending', 'requested', 'refund_requested', 'refund_pending'].includes(item.refundStatus) || ['refund_requested', 'refund_pending'].includes(item.status)
@@ -144,14 +163,18 @@ Page({
     eligibilityChecked: false,
     status: '',
     activeTab: 'withdraws',
+    expandedWithdrawHistories: {},
     targetStaffOpenid: '',
     targetStaffLabel: '',
     forfeitEvidenceId: '',
     forfeitStaffName: '',
     forfeitEvidences: [],
     forfeitImages: [],
+    supplyShipDrafts: {},
     startDate: monthStart(),
     endDate: today(),
+    keyword: '',
+    appliedKeyword: '',
     sectionHomeUrl: '',
     canGoBack: false
   },
@@ -187,7 +210,28 @@ Page({
   },
 
   query() {
-    return { startDate: this.data.startDate, endDate: this.data.endDate }
+    const q = { startDate: this.data.startDate, endDate: this.data.endDate }
+    if (this.data.appliedKeyword) {
+      q.keyword = this.data.appliedKeyword
+    }
+    return q
+  },
+
+  inputKeyword(e) {
+    this.setData({ keyword: e.detail.value })
+  },
+
+  submitSearch() {
+    const appliedKeyword = String(this.data.keyword || '').trim()
+    this.setData({ appliedKeyword }, () => {
+      this.reloadAll()
+    })
+  },
+
+  clearSearch() {
+    this.setData({ keyword: '', appliedKeyword: '' }, () => {
+      this.reloadAll()
+    })
   },
 
   updateAccessibleTabs() {
@@ -213,7 +257,12 @@ Page({
         const result = await optionalAdminRead(this, 'admin', action, field === 'requests' ? { ...query, status: this.data.status, staffOpenid: this.data.targetStaffOpenid } : query, field === 'dashboard' ? null : [])
         if (this._financeVersion !== version) return
         if (field === 'dashboard') this.setData({ dashboard: result, metricCards: result ? metricCards(result.metrics) : [] })
-        else this.setData({ [field]: field === 'logs' ? result || [] : (result || []).map(decorate) })
+        else {
+          const appliedKeyword = this.data.appliedKeyword
+          const rawList = field === 'logs' ? (result || []) : (result || []).map(decorate)
+          const filtered = appliedKeyword ? rawList.filter((item) => matchClientKeyword(item, appliedKeyword)) : rawList
+          this.setData({ [field]: filtered })
+        }
       } catch (error) { if (this._financeVersion === version) { this.setData({ [field]: field === 'dashboard' ? null : [], ...(field === 'dashboard' ? { metricCards: [] } : {}) }); showError(error) } }
     }))
   },
@@ -249,18 +298,31 @@ Page({
     this.setData({ status: e.currentTarget.dataset.status || '' }, this.load)
   },
 
+  toggleWithdrawHistory(e) {
+    const id = e.currentTarget.dataset.id
+    if (!id) return
+    const currentMap = this.data.expandedWithdrawHistories || {}
+    this.setData({
+      [`expandedWithdrawHistories.${id}`]: !currentMap[id]
+    })
+  },
+
   audit(e) {
     const id = e.currentTarget.dataset.id
     const approved = e.currentTarget.dataset.approved === true || e.currentTarget.dataset.approved === 'true'
     const row = (this.data.requests || []).find(item => item._id === id)
     const action = row?.assetType === 'user' && !can(this.data.adminAccess, 'admin.auditWithdrawRequest') ? 'auditUserAssetWithdrawal' : 'auditWithdrawRequest'
+    if (typeof wx.showLoading === 'function') wx.showLoading({ title: approved ? '正在审核并打款...' : '正在处理...', mask: true })
     callFunction('admin', action, { id, approved, auditRemark: approved ? '审核通过' : '审核驳回' })
       .then((result) => {
         if (approved && result?.lastTransferError) wx.showModal({ title: '审核已通过，转账待处理', content: `${result.lastTransferError}${result.lastTransferErrorCode ? `（${result.lastTransferErrorCode}）` : ''}`, showCancel: false })
         else wx.showToast({ title: approved ? '已通过' : '已驳回' })
         this.load()
       })
-      .catch(showError)
+      .catch((err) => {
+        if (typeof wx.hideLoading === 'function') wx.hideLoading()
+        showError(err)
+      })
   },
 
   markPaid(e) {
@@ -336,14 +398,20 @@ Page({
     const targetStaffOpenid = this.data.targetStaffOpenid
     this.setData({ staffFinanceLoading: true, staffFinanceError: '' })
     const query = this.query()
-    const depositQuery = targetStaffOpenid ? { staffOpenid: targetStaffOpenid } : query
+    const depositQuery = targetStaffOpenid
+      ? { staffOpenid: targetStaffOpenid, ...(this.data.appliedKeyword ? { keyword: this.data.appliedKeyword } : {}) }
+      : query
     return Promise.all([
       optionalAdminRead(this, 'admin', 'listStaffDeposits', depositQuery),
       optionalAdminRead(this, 'admin', 'listSupplyReimbursements', query)
     ])
       .then(([deposits, supplies]) => {
         if (this._staffFinanceVersion !== version) return
+        const appliedKeyword = this.data.appliedKeyword
         const rawDeposits = (deposits || []).map(decorateStaffFinance)
+        const rawSupplies = (supplies || []).map(decorateStaffFinance)
+        const filteredDeposits = appliedKeyword ? rawDeposits.filter((item) => matchClientKeyword(item, appliedKeyword)) : rawDeposits
+        const filteredSupplies = appliedKeyword ? rawSupplies.filter((item) => matchClientKeyword(item, appliedKeyword)) : rawSupplies
 
         let targetStaffLabel = ''
         if (targetStaffOpenid) {
@@ -354,8 +422,8 @@ Page({
         }
 
         this.setData({
-          deposits: rawDeposits,
-          supplies: (supplies || []).map(decorateStaffFinance),
+          deposits: filteredDeposits,
+          supplies: filteredSupplies,
           staffFinanceLoading: false,
           targetStaffLabel
         })
@@ -422,9 +490,11 @@ Page({
     if (!id) return
     this.setData({ actionBusy: true })
     try {
+      const preview = await callFunction('admin', 'getStaffDepositRefundPreview', { id })
+      if (preview.blocked) throw new Error(preview.blockedReason)
       const response = await new Promise(resolve => wx.showModal({
         title: '发起保证金退还', editable: true, placeholderText: '请输入退还原因（最多200字）',
-        content: '提交后进入退款审核。多笔保证金须逐笔处理，全部处理完成后才会退出身份。',
+        content: `${preview.reimbursementStatusText}\n保证金余额 ¥${Number(preview.availableRefundAmount).toFixed(2)}\n本次用品扣费 ¥${Number(preview.supplyFeeDue).toFixed(2)}\n预计实际退还 ¥${Number(preview.estimatedRefundAmount).toFixed(2)}\n提交后进入退款审核，多笔保证金须逐笔处理。`,
         success: resolve, fail: () => resolve({ confirm: false })
       }))
       if (!response.confirm) return
@@ -437,33 +507,63 @@ Page({
     finally { this.setData({ actionBusy: false }) }
   },
 
-  auditDepositRefund(e) {
+  async auditDepositRefund(e) {
+    if (this.data.actionBusy) return
     const id = e.currentTarget.dataset.id
     const approved = e.currentTarget.dataset.approved === true || e.currentTarget.dataset.approved === 'true'
+    this.setData({ actionBusy: true })
+    try {
+      let content = '确认驳回该退出退款申请？'
+      if (approved) {
+        const preview = await callFunction('admin', 'getStaffDepositRefundPreview', { id })
+        if (preview.blocked) throw new Error(preview.blockedReason)
+        content = [preview.reimbursementStatusText,
+          '保证金余额 ¥' + Number(preview.availableRefundAmount).toFixed(2),
+          '本次用品扣费 ¥' + Number(preview.supplyFeeDue).toFixed(2),
+          '本次实际退还 ¥' + Number(preview.estimatedRefundAmount).toFixed(2),
+          '确认通过后按此净额结算；微信支付的保证金自动原路退款。'].join('\n')
+      }
+      const res = await new Promise(resolve => wx.showModal({
+        title: approved ? '核对用品报销并退还保证金' : '驳回退出退款申请', content,
+        editable: !approved, placeholderText: !approved ? '请输入驳回原因' : '',
+        success: resolve, fail: () => resolve({ confirm: false })
+      }))
+      if (!res.confirm) return
+      const reason = approved ? '已核对用品报销及净额，同意退款' : String(res.content || '').trim()
+      if (!reason) throw new Error('请填写驳回原因')
+      wx.showLoading({ title: '处理中...', mask: true })
+      const result = await callFunction('admin', 'auditDepositRefund', { id, approved, reason })
+      if (approved && result?.refundLastError) wx.showModal({ title: '审核已通过，退款待处理', content: result.refundLastError, showCancel: false })
+      else wx.showToast({ title: approved ? (result?.refundStatus === 'success' ? '退款已到账' : '已审核，退款待确认') : '已驳回', icon: 'none' })
+      this.loadStaffFinance()
+    } catch (error) { showError(error) }
+    finally { wx.hideLoading(); this.setData({ actionBusy: false }) }
+  },
+
+  autoRefundDeposit(e) {
+    if (this.data.actionBusy) return
+    const id = e.currentTarget.dataset.id
+    const amount = e.currentTarget.dataset.amount || ''
+    if (!id) return
     wx.showModal({
-      title: approved ? '审核通过退还保证金' : '驳回退出退款申请',
-      content: approved ? '确认审核通过并发起退款？微信支付的保证金将自动原路退回，到账结果以微信查询为准。' : '确认驳回该退出退款申请？',
-      editable: !approved,
-      placeholderText: !approved ? '请输入驳回原因' : '',
+      title: '自动原路退还保证金',
+      content: `确认将该笔保证金${amount ? '（¥' + amount + '）' : ''}自动原路退还至宠托师付款账户并清零余额？`,
+      confirmText: '立即退还',
       success: (res) => {
-        if (!res.confirm) return
-        const reason = (!approved && res.content) ? res.content.trim() : (approved ? '审核通过全额退款' : '')
-        if (!approved && !reason) {
-          wx.showToast({ title: '请填写驳回原因', icon: 'none' })
-          return
-        }
-        wx.showLoading({ title: '处理中...', mask: true })
-        callFunction('admin', 'auditDepositRefund', { id, approved, reason })
-          .then((result) => {
+        if (!res.confirm || this.data.actionBusy) return
+        this.setData({ actionBusy: true })
+        wx.showLoading({ title: '正在发起原路退款...', mask: true })
+        callFunction('admin', 'autoRefundStaffDeposit', { id, reason: '管理员自动原路退还' })
+          .then(() => {
             wx.hideLoading()
-            if (approved && result?.refundLastError) wx.showModal({ title: '审核已通过，退款待处理', content: result.refundLastError, showCancel: false })
-            else wx.showToast({ title: approved ? (result?.refundStatus === 'success' ? '退款已到账' : '已审核，退款待确认') : '已驳回', icon: 'none' })
+            wx.showToast({ title: '已自动原路退还', icon: 'success' })
             this.loadStaffFinance()
           })
           .catch((err) => {
             wx.hideLoading()
             showError(err)
           })
+          .finally(() => this.setData({ actionBusy: false }))
       }
     })
   },
@@ -707,6 +807,28 @@ Page({
 
   confirmDepositRefund(e) {
     this.confirmStaffPayment(e.currentTarget.dataset.id, 'confirmDepositRefund', '确认保证金已退还')
+  },
+  supplyShipInput(e) {
+    const id = e.currentTarget.dataset.id
+    const field = e.currentTarget.dataset.field
+    if (id && ['expressCompany', 'trackingNo'].includes(field)) this.setData({ [`supplyShipDrafts.${id}.${field}`]: e.detail.value })
+  },
+  shipStaffSupplies(e) {
+    const id = e.currentTarget.dataset.id
+    const draft = this.data.supplyShipDrafts[id] || {}
+    const expressCompany = String(draft.expressCompany || '').trim()
+    const trackingNo = String(draft.trackingNo || '').trim()
+    if (!expressCompany || !trackingNo || this.data.actionBusy) return wx.showToast({ title: '请填写物流公司和单号', icon: 'none' })
+    wx.showModal({ title: '确认首次用品发货', content: `${expressCompany}：${trackingNo}。提交后不可重复发货，请核对收件地址和物流单号。`,
+      success: async res => {
+        if (!res.confirm || this.data.actionBusy) return
+        this.setData({ actionBusy: true })
+        try {
+          await callFunction('admin', 'shipStaffSupplies', { id, expressCompany, trackingNo })
+          wx.showToast({ title: '已记录发货', icon: 'none' })
+          await this.loadStaffFinance()
+        } catch (error) { showError(error) } finally { this.setData({ actionBusy: false }) }
+      } })
   },
 
   async syncDepositRefund(e) {

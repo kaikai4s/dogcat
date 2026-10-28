@@ -44,7 +44,7 @@
   <view class="profile-hero">
     <view class="profile-hero-top">
       <view class="profile-avatar-wrap">
-        <image class="profile-avatar" wx:if="{{!isGuest && avatarUrl}}" src="{{avatarUrl}}" mode="aspectFill" />
+        <image class="profile-avatar" wx:if="{{!isGuest && avatarUrl}}" src="{{avatarUrl}}" mode="aspectFill" binderror="onMainAvatarError" />
         <view class="profile-avatar empty" wx:else><view class="remix-icon ri-user-3-line"></view></view>
         <view class="avatar-level-badge badge-{{badgeStyle || 'gold'}}" wx:if="{{!isGuest && (badgeTag || memberLevelName)}}">{{badgeTag || memberLevelName}}</view>
       </view>
@@ -56,7 +56,7 @@
         <view class="profile-points">{{userMeta}}</view>
         <view class="profile-level-tag-row" wx:if="{{!isGuest && memberLevelName}}">
           <view class="profile-level-mini-badge">{{memberLevelName}}</view>
-          <view class="profile-level-mini-detail">{{points}} 积分 · {{pointMultiplier}}倍加速</view>
+          <view class="profile-level-mini-detail">{{points !== null && points !== undefined ? points : 0}} 积分 · {{pointMultiplier || 1}}倍加速</view>
         </view>
       </view>
       <view class="checkin-pill" wx:if="{{!isGuest}}" bindtap="openCheckin">签到中心</view>
@@ -73,7 +73,12 @@
 
   <view class="asset-card">
     <view class="asset-head">
-      <view><view class="strong">成长权益</view><view class="muted">{{memberLevelName || '普通会员'}} · {{pointMultiplier}} 倍积分 · 补签卡 {{retroCardCount}} 张</view><view class="muted" wx:if="{{levelDescription}}">{{levelDescription}}</view></view>
+      <view>
+        <view class="strong">成长权益</view>
+        <view class="muted" wx:if="{{!isGuest}}">{{memberLevelName || '普通会员'}} · {{pointMultiplier !== null && pointMultiplier !== undefined ? pointMultiplier : 1}} 倍积分 · 补签卡 {{retroCardCount !== null && retroCardCount !== undefined ? retroCardCount : 0}} 张</view>
+        <view class="muted" wx:else>登录查看会员等级、专属积分倍率与补签特权</view>
+        <view class="muted" wx:if="{{levelDescription}}">{{levelDescription}}</view>
+      </view>
       <view class="remix-icon ri-gift-line asset-icon"></view>
     </view>
   </view>

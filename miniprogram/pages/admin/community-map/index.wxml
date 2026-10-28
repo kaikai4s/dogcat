@@ -7,23 +7,23 @@
     <button class="add-button" bindtap="add" wx:if="{{adminSuper || adminPermissions.communityMap_saveAdmin}}">新增小区</button>
   </view>
   <view class="search-row"><input placeholder="搜索名称或别名" maxlength="60" value="{{keyword}}" bindinput="inputKeyword" bindconfirm="search" confirm-type="search" /><button class="search-btn" bindtap="search">搜索</button></view>
-  <view class="management-tabs"><view class="management-tab {{view === 'pending' ? 'active' : ''}}" data-view="pending" bindtap="changeView">待处理小区</view><view class="management-tab {{view === 'catalog' ? 'active' : ''}}" data-view="catalog" bindtap="changeView">已维护小区</view></view>
+  <view class="management-tabs"><view class="management-tab {{view === 'pending' ? 'active' : ''}}" data-view="pending" bindtap="changeView">待处理小区</view><view class="management-tab {{view === 'catalog' ? 'active' : ''}}" data-view="catalog" bindtap="changeView">已维护小区</view><view class="management-tab {{view === 'retired' ? 'active' : ''}}" data-view="retired" bindtap="changeView">已删除</view></view>
   <view class="result-line"><text>{{loading ? '正在整理…' : '共 ' + total + ' 个小区'}}</text><button class="link-button" bindtap="load" loading="{{loading}}" disabled="{{loading}}">刷新</button></view>
   <view class="error-box" wx:if="{{error}}">{{error}}<button class="link-button" bindtap="load">重试</button></view>
   <view class="description" wx:if="{{missingCityCount && view === 'pending'}}">另有 {{missingCityCount}} 处地址缺少城市，请在原订单或宠托师资料中补充。</view>
   <view class="settings-card" wx:for="{{rows}}" wx:key="_id">
-    <view class="row-head"><view class="card-title community-name">{{item.name}}</view><text class="state-tag" wx:if="{{view === 'catalog'}}">{{item.enabled ? '已启用' : '已停用'}}</text></view>
+    <view class="row-head"><view class="card-title community-name">{{item.name}}</view><text class="state-tag" wx:if="{{view !== 'pending'}}">{{item.retiredAt ? '已删除' : item.enabled ? '已启用' : '已停用'}}</text></view>
     <view class="description">{{item.city}} {{item.district}}</view>
     <block wx:if="{{view === 'pending'}}">
       <view class="candidate-count">{{item.orderCount}} 笔待接订单 · {{item.staffCount}} 位宠托师地址</view>
       <view class="description" wx:if="{{item.applicationCount}}">{{item.applicationCount}} 项用户新增申请，保存并启用后关联至此小区。</view>
       <view class="description">{{item.reason}}</view>
-      <view class="row-actions" wx:if="{{adminSuper || adminPermissions.communityMap_saveAdmin}}"><button class="primary" data-id="{{item._id}}" bindtap="{{item.existingId ? 'editExisting' : 'addCandidate'}}" disabled="{{busy}}">{{item.existingId ? '查看已有小区' : '选公共点并启用'}}</button><button class="secondary" wx:if="{{item.existingId}}" data-id="{{item._id}}" bindtap="addCandidate" disabled="{{busy}}">另建同名小区</button></view>
+      <view class="row-actions" wx:if="{{!item.existingRetired && (adminSuper || adminPermissions.communityMap_saveAdmin)}}"><button class="primary" data-id="{{item._id}}" bindtap="{{item.existingId ? 'editExisting' : 'addCandidate'}}" disabled="{{busy}}">{{item.existingId ? '查看已有小区' : '选公共点并启用'}}</button><button class="secondary" wx:if="{{item.existingId}}" data-id="{{item._id}}" bindtap="addCandidate" disabled="{{busy}}">另建同名小区</button></view>
       <view class="row-actions" wx:if="{{item.applicationIds.length && (adminSuper || adminPermissions.communityMap_rejectApplication)}}"><button class="reject-button" data-id="{{item._id}}" bindtap="rejectCandidate" disabled="{{busy}}">驳回用户申请</button></view>
     </block>
-    <block wx:else><view class="description">{{item.aliases.length}} 个别名 · 已自动匹配同名入口</view><button class="secondary" data-id="{{item._id}}" bindtap="edit" wx:if="{{adminSuper || adminPermissions.communityMap_saveAdmin}}">编辑与纠错</button></block>
+    <block wx:else><view class="description">{{item.retiredAt ? '不再对新用户开放，已入住用户仍可使用原庄园' : item.aliases.length + ' 个别名 · 已自动匹配同名入口'}}</view><view class="row-actions" wx:if="{{view === 'catalog'}}"><button class="secondary" data-id="{{item._id}}" bindtap="edit" wx:if="{{adminSuper || adminPermissions.communityMap_saveAdmin}}" disabled="{{busy}}">编辑与纠错</button><button class="reject-button" data-id="{{item._id}}" bindtap="deleteCommunity" wx:if="{{adminSuper || adminPermissions.communityMap_deleteAdmin}}" disabled="{{busy}}">删除小区</button></view></block>
   </view>
-  <view class="empty-copy description" wx:if="{{!loading && !rows.length && !error}}">{{view === 'pending' ? '当前没有待处理的小区。新增小区地址会自动出现在这里。' : '尚无符合条件的小区，可从待处理清单选择或新增。'}}</view>
+  <view class="empty-copy description" wx:if="{{!loading && !rows.length && !error}}">{{view === 'pending' ? '当前没有待处理的小区。新增小区地址会自动出现在这里。' : view === 'retired' ? '暂无已删除的小区。' : '尚无符合条件的小区，可从待处理清单选择或新增。'}}</view>
   <button class="secondary more-button" wx:if="{{hasMore && !error}}" bindtap="more" loading="{{loading}}" disabled="{{loading}}">加载更多</button>
 </view>
 <view class="edit-mask" wx:if="{{rejectForm}}" catchtouchmove="noop">

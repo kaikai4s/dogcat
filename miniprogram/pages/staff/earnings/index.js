@@ -45,14 +45,18 @@ function money(value) {
 function withEarning(item) {
   const status = String(item.status || '').toLowerCase()
   const isMock = item.isMock === true || item.paymentChannel === 'mock' || status === 'mock_settled' || status === 'mock'
+  const deductAmount = Number(item.deductAmount || 0)
+  const hasDeduction = deductAmount > 0
+  const expectedAmount = Number(item.originalAmount != null ? item.originalAmount : (item.amount != null ? Number(item.amount) + deductAmount : 0))
   return {
     ...item,
     isMock,
     amountText: money(item.amount),
-    grossAmountText: money(item.grossAmount),
-    originalAmountText: money(item.originalAmount || item.amount),
-    deductAmountText: money(item.deductAmount || 0),
-    hasDeduction: Number(item.deductAmount || 0) > 0,
+    expectedAmountText: money(expectedAmount),
+    originalAmountText: money(expectedAmount),
+    deductAmountText: money(deductAmount),
+    deductReasonText: item.deductReason || '服务违规/出险扣除',
+    hasDeduction,
     statusText: isMock ? '模拟测试(不可提现)' : (earningStatusText[status] || '已记录')
   }
 }
@@ -76,8 +80,12 @@ Page({
   data: {
     themeClass: 'theme-day',
     activeTab: 'earnings',
+    earningFilterStatus: '',
     balance: null,
     earnings: [],
+    filteredEarnings: [],
+    availableEarningsCount: 0,
+    pendingEarningsCount: 0,
     withdraws: [],
     amount: '',
     submitting: false,
@@ -93,7 +101,24 @@ Page({
     }
   },
 
-    onPullDownRefresh() {
+  filterEarnings(e) {
+    const status = e.currentTarget.dataset.status || ''
+    const decoratedEarnings = this.data.earnings || []
+    const filteredEarnings = status
+      ? decoratedEarnings.filter((item) => {
+        if (status === 'available') return item.status === 'available' && !item.isMock
+        if (status === 'pending') return item.status === 'pending' && !item.isMock
+        if (status === 'settled') return ['withdrawing', 'withdrawn', 'settled'].includes(item.status) || item.isMock
+        return true
+      })
+      : decoratedEarnings
+    this.setData({
+      earningFilterStatus: status,
+      filteredEarnings
+    })
+  },
+
+  onPullDownRefresh() {
     Promise.resolve(this.load()).finally(() => wx.stopPullDownRefresh())
   },
 
@@ -118,6 +143,18 @@ Page({
         const maxAmount = quota.effectiveRemainingAmount === null || quota.effectiveRemainingAmount === undefined
           ? Number(balance.available || 0)
           : Math.min(Number(balance.available || 0), Number(quota.effectiveRemainingAmount || 0))
+        const decoratedEarnings = (earnings || []).map(withEarning)
+        const availableEarningsCount = decoratedEarnings.filter((item) => item.status === 'available' && !item.isMock).length
+        const pendingEarningsCount = decoratedEarnings.filter((item) => item.status === 'pending' && !item.isMock).length
+        const currentFilter = this.data.earningFilterStatus
+        const filteredEarnings = currentFilter
+          ? decoratedEarnings.filter((item) => {
+            if (currentFilter === 'available') return item.status === 'available' && !item.isMock
+            if (currentFilter === 'pending') return item.status === 'pending' && !item.isMock
+            if (currentFilter === 'settled') return ['withdrawing', 'withdrawn', 'settled'].includes(item.status) || item.isMock
+            return true
+          })
+          : decoratedEarnings
         this.setData({
           balance: {
             ...balance,
@@ -131,12 +168,25 @@ Page({
             minWithdrawAmountText: money(balance.minWithdrawAmount)
           },
           amount: maxAmount > 0 ? money(maxAmount) : '',
-          earnings: (earnings || []).map(withEarning),
+          earnings: decoratedEarnings,
+          filteredEarnings,
+          availableEarningsCount,
+          pendingEarningsCount,
           withdraws: (withdraws || []).map(withWithdraw)
         })
         this.autoSyncPendingTransfers((withdraws || []).map(withWithdraw))
       })
       .catch(showError)
+  },
+
+  fillAllAvailable() {
+    const available = Number(this.data.balance?.availableAmount || this.data.balance?.available || 0)
+    if (available <= 0) {
+      return wx.showToast({ title: '暂无可提现余额', icon: 'none' })
+    }
+    const maxTransfer = Number(this.data.balance?.wechatTransferQuota?.singleMaxAmount || 200)
+    const target = Math.min(available, maxTransfer)
+    this.setData({ amount: String(Number(target.toFixed(2))) })
   },
 
   input(e) {
@@ -195,6 +245,12 @@ Page({
         if (String(error.message || error.errMsg || error).includes('当日全平台转帐额度受限')) {
           wx.showModal({ title: '暂不可提现', content: '当日全平台转帐额度受限,请明日再申请', showCancel: false })
           this.load()
+        } else if (String(error.message || error.errMsg || error).includes('提现金额需按收益记录整笔申请')) {
+          wx.showModal({
+            title: '提现金额提示',
+            content: '提现需对应单笔或多笔订单整笔合并打款。建议点击【全部提现】或根据可提现收益明细调整提现金额。',
+            showCancel: false
+          })
         } else {
           showError(error)
         }

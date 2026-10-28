@@ -15,6 +15,19 @@
         <view class="date-field"><text class="remix-icon ri-calendar-check-line field-icon"></text><text>结束：{{endDate}}</text></view>
       </picker>
     </view>
+    <view class="search-row">
+      <view class="search-field">
+        <text class="remix-icon ri-search-line field-icon"></text>
+        <input class="search-input" placeholder="搜索手机号 / 订单号 / 转账单号" value="{{keyword}}" bindinput="inputKeyword" confirm-type="search" bindconfirm="submitSearch" />
+        <text class="clear-icon remix-icon ri-close-circle-fill" wx:if="{{keyword}}" bindtap="clearSearch"></text>
+      </view>
+      <button class="primary-btn compact-btn search-btn" bindtap="submitSearch">搜索</button>
+    </view>
+    <view class="active-filter-tip" wx:if="{{appliedKeyword}}">
+      <text class="remix-icon ri-filter-3-line filter-tip-icon"></text>
+      <text class="filter-tip-text">当前搜索：“{{appliedKeyword}}”</text>
+      <text class="clear-filter-text" bindtap="clearSearch">清除</text>
+    </view>
   </view>
 
   <view class="stats-grid finance-grid">
@@ -76,15 +89,28 @@
       <view class="info-row" wx:if="{{item.auditedByOpenid}}"><view class="label">审核人</view><view class="value">{{item.auditedByOpenid}}</view></view>
       <view class="info-row" wx:if="{{item.paymentReference}}"><view class="label">到账凭证号</view><view class="value">{{item.paymentReference}}</view></view>
       <view class="info-row" wx:if="{{item.paymentProofImage}}"><view class="label">电子水单</view><view class="value preview-link" data-urls="{{[item.paymentProofImage]}}" data-current="{{item.paymentProofImage}}" bindtap="previewReceipt">查看水单凭证</view></view>
-      <view class="withdraw-history" wx:if="{{item.withdrawHistory.length}}">
-        <view class="withdraw-history-title">历史提现记录（{{item.withdrawCount}}笔）</view>
-        <view class="withdraw-history-item" wx:for="{{item.withdrawHistory}}" wx:for-item="history" wx:key="_id">
-          <text>¥{{history.amountText}}</text><text>{{history.statusText}}</text><text>{{beijingTime.format(history.paidAt || history.createdAt)}}</text>
+      <view class="withdraw-history-box" wx:if="{{item.withdrawHistory && item.withdrawHistory.length}}">
+        <view class="withdraw-history-header" data-id="{{item._id}}" bindtap="toggleWithdrawHistory">
+          <view class="withdraw-history-header-left">
+            <text class="remix-icon ri-history-line history-icon"></text>
+            <text class="withdraw-history-title">历史提现记录（{{item.withdrawCount || item.withdrawHistory.length}}笔）</text>
+          </view>
+          <view class="withdraw-history-header-right">
+            <text class="toggle-text">{{expandedWithdrawHistories[item._id] ? '收起' : '展开'}}</text>
+            <text class="remix-icon {{expandedWithdrawHistories[item._id] ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'}} toggle-arrow"></text>
+          </view>
+        </view>
+        <view class="withdraw-history-list" wx:if="{{expandedWithdrawHistories[item._id]}}">
+          <view class="withdraw-history-item" wx:for="{{item.withdrawHistory}}" wx:for-item="history" wx:key="_id">
+            <text class="history-amount">¥{{history.amountText}}</text>
+            <text class="history-status {{history.status}}">{{history.statusText}}</text>
+            <text class="history-time">{{beijingTime.format(history.paidAt || history.createdAt)}}</text>
+          </view>
         </view>
       </view>
       <view class="withdraw-audit-actions" wx:if="{{item.status === 'pending' && (adminSuper || adminPermissions.admin_auditWithdrawRequest || (item.assetType === 'user' && adminPermissions.admin_auditUserAssetWithdrawal))}}">
-        <button wx:if="{{adminSuper || adminPermissions.admin_auditWithdrawRequest || adminPermissions.admin_auditUserAssetWithdrawal}}" class="withdraw-reject-btn" data-id="{{item._id}}" data-approved="false" bindtap="audit">驳回</button>
-        <button wx:if="{{adminSuper || adminPermissions.admin_auditWithdrawRequest || adminPermissions.admin_auditUserAssetWithdrawal}}" class="withdraw-approve-btn" data-id="{{item._id}}" data-approved="true" bindtap="audit">{{item.isWechatWallet ? '同意并转账' : '通过审核'}}</button>
+        <button wx:if="{{adminSuper || adminPermissions.admin_auditWithdrawRequest || adminPermissions.admin_auditUserAssetWithdrawal}}" class="withdraw-btn withdraw-reject-btn" data-id="{{item._id}}" data-approved="false" bindtap="audit">驳回</button>
+        <button wx:if="{{adminSuper || adminPermissions.admin_auditWithdrawRequest || adminPermissions.admin_auditUserAssetWithdrawal}}" class="withdraw-btn withdraw-approve-btn" data-id="{{item._id}}" data-approved="true" bindtap="audit">{{item.isWechatWallet ? '同意并转账' : '通过审核'}}</button>
       </view>
       <view class="info-row" wx:if="{{item.canReturnSmallTransfer}}"><view class="label">金额限制</view><view class="value danger">单笔最低 ¥0.10，请查原单并退回余额后合并提现</view></view>
       <button class="ghost-btn full-btn" wx:if="{{item.canReturnSmallTransfer && (adminSuper || adminPermissions.admin_releaseFailedWithdraw)}}" disabled="{{actionBusy}}" data-id="{{item._id}}" data-small="true" bindtap="releaseFailedWithdraw">查原单并退回余额合并提现</button>
@@ -98,7 +124,7 @@
       <button class="ghost-btn full-btn release-failed-btn" wx:if="{{(item.isWechatWallet && !item.belowWechatMinimum && item.status === 'transfer_failed') && (adminSuper || adminPermissions.admin_releaseFailedWithdraw)}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="releaseFailedWithdraw">释放收益并退回余额</button>
       <button class="primary-btn full-btn" wx:if="{{(!item.isWechatWallet && item.status === 'approved') && (adminSuper || adminPermissions.admin_markWithdrawPaid)}}" data-id="{{item._id}}" bindtap="markPaid">{{item.source === 'admin_manual_tail_settlement' ? '登记尾款实际付款凭证' : '标记已打款'}}</button>
     </view>
-    <view class="empty-state" wx:if="{{!requests.length}}">暂无提现申请。</view>
+    <view class="empty-state" wx:if="{{!requests.length}}">{{appliedKeyword ? '暂无与“' + appliedKeyword + '”匹配的提现记录。' : '暂无提现申请。'}}</view>
   </block>
 
   <block wx:if="{{financeTabs.deposits && activeTab === 'deposits'}}">
@@ -126,6 +152,16 @@
       <view class="info-row"><view class="label">可退金额</view><view class="price">¥{{item.availableRefundAmountText}}</view></view>
       <view class="info-row" wx:if="{{item.refundedAmount > 0}}"><view class="label">已退金额</view><view class="value">¥{{item.refundedAmountText}}</view></view>
       <view class="info-row" wx:if="{{item.forfeitedAmount > 0}}"><view class="label">已没收金额</view><view class="value danger">¥{{item.forfeitedAmountText}}</view></view>
+      <view class="info-row" wx:if="{{item.supplyPolicyAcceptedAt}}"><view class="label">首次用品规则</view><view class="value">已确认 · 费用 ¥{{item.supplyFeeAmountText}}</view></view>
+      <view class="info-row" wx:if="{{item.supplyFeeDeductedAmount > 0}}"><view class="label">已结算用品费用</view><view class="value">¥{{item.supplyFeeDeductedAmountText}}</view></view>
+      <view class="info-row" wx:if="{{item.approvedRefundAmount != null}}"><view class="label">核准退押金</view><view class="value">¥{{item.approvedRefundAmountText}}</view></view>
+      <view class="info-row" wx:if="{{item.supplyAddress}}"><view class="label">用品收货地址</view><view class="value">{{item.supplyAddress.name}} {{item.supplyAddress.phone}} · {{item.supplyAddress.province}}{{item.supplyAddress.city}}{{item.supplyAddress.district}}{{item.supplyAddress.detail}}</view></view>
+      <view class="info-row" wx:if="{{item.supplyShipment}}"><view class="label">用品物流</view><view class="value">{{item.supplyShipment.expressCompany}} · {{item.supplyShipment.trackingNo}}</view></view>
+      <block wx:if="{{item.status === 'paid' && item.supplyPolicyAcceptedAt && !item.supplyShipment && (adminSuper || adminPermissions.admin_shipStaffSupplies)}}">
+        <input class="ship-input" placeholder="快递公司（如顺丰速运）" data-id="{{item._id}}" data-field="expressCompany" bindinput="supplyShipInput" maxlength="40" />
+        <input class="ship-input" placeholder="快递单号" data-id="{{item._id}}" data-field="trackingNo" bindinput="supplyShipInput" maxlength="80" />
+        <button class="ghost-btn full-btn" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="shipStaffSupplies">确认首次用品发货</button>
+      </block>
       <view class="info-row" wx:if="{{item.refundReason}}"><view class="label">退出退款原因</view><view class="value">{{item.refundReason}}</view></view>
       <view class="info-row" wx:if="{{item.refundNo}}"><view class="label">微信退款商户单号</view><view class="value">{{item.refundNo}}</view></view>
       <view class="info-row" wx:if="{{item.refundLastError}}"><view class="label">退款待处理原因</view><view class="value danger">{{item.refundLastError}}</view></view>
@@ -149,13 +185,13 @@
       <button class="ghost-btn full-btn" wx:if="{{item.canConfirmManualRefund && (adminSuper || adminPermissions.admin_confirmDepositRefund)}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="confirmDepositRefund">确认已实际人工退款</button>
       <button class="ghost-btn full-btn" wx:if="{{(item.canForfeit) && (adminSuper || adminPermissions.admin_forfeitStaffDeposit)}}" data-id="{{item._id}}" data-max="{{item.availableRefundAmount}}" data-staff="{{item.staffRealName || item.staffNickname || item.staffOpenid}}" bindtap="forfeitDeposit">违规没收保证金</button>
     </view>
-    <view class="empty-state" wx:if="{{!deposits.length}}">暂无宠托师保证金记录。</view>
+    <view class="empty-state" wx:if="{{!deposits.length}}">{{appliedKeyword ? '暂无与“' + appliedKeyword + '”匹配的保证金记录。' : '暂无宠托师保证金记录。'}}</view>
   </block>
 
   <block wx:if="{{financeTabs.supplies && activeTab === 'supplies'}}">
     <view class="card record-card" wx:for="{{supplies}}" wx:key="_id">
       <view class="record-head">
-        <view class="record-title">首次用品报销</view>
+      <view class="record-title">{{item.benefitType === 'supply_fee_waiver' ? '首次用品费用减免' : '首次用品报销'}}</view>
         <view class="badge {{item.status === 'paid' ? 'green' : (item.status === 'approved' ? 'pink' : 'gray')}}">{{item.statusText || item.status}}</view>
       </view>
       <view class="info-row"><view class="label">申请人</view><view class="value">{{item.staffRealName || item.staffNickname || item.staffOpenid}}</view></view>
@@ -179,9 +215,10 @@
         <button wx:if="{{adminSuper || adminPermissions.admin_auditSupplyReimbursement}}" class="ghost-btn compact-btn" data-id="{{item._id}}" data-approved="false" bindtap="auditSupplyReimbursement">驳回申请</button>
         <button wx:if="{{adminSuper || adminPermissions.admin_auditSupplyReimbursement}}" class="primary-btn compact-btn" data-id="{{item._id}}" data-approved="true" data-amount="{{item.amount}}" data-amount-source="{{item.amountSource}}" bindtap="auditSupplyReimbursement">按后台金额通过</button>
       </view>
-      <button class="primary-btn full-btn" wx:if="{{(item.status === 'approved') && (adminSuper || adminPermissions.admin_paySupplyReimbursement)}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="paySupplyReimbursement">确认已实际打款</button>
+      <button class="primary-btn full-btn" wx:if="{{(item.status === 'approved') && item.benefitType !== 'supply_fee_waiver' && (adminSuper || adminPermissions.admin_paySupplyReimbursement)}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="paySupplyReimbursement">确认已实际打款</button>
+      <view class="muted" wx:if="{{item.status === 'approved' && item.benefitType === 'supply_fee_waiver'}}">减免已生效，退出时在保证金结算中体现，无需单独打款。</view>
     </view>
-    <view class="empty-state" wx:if="{{!supplies.length}}">暂无用品报销记录。</view>
+    <view class="empty-state" wx:if="{{!supplies.length}}">{{appliedKeyword ? '暂无与“' + appliedKeyword + '”匹配的用品报销记录。' : '暂无用品报销记录。'}}</view>
   </block>
 
   <block wx:if="{{financeTabs.payments && activeTab === 'payments'}}">
@@ -189,11 +226,13 @@
       <view class="record-head"><view class="record-title">支付单号</view><view class="badge green">{{item.status}}</view></view>
       <view class="info-row"><view class="label">单号</view><view class="value">{{item.paymentNo || item._id}}</view></view>
       <view class="info-row"><view class="label">订单</view><view class="value">{{item.orderId}}</view></view>
+      <view class="info-row" wx:if="{{item.contactPhone}}"><view class="label">客户手机号</view><view class="value">{{item.contactPhone}}</view></view>
+      <view class="info-row" wx:if="{{item.orderNo && item.orderNo !== item.orderId}}"><view class="label">订单编号</view><view class="value">{{item.orderNo}}</view></view>
       <view class="info-row"><view class="label">金额</view><view class="price">¥{{item.amountText}}</view></view>
       <view class="info-row"><view class="label">渠道</view><view class="value">{{item.channel || 'mock'}}</view></view>
       <view class="info-row"><view class="label">时间</view><view class="value">{{beijingTime.format(item.paidAt || item.createdAt)}}</view></view>
     </view>
-    <view class="empty-state" wx:if="{{!payments.length}}">暂无支付流水。</view>
+    <view class="empty-state" wx:if="{{!payments.length}}">{{appliedKeyword ? '暂无与“' + appliedKeyword + '”匹配的支付流水。' : '暂无支付流水。'}}</view>
   </block>
 
   <block wx:if="{{financeTabs.refunds && activeTab === 'refunds'}}">
@@ -201,22 +240,25 @@
       <view class="record-head"><view class="record-title">退款单号</view><view class="badge pink">{{item.status}}</view></view>
       <view class="info-row"><view class="label">单号</view><view class="value">{{item.refundNo || item._id}}</view></view>
       <view class="info-row"><view class="label">订单</view><view class="value">{{item.orderId}}</view></view>
+      <view class="info-row" wx:if="{{item.contactPhone}}"><view class="label">客户手机号</view><view class="value">{{item.contactPhone}}</view></view>
+      <view class="info-row" wx:if="{{item.orderNo && item.orderNo !== item.orderId}}"><view class="label">订单编号</view><view class="value">{{item.orderNo}}</view></view>
       <view class="info-row"><view class="label">金额</view><view class="price">¥{{item.amountText}}</view></view>
       <view class="info-row"><view class="label">原因</view><view class="value">{{item.reason || '-'}}</view></view>
       <view class="info-row"><view class="label">时间</view><view class="value">{{beijingTime.format(item.createdAt)}}</view></view>
     </view>
-    <view class="empty-state" wx:if="{{!refunds.length}}">暂无退款记录。</view>
+    <view class="empty-state" wx:if="{{!refunds.length}}">{{appliedKeyword ? '暂无与“' + appliedKeyword + '”匹配的退款记录。' : '暂无退款记录。'}}</view>
   </block>
 
   <block wx:if="{{financeTabs.earnings && activeTab === 'earnings'}}">
     <view class="card record-card" wx:for="{{earnings}}" wx:key="_id">
       <view class="record-head"><view class="record-title">宠托师收益</view><view class="badge pink">{{item.status}}</view></view>
-      <view class="info-row"><view class="label">宠托师</view><view class="value">{{item.staffOpenid}}</view></view>
+      <view class="info-row"><view class="label">宠托师</view><view class="value">{{item.staffRealName || item.staffNickname || item.staffOpenid}}</view></view>
+      <view class="info-row" wx:if="{{item.accountPhone || item.staffPhone}}"><view class="label">宠托师手机号</view><view class="value">{{item.accountPhone || item.staffPhone}}</view></view>
       <view class="info-row"><view class="label">订单</view><view class="value">{{item.orderId}}</view></view>
       <view class="info-row"><view class="label">收益</view><view class="price">¥{{item.amountText}}</view></view>
       <view class="info-row"><view class="label">可提现时间</view><view class="value">{{beijingTime.format(item.availableAt)}}</view></view>
     </view>
-    <view class="empty-state" wx:if="{{!earnings.length}}">暂无收益明细。</view>
+    <view class="empty-state" wx:if="{{!earnings.length}}">{{appliedKeyword ? '暂无与“' + appliedKeyword + '”匹配的收益明细。' : '暂无收益明细。'}}</view>
   </block>
 
   <block wx:if="{{financeTabs.logs && activeTab === 'logs'}}">
@@ -226,7 +268,7 @@
       <view class="info-row"><view class="label">金额变动</view><view class="price">¥{{item.amountDelta || 0}}</view></view>
       <view class="info-row"><view class="label">时间</view><view class="value">{{beijingTime.format(item.createdAt)}}</view></view>
     </view>
-    <view class="empty-state" wx:if="{{!logs.length}}">暂无财务流水。</view>
+    <view class="empty-state" wx:if="{{!logs.length}}">{{appliedKeyword ? '暂无与“' + appliedKeyword + '”匹配的财务流水。' : '暂无财务流水。'}}</view>
   </block>
 
   <!-- 违规扣除保证金弹窗 (扣除金额与扣除描述分设两个独立栏位) -->

@@ -1,3 +1,5 @@
+const { createHash } = require('crypto')
+const trainingQuizVersion = training => createHash('sha256').update(JSON.stringify([training.passScore, training.quiz])).digest('hex')
 const { requireStaffGender, normalizeStaffGenderRequirement, matchesStaffGender, assertStaffGenderMatches, isStaffProfileLocked } = require('../utils/staffGender')
 const { CARD_STYLE_FIELDS, validateCardStyleUpdate } = require('../utils/profileCardStyle')
 const { mapRefreshIds, visibleMapRows, mapConcurrent } = require('../utils/mapCards')
@@ -6,6 +8,7 @@ module.exports = function createHandler(context) {
   const {
     saveStaffScheduleException,
     requestStaffDepositRefund,
+    confirmStaffSupplyPolicy,
     reserveStaffDepositPayment,
     assertPaymentModeAllowed,
     submitStaffSupplyOnce,
@@ -68,6 +71,7 @@ module.exports = function createHandler(context) {
     normalizeStaffTrainingConfig,
     normalizeStaffZhimaConfig,
     normalizeStaffWorkflow,
+    queryOrderLogistics,
     normalizeVideoAuditGuide,
     normalizeWeeklySchedule,
     notifyAdmins,
@@ -96,6 +100,34 @@ module.exports = function createHandler(context) {
     maskIdCard,
     verifyTelecomThreeElements
   } = context
+  function supplyAddress(input) {
+    const source = input && typeof input === 'object' ? input : {}
+    const address = {
+      name: safeText(source.name).trim(), phone: safeText(source.phone).trim(),
+      province: safeText(source.province).trim(), city: safeText(source.city).trim(),
+      district: safeText(source.district).trim(), detail: safeText(source.detail).trim()
+    }
+    if (!address.name || address.name.length > 40 || !/^1[3-9]\d{9}$/.test(address.phone) ||
+        !address.province || !address.city || !address.district || !address.detail ||
+        [address.province, address.city, address.district, address.detail].some(value => value.length > 100)) {
+      throw new Error('请填写完整、有效的用品收货姓名、手机号和地址')
+    }
+    return address
+  }
+  const supplyTerms = supplies => ({
+    reimbursementMode: supplies.reimbursementMode,
+    reimbursementOrderCount: supplies.reimbursementOrderCount,
+    reimbursementInviteCount: supplies.reimbursementInviteCount
+  })
+  const checkoutPolicyKey = (config, supplies) => createHash('sha256').update(JSON.stringify([
+    config.enabled, config.amount, config.rulesText, config.refundRulesText, config.forfeitRulesText,
+    supplies.shippingEnabled, supplies.supplyFeeAmount, supplies.reimbursementEnabled, supplyTerms(supplies)
+  ])).digest('hex')
+  function assertCheckoutPolicy(data, config, supplies) {
+    if (data.checkoutPolicyKey && data.checkoutPolicyKey !== checkoutPolicyKey(config, supplies)) {
+      throw new Error('保证金或用品报销规则已更新，请刷新并重新确认')
+    }
+  }
   function nearbyReference(data, profile) {
     // Explicitly absent reference coordinates must not resurrect an old GPS fix.
     const supplied = data.latitude !== undefined || data.longitude !== undefined
@@ -546,9 +578,10 @@ module.exports = function createHandler(context) {
           amount: depositConfig.amount,
           title: (profile.requireDepositRepay === true || profile.depositStatus === 'supplement_required' || profile.depositStatus === 'forfeited') ? '要求重新足额缴纳保证金' : '未缴纳履约保证金',
           reason: profile.requireDepositRepayReason || '',
+          repayReason: profile.requireDepositRepayReason || '',
           message: (profile.requireDepositRepay === true || profile.depositStatus === 'supplement_required' || profile.depositStatus === 'forfeited')
-            ? `平台要求重新足额缴纳履约保证金（¥${depositConfig.amount}）。原因：${profile.requireDepositRepayReason || '保证金余额不足或存在违规出险'}。请先完成足额缴纳后继续接单。`
-            : `平台已开启宠托师履约保证金（¥${depositConfig.amount}），请先完成缴纳后再开始抢单/接单。`
+            ? `平台要求重新足额缴纳履约保证金，足额缴纳后即可恢复接单资格。`
+            : `平台已开启宠托师履约保证金，请先完成缴纳后再开始抢单/接单。`
         } : null
       }
     }
@@ -570,7 +603,7 @@ module.exports = function createHandler(context) {
       const videos = enabledTrainingVideos(training).map((video) => ({ ...video, watched: Boolean(progress[video.key] && progress[video.key].watched === true), watchedAt: progress[video.key] && progress[video.key].watchedAt || '' }))
       return {
         profile,
-        quiz: { unlocked: profile.auditStatus === 'approved' && videos.every(video => video.watched), questions: profile.auditStatus === 'approved' && videos.every(video => video.watched) ? publicTrainingQuiz(training.quiz) : [], passScore: training.passScore, passed: Boolean(profile.quizPassedAt), score: Number(profile.quizScore || 0), passedAt: profile.quizPassedAt || '' },
+        quiz: { version: trainingQuizVersion(training), unlocked: profile.auditStatus === 'approved' && videos.every(video => video.watched), questions: profile.auditStatus === 'approved' && videos.every(video => video.watched) ? publicTrainingQuiz(training.quiz) : [], passScore: training.passScore, passed: Boolean(profile.quizPassedAt), score: Number(profile.quizScore || 0), passedAt: profile.quizPassedAt || '' },
         videos,
         videoAuditGuide: normalizeVideoAuditGuide(training.videoAuditGuide),
         supplies: settings.staffSupplies || normalizeStaffSuppliesConfig(),
@@ -591,7 +624,9 @@ module.exports = function createHandler(context) {
       const training = settings.staffTraining || normalizeStaffTrainingConfig()
       if (!enabledTrainingVideos(training).every(video => profile.trainingVideoProgress && profile.trainingVideoProgress[video.key]?.watched === true)) throw new Error('请先完成全部培训视频观看后再答题')
       const questions = training.quiz || DEFAULT_STAFF_TRAINING_QUIZ
+      if (data.quizVersion && data.quizVersion !== trainingQuizVersion(training)) throw new Error('题目配置已更新，请刷新培训页后重新作答')
       const answers = data.answers || {}
+      if (questions.some(item => !item.options.some(option => option.value === answers[item.id]))) throw new Error('请完成当前全部题目；如题目已更新，请刷新培训页后重新作答')
       const correct = questions.filter((item) => safeText(answers[item.id]).trim() === item.answer).length
       const score = Math.round((correct / questions.length) * 100)
       const passed = score >= training.passScore
@@ -1736,6 +1771,12 @@ module.exports = function createHandler(context) {
       const config = settings.staffDeposit || normalizeStaffDepositConfig()
       const supplies = settings.staffSupplies || normalizeStaffSuppliesConfig()
       const deposit = synced.deposit ? { ...synced.deposit } : null
+      const firstSupplyDeposit = profile?.supplyShipmentDepositId && profile.supplyShipmentDepositId !== deposit?._id
+        ? (await db.collection('staff_deposits').doc(profile.supplyShipmentDepositId).get().catch(() => ({ data: null }))).data : null
+      const firstSupplyShipment = firstSupplyDeposit?.staffOpenid === openid ? firstSupplyDeposit.supplyShipment || null : deposit?.supplyShipment || null
+      const confirmedSupplyTerms = firstSupplyDeposit?.staffOpenid === openid
+        ? firstSupplyDeposit.supplyReimbursementTerms
+        : deposit?.supplyPolicyAcceptedAt ? deposit.supplyReimbursementTerms : null
       if (deposit) {
         delete deposit.lastForfeitImages
         delete deposit.evidenceImages
@@ -1743,8 +1784,10 @@ module.exports = function createHandler(context) {
         delete deposit.forfeitImages
       }
       const auditApproved = profile && profile.auditStatus === 'approved'
-      const needsRepay = Boolean(profile && (profile.requireDepositRepay === true || profile.depositStatus === 'supplement_required' || profile.depositStatus === 'forfeited' || (deposit && deposit.status === 'forfeited')))
-      const canPay = Boolean(config.enabled && config.amount > 0 && auditApproved && (!deposit || deposit.status === 'unpaid' || needsRepay))
+      const isRefunded = Boolean((profile && profile.depositStatus === 'refunded') || (deposit && deposit.status === 'refunded'))
+      const needsRepay = Boolean(profile && (profile.requireDepositRepay === true || profile.depositStatus === 'supplement_required' || profile.depositStatus === 'forfeited' || (deposit && deposit.status === 'forfeited') || isRefunded))
+      const canPay = Boolean(!synced.paymentSyncPending && config.enabled && config.amount > 0 && auditApproved && (!deposit || deposit.status === 'unpaid' || needsRepay))
+      const supplyQualification = getSupplyReimbursementQualification(canPay ? supplies : confirmedSupplyTerms || supplies, 0, 0)
       const canRequestRefund = Boolean(deposit && ['paid', 'partially_refunded'].includes(deposit.status) && (deposit.availableRefundAmount || 0) > 0 && deposit.refundStatus !== 'requested')
 
       const eventsRes = await readScopedDocuments('staff_deposit_events', { staffOpenid: openid }, 'createdAt', 'desc').catch(() => [])
@@ -1753,22 +1796,32 @@ module.exports = function createHandler(context) {
         forfeit: '违规扣除/没收',
         refund_request: '申请退还',
         refund: '退款到账',
-        refund_audit: '退款审核'
+        refund_audit: '退款审核',
+        supply_fee: '首次用品费用'
       }
       const events = eventsRes.map((e) => ({
         _id: e._id,
         type: e.type,
         typeName: eventTypeMap[e.type] || e.type,
         amount: Number(e.amount || 0),
-        amountText: e.type === 'pay' ? `+¥${Number(e.amount || 0).toFixed(2)}` : (e.type === 'forfeit' ? `-¥${Number(e.amount || 0).toFixed(2)}` : `¥${Number(e.amount || 0).toFixed(2)}`),
+        amountText: e.type === 'pay' ? `+¥${Number(e.amount || 0).toFixed(2)}` : (['forfeit', 'supply_fee'].includes(e.type) ? `-¥${Number(e.amount || 0).toFixed(2)}` : `¥${Number(e.amount || 0).toFixed(2)}`),
         reason: e.reason || '',
         operatorRole: e.operatorRole || '',
         createdAt: e.createdAt || ''
       }))
+      const supplyRefundPreview = deposit?.supplyShipment
+        ? await context.getStaffDepositRefundPreview(deposit._id) : null
+      const supplyFeeDue = supplyRefundPreview?.supplyFeeDue || 0
 
       return {
         config,
         supplies,
+        checkoutPolicyKey: checkoutPolicyKey(config, supplies),
+        supplyDeliveryRequired: supplies.shippingEnabled && !profile?.supplyShipmentDepositId,
+        firstSupplyShipment,
+        firstSupplyFeeAmount: firstSupplyDeposit?.staffOpenid === openid ? firstSupplyDeposit.supplyFeeAmount : deposit?.supplyFeeAmount,
+        supplyQualification: { mode: supplyQualification.mode, conditions: supplyQualification.conditions },
+        checkoutSupplyFeeAmount: canPay ? supplies.supplyFeeAmount : (deposit?.supplyPolicyAcceptedAt ? deposit.supplyFeeAmount : supplies.supplyFeeAmount),
         deposit,
         profile,
         canPay,
@@ -1776,8 +1829,31 @@ module.exports = function createHandler(context) {
         needsRepay,
         paymentSyncPending: synced.paymentSyncPending === true,
         repayReason: profile && profile.requireDepositRepayReason || '',
-        events
+        events,
+        supplyFeeDue,
+        supplyRefundPreview
       }
+    }
+    if (action === 'confirmSupplyDelivery') {
+      await getUser(openid)
+      const settings = await getSystemSettings()
+      if (!settings.staffSupplies?.shippingEnabled) throw new Error('平台首次用品寄送尚未开放')
+      assertCheckoutPolicy(data, settings.staffDeposit || normalizeStaffDepositConfig(), settings.staffSupplies)
+      const fee = Number(settings.staffSupplies.supplyFeeAmount)
+      if (!Number.isFinite(fee) || fee <= 0) throw new Error('用品费用尚未配置')
+      if (data.acceptSupplyPolicy !== true) throw new Error('请先确认用品费用及退出结算规则')
+      return confirmStaffSupplyPolicy(openid, supplyAddress(data.supplyAddress), fee, supplyTerms(settings.staffSupplies))
+    }
+    if (action === 'querySupplyDeliveryLogistics') {
+      await getUser(openid)
+      const deposit = (await db.collection('staff_deposits').doc(safeText(data.depositId).trim()).get().catch(() => ({ data: null }))).data
+      if (!deposit || deposit.staffOpenid !== openid) throw new Error('发货记录不存在')
+      const shipment = deposit.supplyShipment
+      if (!shipment) return { hasLogistics: false, message: '用品尚未发货' }
+      if (typeof context.checkLogisticsQueryRateLimit === 'function') await context.checkLogisticsQueryRateLimit(openid)
+      return queryOrderLogistics({ _id: deposit._id, trackingNo: shipment.trackingNo, expressCompany: shipment.expressCompany,
+        shippedAt: shipment.shippedAt, shippingAddress: { contactPhone: deposit.supplyAddress?.phone },
+        supplyLogisticsCache: deposit.supplyLogisticsCache }, 'staff_deposits')
     }
     if (action === 'createDepositPayment') {
       if (data.agreed !== true) throw new Error('请先阅读并同意保证金缴纳规则')
@@ -1787,20 +1863,31 @@ module.exports = function createHandler(context) {
       const settings = await getSystemSettings({ includeSecrets: true })
       const config = settings.staffDeposit || normalizeStaffDepositConfig()
       if (!config.enabled || !config.amount || config.amount <= 0) throw new Error('保证金缴纳当前未开放')
+      const supplies = settings.staffSupplies || normalizeStaffSuppliesConfig()
+      assertCheckoutPolicy(data, config, supplies)
+      let supplyConsent = null
+      if (supplies.shippingEnabled && !profile.supplyShipmentDepositId) {
+        if (data.acceptSupplyPolicy !== true) throw new Error('请先确认用品费用及退出结算规则')
+        const feeAmount = Number(supplies.supplyFeeAmount)
+        if (!Number.isFinite(feeAmount) || feeAmount <= 0 || feeAmount >= Number(config.amount)) throw new Error('用品费用须小于保证金，请联系平台')
+        supplyConsent = { address: supplyAddress(data.supplyAddress), feeAmount, reimbursementTerms: supplyTerms(supplies) }
+      }
       const clientRequestId = getClientRequestId(data)
       const paymentMode = (settings.payment && settings.payment.mode) || 'mock'
       assertPaymentModeAllowed({ ...settings.payment, mode: paymentMode })
       const synced = await syncWechatStaffDeposit(profile)
       if (synced.reconciled && synced.deposit.status === 'paid') return { paid: true, depositId: synced.deposit._id }
-      const { deposit, payment: paymentRecord } = await reserveStaffDepositPayment(user, synced.profile, config.amount, paymentMode, clientRequestId)
+      const { deposit, payment: paymentRecord } = await reserveStaffDepositPayment(user, synced.profile, config.amount, paymentMode, clientRequestId, supplyConsent)
       const amount = deposit.amount
       if (deposit.status === 'paid') return { paid: true, depositId: deposit._id }
       if (paymentMode === 'mock') {
         await markStaffDepositPaid(deposit._id, { paymentNo: paymentRecord.paymentNo, channel: 'mock' })
-        return { paid: true, depositId: deposit._id }
+        return { paid: true, depositId: deposit._id, isMock: true }
       } else {
         const configWechat = getWechatPayConfig(settings)
-        if (paymentRecord.prepayId) {
+        const PREPAY_TTL_MS = 90 * 60 * 1000
+        const isPrepayExpired = paymentRecord.updatedAt && (Date.now() - new Date(paymentRecord.updatedAt).getTime() > PREPAY_TTL_MS)
+        if (paymentRecord.prepayId && !isPrepayExpired) {
           return {
             paid: false,
             depositId: deposit._id,
@@ -1847,8 +1934,9 @@ module.exports = function createHandler(context) {
         await checkTextSecurity(openid, reason, { scene: 2, label: '保证金退款原因' })
       }
       await getUser(openid)
-      const res = await db.collection('staff_deposits').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').limit(1).get().catch(() => ({ data: [] }))
-      const deposit = res && res.data && res.data[0]
+      const res = await db.collection('staff_deposits').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').get().catch(() => ({ data: [] }))
+      const deposits = (res && res.data) || []
+      const deposit = deposits.find((d) => Number(d.availableRefundAmount || 0) > 0 && ['paid', 'partially_refunded'].includes(d.status)) || deposits[0]
       if (!deposit) throw new Error('暂无可退还保证金')
       return requestStaffDepositRefund(openid, deposit._id, reason)
     }
@@ -1863,17 +1951,23 @@ module.exports = function createHandler(context) {
       const completedOrders = await readScopedDocuments('orders', { staffOpenid: openid, status: 'completed' })
       const completedOrderCount = completedOrders.filter((order) => order.status === 'completed').length
       const inviteRows = await readScopedDocuments('user_invites', { inviterOpenid: openid, eligibleForSupplyReimbursement: true })
-      const qualification = getSupplyReimbursementQualification(supplies, completedOrderCount, inviteRows.filter((row) => row.eligibleForSupplyReimbursement === true).length)
+      const shipmentDeposit = profile?.supplyShipmentDepositId
+        ? (await db.collection('staff_deposits').doc(profile.supplyShipmentDepositId).get().catch(() => ({ data: null }))).data : null
+      const hasShipment = Boolean(shipmentDeposit && shipmentDeposit.staffOpenid === openid && shipmentDeposit.supplyShipment)
+      const deliveryMode = hasShipment || supplies.shippingEnabled
+      const qualification = getSupplyReimbursementQualification(hasShipment ? shipmentDeposit.supplyReimbursementTerms || supplies : supplies, completedOrderCount, inviteRows.filter((row) => row.eligibleForSupplyReimbursement === true).length)
       const mallOrders = await readScopedDocuments('mall_orders', { clientOpenid: openid })
       const eligibleMallOrders = mallOrders.filter((order) => ['paid', 'pending_ship', 'shipped', 'completed', 'received'].includes(order.status))
-      const purchaseMet = supplies.purchaseRequired === false || eligibleMallOrders.length > 0
-      const canApply = Boolean(!application && isCertified && supplies.reimbursementEnabled !== false && qualification.qualificationMet && purchaseMet)
+      const purchaseMet = deliveryMode ? hasShipment : supplies.purchaseRequired === false || eligibleMallOrders.length > 0
+      const canApply = Boolean(!application && isCertified && (hasShipment || supplies.reimbursementEnabled !== false) && qualification.qualificationMet && purchaseMet)
       return {
         application,
         canApply,
         supplies,
         qualification,
         eligibleMallOrders: eligibleMallOrders.map((order) => ({ _id: order._id, orderNo: order.orderNo || '', status: order.status, items: order.items || [], createdAt: order.createdAt || '' })),
+        shipmentDepositId: hasShipment ? shipmentDeposit._id : '',
+        deliveryMode,
         purchaseMet
       }
     }
@@ -1890,10 +1984,14 @@ module.exports = function createHandler(context) {
       }
       const settings = await getSystemSettings()
       const supplies = settings.staffSupplies || normalizeStaffSuppliesConfig()
-      if (supplies.reimbursementEnabled === false) throw new Error('用品报销申请暂未开放')
+      const shipmentDeposit = profile.supplyShipmentDepositId
+        ? (await db.collection('staff_deposits').doc(profile.supplyShipmentDepositId).get().catch(() => ({ data: null }))).data : null
+      const hasShipment = Boolean(shipmentDeposit && shipmentDeposit.staffOpenid === openid && shipmentDeposit.supplyShipment)
+      const deliveryMode = hasShipment || supplies.shippingEnabled
+      if (supplies.reimbursementEnabled === false && !hasShipment) throw new Error('用品报销申请暂未开放')
       const completedOrders = await readScopedDocuments('orders', { staffOpenid: openid, status: 'completed' })
       const inviteRows = await readScopedDocuments('user_invites', { inviterOpenid: openid, eligibleForSupplyReimbursement: true })
-      const qualification = getSupplyReimbursementQualification(supplies, completedOrders.filter((order) => order.status === 'completed').length, inviteRows.filter((row) => row.eligibleForSupplyReimbursement === true).length)
+      const qualification = getSupplyReimbursementQualification(hasShipment ? shipmentDeposit.supplyReimbursementTerms || supplies : supplies, completedOrders.filter((order) => order.status === 'completed').length, inviteRows.filter((row) => row.eligibleForSupplyReimbursement === true).length)
       if (!qualification.qualificationMet) {
         const remaining = qualification.conditions.map(condition => condition.mode === 'invite_count'
           ? `邀请 ${condition.requiredCount - condition.progressCount} 人绑定邀请码`
@@ -1910,17 +2008,19 @@ module.exports = function createHandler(context) {
         await Promise.all(mediaFileIds.map((fileId) => checkImageSecurity(openid, fileId, { scene: 1, label: '用品报销凭证' })))
       }
       const mallOrderId = safeText(data.mallOrderId).trim()
-      if (mallOrderId) {
+      if (deliveryMode && !hasShipment) throw new Error('首次用品尚未发货，暂不可申请费用减免')
+      if (deliveryMode && data.rulesConfirmed !== true) throw new Error('请先阅读并勾选首次用品费用减免规则')
+      if (mallOrderId && !deliveryMode) {
         const mallOrder = (await db.collection('mall_orders').doc(mallOrderId).get().catch(() => ({ data: null }))).data
         if (!mallOrder || mallOrder.clientOpenid !== openid || !['paid', 'pending_ship', 'shipped', 'completed', 'received'].includes(mallOrder.status)) throw new Error('请选择本人已支付的线上用品订单')
       }
-      if (supplies.purchaseRequired !== false && !mallOrderId) throw new Error('请先在平台线上店铺购买一次性用品，并选择对应订单')
-      const fixedAmount = Number(supplies.reimbursementAmount || supplies.maxReimbursementAmount || 200)
+      if (!deliveryMode && supplies.purchaseRequired !== false && !mallOrderId) throw new Error('请先在平台线上店铺购买一次性用品，并选择对应订单')
+      const fixedAmount = deliveryMode ? Number(shipmentDeposit.supplyFeeAmount) : Number(supplies.reimbursementAmount || supplies.maxReimbursementAmount || 200)
       // Keep legacy callers working during rollout; the new app flow omits amount and
       // always uses the backend-configured fixed amount.
-      const amount = data.amount !== undefined && !mallOrderId ? Number(data.amount) : fixedAmount
+      const amount = deliveryMode ? fixedAmount : data.amount !== undefined && !mallOrderId ? Number(data.amount) : fixedAmount
       if (!Number.isFinite(amount) || amount <= 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-7) throw new Error('后台报销金额配置不正确')
-      if (data.amount !== undefined && !mallOrderId && amount > Number(supplies.maxReimbursementAmount || 200)) throw new Error(`首次用品报销金额不能超过上限 ¥${supplies.maxReimbursementAmount || 200}`)
+      if (!deliveryMode && data.amount !== undefined && !mallOrderId && amount > Number(supplies.maxReimbursementAmount || 200)) throw new Error(`首次用品报销金额不能超过上限 ¥${supplies.maxReimbursementAmount || 200}`)
       const remark = safeText(data.remark).trim()
       if (remark.length > 500) throw new Error('报销备注不能超过 500 字')
       if (remark && typeof checkTextSecurity === 'function') {
@@ -1932,10 +2032,14 @@ module.exports = function createHandler(context) {
         staffUserId: user._id,
         staffProfileId: profile._id,
         mediaFileIds,
-        mallOrderId,
+        mallOrderId: deliveryMode ? '' : mallOrderId,
+        benefitType: deliveryMode ? 'supply_fee_waiver' : 'legacy_reimbursement',
+        depositId: deliveryMode ? shipmentDeposit._id : '',
         purchaseVerified: Boolean(mallOrderId),
         amountSource: mallOrderId || data.amount === undefined ? 'config' : 'legacy',
         amount,
+        rulesConfirmedAt: deliveryMode ? time : null,
+        rulesVersion: deliveryMode ? 1 : null,
         approvedAmount: null,
         remark,
         clientRequestId,

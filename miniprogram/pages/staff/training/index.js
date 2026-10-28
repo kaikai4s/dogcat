@@ -1,4 +1,4 @@
-const { callFunction, showError } = require('../../../utils/cloud')
+const { callFunction, showError, requirePrivacyAuthorize } = require('../../../utils/cloud')
 const { withStaffWorkflowText, formatDateTime } = require('../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { copyText } = require('../../../utils/clipboard')
@@ -35,6 +35,15 @@ function normalizeDeposit(deposit) {
   }
 }
 
+function supplyAddressIssues(address = {}) {
+  const errors = {}
+  if (!address.name || address.name.length > 40) errors.name = '请填写收件人姓名，最多40字'
+  if (!/^1[3-9]\d{9}$/.test(address.phone || '')) errors.phone = '请填写有效的11位收件手机号'
+  if (![address.province, address.city, address.district].every(value => value && value.length <= 100)) errors.region = '请选择完整的省、市、区县'
+  if (!address.detail || address.detail.length > 100) errors.detail = '请填写街道、楼栋及门牌号，最多100字'
+  return errors
+}
+
 function buildSteps(profile = {}, videos = []) {
   return [
     { title: '资料审核', desc: profile.auditStatus === 'approved' ? '已通过' : '待通过', done: profile.auditStatus === 'approved' },
@@ -64,6 +73,18 @@ Page({
     depositError: false,
     depositBusy: false,
     depositAgreed: false,
+    supplyAgreed: false,
+    depositModal: '',
+    depositIntent: 'payment',
+    depositDetailsExpanded: false,
+    checkoutError: '',
+    checkoutNeedsRefresh: false,
+    choosingSupplyAddress: false,
+    supplyAddressErrors: {},
+    supplyAddressFocus: '',
+    supplyRegion: [],
+    supplyAddress: { name: '', phone: '', province: '', city: '', district: '', detail: '' },
+    supplyLogistics: null,
     refundReason: '',
     supplyItems: [
       { name: '一次性手套', description: '足量自备', purchaseUrl: '' },
@@ -85,7 +106,7 @@ Page({
     const theme = applyTheme()
     this.setData(getThemeState(theme.value))
     this.load()
-    if (!this.data.depositBusy) this.loadDeposit()
+    if (!this.data.depositBusy && !this.data.depositModal) this.loadDeposit()
   },
 
   onHide() {
@@ -108,22 +129,37 @@ Page({
     })
   },
 
-  async loadDeposit() {
+  async loadDeposit(options = {}) {
     if (this._unloaded) return null
+    const preserveCheckout = options.preserveCheckout === true && Boolean(this.data.depositModal)
+    const previousKey = this.data.depositState?.checkoutPolicyKey
     const version = this._depositLoadVersion = (this._depositLoadVersion || 0) + 1
-    this.setData({ depositLoading: true, depositError: false, depositAgreed: false })
+    this.setData({ depositLoading: true, depositError: false,
+      ...(!preserveCheckout ? { depositAgreed: false, supplyAgreed: false, depositModal: '' } : {}) })
     try {
       const depositState = await callFunction('staff', 'getDepositStatus')
       if (depositState && depositState.deposit) {
         depositState.deposit = normalizeDeposit(depositState.deposit)
       }
       if (version !== this._depositLoadVersion || this._unloaded) return null
-      this.setData({ depositState })
+      const supplyAddress = this._supplyAddressDraftEdited ? this.data.supplyAddress : depositState?.deposit?.supplyAddress || this.data.supplyAddress
+      const patch = { depositState, supplyAddress, supplyRegion: [supplyAddress.province, supplyAddress.city, supplyAddress.district], checkoutNeedsRefresh: false }
+      if (preserveCheckout && this.data.depositModal) {
+        const canContinue = this.data.depositIntent === 'payment' ? depositState?.canPay
+          : depositState?.supplyDeliveryRequired && ['paid', 'partially_refunded'].includes(depositState.deposit?.status)
+        if (!canContinue) patch.depositModal = ''
+        else if (previousKey && depositState.checkoutPolicyKey && previousKey !== depositState.checkoutPolicyKey) {
+          Object.assign(patch, { depositModal: 'rules', depositAgreed: false, supplyAgreed: false, checkoutError: '规则已更新，请重新阅读并确认后继续' })
+        }
+      }
+      this.setData(patch)
       return depositState
     } catch (error) {
       if (version !== this._depositLoadVersion || this._unloaded) return null
-      this.setData({ depositState: null, depositError: true })
-      showError(error)
+      this.setData({ depositError: true, ...(preserveCheckout
+        ? { checkoutNeedsRefresh: true, checkoutError: '暂未核实支付状态，请刷新状态后再试，地址已保留。' }
+        : { depositState: null }) })
+      if (!preserveCheckout) showError(error)
     } finally {
       if (version === this._depositLoadVersion && !this._unloaded) this.setData({ depositLoading: false })
     }
@@ -132,6 +168,69 @@ Page({
   agreeDeposit(e) {
     this.setData({ depositAgreed: e.detail.value.includes('agreed') })
   },
+  agreeSupply(e) {
+    this.setData({ supplyAgreed: e.detail.value.includes('agreed') })
+  },
+  supplyAddressInput(e) {
+    const field = e.currentTarget.dataset.field
+    if (!['name', 'phone', 'province', 'city', 'district', 'detail'].includes(field) || this.data.depositBusy) return
+    this._supplyAddressDraftEdited = true
+    const errors = { ...this.data.supplyAddressErrors }
+    delete errors[field]
+    this.setData({ supplyAddress: { ...this.data.supplyAddress, [field]: e.detail.value }, supplyAddressErrors: errors, supplyAddressFocus: '' })
+  },
+  supplyRegionChange(e) {
+    if (this.data.depositBusy) return
+    const region = e.detail.value || []
+    if (region.length !== 3) return
+    this._supplyAddressDraftEdited = true
+    const errors = { ...this.data.supplyAddressErrors }
+    delete errors.region
+    this.setData({ supplyRegion: region, supplyAddress: { ...this.data.supplyAddress, province: region[0], city: region[1], district: region[2] }, supplyAddressErrors: errors })
+  },
+  async chooseSupplyAddress() {
+    if (this.data.choosingSupplyAddress || this.data.depositBusy || this.data.depositModal !== 'address') return
+    this.setData({ choosingSupplyAddress: true })
+    try {
+      await requirePrivacyAuthorize()
+      if (this._unloaded) return
+      const address = await new Promise((resolve, reject) => wx.chooseAddress({ success: resolve, fail: reject }))
+      if (this._unloaded) return
+      this._supplyAddressDraftEdited = true
+      this.setData({ supplyAddress: {
+        name: address.userName || '', phone: address.telNumber || '', province: address.provinceName || '',
+        city: address.cityName || '', district: address.countyName || '', detail: address.detailInfo || ''
+      }, supplyRegion: [address.provinceName || '', address.cityName || '', address.countyName || ''], supplyAddressErrors: {} })
+    } catch (error) {
+      if (!this._unloaded && !String(error?.errMsg || error?.message || '').includes('cancel')) showError(error)
+    } finally { if (!this._unloaded) this.setData({ choosingSupplyAddress: false }) }
+  },
+  async confirmSupplyDelivery() {
+    if (this.data.depositBusy || this.data.depositLoading || this.data.choosingSupplyAddress || this.data.checkoutNeedsRefresh || this.data.depositModal !== 'address' ||
+        this.data.depositIntent !== 'delivery' || !this.data.depositAgreed || !this.data.supplyAgreed || !this.validateSupplyAddress()) return
+    this.setData({ depositBusy: true, checkoutError: '' })
+    try {
+      await callFunction('staff', 'confirmSupplyDelivery', { acceptSupplyPolicy: true, supplyAddress: this.data.supplyAddress, checkoutPolicyKey: this.data.depositState?.checkoutPolicyKey })
+      if (this._unloaded) return
+      wx.showToast({ title: '已确认，等待发货', icon: 'none' })
+      await this.loadDeposit()
+    } catch (error) {
+      if (!this._unloaded) this.setData({ checkoutError: error.message || '地址提交失败，请稍后重试', checkoutNeedsRefresh: String(error.message || '').includes('规则已更新') })
+    } finally { if (!this._unloaded) this.setData({ depositBusy: false }) }
+  },
+  async querySupplyLogistics() {
+    const depositId = this.data.depositState?.profile?.supplyShipmentDepositId || this.data.depositState?.deposit?._id
+    if (!depositId || this.data.depositBusy) return
+    this.setData({ depositBusy: true })
+    try {
+      const result = await callFunction('staff', 'querySupplyDeliveryLogistics', { depositId })
+      if (this._unloaded) return
+      this.setData({ supplyLogistics: result })
+    } catch (error) { if (!this._unloaded) showError(error) } finally { if (!this._unloaded) this.setData({ depositBusy: false }) }
+  },
+  copySupplyTracking() {
+    copyText(this.data.depositState?.firstSupplyShipment?.trackingNo || '')
+  },
 
   inputRefundReason(e) {
     this.setData({ refundReason: e.detail.value })
@@ -139,34 +238,124 @@ Page({
 
   async payDeposit() {
     const state = this.data.depositState
-    if (this.data.depositBusy || this.data.depositLoading || !state || !state.canPay) return
-    if (!this.data.depositAgreed) {
-      wx.showToast({ title: '请先阅读并同意规则', icon: 'none' })
+    if (this.data.depositBusy || this.data.depositLoading || this.data.depositError || !state || !state.canPay) {
+      if (state && !state.canPay) {
+        wx.showToast({ title: '当前状态无需缴纳或暂不可缴', icon: 'none' })
+      }
       return
     }
-    this.setData({ depositBusy: true })
+    this.setData({ depositModal: 'rules', depositIntent: 'payment', depositAgreed: false, supplyAgreed: false, checkoutError: '', checkoutNeedsRefresh: false, supplyAddressErrors: {} })
+  },
+
+  openSupplyDelivery() {
+    if (this.data.depositBusy || this.data.depositLoading) return
+    this.setData({ depositModal: 'rules', depositIntent: 'delivery', depositAgreed: false, supplyAgreed: false, checkoutError: '', checkoutNeedsRefresh: false, supplyAddressErrors: {} })
+  },
+
+  closeDepositModal() {
+    if (this.data.depositBusy || this.data.choosingSupplyAddress) return
+    this.setData({ depositModal: '', depositAgreed: false, supplyAgreed: false })
+  },
+
+  backToDepositRules() {
+    if (!this.data.depositBusy && !this.data.choosingSupplyAddress) this.setData({ depositModal: 'rules', checkoutError: '' })
+  },
+
+  async reloadDepositCheckout() {
+    if (this.data.depositBusy || this.data.depositLoading || this.data.choosingSupplyAddress) return
+    const intent = this.data.depositIntent
+    const state = await this.loadDeposit({ preserveCheckout: true })
+    if (!state || this._unloaded) return
+    if (this.data.depositModal) this.setData({ depositModal: 'rules', depositIntent: intent, depositAgreed: false, supplyAgreed: false, checkoutError: '' })
+  },
+
+  toggleDepositDetails() {
+    this.setData({ depositDetailsExpanded: !this.data.depositDetailsExpanded })
+  },
+
+  async continueDepositRules() {
+    const state = this.data.depositState
+    if (this.data.depositBusy || this.data.depositLoading || this.data.checkoutNeedsRefresh || !state || this.data.depositModal !== 'rules') return
+    if (!this.data.depositAgreed || ((state.supplyDeliveryRequired || this.data.depositIntent === 'delivery') && !this.data.supplyAgreed)) {
+      wx.showToast({ title: '请阅读并勾选规则', icon: 'none' })
+      return
+    }
+    if (state.supplyDeliveryRequired || this.data.depositIntent === 'delivery') {
+      this.setData({ depositModal: 'address' })
+      return
+    }
+    await this.submitDepositPayment()
+  },
+
+  validateSupplyAddress() {
+    const address = this.data.supplyAddress || {}
+    const normalized = {}
+    for (const key of ['name', 'phone', 'province', 'city', 'district', 'detail']) normalized[key] = String(address[key] || '').trim()
+    const errors = supplyAddressIssues(normalized)
+    this.setData({ supplyAddressErrors: errors })
+    if (Object.keys(errors).length) {
+      const field = Object.keys(errors)[0]
+      this.setData({ supplyAddressFocus: field })
+      wx.showToast({ title: errors[field], icon: 'none' })
+      return false
+    }
+    this.setData({ supplyAddress: normalized })
+    return true
+  },
+
+  async confirmAddressAndPay() {
+    if (this.data.depositModal !== 'address') return
+    if (this.data.depositIntent === 'delivery') return this.confirmSupplyDelivery()
+    return this.submitDepositPayment()
+  },
+
+  async submitDepositPayment() {
+    const state = this.data.depositState
+    if (this.data.depositBusy || this.data.depositLoading || this.data.choosingSupplyAddress || this.data.checkoutNeedsRefresh || !state?.canPay || this.data.depositIntent !== 'payment') return
+    if (!this.data.depositAgreed || !['rules', 'address'].includes(this.data.depositModal)) {
+      wx.showToast({ title: '请先阅读并勾选保证金缴纳规则', icon: 'none' })
+      return
+    }
+    if (state.supplyDeliveryRequired && (!this.data.supplyAgreed || this.data.depositModal !== 'address')) {
+      wx.showToast({ title: '请确认首次用品规则及地址', icon: 'none' })
+      return
+    }
+    if (state.supplyDeliveryRequired && !this.validateSupplyAddress()) return
+    this.setData({ depositBusy: true, checkoutError: '' })
     let paymentSubmitted = false
     wx.showLoading({ title: '创建支付...', mask: true })
     try {
-      const result = await callFunction('staff', 'createDepositPayment', { agreed: true })
+      const result = await callFunction('staff', 'createDepositPayment', { agreed: true,
+        acceptSupplyPolicy: state.supplyDeliveryRequired === true, supplyAddress: this.data.supplyAddress, checkoutPolicyKey: state.checkoutPolicyKey })
       wx.hideLoading()
-      if (!result.paid) {
+      if (this._unloaded) return
+      if (result.paid) {
+        paymentSubmitted = true
+      } else {
         if (!result.payParams) throw new Error('支付暂不可用，请稍后重试或联系平台')
         await new Promise((resolve, reject) => wx.requestPayment({ ...result.payParams, success: resolve, fail: reject }))
+        paymentSubmitted = true
       }
-      paymentSubmitted = true
-      wx.showLoading({ title: '核实支付结果...', mask: true })
+      if (!result.paid) {
+        wx.showLoading({ title: '核实支付结果...', mask: true })
+      }
     } catch (error) {
-      showError(error)
+      wx.hideLoading()
+      const errMsg = (error && (error.message || error.errMsg)) || ''
+      if (!this._unloaded) this.setData({ checkoutError: errMsg.includes('cancel') || errMsg.includes('canceled')
+        ? '已取消支付，收货地址已保留，核对后可再次支付。' : errMsg || '发起支付失败，请稍后重试',
+        checkoutNeedsRefresh: errMsg.includes('规则已更新') })
     } finally {
       wx.hideLoading()
-      let confirmed = await this.loadDeposit()
+      let confirmed = await this.loadDeposit({ preserveCheckout: !paymentSubmitted })
       for (let attempt = 0; paymentSubmitted && attempt < 2 && !this._unloaded && (!confirmed || confirmed.deposit?.status === 'unpaid'); attempt += 1) {
         await new Promise(resolve => setTimeout(resolve, 1200))
         if (!this._unloaded) confirmed = await this.loadDeposit()
       }
       if (!this._unloaded) {
-        if (paymentSubmitted) wx.showToast({ title: confirmed?.deposit?.status === 'paid' ? '保证金已缴纳' : '结果确认中，请刷新状态，勿重复支付', icon: 'none' })
+        if (paymentSubmitted) {
+          wx.showToast({ title: confirmed?.deposit?.status === 'paid' ? '保证金已缴纳' : '结果确认中，请刷新状态，勿重复支付', icon: 'none' })
+        }
         this.load()
         this.setData({ depositBusy: false })
       }
@@ -183,21 +372,26 @@ Page({
     }
     wx.showModal({
       title: '申请退出并退还保证金',
-      content: '自愿退出全额退还保证金，存在有效管理员没收决定的部分除外。物资报销是独立的平台出资商家转账，不属于保证金退款。是否提交？',
+      content: state.deposit?.supplyShipment && state.deposit?.supplyPolicyAcceptedAt
+        ? `可退押金 ¥${state.deposit.availableRefundAmount}；预计用品费用 ¥${state.supplyFeeDue || 0}（减免申请待审时先不结算）。审核通过后按结算明细退款，是否提交？`
+        : '未确认并收取首次用品，不扣用品费用；其他有效扣除按记录结算。是否提交？',
       success: async (res) => {
-        if (!res.confirm || this.data.depositBusy) return
+        if (!res.confirm || this._unloaded || this.data.depositBusy) return
         this.setData({ depositBusy: true })
         wx.showLoading({ title: '提交申请...', mask: true })
         try {
           await callFunction('staff', 'requestDepositRefund', { reason })
+          if (this._unloaded) return
           wx.showToast({ title: '已提交，以服务端状态为准', icon: 'none' })
         } catch (error) {
-          showError(error)
+          if (!this._unloaded) showError(error)
         } finally {
           wx.hideLoading()
           await this.loadDeposit()
-          this.load()
-          this.setData({ depositBusy: false })
+          if (!this._unloaded) {
+            this.load()
+            this.setData({ depositBusy: false })
+          }
         }
       }
     })
@@ -240,6 +434,7 @@ Page({
         this.setData({
           profile,
           quiz: res.quiz,
+          answers: this.data.quiz && this.data.quiz.version === res.quiz?.version ? this.data.answers : {},
           quizExpanded: res.quiz && res.quiz.unlocked === true && this.data.quizExpanded,
           watchedVideoCount: videos.filter(item => item.watched).length,
           videos,
@@ -334,12 +529,18 @@ Page({
       return
     }
     this.setData({ quizBusy: true })
-    callFunction('staff', 'submitTrainingQuiz', { answers: this.data.answers })
+    callFunction('staff', 'submitTrainingQuiz', { answers: this.data.answers, quizVersion: this.data.quiz.version })
       .then((res) => {
         wx.showToast({ title: res.passed ? '答题通过' : `得分${res.score}，请重试`, icon: 'none' })
         this.load()
       })
-      .catch(showError)
+      .catch(error => {
+        showError(error)
+        if (!this._unloaded && String(error.message || '').includes('题目配置已更新')) {
+          this.setData({ answers: {} })
+          this.load()
+        }
+      })
       .finally(() => { if (!this._unloaded) this.setData({ quizBusy: false }) })
   },
 

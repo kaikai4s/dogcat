@@ -97,5 +97,51 @@ Page({
     } catch(error) {if(!this.closed)showError(error)}
     finally {if(!this.closed)this.setData({busy:false})}
   },
+  async disableAppearance() {
+    if(this.data.busy||!this.data.detail)return
+    const detail=this.data.detail
+    wx.showModal({
+      title:'暂扣作废专属形象？',
+      content:`作废后「${detail.ownerName}」在庄园中将恢复显示通用外观（支持后续随时重新开启）。请输入作废说明：`,
+      editable:true,
+      placeholderText:'违规原因（如：服务违规/资质暂停）',
+      success:async(res)=>{
+        if(!res.confirm)return
+        const reason=String(res.content||'').trim()||'管理员暂扣作废'
+        this.setData({busy:true})
+        try {
+          await callFunction('playgroundAppearance','disableAppearance',{requestId:detail._id,reason})
+          wx.showToast({title:'已作废形象',icon:'success'})
+          if(!this.closed) {
+            this.setData({detail:{...detail,appearanceDisabled:true,appearanceDisabledReason:reason}})
+            await this.load(true)
+          }
+        } catch(err){showError(err)}
+        finally{if(!this.closed)this.setData({busy:false})}
+      }
+    })
+  },
+  async enableAppearance() {
+    if(this.data.busy||!this.data.detail)return
+    const detail=this.data.detail
+    wx.showModal({
+      title:'重新启用专属形象？',
+      content:`重新启用后，「${detail.ownerName}」在庄园中将立即恢复专属24帧图集外观。`,
+      confirmText:'确认启用',
+      success:async(res)=>{
+        if(!res.confirm)return
+        this.setData({busy:true})
+        try {
+          await callFunction('playgroundAppearance','enableAppearance',{requestId:detail._id})
+          wx.showToast({title:'已恢复生效',icon:'success'})
+          if(!this.closed) {
+            this.setData({detail:{...detail,appearanceDisabled:false,appearanceDisabledReason:''}})
+            await this.load(true)
+          }
+        } catch(err){showError(err)}
+        finally{if(!this.closed)this.setData({busy:false})}
+      }
+    })
+  },
   swallow() {}
 })

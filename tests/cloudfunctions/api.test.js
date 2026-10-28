@@ -476,6 +476,7 @@ test('admin can save and public can read system settings', async () => {
   const guestFn = loadCloudFunction('api', db, 'openid_guest')
 
   const settingsPayload = {
+    noticeTicker: { enabled: true, items: ['预约前请核对联系方式', '请提前准备宠物用品'] },
     enableTestAddressMode: true,
     enablePetBreedAi: false,
     payment: { enabled: true, mode: 'mock', mchId: 'mch_1', refundEnabled: true },
@@ -508,6 +509,7 @@ test('admin can save and public can read system settings', async () => {
   assert.equal(saved.data.enableTestAddressMode, true)
   assert.equal(saved.data.enablePetBreedAi, false)
   assert.equal(saved.data.homeHeroCarousel.enabled, true)
+  assert.deepEqual(saved.data.noticeTicker.items, settingsPayload.noticeTicker.items)
   assert.equal(saved.data.payment.mode, 'mock')
   assert.equal(saved.data.payment.mchId, 'mch_1')
   assert.equal(saved.data.settlement.staffCommissionRate, 0.75)
@@ -533,6 +535,7 @@ test('admin can save and public can read system settings', async () => {
   assert.equal(fetched.data.subscription.templates.mallOrderStatus, undefined)
   assert.equal(fetched.data.reliability.maxRetryTimes, 6)
   assert.equal(fetched.data.homeHeroCarousel.enabled, true)
+  assert.equal(fetched.data.noticeTicker.enabled, true)
   assert.equal(fetched.data.homeHeroCarousel.items[0].title, '视频测试')
 })
 
@@ -603,7 +606,7 @@ test('invalid staff training quiz config falls back to default quiz', async () =
 
   assert.equal(saved.ok, true)
   assert.equal(saved.data.staffTraining.passScore, 100)
-  assert.equal(saved.data.staffTraining.quiz.length, 5)
+  assert.equal(saved.data.staffTraining.quiz.length, 50)
   assert.equal(saved.data.staffTraining.quiz[0].answer, 'A')
 })
 
@@ -613,7 +616,7 @@ test('system home page data aggregates public conversion modules', async () => {
       { _id: 'admin', openid: 'openid_admin', roles: ['admin'], status: 'active' },
       { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }
     ],
-    platform_configs: [{ _id: 'cfg1', key: 'system_settings', value: { homePage: { ctaTitle: '马上预约', modules: { lottery: false } } } }],
+    platform_configs: [{ _id: 'cfg1', key: 'system_settings', value: { homePage: { ctaTitle: '马上预约', modules: { lottery: false } }, noticeTicker: { enabled: true, items: ['请提前准备宠物用品'] } } }],
     service_prices: [{ _id: 'price1', key: 'feed', label: '喂养服务', price: 66, showOnHome: true, enabled: true, sortOrder: 1, description: '喂粮换水' }],
     staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', realName: '王小花', auditStatus: 'approved', serviceCity: '上海', serviceAreas: '浦东', ratingAverage: 4.8, reviewCount: 3, isFeatured: true, featuredAt: '2026-08-01 10:00' }],
     coupon_templates: [{ _id: 'tpl1', name: '新人券', discountAmount: 20, minOrderAmount: 80, enabled: true, sortOrder: 1 }],
@@ -627,6 +630,7 @@ test('system home page data aggregates public conversion modules', async () => {
 
   assert.equal(result.ok, true)
   assert.equal(result.data.settings.homePage.ctaTitle, '马上预约')
+  assert.equal(result.data.settings.noticeTicker.items[0], '请提前准备宠物用品')
   assert.equal(result.data.settings.homePage.modules.lottery, false)
   assert.equal(result.data.servicePrices[0].priceText, '¥66起')
   assert.equal(result.data.featuredSitters[0]._id, 'sp1')

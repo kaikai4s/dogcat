@@ -1,3 +1,4 @@
+const { DEFAULT_STAFF_TRAINING_QUIZ } = require('../config/constants')
 const { requireStaffGender } = require('../utils/staffGender')
 const { getOrderRefundState } = require('../utils/orderRefundState')
 
@@ -114,7 +115,9 @@ module.exports = function createHandler(context) {
     queryWechatWithdrawalTransfer,
     retryWechatWithdrawalTransfer,
     releaseFailedWithdrawal,
+    markWechatWithdrawalFailed,
     settleStaffDeposit,
+    shipStaffSupplies,
     settleSupplyReimbursement,
     safeUserSummary,
     saveSystemSettings,
@@ -202,21 +205,29 @@ module.exports = function createHandler(context) {
   function buildStaffFinanceSummary(earnings = [], withdraws = []) {
     const summary = {}
     const ensure = (openid) => {
-      if (!summary[openid]) summary[openid] = { available: 0, withdrawn: 0, withdrawHistory: [], withdrawCount: 0 }
+      if (!summary[openid]) summary[openid] = { available: 0, withdrawn: 0, withdrawHistory: [], withdrawCount: 0, hasUnsettledEarning: false, hasPendingWithdraw: false }
       return summary[openid]
     }
+    const unsettledEarningStatuses = new Set(['pending', 'available', 'withdrawing', 'frozen'])
     for (const earning of earnings) {
       const openid = earning.staffOpenid
       if (!openid || earning.isMock === true || earning.paymentChannel === 'mock') continue
       const target = ensure(openid)
       if (earning.status === 'available') target.available += Number(earning.amount || 0)
+      if (unsettledEarningStatuses.has(safeText(earning.status).trim()) && Math.round(Number(earning.amount || 0) * 100) > 0) {
+        target.hasUnsettledEarning = true
+      }
     }
+    const pendingWithdrawStatuses = new Set(['pending', 'approved', 'processing', 'transferring', 'transfer_failed'])
     for (const request of withdraws) {
       const openid = request.staffOpenid
       if (!openid) continue
       const target = ensure(openid)
       target.withdrawCount += 1
       if (request.status === 'paid') target.withdrawn += Number(request.amount || 0)
+      if (pendingWithdrawStatuses.has(safeText(request.status).trim())) {
+        target.hasPendingWithdraw = true
+      }
       target.withdrawHistory.push({
         _id: request._id,
         amount: Number(request.amount || 0),
@@ -260,13 +271,20 @@ module.exports = function createHandler(context) {
 
     const deposits = await readScopedDocuments('staff_deposits', { staffOpenid: target.openid }, '_id', 'asc')
     const unsettled = deposits.find((deposit) => {
-      const available = Math.round(Number(deposit.availableRefundAmount || 0) * 100)
+      const netAvailable = deposit.availableRefundAmount != null
+        ? Number(deposit.availableRefundAmount)
+        : (Number(deposit.paidAmount || 0) - Number(deposit.refundedAmount || 0) - Number(deposit.forfeitedAmount || 0) - Number(deposit.supplyFeeDeductedAmount || 0))
+      const available = Math.round(Math.max(0, netAvailable) * 100)
       const status = safeText(deposit.status).trim()
       const refundStatus = safeText(deposit.refundStatus).trim()
-      return available > 0 || ['paid', 'partially_refunded', 'refund_requested', 'refund_approved'].includes(status) || ['requested', 'approved', 'processing'].includes(refundStatus)
+      const isRefundInFlight = ['refund_requested', 'refund_approved'].includes(status) || ['requested', 'approved', 'processing'].includes(refundStatus)
+      return available > 0 || isRefundInFlight
     })
     if (unsettled) {
-      const amount = Number(unsettled.availableRefundAmount || 0).toFixed(2)
+      const netAvailable = unsettled.availableRefundAmount != null
+        ? Number(unsettled.availableRefundAmount)
+        : (Number(unsettled.paidAmount || 0) - Number(unsettled.refundedAmount || 0) - Number(unsettled.forfeitedAmount || 0) - Number(unsettled.supplyFeeDeductedAmount || 0))
+      const amount = Math.max(0, netAvailable).toFixed(2)
       throw new Error(`该宠托师保证金尚未处理完成，可退余额 ¥${amount}。请先在财务管理完成扣除/退款后再移除宠托师身份`)
     }
   }
@@ -300,7 +318,73 @@ module.exports = function createHandler(context) {
     return readAll(collectionName, {}, 2000, projection)
   }
 
-  async function queryFinanceListSafely(collectionName, { baseWhere = {}, dateRange, dateFields = ['createdAt'], pageSize = 50, page = 1 }) {
+  function matchFinanceRecord(record, keyword, searchContext = {}) {
+    if (!record || typeof record !== 'object') return false
+    const kw = safeText(keyword).trim().toLowerCase()
+    if (!kw) return true
+
+    const openids = (searchContext && searchContext.matchedOpenids) || []
+    const orderIds = (searchContext && searchContext.matchedOrderIds) || []
+
+    const phoneValues = [
+      record.staffPhone, record.accountPhone, record.certifiedPhone,
+      record.phone, record.userPhone, record.contactPhone
+    ]
+    for (const v of phoneValues) {
+      if (v && String(v).toLowerCase().includes(kw)) return true
+    }
+
+    const orderValues = [
+      record._id, record.id, record.orderId, record.orderNo,
+      record.paymentNo, record.refundNo, record.outBillNo, record.outTradeNo,
+      record.transactionId, record.wechatTransferBillNo, record.paymentReference,
+      record.targetId, record.withdrawRequestId
+    ]
+    for (const v of orderValues) {
+      if (v && String(v).toLowerCase().includes(kw)) return true
+    }
+
+    if (Array.isArray(record.problemOrders)) {
+      for (const p of record.problemOrders) {
+        if (!p) continue
+        if (p.orderId && String(p.orderId).toLowerCase().includes(kw)) return true
+        if (p.orderNo && String(p.orderNo).toLowerCase().includes(kw)) return true
+        if (orderIds.length && (orderIds.includes(String(p.orderId)) || orderIds.includes(String(p.orderNo)))) return true
+      }
+    }
+
+    const recordOpenids = [
+      record.staffOpenid, record.userOpenid, record.openid, record.recipientOpenid
+    ].filter(Boolean)
+    if (openids.length && recordOpenids.some((id) => openids.includes(id))) return true
+
+    if (orderIds.length) {
+      if (record.orderId && orderIds.includes(String(record.orderId))) return true
+      if (record._id && orderIds.includes(String(record._id))) return true
+      if (record.orderNo && orderIds.includes(String(record.orderNo))) return true
+    }
+
+    const textValues = [
+      record.staffRealName, record.staffNickname, record.userNickname,
+      record.accountName, record.recipientName, record.reason, record.action
+    ]
+    for (const v of textValues) {
+      if (v && String(v).toLowerCase().includes(kw)) return true
+    }
+
+    return false
+  }
+
+  async function queryFinanceListSafely(collectionName, {
+    baseWhere = {},
+    dateRange,
+    dateFields = ['createdAt'],
+    pageSize = 50,
+    page = 1,
+    keyword = '',
+    searchContext = null
+  }) {
+    const kw = safeText(keyword).trim()
     const limit = Math.min(Math.max(Number(pageSize || 50), 1), 100)
     const pageNum = Math.max(Number(page || 1), 1)
     const offset = (pageNum - 1) * limit
@@ -311,6 +395,8 @@ module.exports = function createHandler(context) {
       where[primaryDateField] = db.command.gte(dateRange.start || `${dateRange.startDate} 00:00:00`)
     }
 
+    let dateList = []
+    let queryFailed = false
     try {
       const res = await db.collection(collectionName)
         .where(where)
@@ -318,26 +404,96 @@ module.exports = function createHandler(context) {
         .skip(offset)
         .limit(limit)
         .get()
-      const list = (res.data || []).filter((item) => inDateRange(item, dateRange, dateFields))
-      if (list.length > 0 || !dateRange || (!dateRange.startDate && !dateRange.endDate)) {
-        return limitList(list, limit)
-      }
+      dateList = (res.data || []).filter((item) => inDateRange(item, dateRange, dateFields))
     } catch (e) {
-      // 降级保护
+      queryFailed = true
     }
 
-    const candidates = (await db.collection(collectionName)
-      .where(baseWhere)
-      .skip(offset)
-      .limit(Math.min(limit * 3, 150))
-      .get()).data || []
+    if (!dateList.length && (queryFailed || !dateRange || (!dateRange.startDate && !dateRange.endDate))) {
+      const candidates = (await db.collection(collectionName)
+        .where(baseWhere)
+        .skip(offset)
+        .limit(Math.min(limit * 3, 150))
+        .get().catch(() => ({ data: [] }))).data || []
 
-    const sorted = candidates.sort((a, b) => {
+      const sorted = candidates.sort((a, b) => {
+        const aDate = dateFields.map(f => parseDateValue(a[f])).find(Boolean) || 0
+        const bDate = dateFields.map(f => parseDateValue(b[f])).find(Boolean) || 0
+        return new Date(bDate) - new Date(aDate)
+      })
+      dateList = sorted.filter((item) => inDateRange(item, dateRange, dateFields))
+    }
+
+    if (!kw) {
+      return limitList(dateList, limit)
+    }
+
+    const matchedInDate = dateList.filter((item) => matchFinanceRecord(item, kw, searchContext))
+    const targetedRows = []
+    const targetedWhereList = []
+
+    if (searchContext && searchContext.matchedOrderIds && searchContext.matchedOrderIds.length > 0) {
+      const ids = searchContext.matchedOrderIds.slice(0, 30)
+      const inVal = db.command && typeof db.command.in === 'function' ? db.command.in(ids) : (ids.length === 1 ? ids[0] : null)
+      if (inVal) {
+        if (['payments', 'refunds', 'staff_earnings'].includes(collectionName)) {
+          targetedWhereList.push({ ...baseWhere, orderId: inVal })
+        }
+        if (['payments', 'refunds', 'withdraw_requests', 'staff_deposits', 'staff_supply_reimbursements', 'finance_logs'].includes(collectionName)) {
+          targetedWhereList.push({ ...baseWhere, _id: inVal })
+        }
+      }
+    }
+
+    if (searchContext && searchContext.matchedOpenids && searchContext.matchedOpenids.length > 0) {
+      const openids = searchContext.matchedOpenids.slice(0, 30)
+      const inVal = db.command && typeof db.command.in === 'function' ? db.command.in(openids) : (openids.length === 1 ? openids[0] : null)
+      if (inVal) {
+        if (['staff_earnings', 'withdraw_requests', 'staff_deposits', 'staff_supply_reimbursements'].includes(collectionName)) {
+          targetedWhereList.push({ ...baseWhere, staffOpenid: inVal })
+        }
+        if (['withdraw_requests'].includes(collectionName)) {
+          targetedWhereList.push({ ...baseWhere, userOpenid: inVal })
+        }
+      }
+    }
+
+    if (['payments'].includes(collectionName)) {
+      targetedWhereList.push({ ...baseWhere, paymentNo: kw })
+    } else if (['refunds'].includes(collectionName)) {
+      targetedWhereList.push({ ...baseWhere, refundNo: kw })
+    } else if (['withdraw_requests'].includes(collectionName)) {
+      targetedWhereList.push({ ...baseWhere, outBillNo: kw })
+      targetedWhereList.push({ ...baseWhere, wechatTransferBillNo: kw })
+    } else if (['finance_logs'].includes(collectionName)) {
+      targetedWhereList.push({ ...baseWhere, targetId: kw })
+    }
+
+    for (const tw of targetedWhereList) {
+      try {
+        const res = await db.collection(collectionName).where(tw).limit(limit).get()
+        if (res.data && res.data.length) {
+          targetedRows.push(...res.data)
+        }
+      } catch (_) {}
+    }
+
+    const mergedMap = new Map()
+    for (const item of [...matchedInDate, ...targetedRows]) {
+      if (item && item._id && !mergedMap.has(item._id)) {
+        if (matchFinanceRecord(item, kw, searchContext)) {
+          mergedMap.set(item._id, item)
+        }
+      }
+    }
+
+    const mergedList = Array.from(mergedMap.values()).sort((a, b) => {
       const aDate = dateFields.map(f => parseDateValue(a[f])).find(Boolean) || 0
       const bDate = dateFields.map(f => parseDateValue(b[f])).find(Boolean) || 0
       return new Date(bDate) - new Date(aDate)
     })
-    return limitList(sorted.filter((item) => inDateRange(item, dateRange, dateFields)), limit)
+
+    return limitList(mergedList, limit)
   }
 
   async function fetchUsersByOpenids(openids = []) {
@@ -449,6 +605,83 @@ module.exports = function createHandler(context) {
     return []
   }
 
+  async function searchOrdersByKeywordSafely(keyword) {
+    const raw = safeText(keyword).trim()
+    if (!raw) return []
+    const orders = []
+    const seen = new Set()
+    const pushAll = (list) => {
+      for (const item of (list || [])) {
+        if (item && item._id && !seen.has(item._id)) {
+          seen.add(item._id)
+          orders.push(item)
+        }
+      }
+    }
+
+    try {
+      const byId = await db.collection('orders').where({ _id: raw }).limit(1).get()
+      pushAll(byId.data)
+    } catch (_) {}
+    try {
+      const byNo = await db.collection('orders').where({ orderNo: raw }).limit(10).get()
+      pushAll(byNo.data)
+    } catch (_) {}
+
+    if (/\d{3,}/.test(raw)) {
+      if (db && typeof db.RegExp === 'function') {
+        try {
+          const res = await db.collection('orders').where({ contactPhone: db.RegExp({ regexp: raw, options: 'i' }) }).limit(50).get()
+          pushAll(res.data)
+        } catch (_) {}
+        try {
+          const res = await db.collection('orders').where({ phone: db.RegExp({ regexp: raw, options: 'i' }) }).limit(50).get()
+          pushAll(res.data)
+        } catch (_) {}
+      }
+      try {
+        const exactContact = await db.collection('orders').where({ contactPhone: raw }).limit(50).get()
+        pushAll(exactContact.data)
+      } catch (_) {}
+      try {
+        const exactPhone = await db.collection('orders').where({ phone: raw }).limit(50).get()
+        pushAll(exactPhone.data)
+      } catch (_) {}
+    }
+
+    return orders
+  }
+
+  async function searchRelatedOpenidsAndOrderIds(keyword) {
+    const raw = safeText(keyword).trim()
+    if (!raw) return { matchedOpenids: [], matchedOrderIds: [], rawKeyword: '' }
+
+    const matchedOpenids = new Set()
+    const matchedOrderIds = new Set()
+    matchedOrderIds.add(raw)
+
+    const [users, profiles, orders] = await Promise.all([
+      searchUsersByPhoneSafely(raw),
+      searchStaffProfilesByPhoneSafely(raw),
+      searchOrdersByKeywordSafely(raw)
+    ])
+
+    users.forEach((u) => u && u.openid && matchedOpenids.add(u.openid))
+    profiles.forEach((p) => p && p.openid && matchedOpenids.add(p.openid))
+    orders.forEach((o) => {
+      if (o && o._id) matchedOrderIds.add(o._id)
+      if (o && o.orderNo) matchedOrderIds.add(o.orderNo)
+      if (o && o.userOpenid) matchedOpenids.add(o.userOpenid)
+      if (o && o.staffOpenid) matchedOpenids.add(o.staffOpenid)
+    })
+
+    return {
+      matchedOpenids: Array.from(matchedOpenids),
+      matchedOrderIds: Array.from(matchedOrderIds),
+      rawKeyword: raw
+    }
+  }
+
   return async function admin(openid, action, data) {
     const admin = await requireAdmin(openid)
     if (action === 'listSubscriptionDeliveries') return listSubscriptionDeliveries(data)
@@ -510,39 +743,131 @@ module.exports = function createHandler(context) {
       return { ...dashboard, wechatTransferQuota }
     }
     if (action === 'listFinanceLogs') {
+      const keyword = safeText(data.keyword || data.orderId || data.phone).trim()
+      const searchContext = keyword ? await searchRelatedOpenidsAndOrderIds(keyword) : null
       const range = buildDateRange(data)
       const targetType = safeText(data.targetType).trim()
       const baseWhere = targetType ? { targetType } : {}
-      return queryFinanceListSafely('finance_logs', { baseWhere, dateRange: range, dateFields: ['createdAt'], pageSize: data.pageSize })
+      const logs = await queryFinanceListSafely('finance_logs', {
+        baseWhere,
+        dateRange: range,
+        dateFields: ['createdAt'],
+        pageSize: data.pageSize,
+        keyword,
+        searchContext
+      })
+      return logs.filter((l) => !keyword || matchFinanceRecord(l, keyword, searchContext))
     }
     if (action === 'listPayments') {
+      const keyword = safeText(data.keyword || data.orderId || data.phone).trim()
+      const searchContext = keyword ? await searchRelatedOpenidsAndOrderIds(keyword) : null
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
       const baseWhere = status ? { status } : {}
-      return queryFinanceListSafely('payments', { baseWhere, dateRange: range, dateFields: ['paidAt', 'updatedAt', 'createdAt'], pageSize: data.pageSize })
+      const payments = await queryFinanceListSafely('payments', {
+        baseWhere,
+        dateRange: range,
+        dateFields: ['paidAt', 'updatedAt', 'createdAt'],
+        pageSize: data.pageSize,
+        keyword,
+        searchContext
+      })
+      const orderIds = [...new Set(payments.map((p) => p.orderId).filter(Boolean))]
+      const orders = orderIds.length && db.command && typeof db.command.in === 'function'
+        ? (await db.collection('orders').where({ _id: db.command.in(orderIds) }).limit(orderIds.length).get().catch(() => ({ data: [] }))).data || []
+        : []
+      const orderMap = new Map(orders.map((o) => [o._id, o]))
+      return payments.map((p) => {
+        const o = orderMap.get(p.orderId) || {}
+        return {
+          ...p,
+          contactPhone: o.contactPhone || o.phone || '',
+          orderNo: o.orderNo || ''
+        }
+      }).filter((p) => !keyword || matchFinanceRecord(p, keyword, searchContext))
     }
     if (action === 'listRefunds') {
+      const keyword = safeText(data.keyword || data.orderId || data.phone).trim()
+      const searchContext = keyword ? await searchRelatedOpenidsAndOrderIds(keyword) : null
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
       const baseWhere = status ? { status } : {}
-      return queryFinanceListSafely('refunds', { baseWhere, dateRange: range, dateFields: ['createdAt', 'updatedAt'], pageSize: data.pageSize })
+      const refunds = await queryFinanceListSafely('refunds', {
+        baseWhere,
+        dateRange: range,
+        dateFields: ['createdAt', 'updatedAt'],
+        pageSize: data.pageSize,
+        keyword,
+        searchContext
+      })
+      const orderIds = [...new Set(refunds.map((r) => r.orderId).filter(Boolean))]
+      const orders = orderIds.length && db.command && typeof db.command.in === 'function'
+        ? (await db.collection('orders').where({ _id: db.command.in(orderIds) }).limit(orderIds.length).get().catch(() => ({ data: [] }))).data || []
+        : []
+      const orderMap = new Map(orders.map((o) => [o._id, o]))
+      return refunds.map((r) => {
+        const o = orderMap.get(r.orderId) || {}
+        return {
+          ...r,
+          contactPhone: o.contactPhone || o.phone || '',
+          orderNo: o.orderNo || ''
+        }
+      }).filter((r) => !keyword || matchFinanceRecord(r, keyword, searchContext))
     }
     if (action === 'listStaffEarnings') {
       await refreshStaffEarnings()
+      const keyword = safeText(data.keyword || data.orderId || data.phone).trim()
+      const searchContext = keyword ? await searchRelatedOpenidsAndOrderIds(keyword) : null
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
       const baseWhere = status ? { status } : {}
-      return queryFinanceListSafely('staff_earnings', { baseWhere, dateRange: range, dateFields: ['createdAt', 'completedAt'], pageSize: data.pageSize })
+      const earnings = await queryFinanceListSafely('staff_earnings', {
+        baseWhere,
+        dateRange: range,
+        dateFields: ['createdAt', 'completedAt'],
+        pageSize: data.pageSize,
+        keyword,
+        searchContext
+      })
+      const staffOpenids = [...new Set(earnings.map((e) => e.staffOpenid).filter(Boolean))]
+      const [users, profiles] = await Promise.all([
+        fetchUsersByOpenids(staffOpenids),
+        fetchStaffProfilesByOpenids(staffOpenids)
+      ])
+      const userMap = new Map(users.map((u) => [u.openid, u]))
+      const profileMap = new Map(profiles.map((p) => [p.openid, p]))
+      return earnings.map((e) => {
+        const u = userMap.get(e.staffOpenid) || {}
+        const p = profileMap.get(e.staffOpenid) || {}
+        const phoneFields = staffPhoneFields(u, p)
+        return {
+          ...e,
+          staffRealName: p.realName || '',
+          staffNickname: u.nickname || '',
+          staffPhone: phoneFields.phone,
+          accountPhone: phoneFields.accountPhone,
+          certifiedPhone: phoneFields.certifiedPhone
+        }
+      }).filter((e) => !keyword || matchFinanceRecord(e, keyword, searchContext))
     }
     if (action === 'listWithdrawRequests') {
       await refreshStaffEarnings()
+      const keyword = safeText(data.keyword || data.orderId || data.phone).trim()
+      const searchContext = keyword ? await searchRelatedOpenidsAndOrderIds(keyword) : null
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
       const staffOpenid = safeText(data.staffOpenid).trim()
       const baseWhere = { ...(status ? { status } : {}), ...(staffOpenid ? { staffOpenid } : {}) }
       const requests = staffOpenid
         ? await readScopedDocuments('withdraw_requests', baseWhere, 'createdAt', 'desc')
-        : await queryFinanceListSafely('withdraw_requests', { baseWhere, dateRange: range, dateFields: ['createdAt', 'paidAt'], pageSize: data.pageSize })
+        : await queryFinanceListSafely('withdraw_requests', {
+          baseWhere,
+          dateRange: range,
+          dateFields: ['createdAt', 'paidAt'],
+          pageSize: data.pageSize,
+          keyword,
+          searchContext
+        })
       const openids = [...new Set(requests.flatMap((item) => [item.staffOpenid, item.userOpenid]).filter(Boolean))]
       const [profiles, users, earnings, withdraws] = await Promise.all([
         fetchStaffProfilesByOpenids(openids),
@@ -576,11 +901,22 @@ module.exports = function createHandler(context) {
         item.withdrawHistory.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
         item.withdrawHistory = item.withdrawHistory.slice(0, 8)
       })
-      return requests.map((item) => {
+      const list = requests.map((item) => {
         if (item.assetType === 'user') {
           const user = userMap.get(item.userOpenid) || {}
           const asset = userAssetMap[item.userOpenid] || { available: 0, withdrawn: 0, withdrawHistory: [], withdrawCount: 0 }
-          return { ...item, staffNickname: user.nickname || '', userNickname: user.nickname || '', currentAvailableAmount: asset.available, withdrawnAmount: asset.withdrawn, withdrawCount: asset.withdrawCount, withdrawHistory: asset.withdrawHistory, assetLabel: '用户邀请收益' }
+          return {
+            ...item,
+            staffNickname: user.nickname || '',
+            userNickname: user.nickname || '',
+            userPhone: user.phone || '',
+            phone: user.phone || '',
+            currentAvailableAmount: asset.available,
+            withdrawnAmount: asset.withdrawn,
+            withdrawCount: asset.withdrawCount,
+            withdrawHistory: asset.withdrawHistory,
+            assetLabel: '用户邀请收益'
+          }
         }
         const profile = profileMap.get(item.staffOpenid) || {}
         const user = userMap.get(item.staffOpenid) || {}
@@ -592,6 +928,7 @@ module.exports = function createHandler(context) {
           staffPhone: phoneFields.phone,
           accountPhone: phoneFields.accountPhone,
           certifiedPhone: phoneFields.certifiedPhone,
+          phone: phoneFields.phone,
           recipientOpenid: item.recipientOpenid || item.staffOpenid || '',
           staffNickname: user.nickname || '',
           currentAvailableAmount: finance.available,
@@ -600,12 +937,22 @@ module.exports = function createHandler(context) {
           withdrawHistory: finance.withdrawHistory
         }
       })
+      return list.filter((r) => !keyword || matchFinanceRecord(r, keyword, searchContext))
     }
     if (action === 'listUserAssetWithdrawals') {
+      const keyword = safeText(data.keyword || data.orderId || data.phone).trim()
+      const searchContext = keyword ? await searchRelatedOpenidsAndOrderIds(keyword) : null
       const status = safeText(data.status).trim()
       const where = { assetType: 'user' }
       if (status) where.status = status
-      const rows = await queryFinanceListSafely('withdraw_requests', { baseWhere: where, dateRange: buildDateRange(data), dateFields: ['createdAt', 'paidAt'], pageSize: data.pageSize })
+      const rows = await queryFinanceListSafely('withdraw_requests', {
+        baseWhere: where,
+        dateRange: buildDateRange(data),
+        dateFields: ['createdAt', 'paidAt'],
+        pageSize: data.pageSize,
+        keyword,
+        searchContext
+      })
       const openids = [...new Set(rows.map((row) => row.userOpenid).filter(Boolean))]
       const users = await fetchUsersByOpenids(openids)
       const userMap = new Map(users.map((user) => [user.openid, user]))
@@ -616,7 +963,16 @@ module.exports = function createHandler(context) {
       earnings.forEach((earning) => {
         if (earning.status === 'available') availableMap[earning.userOpenid] = (availableMap[earning.userOpenid] || 0) + Number(earning.amount || 0)
       })
-      return rows.map((row) => ({ ...row, userNickname: (userMap.get(row.userOpenid) || {}).nickname || '', currentAvailableAmount: Math.round((availableMap[row.userOpenid] || 0) * 100) / 100 }))
+      return rows.map((row) => {
+        const user = userMap.get(row.userOpenid) || {}
+        return {
+          ...row,
+          userNickname: user.nickname || '',
+          userPhone: user.phone || '',
+          phone: user.phone || '',
+          currentAvailableAmount: Math.round((availableMap[row.userOpenid] || 0) * 100) / 100
+        }
+      }).filter((r) => !keyword || matchFinanceRecord(r, keyword, searchContext))
     }
     if (action === 'getStaffSettlementPreview') {
       const result = await context.getStaffSettlementPreview(safeText(data.staffProfileId).trim())
@@ -698,7 +1054,8 @@ module.exports = function createHandler(context) {
       return { id: data.id, status: 'paid' }
     }
     if (action === 'getSystemSettings') {
-      return getSystemSettings()
+      // The answer-bearing bank is returned only by this authorized administrator route.
+      return { ...await getSystemSettings(), staffTrainingQuestionBank: DEFAULT_STAFF_TRAINING_QUIZ }
     }
     if (action === 'savePlaygroundSettings') {
       const current=await getSystemSettings({includeSecrets:true})
@@ -712,7 +1069,7 @@ module.exports = function createHandler(context) {
       const saved = await saveSystemSettings(payload)
       const publicValue = normalizeSystemSettings(saved.value)
       await logAdmin(admin, 'platform_config', 'system_settings', 'saveSystemSettings', publicValue)
-      return publicValue
+      return { ...publicValue, staffTrainingQuestionBank: DEFAULT_STAFF_TRAINING_QUIZ }
     }
     if (action === 'updateVideoAuditGuide') {
       const currentSettings = await getSystemSettings({ includeSecrets: true })
@@ -867,7 +1224,10 @@ module.exports = function createHandler(context) {
     }
     if (action === 'listStaffProfiles') {
       await refreshStaffEarnings()
-      const auditStatus = safeText(data.auditStatus).trim()
+      const rawAuditStatus = safeText(data.auditStatus).trim()
+      const isCanRevokeAuditStatus = rawAuditStatus === 'can_revoke'
+      const auditStatus = isCanRevokeAuditStatus ? 'approved' : rawAuditStatus
+      const canRevoke = safeText(data.canRevoke || (isCanRevokeAuditStatus ? 'yes' : '')).trim()
       const keyword = safeText(data.keyword).trim().toLowerCase()
       const page = Math.max(Number(data.page || 1), 1)
       const pageSize = Math.min(Math.max(Number(data.pageSize || 20), 1), 100)
@@ -878,6 +1238,8 @@ module.exports = function createHandler(context) {
 
       const hasAdvancedFilter = Boolean(
         keyword ||
+        isCanRevokeAuditStatus ||
+        canRevoke === 'yes' || canRevoke === 'no' ||
         (data.minDeposit !== undefined && data.minDeposit !== '' && !isNaN(Number(data.minDeposit))) ||
         (data.maxDeposit !== undefined && data.maxDeposit !== '' && !isNaN(Number(data.maxDeposit))) ||
         (data.hasViolations === 'yes' || data.hasViolations === true || data.hasViolations === 'no' || data.hasViolations === false) ||
@@ -922,12 +1284,12 @@ module.exports = function createHandler(context) {
           evidenceByStaff[key].push(ev)
         }
 
-        const depositByStaff = {}
-        const sortedDeposits = (allDeposits || []).slice().sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
-        for (const d of sortedDeposits) {
+        const depositsByStaff = {}
+        for (const d of (allDeposits || [])) {
           const key = d.staffOpenid || d.openid
           if (!key) continue
-          if (!depositByStaff[key]) depositByStaff[key] = d
+          if (!depositsByStaff[key]) depositsByStaff[key] = []
+          depositsByStaff[key].push(d)
         }
 
         return profiles.map((profile) => {
@@ -955,18 +1317,49 @@ module.exports = function createHandler(context) {
             }
           })
 
-          const deposit = depositByStaff[profile.openid] || null
-          const depositBalance = deposit ? Number(deposit.availableRefundAmount || 0) : 0
-          const depositPaidAmount = deposit ? Number(deposit.paidAmount || 0) : 0
-          const depositForfeitedAmount = deposit ? Number(deposit.forfeitedAmount || 0) : 0
-          const depositStatus = profile.depositStatus || (deposit ? deposit.status : 'unpaid')
+          const staffDeposits = depositsByStaff[profile.openid] || []
+          staffDeposits.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+
+          const unsettledDeposit = staffDeposits.find((deposit) => {
+            const netAvailable = deposit.availableRefundAmount != null
+              ? Number(deposit.availableRefundAmount)
+              : (Number(deposit.paidAmount || 0) - Number(deposit.refundedAmount || 0) - Number(deposit.forfeitedAmount || 0) - Number(deposit.supplyFeeDeductedAmount || 0))
+            const available = Math.round(Math.max(0, netAvailable) * 100)
+            const status = safeText(deposit.status).trim()
+            const refundStatus = safeText(deposit.refundStatus).trim()
+            const isRefundInFlight = ['refund_requested', 'refund_approved'].includes(status) || ['requested', 'approved', 'processing'].includes(refundStatus)
+            return available > 0 || isRefundInFlight
+          })
+          const hasUnsettledDeposit = Boolean(unsettledDeposit)
+
+          let depositBalance = 0
+          for (const d of staffDeposits) {
+            const netAvailable = d.availableRefundAmount != null
+              ? Number(d.availableRefundAmount)
+              : (Number(d.paidAmount || 0) - Number(d.refundedAmount || 0) - Number(d.forfeitedAmount || 0) - Number(d.supplyFeeDeductedAmount || 0))
+            depositBalance += Math.max(0, netAvailable)
+          }
+          depositBalance = Math.round(depositBalance * 100) / 100
+
+          const primaryDeposit = unsettledDeposit || staffDeposits[0] || null
+          const depositPaidAmount = staffDeposits.reduce((sum, d) => sum + Number(d.paidAmount || 0), 0)
+          const depositForfeitedAmount = staffDeposits.reduce((sum, d) => sum + Number(d.forfeitedAmount || 0), 0)
+          const depositStatus = profile.depositStatus || (primaryDeposit ? primaryDeposit.status : 'unpaid')
           const requireDepositRepay = profile.requireDepositRepay === true
-          const finance = financeSummary[profile.openid] || { available: 0, withdrawn: 0, withdrawHistory: [], withdrawCount: 0 }
+          const finance = financeSummary[profile.openid] || { available: 0, withdrawn: 0, withdrawHistory: [], withdrawCount: 0, hasUnsettledEarning: false, hasPendingWithdraw: false }
           const phoneFields = staffPhoneFields(user, profile)
+          const withdrawableAmount = Math.round(Number(finance.available || 0) * 100) / 100
+
+          const canRevokeStaff = (profile.auditStatus === 'approved') &&
+            depositBalance <= 0 &&
+            !hasUnsettledDeposit &&
+            !finance.hasPendingWithdraw &&
+            !finance.hasUnsettledEarning &&
+            withdrawableAmount <= 0
 
           return {
             _id: profile._id,
-            depositId: deposit ? (deposit._id || deposit.id) : '',
+            depositId: primaryDeposit ? (primaryDeposit._id || primaryDeposit.id) : '',
             openid: profile.openid || '',
             realName: profile.realName || '',
             phone: phoneFields.phone,
@@ -1003,10 +1396,12 @@ module.exports = function createHandler(context) {
             depositPaidAmount,
             depositForfeitedAmount,
             depositStatus,
+            hasUnsettledDeposit,
+            canRevokeStaff,
             requireDepositRepay,
             requireDepositRepayReason: profile.requireDepositRepayReason || '',
             requireDepositRepayAt: profile.requireDepositRepayAt || '',
-            withdrawableAmount: Math.round(Number(finance.available || 0) * 100) / 100,
+            withdrawableAmount,
             withdrawnAmount: Math.round(Number(finance.withdrawn || 0) * 100) / 100,
             withdrawCount: Number(finance.withdrawCount || 0),
             withdrawHistory: finance.withdrawHistory || []
@@ -1071,6 +1466,11 @@ module.exports = function createHandler(context) {
         } else if (data.hasViolations === 'no' || data.hasViolations === false) {
           if (item.problemOrderCount > 0) return false
         }
+        if (canRevoke === 'yes' || isCanRevokeAuditStatus) {
+          if (!item.canRevokeStaff) return false
+        } else if (canRevoke === 'no') {
+          if (item.canRevokeStaff) return false
+        }
         if (data.requireRepayStatus === 'yes') {
           if (!item.requireDepositRepay) return false
         } else if (data.requireRepayStatus === 'no') {
@@ -1116,6 +1516,11 @@ module.exports = function createHandler(context) {
       }
       await logAdmin(admin, 'staff_profile', 'batch', 'batchRequireDepositRepay', { count, reason, ids, openids })
       return { success: true, count, reason }
+    }
+    if (action === 'getStaffDepositRefundPreview') {
+      const id = safeText(data.id).trim()
+      if (!id) throw new Error('请选择保证金记录')
+      return context.getStaffDepositRefundPreview(id)
     }
     if (action === 'getStaffDepositDetail') {
       const targetOpenid = safeText(data.staffOpenid || data.openid).trim()
@@ -2978,6 +3383,8 @@ module.exports = function createHandler(context) {
       return { _id: activityId, success: true }
     }
     if (action === 'listStaffDeposits') {
+      const keyword = safeText(data.keyword || data.orderId || data.phone).trim()
+      const searchContext = keyword ? await searchRelatedOpenidsAndOrderIds(keyword) : null
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
       const staffOpenid = safeText(data.staffOpenid).trim()
@@ -2986,7 +3393,9 @@ module.exports = function createHandler(context) {
         ? await readScopedDocuments('staff_deposits', baseWhere, 'createdAt', 'desc')
         : await queryFinanceListSafely('staff_deposits', {
           baseWhere, dateRange: range, dateFields: ['createdAt', 'paidAt'],
-          pageSize: data.pageSize || 50, page: data.page || 1
+          pageSize: data.pageSize || 50, page: data.page || 1,
+          keyword,
+          searchContext
         })
 
       const targetOpenids = Array.from(new Set(pagedDeposits.map((item) => item.staffOpenid).filter(Boolean)))
@@ -3039,7 +3448,14 @@ module.exports = function createHandler(context) {
           problemOrders
         }
       })
-      return list
+      return list.filter((d) => !keyword || matchFinanceRecord(d, keyword, searchContext))
+    }
+    if (action === 'shipStaffSupplies') {
+      const id = safeText(data.id).trim()
+      const expressCompany = safeText(data.expressCompany).trim()
+      const trackingNo = safeText(data.trackingNo).trim()
+      if (!id || !expressCompany || !trackingNo || expressCompany.length > 40 || trackingNo.length > 80 || !/^[a-zA-Z0-9-]+$/.test(trackingNo)) throw new Error('请填写有效的快递公司和快递单号')
+      return shipStaffSupplies({ ...admin, openid }, id, expressCompany, trackingNo)
     }
     if (action === 'requestStaffDepositRefund') {
       const id = safeText(data.id).trim()
@@ -3057,11 +3473,39 @@ module.exports = function createHandler(context) {
         await checkTextSecurity(openid, reason, { scene: 2, label: '保证金退款审核说明' })
       }
       const result = await settleStaffDeposit({ ...admin, openid }, action, { ...data, reason })
-      if (data.approved === true) return context.syncStaffDepositRefund(result.id)
+      if (data.approved === true) {
+        // Preserve explicit mock checkout completion for isolated test environments,
+        // after the same supply-fee audit as real refunds.
+        if (data.autoRefund === true) {
+          const payments = (await db.collection('payments').where({ orderId: result.id, targetType: 'staff_deposit' }).limit(2).get()).data
+          if (payments.length === 1 && payments[0].channel === 'mock') return context.autoRefundStaffDeposit({ ...admin, openid }, result.id, reason)
+        }
+        return context.syncStaffDepositRefund(result.id)
+      }
       return result
     }
     if (action === 'syncDepositRefund') {
       return context.syncStaffDepositRefund(safeText(data.id).trim())
+    }
+    if (action === 'autoRefundStaffDeposit') {
+      let id = safeText(data.id || data.depositId).trim()
+      const staffOpenid = safeText(data.staffOpenid).trim()
+      if (!id && staffOpenid) {
+        const dRes = await db.collection('staff_deposits').where({ staffOpenid }).orderBy('createdAt', 'desc').get().catch(() => ({ data: [] }))
+        const deposits = (dRes && dRes.data) || []
+        const target = deposits.find((d) => Number(d.availableRefundAmount || 0) > 0 && ['paid', 'partially_refunded', 'refund_requested', 'refund_approved'].includes(d.status)) || deposits[0]
+        if (target) id = target._id
+      }
+      const reason = safeText(data.reason || '管理员退还宠托师保证金').trim()
+      if (!id) throw new Error('请选择需要退还的保证金记录')
+      if (reason.length > 200) throw new Error('退还原因不能超过 200 字')
+      if (typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, reason, { scene: 2, label: '管理员自动退还保证金原因' })
+      }
+      if (typeof context.autoRefundStaffDeposit !== 'function') {
+        throw new Error('系统尚未装配自动退款服务')
+      }
+      return context.autoRefundStaffDeposit({ ...admin, openid }, id, reason)
     }
     if (action === 'confirmDepositRefund') {
       const proof = safeText(data.paymentReference).trim()
@@ -3083,6 +3527,8 @@ module.exports = function createHandler(context) {
       return settleStaffDeposit({ ...admin, openid }, action, { ...data, reason, evidenceImages })
     }
     if (action === 'listSupplyReimbursements') {
+      const keyword = safeText(data.keyword || data.orderId || data.phone).trim()
+      const searchContext = keyword ? await searchRelatedOpenidsAndOrderIds(keyword) : null
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
       const baseWhere = status ? { status } : {}
@@ -3091,7 +3537,9 @@ module.exports = function createHandler(context) {
         dateRange: range,
         dateFields: ['createdAt', 'paidAt'],
         pageSize: data.pageSize || 50,
-        page: data.page || 1
+        page: data.page || 1,
+        keyword,
+        searchContext
       })
 
       const targetOpenids = Array.from(new Set(pagedReimbursements.map((item) => item.staffOpenid).filter(Boolean)))
@@ -3116,7 +3564,7 @@ module.exports = function createHandler(context) {
           staffLevel: p.staffLevel || ''
         }
       })
-      return list
+      return list.filter((s) => !keyword || matchFinanceRecord(s, keyword, searchContext))
     }
     if (action === 'auditSupplyReimbursement') {
       const reason = safeText(data.rejectReason || data.reason || data.auditRemark).trim()

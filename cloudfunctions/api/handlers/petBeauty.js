@@ -1,5 +1,6 @@
 const { effectivePrize, publicContest } = require('../services/pet-beauty-contest')
 const { readOptionalDocument } = require('../utils/documentPages')
+const { assertModuleAvailable } = require('../services/moduleMaintenance')
 
 module.exports = function createHandler(context) {
   const {
@@ -32,6 +33,9 @@ module.exports = function createHandler(context) {
     getSystemSettings
   } = context
   return async function petBeauty(openid, action, data) {
+    if (['getActivityHome', 'getContestConfig', 'listHistoryMonths', 'listCandidates', 'listRanking', 'vote', 'importFromServiceCheckins'].includes(action)) {
+      await assertModuleAvailable(getSystemSettings, 'petRanking')
+    }
     const today = toCstParts()
     const monthKey = normalizeMonthKey(data.monthKey || today.monthKey)
 

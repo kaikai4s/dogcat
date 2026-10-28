@@ -77,7 +77,7 @@ module.exports = function createHandler(context) {
               return { ...(current?.status === 'resolved' ? { applicationId: current._id } : {}),
                 status: current?.status === 'resolved' ? 'resolved' : 'existing', outcome: 'existing',
                 ...(community ? { community } : {}),
-                message: community ? '该小区已上线，请直接搜索并选择' : '该小区已维护但暂未启用，请联系平台核对' }
+                message: community ? '该小区已上线，请直接搜索并选择' : row?.retiredAt ? '该小区已删除，不再接受新住户或申请，请选择其他小区' : '该小区已维护但暂未启用，请联系平台核对' }
             }
             if (current) return { applicationId: current._id, status: 'pending',
               outcome: current.firstApplicantOpenid === openid ? 'self_duplicate' : 'other_duplicate',
@@ -95,9 +95,32 @@ module.exports = function createHandler(context) {
         } catch (error) { if (error.code !== 'COMMUNITY_CATALOG_CHANGED' || attempt === 2) throw error }
       }
     }
-    if (action === 'listAdmin' || action === 'saveAdmin' || action === 'rejectApplication') {
+    if (action === 'listAdmin' || action === 'saveAdmin' || action === 'deleteAdmin' || action === 'rejectApplication') {
       const admin = await requireAdmin(openid)
       await checkRateLimit(openid, `communityMap.${action}`, { max: action === 'listAdmin' ? 60 : 30 })
+      if (action === 'deleteAdmin') {
+        const id = String(data.id || '')
+        if (!/^map_community_[a-f0-9]{24}$/.test(id)) throw new Error('小区编号无效')
+        return db.runTransaction(async tx => {
+          const current = await readOptionalDocument(tx, 'platform_configs', id)
+          if (!current || current.key !== 'service_community') throw new Error('小区不存在，请刷新后重试')
+          if (current.retiredAt) return { id, retired: true }
+          if (Number(data.editVersion) !== Number(current.editVersion || current.revision || 1)) throw new Error('小区已更新，请刷新后重试')
+          const cityKey = current.cityKey || context.normalizeCityName(current.city)
+          const lockId = catalogId(cityKey)
+          const lock = await readOptionalDocument(tx, 'platform_configs', lockId)
+          const stamp = now()
+          await tx.collection('platform_configs').doc(id).update({ data: {
+            enabled: false, retiredAt: stamp, retiredByOpenid: openid, updatedAt: stamp,
+            revision: Number(current.revision || 0) + 1,
+            editVersion: Number(current.editVersion || current.revision || 0) + 1
+          } })
+          await tx.collection('platform_configs').doc(lockId).set({ data: {
+            key: 'map_community_catalog', cityKey, version: Number(lock?.version || 0) + 1, updatedAt: stamp
+          } })
+          return { id, retired: true }
+        })
+      }
       if (action === 'rejectApplication') {
         const applicationIds = [...new Set(Array.isArray(data.applicationIds) ? data.applicationIds : [])].sort()
         if (!applicationIds.length || applicationIds.length > 100 || applicationIds.some(id => !/^map_application_[a-f0-9]{32}$/.test(id))) throw new Error('小区申请编号无效，请刷新后重试')
@@ -148,10 +171,12 @@ module.exports = function createHandler(context) {
         const list = data.id ? (single?.key === 'service_community' ? [single] : []) : await readDocuments(db, db.command, 'platform_configs', { key: 'service_community',
           ...(city ? { cityKey: context.normalizeCityName(city) } : {}) }, 1001)
         if (list.length > 1000) throw new Error('小区数量超过单次管理上限，请联系管理员分城市维护')
-        const rows = list.filter(row => !keyword || [row.name, ...(row.aliases || [])].some(value => String(value).normalize('NFKC').toLowerCase().includes(keyword)))
+        const rows = list.filter(row => (data.id || Boolean(row.retiredAt) === (data.view === 'retired')) &&
+          (!keyword || [row.name, ...(row.aliases || [])].some(value => String(value).normalize('NFKC').toLowerCase().includes(keyword))))
           .sort((a, b) => String(a.name).localeCompare(String(b.name)) || a._id.localeCompare(b._id)).map(row => ({ _id: row._id, name: row.name, city: row.city, district: row.district || '',
           aliases: row.aliases || [], latitude: row.latitude, longitude: row.longitude, enabled: row.enabled,
-          matchRadiusKm: row.matchRadiusKm, revision: row.revision, editVersion: row.editVersion || row.revision || 1 }))
+          matchRadiusKm: row.matchRadiusKm, revision: row.revision, editVersion: row.editVersion || row.revision || 1,
+          retiredAt: row.retiredAt || null }))
         return data.paginated === true ? { list: rows.slice(offset, offset + 30), total: rows.length, hasMore: offset + 30 < rows.length } : rows
       }
       const name = String(data.name || '').trim(), city = String(data.city || '').trim(), district = String(data.district || '').trim()
@@ -185,7 +210,8 @@ module.exports = function createHandler(context) {
       }
       if (receiptId && completed(await readOptionalDocument(db, 'platform_configs', receiptId))) return { id }
       const existing = await readOptionalDocument(db, 'platform_configs', id)
-      const conflict = !data.id && existing ? '该公共小区已存在，请在已维护小区中编辑'
+      const conflict = existing?.retiredAt ? '该小区已删除，不能重新启用或编辑'
+        : !data.id && existing ? '该公共小区已存在，请在已维护小区中编辑'
         : data.id && (!existing || existing.key !== 'service_community') ? '小区不存在'
         : existing && Number(data.editVersion ?? data.revision) !== Number(existing.editVersion || existing.revision || 1) ? '小区已更新，请刷新后重试' : ''
       if (conflict) {
@@ -207,6 +233,8 @@ module.exports = function createHandler(context) {
         }, 1001) : []
         if (rejectedApplications.length > 1000) throw new Error('当前城市申请记录较多，请联系平台核对')
         if (neighbours.length > 1000 || (neighbours.length >= 1000 && !neighbours.some(row => row._id === id))) throw new Error('当前城市小区数量已达管理上限')
+        if (neighbours.some(row => row.retiredAt && context.sameCommunityName(name, row) &&
+          (!district || !row.district || districtKey(row.district) === districtKey(district)))) throw new Error('该小区已删除，不能以新编号重新启用')
         if (neighbours.some(row => row._id !== id && context.sameCommunityName(name, row) && hasCoordinate(row.latitude, row.longitude) &&
           context.calcDistanceKm(latitude, longitude, row.latitude, row.longitude) < .15)) throw new Error('附近已有同名公共小区，请编辑已有小区，避免重复展示')
         try {
@@ -214,6 +242,7 @@ module.exports = function createHandler(context) {
             if (receiptId && completed(await readOptionalDocument(tx, 'platform_configs', receiptId))) return
             const current = await readOptionalDocument(tx, 'platform_configs', id)
             if (Number(current?.editVersion || current?.revision || 0) !== Number(existing?.editVersion || existing?.revision || 0)) throw new Error('小区已更新，请刷新后重试')
+            if (current?.retiredAt) throw new Error('该小区已删除，不能重新启用或编辑')
             const applications = []
             const pendingApplications = []
             const founderApplications = []

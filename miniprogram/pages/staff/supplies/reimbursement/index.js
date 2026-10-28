@@ -36,9 +36,12 @@ Page({
     supplies: null,
     qualification: null,
     eligibleMallOrders: [],
+    shipmentDepositId: '',
+    deliveryMode: false,
     mallOrderId: '',
     purchaseMet: false,
     canApply: false,
+    rulesAgreed: false,
     loading: false,
     loadError: false,
     busy: false,
@@ -71,7 +74,7 @@ Page({
 
   async load(query = false) {
     if (this.data.loading) return
-    this.setData({ loading: true, loadError: false, canApply: false, canConfirmTransfer: false })
+    this.setData({ loading: true, loadError: false, canApply: false, canConfirmTransfer: false, rulesAgreed: false })
     try {
       // Query refreshes the merchant transfer; the status endpoint is authoritative.
       if (query) {
@@ -99,8 +102,10 @@ Page({
         eligibleMallOrders: result.eligibleMallOrders || [],
         mallOrderId: (result.eligibleMallOrders && result.eligibleMallOrders[0] && result.eligibleMallOrders[0]._id) || '',
         purchaseMet: result.purchaseMet !== false,
-        canApply: Boolean(result.canApply && profile && profile.staffLevel === 'certified' && (!result.supplies || result.supplies.reimbursementEnabled !== false)),
-        statusLabel: application ? (approved ? '审核通过，等待平台付款' : (reimbursementStatusText[status] || application.statusText || '处理中')) : '暂无申请',
+        canApply: Boolean(result.canApply && profile && profile.staffLevel === 'certified'),
+        statusLabel: application ? (approved && application.benefitType !== 'supply_fee_waiver' ? '审核通过，等待平台付款' : (application.statusText || reimbursementStatusText[status] || '处理中')) : '暂无申请',
+        shipmentDepositId: result.shipmentDepositId || '',
+        deliveryMode: result.deliveryMode === true,
         failureReason: application && (application.rejectReason || application.failureReason || application.failReason || application.reason) || '',
         submittedReceipts: application && Array.isArray(application.mediaFileIds) ? application.mediaFileIds : [],
         canConfirmTransfer
@@ -215,7 +220,11 @@ Page({
 
   async submit() {
     if (!this.data.canApply || this.data.loading || this.data.busy || this.data.uploading) return
-    const purchaseRequired = this.data.supplies && this.data.supplies.purchaseRequired === true
+    if (this.data.deliveryMode && !this.data.rulesAgreed) {
+      wx.showToast({ title: '请先阅读并勾选费用减免规则', icon: 'none' })
+      return
+    }
+    const purchaseRequired = this.data.supplies && this.data.supplies.purchaseRequired === true && !this.data.deliveryMode
     if (purchaseRequired && !this.data.mallOrderId) {
       wx.showToast({ title: '请选择线上用品订单', icon: 'none' })
       return
@@ -225,7 +234,8 @@ Page({
     try {
       await callFunction('staff', 'submitSupplyReimbursement', {
         mediaFileIds: this.data.receipts.map((item) => item.fileId),
-        mallOrderId: this.data.mallOrderId,
+        mallOrderId: this.data.deliveryMode ? '' : this.data.mallOrderId,
+        rulesConfirmed: this.data.deliveryMode && this.data.rulesAgreed,
         remark: this.data.remark.trim(),
         clientRequestId: `req_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
       })
@@ -238,6 +248,10 @@ Page({
       await this.load()
       this.setData({ busy: false })
     }
+  },
+
+  agreeRules(e) {
+    this.setData({ rulesAgreed: e.detail.value.includes('agreed') })
   },
 
   async confirmTransfer() {

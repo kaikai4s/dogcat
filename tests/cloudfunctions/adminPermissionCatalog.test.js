@@ -45,6 +45,31 @@ test('new catalog endpoints are delegated explicitly; removing the group immedia
   db.state.admin_groups[0].enabled = false
   assert.equal((await call('admin', 'listOrderSessionMessages', { orderId: 'o' })).code, 'ADMIN_FORBIDDEN')
 })
+test('WeChat shop config can be read by a delegated admin without write access', async () => {
+  const appid = 'wx' + 'a'.repeat(16)
+  const { db, call } = setup(['adminMall.listProducts', 'adminMall.getShopConfig'], {
+    platform_configs: [{ _id: 'shop', key: 'wechat_shop', enabled: false, appid }]
+  })
+  assert.equal((await call('adminMall', 'getShopConfig')).data.appid, appid)
+  assert.equal((await call('adminMall', 'saveShopConfig', { enabled: true, appid })).code, 'ADMIN_FORBIDDEN')
+  assert.equal(db.state.platform_configs[0].enabled, false)
+  db.state.admin_groups[0].permissions.push('adminMall.saveShopConfig')
+  assert.equal((await call('adminMall', 'saveShopConfig', { enabled: true, appid })).ok, true)
+})
+test('community deletion needs a distinct admin grant even for an editor', async () => {
+  const id = 'map_community_' + 'a'.repeat(24)
+  const { db, call } = setup(['communityMap.listAdmin', 'communityMap.saveAdmin'], {
+    platform_configs: [{ _id: id, key: 'service_community', name: '花园', city: '上海市', cityKey: '上海',
+      latitude: 31.2, longitude: 121.5, enabled: true, revision: 1, editVersion: 1 }],
+    pet_playground_plots: [{ _id: 'plot', kind: 'plot', ownerOpenid: 'resident', communityId: 'scene' }]
+  })
+  assert.equal((await call('communityMap', 'deleteAdmin', { id, editVersion: 1 })).code, 'ADMIN_FORBIDDEN')
+  assert.equal(db.state.platform_configs[0].enabled, true)
+  db.state.admin_groups[0].permissions.push('communityMap.deleteAdmin')
+  assert.equal((await call('communityMap', 'deleteAdmin', { id, editVersion: 1 })).ok, true)
+  assert.equal(db.state.platform_configs[0].enabled, false)
+  assert.equal(db.state.pet_playground_plots.length, 1)
+})
 test('owner-only catalog remains informational and cannot be delegated even by forged stored grants', async () => {
   const { call } = setup([...ownerActions])
   const catalog = await call('admin', 'getMyAdminAccess')

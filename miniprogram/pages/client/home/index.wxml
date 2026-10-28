@@ -82,6 +82,14 @@
       <view class="home-top-badge">上门宠护</view>
     </view>
 
+    <view class="home-notice-ticker" wx:if="{{noticeTicker.enabled && noticeTicker.items.length}}">
+      <text class="remix-icon ri-notification-3-line"></text><text class="ticker-label">公告</text>
+      <swiper class="ticker-swiper" vertical="{{true}}" circular="{{noticeTicker.items.length > 1}}" autoplay="{{noticeTicker.items.length > 1}}" interval="4500" duration="400" disable-touch="{{noticeTicker.items.length < 2}}">
+        <swiper-item wx:for="{{noticeTicker.items}}" wx:key="*this" data-text="{{item}}" bindtap="showNoticeTickerItem"><view class="ticker-item">{{item}}</view></swiper-item>
+      </swiper>
+      <text class="remix-icon ri-arrow-right-s-line"></text>
+    </view>
+
     <view class="hero-media-card" wx:if="{{heroCarouselEnabled && heroSlides.length > 0}}">
       <swiper class="hero-swiper" autoplay="{{heroAutoplay}}" interval="{{heroRotateInterval}}" circular="{{true}}" previous-margin="0rpx" next-margin="0rpx" bindchange="onSwiperChange">
         <swiper-item wx:for="{{heroSlides}}" wx:key="id" class="hero-swiper-item">
@@ -215,16 +223,16 @@
   </view>
 
   <view class="home-section coupon-section" wx:if="{{homePage.modules.newbieCoupon && coupons.length}}">
-    <view class="section-heading"><view><view class="section-title">{{homePage.couponTitle}}</view><view class="section-desc">新人专属权益，预约时自动抵扣</view></view><view class="section-link" data-url="/pages/client/coupons/list/index" bindtap="goProtected">我的券包</view></view>
-    <view class="coupon-grid">
+    <view class="section-heading"><view><view class="section-title">{{homePage.couponTitle || '新人优惠'}}</view><view class="section-desc">新人专属权益，预约时自动抵扣</view></view><view class="section-link" data-url="/pages/client/coupons/list/index" bindtap="goProtected">我的券包</view></view>
+    <scroll-view class="coupon-scroll" scroll-x enhanced show-scrollbar="{{false}}"><view class="coupon-grid">
       <view class="coupon-mini" wx:for="{{coupons}}" wx:key="_id">
         <view class="coupon-tag">{{item.displayTag}}</view>
         <view class="coupon-amount">¥{{item.discountAmount}}</view>
         <view class="coupon-name">{{item.name}}</view>
         <view class="coupon-rule">{{item.ruleText}}</view>
-        <button class="coupon-claim-btn" data-id="{{item._id}}" disabled="{{claimingCouponId === item._id}}" bindtap="claimNewbieCoupon">{{claimingCouponId === item._id ? '领取中' : '立即领取'}}</button>
+        <view class="coupon-claim-btn {{claimingCouponId === item._id ? 'is-loading' : ''}}" data-id="{{item._id}}" aria-role="button" aria-label="{{claimingCouponId === item._id ? '领取中' : '立即领取'}}" bindtap="claimNewbieCoupon"><text class="coupon-claim-label">{{claimingCouponId === item._id ? '领取中' : '立即领取'}}</text></view>
       </view>
-    </view>
+    </view></scroll-view>
   </view>
 
   <view class="home-section trust-section" wx:if="{{homePage.modules.historyStats}}">

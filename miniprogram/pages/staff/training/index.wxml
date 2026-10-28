@@ -15,32 +15,19 @@
     </view>
   </view>
 
-  <view class="card">
-    <view class="card-title">入驻保证金与退出退款</view>
-    <view class="muted">资料审核通过后，按平台配置缴纳可退保证金；金额以服务端展示为准，不设默认金额。</view>
-    <view class="guide-box">
-      <view>自愿退出全额退还保证金；有效管理员没收决定涉及的部分除外。</view>
-      <view>首次物资报销由平台另行出资，通过商家转账发放，不是保证金退款。后续每次物资采购均自费。</view>
-    </view>
-    <view class="muted" wx:if="{{depositLoading}}">正在获取保证金状态...</view>
-    <view class="muted" wx:if="{{depositError}}">状态获取失败，请刷新后再操作。</view>
+  <view class="card deposit-card">
+    <view class="deposit-card-heading"><view class="card-title">入驻保证金</view><view class="pill">{{depositState.needsRepay ? '待补缴' : (depositState.deposit.statusText || '待缴纳')}}</view></view>
+    <view class="muted" wx:if="{{depositLoading}}">正在获取保证金状态…</view><view class="muted" wx:if="{{depositError}}">状态获取失败，请刷新后再操作。</view>
     <block wx:if="{{depositState}}">
-      <!-- 管理员要求重新缴纳警示条 -->
-      <view class="repay-alert-box" wx:if="{{depositState.needsRepay}}">
-        <view class="repay-alert-title"><text class="remix-icon ri-alarm-warning-fill"></text> 管理员已要求重新足额缴纳保证金</view>
-        <view class="repay-alert-reason">原因：{{depositState.repayReason || '保证金余额不足或发生履约出险扣除，重新足额缴纳前暂不可接单'}}</view>
-        <view class="repay-alert-amount">
-          <text style="color: #991b1b; font-size: 24rpx; font-weight: 850;">需足额缴纳保证金额度：</text>
-          <text style="color: #dc2626; font-size: 30rpx; font-weight: 950;">¥{{depositState.config.amount}}</text>
-        </view>
-        <view class="repay-alert-tip">⚠️ 在足额缴纳履约保证金之前，系统将限制接单与抢单资格。</view>
-      </view>
-
-      <view wx:if="{{depositState.config.amount != null}}">平台基准金额：¥{{depositState.config.amount}}</view>
-      <view class="muted" wx:else>平台尚未提供缴纳金额，请勿自行转账。</view>
-      <view class="muted" wx:if="{{!depositState.config.enabled}}">保证金缴纳当前未开放。</view>
-
-      <view class="guide-box" wx:if="{{depositState.deposit}}">
+      <view class="deposit-amount-panel"><view class="deposit-amount-label">{{depositState.canPay ? '本次应缴保证金' : '当前保证金余额'}}</view><view class="deposit-main-amount"><text class="currency">¥</text>{{depositState.canPay ? depositState.config.amount : (depositState.deposit.availableRefundAmount || '0.00')}}</view><view class="muted">退出时按保证金余额、用品报销及有效扣除记录结算</view></view>
+      <view class="repay-alert-box" wx:if="{{depositState.needsRepay}}"><view class="repay-alert-title">需重新足额缴纳保证金</view><view class="repay-alert-reason">{{depositState.repayReason || '重新足额缴纳前暂不可接单'}}</view><view class="repay-alert-amount">需足额缴纳保证金额度：¥{{depositState.config.amount}}</view></view>
+      <view class="deposit-supply-overview" wx:if="{{depositState.supplies.shippingEnabled || depositState.firstSupplyShipment}}"><view class="deposit-supply-icon remix-icon ri-shopping-bag-3-line"></view><view class="deposit-supply-copy"><view class="strong-text">首次用品由平台寄送</view><view class="muted">报销审核通过可减免用品费；未报销，退款时扣除</view></view><text class="deposit-supply-price">¥{{depositState.firstSupplyShipment ? depositState.firstSupplyFeeAmount : (depositState.deposit.supplyPolicyAcceptedAt ? depositState.deposit.supplyFeeAmount : depositState.supplies.supplyFeeAmount)}}</text></view>
+      <block wx:if="{{depositState.canPay}}"><view class="deposit-flow"><text>① 确认报销规则</text><text wx:if="{{depositState.supplyDeliveryRequired}}">② 填写收货地址</text><text>{{depositState.supplyDeliveryRequired ? '③' : '②'}} 支付保证金</text></view><button class="primary-btn" bindtap="payDeposit" loading="{{depositBusy}}" disabled="{{depositBusy || depositLoading || depositState.config.amount == null}}">{{depositState.needsRepay ? '重新足额缴纳保证金' : '提交保证金'}}</button></block>
+      <view class="muted" wx:if="{{!depositState.config.enabled}}">保证金缴纳当前未开放。</view><view class="muted" wx:if="{{depositState.paymentSyncPending}}">支付结果确认中，请稍后刷新，勿重复支付。</view>
+      <view class="deposit-address-confirmed" wx:if="{{depositState.supplyDeliveryRequired && depositState.deposit.supplyPolicyAcceptedAt && depositState.deposit.status === 'paid'}}"><text class="remix-icon ri-checkbox-circle-fill"></text><view><view class="strong-text">收货信息已确认，等待平台发货</view><view class="muted">{{depositState.deposit.supplyAddress.name}} · {{depositState.deposit.supplyAddress.province}} {{depositState.deposit.supplyAddress.city}} {{depositState.deposit.supplyAddress.district}}</view></view></view>
+      <button class="ghost-btn" wx:if="{{depositState.supplyDeliveryRequired && !depositState.canPay && depositState.deposit.status === 'paid'}}" bindtap="openSupplyDelivery" disabled="{{depositBusy || depositLoading}}">{{depositState.deposit.supplyPolicyAcceptedAt ? '修改首次用品收货地址' : '确认首次用品规则与收货地址'}}</button>
+      <view class="supply-delivery" wx:if="{{depositState.firstSupplyShipment}}"><view class="strong-text">首次用品已发货</view><view class="muted">{{depositState.firstSupplyShipment.expressCompany}} · {{depositState.firstSupplyShipment.trackingNo}}</view><view class="deposit-inline-actions"><button class="ghost-btn" bindtap="copySupplyTracking">复制单号</button><button class="ghost-btn" bindtap="querySupplyLogistics" disabled="{{depositBusy}}">查看物流</button></view><view class="muted" wx:if="{{supplyLogistics}}">{{supplyLogistics.stateText || supplyLogistics.message}}</view><view class="muted" wx:for="{{supplyLogistics.traces}}" wx:key="index">{{item.time || item.datetime}} {{item.context || item.description}}</view></view>
+      <view class="deposit-details-toggle" bindtap="toggleDepositDetails"><text>退款规则与资金明细</text><text class="remix-icon {{depositDetailsExpanded ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'}}"></text></view><view wx:if="{{depositDetailsExpanded}}">      <view class="guide-box" wx:if="{{depositState.deposit}}">
         <view style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8rpx;">
           <text class="strong-text" style="font-size: 30rpx;">当前保证金余额</text>
           <text class="price" style="font-size: 36rpx; font-weight: 950; color: #ea580c;">¥{{depositState.deposit.availableRefundAmount != null ? depositState.deposit.availableRefundAmount : '0.00'}}</text>
@@ -49,40 +36,29 @@
         <view wx:if="{{depositState.deposit.paidAmount != null}}">已缴总额：¥{{depositState.deposit.paidAmount}}</view>
         <view wx:if="{{depositState.deposit.forfeitedAmount > 0}}" style="color: #ef4444;">累计违规扣除：¥{{depositState.deposit.forfeitedAmount}}</view>
         <view wx:if="{{depositState.deposit.refundedAmount > 0}}">已退款金额：¥{{depositState.deposit.refundedAmount}}</view>
+        <view wx:if="{{depositState.deposit.supplyFeeDeductedAmount > 0}}">已结算首次用品费用：¥{{depositState.deposit.supplyFeeDeductedAmount}}</view>
         <view wx:if="{{depositState.deposit.refundStatus}}">退款状态：{{depositState.deposit.refundStatusText || '退款处理中'}}</view>
       </view>
       <view class="muted" wx:else>暂无保证金缴纳记录。</view>
 
-      <!-- 保证金变动明细与变更描述 -->
+      <view class="rule-text" wx:if="{{!depositState.supplies.shippingEnabled && !(depositState.deposit && depositState.deposit.supplyShipment)}}">{{depositState.config.rulesText}}</view>
+      <view class="rule-text" wx:if="{{!depositState.supplies.shippingEnabled && !(depositState.deposit && depositState.deposit.supplyShipment)}}">{{depositState.config.refundRulesText}}</view>
+      <view class="rule-text" wx:else>首次用品费用按本人确认时的金额和实际发货、减免审核结果结算；未确认或未发货不扣用品费，未同意新规则的已缴用户仍可按原缴纳规则退出。</view>
+      <view class="rule-text">{{depositState.config.forfeitRulesText}}</view>
       <view class="deposit-events-section" wx:if="{{depositState.events && depositState.events.length}}">
         <view class="events-title"><text class="remix-icon ri-file-list-3-line"></text> 保证金变动明细与变更描述</view>
         <view class="event-item-card" wx:for="{{depositState.events}}" wx:key="_id">
           <view class="event-row-head">
             <view class="event-type-badge {{item.type === 'pay' ? 'badge-green' : (item.type === 'forfeit' ? 'badge-red' : 'badge-gray')}}">{{item.typeName}}</view>
-            <view class="event-amount {{item.type === 'pay' ? 'amount-plus' : (item.type === 'forfeit' ? 'amount-minus' : '')}}">{{item.amountText}}</view>
+            <view class="event-amount {{item.type === 'pay' ? 'amount-plus' : (item.type === 'forfeit' || item.type === 'supply_fee' ? 'amount-minus' : '')}}">{{item.amountText}}</view>
           </view>
           <view class="event-desc">{{item.reason || '无具体说明'}}</view>
           <view class="event-time">{{beijingTime.format(item.createdAt)}}</view>
         </view>
       </view>
-
-      <view class="rule-text">{{depositState.config.rulesText}}</view>
-      <view class="rule-text">{{depositState.config.refundRulesText}}</view>
-      <view class="rule-text">{{depositState.config.forfeitRulesText}}</view>
-      <block wx:if="{{depositState.canPay}}">
-        <checkbox-group bindchange="agreeDeposit">
-          <label class="acknowledgement"><checkbox value="agreed" checked="{{depositAgreed}}" disabled="{{depositBusy || depositLoading}}" />我已阅读并同意上述缴纳、退出全额退款及有效管理员没收规则，知悉首次物资报销独立于保证金，需正式认证后申请，后续采购自费。</label>
-        </checkbox-group>
-        <button class="primary-btn" bindtap="payDeposit" loading="{{depositBusy}}" disabled="{{!depositAgreed || depositBusy || depositLoading || depositState.config.amount == null}}">{{depositState.needsRepay ? '重新足额缴纳保证金' : '微信支付保证金'}}</button>
-      </block>
-      <block wx:if="{{depositState.canRequestRefund}}">
-        <textarea class="refund-input" placeholder="请填写自愿退出及退款原因" value="{{refundReason}}" bindinput="inputRefundReason" maxlength="500" disabled="{{depositBusy}}" />
-        <button class="ghost-btn" bindtap="requestRefund" disabled="{{depositBusy || depositLoading}}">申请退出 / 保证金退款</button>
-      </block>
-    </block>
-    <button class="ghost-btn" bindtap="loadDeposit" disabled="{{depositBusy || depositLoading}}">刷新保证金及退款状态</button>
-    <view class="muted" wx:if="{{depositState.paymentSyncPending}}">微信支付结果暂未核实，请稍后刷新状态，勿重复支付。</view>
-    <view class="muted">支付或退款是否完成均以服务端核实结果为准。</view>
+</view>
+      <block wx:if="{{depositState.canRequestRefund}}"><textarea class="refund-input" placeholder="请填写退出及退款原因" value="{{refundReason}}" bindinput="inputRefundReason" maxlength="500" disabled="{{depositBusy}}" /><button class="ghost-btn" bindtap="requestRefund" disabled="{{depositBusy || depositLoading}}">申请退出并退还保证金</button></block>
+    </block><button class="deposit-refresh" bindtap="loadDeposit" disabled="{{depositBusy || depositLoading}}">刷新保证金及退款状态</button>
   </view>
 
   <view class="card">
@@ -90,11 +66,11 @@
     <view class="guide-box">
       <view>视频审核必须准备：一次性手套、一次性口罩、一次性鞋套宠物安全消毒液。</view>
       <view>审核标准严格，备齐物资不代表必然通过，其他不符合要求的情况也可能导致审核失败。</view>
-      <view>未获得正式认证不得报销，实习宠托师不具备报销资格。正式认证后仅首次物资可申请平台报销，后续每次采购均由本人承担。</view>
+      <view>未获得正式认证不得申请首次用品费用减免；达到资格并通过审核后，退出结算不扣首次用品费用。后续用品由本人承担。</view>
     </view>
     <view class="muted">{{depositState.supplies.auditNotice}}</view>
     <view class="muted">{{depositState.supplies.serviceReminder}}</view>
-    <button class="ghost-btn" bindtap="goReimbursement">首次物资报销 / 查看进度</button>
+    <button class="ghost-btn supply-rules-link" bindtap="goReimbursement"><text>查看减免资格与进度</text><text class="remix-icon ri-arrow-right-s-line"></text></button>
   </view>
 
   <view class="card">
@@ -208,6 +184,8 @@
   </view>
 
   <button class="primary-btn" wx:if="{{profile.staffLevel === 'intern'}}" bindtap="goPromotion">查看实习转正进度</button>
+
+  <include src="./deposit-checkout.wxml" />
 
   <!-- 自定义长按复制与一键复制弹窗 -->
   <view class="copy-modal-mask" wx:if="{{copyModal.show}}" catchtouchmove="noop" bindtap="closeCopyModal">

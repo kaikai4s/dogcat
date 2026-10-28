@@ -43,6 +43,7 @@ function fixture() {
     uploadFile:async({cloudPath,fileContent})=>{const id=fileID(cloudPath);files.set(id,Buffer.from(fileContent));uploaded.push(id);return {fileID:id}},
     getTempFileURL:async({fileList})=>({fileList:fileList.map((p)=>({tempFileURL:'https://private.example/'+encodeURIComponent(p.fileID)}))})}
   const context={db,cloud,nowMs:()=>time,nowText:()=>new Date(time).toISOString(),safeText:(v)=>String(v||''),
+    skipEligibilityCheck:true,
     checkTextSecurity:async(...args)=>checks.push(['text',...args]),checkImageSecurity:async(...args)=>checks.push(['image',...args])}
   const service=createAppearance(context)
   const draft=(owner='a',pet='pet_a',type='pet')=>service.createDraft(owner,{targetType:type,petId:pet})

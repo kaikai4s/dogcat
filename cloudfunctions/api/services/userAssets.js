@@ -253,15 +253,21 @@ module.exports = function createService({
 
   async function bindInviteCode(openid, data = {}) {
     const user = await getUser(openid)
+    const settings = await getSystemSettings()
+    if (settings.maintenance?.invitation === true) {
+      const error = new Error('分享赚取佣金功能暂时不可使用，正在维护中')
+      error.code = 'MODULE_MAINTENANCE'
+      throw error
+    }
     if (user.inviterOpenid) throw new Error('每个用户只能绑定一次邀请码，绑定后不能修改')
     const code = safeText(data.inviteCode).trim().toUpperCase()
     if (!code) throw new Error('请输入邀请码')
     const inviterRes = await db.collection('users').where({ inviteCode: code }).limit(1).get()
     const inviter = inviterRes.data && inviterRes.data[0]
     if (!inviter || inviter.openid === openid) throw new Error('邀请码无效或不能绑定自己的邀请码')
-    const settings = await getInviteSettings()
-    const configuredRewardAmount = Number(settings.rewardAmount || 0)
-    const rewardAmount = settings.enabled === true && Number.isFinite(configuredRewardAmount) && configuredRewardAmount > 0 ? Math.round(configuredRewardAmount * 100) / 100 : 0
+    const invitation = settings.invitation || settings.userAssets || {}
+    const configuredRewardAmount = Number(invitation.rewardAmount || 0)
+    const rewardAmount = invitation.enabled === true && Number.isFinite(configuredRewardAmount) && configuredRewardAmount > 0 ? Math.round(configuredRewardAmount * 100) / 100 : 0
     const inviteId = `invite_${openid}`
     const time = now()
     const record = { inviterUserId: inviter._id, inviterOpenid: inviter.openid, invitedUserId: user._id, invitedOpenid: openid, inviteCode: code, bindingSource: safeText(data.bindingSource).trim() || 'manual', rewarded: false, rewardAmount, createdAt: time, updatedAt: time }

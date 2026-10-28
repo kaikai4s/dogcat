@@ -11,6 +11,8 @@ module.exports = function createService({
     return { id: deposit._id, status: deposit.status, refundStatus: deposit.refundStatus,
       refundChannel: deposit.refundChannel || '', refundLastError: deposit.refundLastError || '',
       availableRefundAmount: deposit.availableRefundAmount,
+      approvedRefundAmount: deposit.approvedRefundAmount,
+      supplyFeeDeductedAmount: deposit.supplyFeeDeductedAmount || 0,
       ...(deposit.refundStatus === 'success' ? { exitCompleted: !deposit.refundExitPending } : {}) }
   }
   async function prepare(id, payment, config) {
@@ -18,6 +20,7 @@ module.exports = function createService({
       const deposit = (await tx.collection('staff_deposits').doc(id).get()).data
       if (deposit.refundStatus === 'success') return deposit
       if (!['refund_approved', 'refunding'].includes(deposit.status) || !['approved', 'processing'].includes(deposit.refundStatus)) throw new Error('仅已审核保证金退款可发起原路退款')
+      if (deposit.supplyPolicyAcceptedAt && deposit.supplyShipment && !deposit.supplyFeeSettledAt) throw new Error('首次用品费用尚未结算，请先核对报销并结算后退款')
       const original = (await tx.collection('payments').doc(payment._id).get()).data
       if (!original || original.targetType !== 'staff_deposit' || original.orderId !== id ||
           (original.depositId && original.depositId !== id) || original.openid !== deposit.staffOpenid ||
@@ -29,8 +32,9 @@ module.exports = function createService({
       const totalFen = amountYuanToFen(original.amount)
       const refundedFen = Math.round(Number(deposit.refundedAmount || 0) * 100)
       const forfeitedFen = Math.round(Number(deposit.forfeitedAmount || 0) * 100)
+      const supplyFeeFen = Math.round(Number(deposit.supplyFeeDeductedAmount || 0) * 100)
       if (refundFen !== amountYuanToFen(deposit.availableRefundAmount) ||
-          refundFen + refundedFen + forfeitedFen !== totalFen) throw new Error('退款金额与保证金余额不一致')
+          refundFen + refundedFen + forfeitedFen + supplyFeeFen !== totalFen) throw new Error('退款金额与保证金余额不一致')
       if ((deposit.refundMchId && deposit.refundMchId !== config.mchId) ||
           (deposit.refundAppId && deposit.refundAppId !== config.appId)) throw new Error('原退款商户或小程序配置已变化，请先核对原单')
       const patch = deposit.refundNo ? {} : {

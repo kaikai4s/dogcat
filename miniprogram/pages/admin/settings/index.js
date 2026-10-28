@@ -1,4 +1,5 @@
-const { callFunction, showError, setCachedSystemSettings } = require('../../../utils/cloud')
+const { callFunction, showError, setCachedSystemSettings, getCloudEnv } = require('../../../utils/cloud')
+const { uploadImage } = require('../../../utils/image-upload')
 const { subscriptionTemplateIssue } = require('../../../utils/subscription-options')
 const { paymentKeyInputIssue } = require('./payment-config')
 
@@ -51,9 +52,9 @@ function normalizeStaffDeposit(deposit = {}) {
     ...deposit,
     enabled: deposit.enabled === true && validAmount(deposit.amount),
     amount: validAmount(deposit.amount, true) ? Number(deposit.amount) : 0,
-    rulesText: deposit.rulesText || '保证金金额以平台配置为准；用品报销由平台独立出资，绝不扣减保证金。',
-    refundRulesText: deposit.refundRulesText || '自愿退出时保证金全额原路退回；仅扣除管理员已记录依据、金额和原因的违规没收部分，已退金额不重复退还。',
-    forfeitRulesText: deposit.forfeitRulesText || '仅管理员可根据有据可查的违规事实没收保证金，必须记录依据、金额和原因；不得以用品报销为由扣减。'
+    rulesText: deposit.rulesText || '保证金金额以平台配置为准，首次用品寄送与费用由宠托师另行确认。',
+    refundRulesText: deposit.refundRulesText || '未确认或未发货的首次用品不收取费用；已发货的按确认时费用及减免审核结果结算，可退余额以审核明细为准。',
+    forfeitRulesText: deposit.forfeitRulesText || '违规没收须有依据和记录；首次用品费用单列，不计入违规没收。'
   }
 }
 
@@ -125,6 +126,8 @@ function normalizeStaffSupplies(supplies = {}) {
   return {
     ...supplies,
     reimbursementEnabled: supplies.reimbursementEnabled === true,
+    shippingEnabled: supplies.shippingEnabled === true,
+    supplyFeeAmount: validAmount(supplies.supplyFeeAmount, true) ? Number(supplies.supplyFeeAmount) : 0,
     reimbursementAmount: validAmount(supplies.reimbursementAmount, true) ? Number(supplies.reimbursementAmount) : (validAmount(supplies.maxReimbursementAmount, true) ? Number(supplies.maxReimbursementAmount) : 200),
     reimbursementMode: ['order_count', 'invite_count', 'either'].includes(supplies.reimbursementMode) ? supplies.reimbursementMode : 'order_count',
     reimbursementOrderCount: Math.max(0, Number(supplies.reimbursementOrderCount || 0)),
@@ -326,6 +329,10 @@ function normalizeCheckinShareConfig(checkinShare = {}) {
   }
 }
 
+function normalizeNoticeTicker(value = {}) {
+  return { enabled: value.enabled === true, items: Array.isArray(value.items) ? value.items.slice() : [] }
+}
+
 function createEmptyQuizQuestion() {
   const id = `q_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
   return {
@@ -518,6 +525,7 @@ function buildSettingSummary(settings = {}) {
   const customerService = settings.customerService || normalizeCustomerServiceConfig()
   const officialAccount = settings.officialAccount || normalizeOfficialAccountConfig(settings.officialAccount, customerService)
   const checkinShare = settings.checkinShare || normalizeCheckinShareConfig()
+  const noticeTicker = settings.noticeTicker || normalizeNoticeTicker()
   const settlement = settings.settlement || normalizeSettlementConfig()
   const reliability = settings.reliability || normalizeReliabilityConfig()
   const staffTraining = settings.staffTraining || normalizeStaffTrainingConfig()
@@ -533,6 +541,8 @@ function buildSettingSummary(settings = {}) {
     customerService: `${customerService.phone || '未配置电话'} · ${customerService.workHours || '未配置时间'}`,
     officialAccount: `${officialAccount.enabled ? '服务号已启用' : '服务号已停用'} · ${officialAccount.name || '未配置名称'} · ${officialAccount.qrCodeUrl ? '已上传二维码' : '未传二维码'}`,
     checkinShare: `${checkinShare.title || '未配置标题'} · ${checkinShare.imageUrl ? '已配置封面' : '未配置封面'}`,
+    noticeTicker: `${noticeTicker.enabled ? '展示中' : '已关闭'} · ${noticeTicker.items.length} 条消息`,
+    maintenance: ['petRanking', 'booking', 'invitation'].filter(key => settings.maintenance?.[key] === true).length + '/3 项维护中',
     settlementReliability: `分成 ${Math.round(Number(settlement.staffCommissionRate || 0) * 100)}% · 完单 ${settlement.settlementDelayDays} 天后可提现 · 最低 ¥${Number(settlement.minWithdrawAmount || 0).toFixed(2)}`,
     carousel: `${carousel.enabled ? '轮播已启用' : '轮播已关闭'} · ${enabledCarouselCount}/${carouselItems.length} 个素材启用`,
     homePage: `${enabledModuleCount}/${homeModuleOptions.length} 个模块启用 · ${homePage.ctaTitle || '未配置标题'}`,
@@ -554,6 +564,13 @@ Page({
   data: {
     logisticsProviderLabels: ['聚合数据（常用快递查询）', '阿里云', '快递100'],
     loaded: false,
+    defaultQuizBank: [],
+    quizBankRows: [],
+    quizBankOpen: false,
+    quizBankKeyword: '',
+    quizBankSelection: [],
+    quizBankSelectedCount: 0,
+    quizEditorId: '',
     requiredItemsText: '',
     sceneReportInfosText: '[]',
     todayDate: new Date().toISOString().slice(0, 10),
@@ -576,6 +593,8 @@ Page({
       customerService: normalizeCustomerServiceConfig(),
       officialAccount: normalizeOfficialAccountConfig(),
       checkinShare: normalizeCheckinShareConfig(),
+      noticeTicker: normalizeNoticeTicker(),
+      maintenance: { petRanking: false, booking: false, invitation: false },
       homeHeroCarousel: normalizeCarouselConfig(),
       homePage: normalizeHomePageConfig(),
       petBeautyContest: normalizePetBeautyContestConfig(),
@@ -594,6 +613,8 @@ Page({
       customerService: normalizeCustomerServiceConfig(),
       officialAccount: normalizeOfficialAccountConfig(),
       checkinShare: normalizeCheckinShareConfig(),
+      noticeTicker: normalizeNoticeTicker(),
+      maintenance: { petRanking: false, booking: false, invitation: false },
       homeHeroCarousel: normalizeCarouselConfig(),
       homePage: normalizeHomePageConfig(),
       petBeautyContest: normalizePetBeautyContestConfig(),
@@ -634,7 +655,7 @@ Page({
   },
 
   onShow() {
-    this.load()
+    if (!this.data.showSettingModal && !this.data.uploadingInvitationShareImage && !this.data.uploadingCheckinShareImage) this.load()
   },
 
   load() {
@@ -660,6 +681,8 @@ Page({
           customerService: normalizeCustomerServiceConfig(settings.customerService),
           officialAccount: normalizeOfficialAccountConfig(settings.officialAccount, settings.customerService),
           checkinShare: normalizeCheckinShareConfig(settings.checkinShare),
+          noticeTicker: normalizeNoticeTicker(settings.noticeTicker),
+          maintenance: settings.maintenance || { petRanking: false, booking: false, invitation: false },
           homeHeroCarousel: normalizeCarouselConfig(settings.homeHeroCarousel),
           homePage: normalizeHomePageConfig(settings.homePage),
           petBeautyContest: normalizePetBeautyContestConfig(settings.petBeautyContest),
@@ -675,6 +698,7 @@ Page({
         const activeTab = this.data.activeTransferTab || 'commission'
         this.setData({
           loaded: true,
+          defaultQuizBank: settings.staffTrainingQuestionBank || this.data.defaultQuizBank,
           requiredItemsText: normalized.staffSupplies.requiredItems.join('\n'),
           transferSceneTexts,
           sceneReportInfosText: transferSceneTexts[activeTab] || transferSceneTexts.commission
@@ -1096,61 +1120,7 @@ Page({
     })
   },
 
-  chooseInvitationShareImage() {
-    wx.chooseImage({
-      count: 1,
-      sizeType: ['compressed'],
-      sourceType: ['album', 'camera'],
-      success: (res) => {
-        const filePath = res.tempFilePaths && res.tempFilePaths[0]
-        if (!filePath) return
-        const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
-        const cloudPath = `invitation_share/${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`
-
-        this.setData({ uploadingInvitationShareImage: true })
-        wx.showLoading({ title: '上传封面...' })
-        wx.cloud.uploadFile({
-          cloudPath,
-          filePath,
-          success: (upload) => {
-            const fileId = upload.fileID
-            wx.cloud.getTempFileURL({
-              fileList: [fileId],
-              success: (tempRes) => {
-                wx.hideLoading()
-                const tempFile = tempRes.fileList && tempRes.fileList[0]
-                this.setData({
-                  ['settings.invitation.shareImageUrl']: fileId,
-                  ['settings.invitation.shareImageTempUrl']: (tempFile && tempFile.tempFileURL) || filePath,
-                  uploadingInvitationShareImage: false
-                })
-                wx.showToast({ title: '封面上传成功' })
-              },
-              fail: () => {
-                wx.hideLoading()
-                this.setData({
-                  ['settings.invitation.shareImageUrl']: fileId,
-                  ['settings.invitation.shareImageTempUrl']: filePath,
-                  uploadingInvitationShareImage: false
-                })
-                wx.showToast({ title: '封面上传成功' })
-              }
-            })
-          },
-          fail: (err) => {
-            wx.hideLoading()
-            this.setData({ uploadingInvitationShareImage: false })
-            showError(err)
-          }
-        })
-      },
-      fail: (err) => {
-        const errMsg = (err && err.errMsg) || ''
-        if (errMsg.includes('cancel')) return
-        showError(err)
-      }
-    })
-  },
+  chooseInvitationShareImage() { this.uploadShareCover('invitation') },
 
   removeInvitationShareImage() {
     this.setData({
@@ -1170,54 +1140,52 @@ Page({
     this.setData({ [`settings.checkinShare.${field}`]: e.detail.value })
   },
 
-  chooseCheckinShareImage() {
+  chooseCheckinShareImage() { this.uploadShareCover('checkinShare') },
+
+  toggleNoticeTicker(e) { this.setData({ 'settings.noticeTicker.enabled': e.detail.value }) },
+  addNoticeTickerItem() {
+    const items = this.data.settings.noticeTicker.items
+    if (items.length >= 10) return showError(new Error('最多发布10条消息'))
+    this.setData({ 'settings.noticeTicker.items': [...items, ''] })
+  },
+  noticeTickerInput(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    this.setData({ [`settings.noticeTicker.items[${index}]`]: e.detail.value })
+  },
+  removeNoticeTickerItem(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    this.setData({ 'settings.noticeTicker.items': this.data.settings.noticeTicker.items.filter((_, i) => i !== index) })
+  },
+
+  uploadShareCover(section) {
+    const loadingKey = section === 'invitation' ? 'uploadingInvitationShareImage' : 'uploadingCheckinShareImage'
+    if (this.data[loadingKey]) return
     wx.chooseMedia({
       count: 1,
       mediaType: ['image'],
       sourceType: ['album', 'camera'],
-      success: (res) => {
+      success: async (res) => {
         const file = res.tempFiles && res.tempFiles[0]
-        if (!file || !file.tempFilePath) return
-        const filePath = file.tempFilePath
-        const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
-        const cloudPath = `checkin_share/${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`
-
-        this.setData({ uploadingCheckinShareImage: true })
+        const filePath = file && (file.tempFilePath || file.path)
+        if (!filePath) return showError(new Error('请选择有效图片'))
+        const cloudPath = `${section === 'invitation' ? 'invitation_share' : 'checkin_share'}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`
+        this.setData({ [loadingKey]: true })
         wx.showLoading({ title: '上传封面...' })
-        wx.cloud.uploadFile({
-          cloudPath,
-          filePath,
-          success: (upload) => {
-            const fileId = upload.fileID
-            wx.cloud.getTempFileURL({
-              fileList: [fileId],
-              success: (tempRes) => {
-                wx.hideLoading()
-                const tempFile = tempRes.fileList && tempRes.fileList[0]
-                this.setData({
-                  ['settings.checkinShare.imageUrl']: fileId,
-                  ['settings.checkinShare.imageTempUrl']: (tempFile && tempFile.tempFileURL) || filePath,
-                  uploadingCheckinShareImage: false
-                })
-                wx.showToast({ title: '封面上传成功' })
-              },
-              fail: () => {
-                wx.hideLoading()
-                this.setData({
-                  ['settings.checkinShare.imageUrl']: fileId,
-                  ['settings.checkinShare.imageTempUrl']: filePath,
-                  uploadingCheckinShareImage: false
-                })
-                wx.showToast({ title: '封面上传成功' })
-              }
-            })
-          },
-          fail: (err) => {
-            wx.hideLoading()
-            this.setData({ uploadingCheckinShareImage: false })
-            showError(err)
-          }
-        })
+        try {
+          const upload = await uploadImage({ cloudPath, filePath, config: { env: getCloudEnv() } })
+          if (!upload || !upload.fileID) throw new Error('封面上传失败，请重试')
+          const urlKey = section === 'invitation' ? 'shareImageUrl' : 'imageUrl'
+          const tempKey = section === 'invitation' ? 'shareImageTempUrl' : 'imageTempUrl'
+          this.setData({ [`settings.${section}.${urlKey}`]: upload.fileID, [`settings.${section}.${tempKey}`]: filePath })
+          wx.showToast({ title: '封面上传成功，请保存设置', icon: 'none' })
+          wx.cloud.getTempFileURL({ fileList: [upload.fileID], config: { env: getCloudEnv() }, success: (result) => {
+            const temp = result.fileList && result.fileList[0]
+            if (temp && temp.tempFileURL && this.data.settings[section][urlKey] === upload.fileID) {
+              this.setData({ [`settings.${section}.${tempKey}`]: temp.tempFileURL })
+            }
+          } })
+        } catch (error) { showError(error) }
+        finally { wx.hideLoading(); this.setData({ [loadingKey]: false }) }
       },
       fail: (err) => {
         const errMsg = (err && err.errMsg) || ''
@@ -1253,6 +1221,12 @@ Page({
   togglePetBeautyContest(e) {
     if (!this.data.adminSuper) return
     this.setData({ 'settings.petBeautyContest.enabled': e.detail.value === true })
+  },
+  toggleMaintenance(e) {
+    if (!this.data.adminSuper) return
+    const key = e.currentTarget.dataset.key
+    if (!['petRanking', 'booking', 'invitation'].includes(key)) return
+    this.setData({ [`settings.maintenance.${key}`]: e.detail.value === true })
   },
 
   petBeautyContestInput(e) {
@@ -1346,6 +1320,73 @@ Page({
     })
   },
 
+  toggleQuizEditor(e) {
+    const id = e.currentTarget.dataset.id
+    this.setData({ quizEditorId: this.data.quizEditorId === id ? '' : id })
+  },
+
+  updateQuizBankRows() {
+    const keyword = this.data.quizBankKeyword.trim().toLowerCase()
+    const selected = new Set(this.data.quizBankSelection)
+    const existing = new Set((this.data.settings.staffTraining.quiz || []).map(q => q.id))
+    this.setData({ quizBankRows: this.data.defaultQuizBank
+      .filter(q => !keyword || `${q.question} ${q.category || '基础规范'}`.toLowerCase().includes(keyword))
+      .map(q => ({ ...q, checked: selected.has(q.id), included: existing.has(q.id) })),
+      quizBankSelectedCount: selected.size })
+  },
+
+  openQuizBank() {
+    if (!this.data.defaultQuizBank.length) return wx.showToast({ title: '题库未加载，请重新加载设置', icon: 'none' })
+    this.setData({ quizBankOpen: !this.data.quizBankOpen, quizBankKeyword: '', quizBankSelection: [] })
+    this.updateQuizBankRows()
+  },
+
+  quizBankSearch(e) {
+    this.setData({ quizBankKeyword: e.detail.value })
+    this.updateQuizBankRows()
+  },
+
+  toggleQuizBankQuestion(e) {
+    const id = e.currentTarget.dataset.id
+    if (!this.data.defaultQuizBank.some(q => q.id === id) || (this.data.settings.staffTraining.quiz || []).some(q => q.id === id)) return
+    const selected = new Set(this.data.quizBankSelection)
+    if (selected.has(id)) selected.delete(id)
+    else selected.add(id)
+    this.setData({ quizBankSelection: [...selected] })
+    this.updateQuizBankRows()
+  },
+
+  selectAllQuizBank() {
+    const selected = new Set(this.data.quizBankSelection)
+    this.data.quizBankRows.forEach(q => { if (!q.included) selected.add(q.id) })
+    this.setData({ quizBankSelection: [...selected] })
+    this.updateQuizBankRows()
+  },
+
+  addSelectedDefaultQuestions() {
+    const quiz = this.data.settings.staffTraining.quiz || []
+    const ids = new Set(quiz.map(q => q.id))
+    const selected = new Set(this.data.quizBankSelection)
+    const additions = this.data.defaultQuizBank.filter(q => selected.has(q.id) && !ids.has(q.id))
+    if (!additions.length) return wx.showToast({ title: '请选择尚未加入的题目', icon: 'none' })
+    this.setData({ ['settings.staffTraining.quiz']: [...quiz, ...JSON.parse(JSON.stringify(additions))],
+      ['settings.staffTraining.quizBankVersion']: 2, quizBankOpen: false, quizBankSelection: [], quizBankSelectedCount: 0 })
+    wx.showToast({ title: `已加入${additions.length}道，保存后生效`, icon: 'none' })
+  },
+
+  useAllDefaultQuestions() {
+    if (!this.data.defaultQuizBank.length) return
+    wx.showModal({ title: '使用全部默认题目',
+      content: `将用${this.data.defaultQuizBank.length}道默认单选题替换当前试卷，未保存的自定义题目会被移除。确认后仍需保存设置。`,
+      success: result => {
+        if (!result.confirm) return
+        this.setData({ ['settings.staffTraining.quiz']: JSON.parse(JSON.stringify(this.data.defaultQuizBank)),
+          ['settings.staffTraining.quizBankVersion']: 2, quizEditorId: '', quizBankOpen: false,
+          quizBankSelection: [], quizBankSelectedCount: 0 })
+      }
+    })
+  },
+
   trainingPassScoreInput(e) {
     const passScore = Math.min(Math.max(Math.round(Number(e.detail.value || 80)), 1), 100)
     this.setData({ ['settings.staffTraining.passScore']: passScore })
@@ -1359,8 +1400,9 @@ Page({
 
   addQuizQuestion() {
     const quiz = [...(this.data.settings.staffTraining.quiz || [])]
-    quiz.push(createEmptyQuizQuestion())
-    this.setData({ ['settings.staffTraining.quiz']: quiz })
+    const question = createEmptyQuizQuestion()
+    quiz.push(question)
+    this.setData({ ['settings.staffTraining.quiz']: quiz, quizEditorId: question.id })
   },
 
   deleteQuizQuestion(e) {
@@ -1416,9 +1458,11 @@ Page({
       wx.showToast({ title: '至少保留 2 个选项', icon: 'none' })
       return
     }
+    const correctIndex = options.findIndex(option => option.value === question.answer)
     options.splice(optionIndex, 1)
     const normalizedOptions = options.map((option, index) => ({ ...option, value: quizOptionValues[index] }))
-    const answer = normalizedOptions.some((option) => option.value === question.answer) ? question.answer : normalizedOptions[0].value
+    const answer = correctIndex === optionIndex ? normalizedOptions[0].value
+      : quizOptionValues[correctIndex > optionIndex ? correctIndex - 1 : correctIndex] || normalizedOptions[0].value
     quiz[questionIndex] = { ...question, options: normalizedOptions, answer }
     this.setData({ ['settings.staffTraining.quiz']: quiz })
   },
@@ -1994,6 +2038,12 @@ Page({
   save() {
     if (this.data.saving) return
     if (!this.data.loaded) return showError(new Error('请等待设置加载成功后再保存'))
+    if (this.data.uploadingTrainingVideo || this.data.uploadingTrainingPoster || this.data.uploadingInvitationShareImage || this.data.uploadingCheckinShareImage) {
+      wx.showToast({ title: '请等待素材上传完成', icon: 'none' })
+      return
+    }
+    const notices = this.data.settings.noticeTicker.items.map((item) => item.trim())
+    if (notices.some((text) => !text || text.length > 120) || (this.data.settings.noticeTicker.enabled && !notices.length)) return showError(new Error('开启消息滚动栏须至少有一条消息，每条最多120字；请删除空白项'))
     const paymentIssue = paymentKeyInputIssue(this.data.settings.payment)
     if (paymentIssue) return showError(new Error(paymentIssue))
     const templates = this.data.settings.subscription.templates || {}
@@ -2002,6 +2052,8 @@ Page({
     const deposit = this.data.settings.staffDeposit
     if (!validAmount(deposit.amount, !deposit.enabled)) return showError(new Error('保证金金额须为有效金额，最多两位小数；启用时必须大于 0'))
     if (!validAmount(this.data.settings.staffSupplies.reimbursementAmount)) return showError(new Error('固定报销金额须为有效金额'))
+    if (!validAmount(this.data.settings.staffSupplies.supplyFeeAmount, true)) return showError(new Error('首次用品费用须为有效金额'))
+    if (this.data.settings.staffSupplies.shippingEnabled && (!Number(this.data.settings.staffSupplies.supplyFeeAmount) || Number(this.data.settings.staffSupplies.supplyFeeAmount) >= Number(deposit.amount))) return showError(new Error('启用平台寄送时，用品费用必须大于 0 且小于保证金'))
     if (!['order_count', 'invite_count', 'either'].includes(this.data.settings.staffSupplies.reimbursementMode)) return showError(new Error('请至少选择一种报销资格方式'))
     for (const [field, label] of [['reimbursementOrderCount', '需完成订单数量'], ['reimbursementInviteCount', '需邀请绑定人数']]) {
       if (!validReimbursementCount(this.data.settings.staffSupplies[field])) return showError(new Error(`${label}须为有效的非负整数，不设门槛请填写 0`))
@@ -2050,15 +2102,23 @@ Page({
       'settings.staffSupplies.transfer.userRecvPerception': parsedScenes.commission.userRecvPerception,
       'settings.staffSupplies.transfer.sceneReportInfos': parsedScenes.commission.sceneReportInfos
     })
-    if (this.data.uploadingTrainingVideo || this.data.uploadingTrainingPoster || this.data.uploadingInvitationShareImage) {
-      wx.showToast({ title: '请等待素材上传完成', icon: 'none' })
-      return
-    }
     if (this.data.settings.staffZhima && this.data.settings.staffZhima.enabled) {
       const minScore = Number(this.data.settings.staffZhima.minScore)
       if (!Number.isFinite(minScore) || minScore < 350 || minScore > 950) {
         showError('【宠托师芝麻信用】最低准入信用分必须在 350 至 950 之间')
         return
+      }
+    }
+    const draftQuiz = this.data.settings.staffTraining.quiz || []
+    if (!draftQuiz.length) return showError(new Error('培训答题至少保留1道题'))
+    const ids = new Set()
+    for (const [index, q] of draftQuiz.entries()) {
+      if (!q.id || ids.has(q.id)) return showError(new Error(`第${index + 1}道题编号重复或缺失`))
+      ids.add(q.id)
+      if (!String(q.question || '').trim() || !Array.isArray(q.options) || q.options.length < 2 ||
+        q.options.some(option => !String(option.label || '').trim()) || !q.options.some(option => option.value === q.answer)) {
+        this.setData({ quizEditorId: q.id })
+        return showError(new Error(`请补全第${index + 1}道题的题干、选项和正确答案`))
       }
     }
     this.setData({ saving: true })
@@ -2123,6 +2183,8 @@ Page({
         imageUrl: checkinShare.imageUrl || ''
       },
       homePage: this.data.settings.homePage,
+      noticeTicker: { enabled: this.data.settings.noticeTicker.enabled, items: notices },
+      maintenance: this.data.settings.maintenance,
       petBeautyContest: {
         ...this.data.settings.petBeautyContest,
         firstPrizeAmount: Number(this.data.settings.petBeautyContest?.firstPrizeAmount ?? 500),
@@ -2131,6 +2193,7 @@ Page({
       staffTraining: {
         ...staffTraining,
         passScore: staffTraining.passScore,
+        quizBankVersion: 2,
         quiz: staffTraining.quiz || [],
         videos: trainingVideos,
         videoAuditGuide: staffTraining.videoAuditGuide || {}
@@ -2144,6 +2207,7 @@ Page({
       }
     }
 
+    delete payload.staffTrainingQuestionBank
     callFunction('admin', 'saveSystemSettings', payload)
       .then((settings) => {
         const normalized = {
@@ -2162,6 +2226,8 @@ Page({
           officialAccount: normalizeOfficialAccountConfig(settings.officialAccount, settings.customerService),
           invitation: normalizeInvitationConfig(settings.invitation),
           checkinShare: normalizeCheckinShareConfig(settings.checkinShare),
+          noticeTicker: normalizeNoticeTicker(settings.noticeTicker),
+          maintenance: settings.maintenance || { petRanking: false, booking: false, invitation: false },
           homeHeroCarousel: normalizeCarouselConfig(settings.homeHeroCarousel),
           homePage: normalizeHomePageConfig(settings.homePage),
           petBeautyContest: normalizePetBeautyContestConfig(settings.petBeautyContest),
@@ -2177,6 +2243,7 @@ Page({
         const currentTab = this.data.activeTransferTab || 'commission'
         this.setData({
           loaded: true,
+          defaultQuizBank: settings.staffTrainingQuestionBank || this.data.defaultQuizBank,
           requiredItemsText: normalized.staffSupplies.requiredItems.join('\n'),
           transferSceneTexts,
           sceneReportInfosText: transferSceneTexts[currentTab] || transferSceneTexts.commission

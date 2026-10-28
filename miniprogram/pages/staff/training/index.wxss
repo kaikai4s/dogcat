@@ -32,6 +32,11 @@
 .rule-text { white-space: pre-wrap; font-size: 26rpx; line-height: 1.7; margin-top: 12rpx; }
 .acknowledgement { display: block; font-size: 26rpx; line-height: 1.7; margin-top: 24rpx; }
 .refund-input { box-sizing: border-box; width: 100%; min-height: 160rpx; margin-top: 24rpx; padding: 20rpx; background: #fff8ec; border-radius: 20rpx; font-size: 26rpx; }
+.supply-delivery { border-top: 1rpx solid #eee1d6; margin-top: 24rpx; padding-top: 24rpx; }
+.field-label { font-size: 24rpx; color: #6b5b50; margin: 14rpx 0 6rpx; }
+.supply-address-input { box-sizing: border-box; width: 100%; min-width: 0; height: 76rpx; padding: 0 18rpx; background: #fff8ec; border: 1rpx solid #eedbcc; border-radius: 8rpx; font-size: 26rpx; }
+.supply-region { display: flex; gap: 10rpx; }
+.supply-region .supply-address-input { flex: 1; }
 button[disabled] { opacity: .55; }
 .strong-text { font-weight: 900; color: #2d211a; margin-bottom: 8rpx; }
 .warning-text { color: #e9672f; font-weight: 850; margin-top: 8rpx; }
@@ -49,6 +54,27 @@ button[disabled] { opacity: .55; }
 .supply-desc { color: #7a6a5e; font-size: 22rpx; }
 .supply-buy-btn { display: inline-flex; align-items: center; gap: 6rpx; padding: 6rpx 16rpx; border-radius: 999rpx; background: #fff0e2; color: #e9672f; font-size: 22rpx; font-weight: 850; flex-shrink: 0; }
 .supply-buy-btn:active { opacity: 0.8; transform: scale(0.96); }
+
+.policy-summary { margin: 20rpx 0; padding: 24rpx; border: 2rpx solid #e9a475; border-radius: 16rpx; background: #fff5eb; box-sizing: border-box; }
+.policy-heading, .supply-policy-head { display: flex; align-items: center; gap: 12rpx; color: #883d1c; font-size: 29rpx; font-weight: 900; line-height: 1.4; }
+.policy-heading .remix-icon, .supply-policy-head .remix-icon { flex-shrink: 0; font-size: 34rpx; }
+.policy-line, .supply-policy-line { margin-top: 12rpx; font-size: 25rpx; line-height: 1.55; color: #563f34; overflow-wrap: anywhere; }
+.policy-consent { margin-top: 22rpx; padding-top: 20rpx; border-top: 1rpx solid #e9c7ad; }
+.consent-row { display: flex; align-items: flex-start; gap: 12rpx; width: 100%; box-sizing: border-box; }
+.consent-row checkbox { flex-shrink: 0; margin-top: 2rpx; transform: scale(.82); transform-origin: top left; }
+.consent-copy { flex: 1; min-width: 0; font-size: 26rpx; line-height: 1.55; font-weight: 800; color: #743819; overflow-wrap: anywhere; }
+.supply-delivery { border: 2rpx solid #e9a475; border-radius: 16rpx; background: #fff8f1; padding: 24rpx; box-sizing: border-box; }
+.supply-fee { margin-top: 16rpx; color: #563f34; font-size: 26rpx; line-height: 1.4; }
+.supply-fee text { color: #b4491e; font-size: 34rpx; font-weight: 900; }
+.supply-qualification { margin-top: 20rpx; padding-top: 18rpx; border-top: 1rpx solid #e9c7ad; }
+.supply-qualification-title { font-size: 26rpx; font-weight: 900; line-height: 1.5; color: #234e42; }
+.supply-qualification-line { margin-top: 8rpx; color: #31574c; font-size: 25rpx; line-height: 1.5; overflow-wrap: anywhere; }
+.supply-region { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10rpx; }
+.supply-region .supply-address-input:last-child { grid-column: 1 / -1; }
+.supply-consent { border-top-color: #e9c7ad; }
+.supply-delivery .ghost-btn, .supply-delivery .primary-btn { width: 100%; box-sizing: border-box; min-height: 76rpx; height: auto; padding: 14rpx 20rpx; line-height: 1.4; white-space: normal; }
+.supply-rules-link { width: 100%; box-sizing: border-box; min-height: 76rpx; height: auto; padding: 14rpx 20rpx; line-height: 1.4; gap: 10rpx; font-size: 26rpx; }
+.supply-rules-link text:first-child { min-width: 0; white-space: normal; }
 
 .video-head-row {
   display: flex;
@@ -342,3 +368,62 @@ button[disabled] { opacity: .55; }
 @keyframes quiz-enter { from { opacity: 0; transform: translateY(-8rpx); } to { opacity: 1; transform: translateY(0); } }
 .repay-alert-amount { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8rpx; margin-top: 12rpx; padding: 12rpx 16rpx; background: #fee2e2; border-radius: 12rpx; }
 .repay-alert-title { line-height: 1.6; overflow-wrap: anywhere; }
+
+.deposit-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; }
+.deposit-card-heading .card-title { margin-bottom: 0; }
+.deposit-amount-panel { margin: 24rpx 0; padding: 28rpx; border-radius: 24rpx; background: var(--bg-soft, #fff8ef); }
+.deposit-amount-label { color: var(--text-secondary, #7a6a5e); font-size: 25rpx; }
+.deposit-main-amount { margin: 10rpx 0; font-size: 64rpx; font-weight: 900; line-height: 1.2; color: #d45f22; overflow-wrap: anywhere; }
+.deposit-main-amount .currency { margin-right: 8rpx; font-size: 34rpx; }
+.deposit-supply-overview { display: flex; gap: 16rpx; align-items: flex-start; padding: 8rpx 0 20rpx; }
+.deposit-supply-icon { padding: 14rpx; border-radius: 18rpx; color: #d45f22; background: #fff0e2; font-size: 32rpx; }
+.deposit-supply-copy { flex: 1; min-width: 0; }
+.deposit-supply-copy .strong-text { font-size: 26rpx; }
+.deposit-supply-price { flex-shrink: 0; font-size: 28rpx; font-weight: 850; color: #d45f22; }
+.deposit-flow { display: flex; flex-wrap: wrap; gap: 10rpx 18rpx; margin-top: 16rpx; font-size: 22rpx; line-height: 1.7; color: var(--text-secondary, #7a6a5e); }
+.deposit-details-toggle { display: flex; justify-content: space-between; gap: 16rpx; padding-top: 24rpx; margin-top: 24rpx; border-top: 1rpx solid #eee1d6; font-size: 25rpx; font-weight: 700; }
+.deposit-inline-actions { display: flex; gap: 16rpx; }
+.deposit-inline-actions button { flex: 1; min-width: 0; font-size: 24rpx; }
+.deposit-refresh { margin-top: 24rpx; padding: 10rpx; line-height: 1.6; color: var(--text-secondary, #7a6a5e); font-size: 23rpx; background: transparent; }
+.deposit-refresh::after { border: 0; }
+.deposit-modal-mask { position: fixed; inset: 0; z-index: 10010; display: flex; align-items: center; justify-content: center; padding: 24rpx; box-sizing: border-box; background: rgba(35, 25, 20, .56); }
+.deposit-modal-card { display: flex; flex-direction: column; width: 100%; max-width: 690rpx; max-height: 88vh; min-height: 0; border-radius: 30rpx; overflow: hidden; color: var(--text-primary, #2d211a); background: var(--bg-card, #fff); }
+.deposit-modal-header { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; padding: 28rpx 28rpx 20rpx; flex-shrink: 0; border-bottom: 1rpx solid #eee1d6; }
+.deposit-modal-step { color: #d45f22; font-size: 22rpx; margin-bottom: 8rpx; }
+.deposit-modal-title { font-size: 34rpx; font-weight: 850; }
+.deposit-modal-close { padding: 14rpx; font-size: 36rpx; flex-shrink: 0; }
+.deposit-modal-body { flex: 1; min-height: 0; height: 54vh; padding: 0 28rpx 24rpx; box-sizing: border-box; }
+.deposit-modal-body .policy-summary { border: 0; margin: 20rpx 0; padding: 22rpx; }
+.deposit-rule-section { padding-bottom: 12rpx; }
+.deposit-deduction-notice { margin-top: 20rpx; padding: 22rpx; border-radius: 18rpx; background: #fff0e7; color: #8a3c1b; font-size: 25rpx; line-height: 1.7; border-left: 6rpx solid #e9672f; }
+.deposit-modal-footer { flex-shrink: 0; padding: 20rpx 28rpx; padding-bottom: calc(20rpx + env(safe-area-inset-bottom)); border-top: 1rpx solid #eee1d6; }
+.deposit-modal-footer .primary-btn { width: 100%; height: auto; min-height: 88rpx; margin: 0; padding: 18rpx 22rpx; line-height: 1.5; box-sizing: border-box; border-radius: 22rpx; white-space: normal; }
+.deposit-back { padding-top: 20rpx; text-align: center; font-size: 24rpx; color: var(--text-secondary, #7a6a5e); }
+.deposit-address-note { margin-top: 24rpx; font-size: 24rpx; line-height: 1.6; color: var(--text-secondary, #7a6a5e); }
+.deposit-modal-close { margin: 0; line-height: 1; border: 0; color: var(--text-secondary, #7a6a5e); background: transparent; }
+.deposit-modal-close::after { border: 0; }
+.checkout-cost-summary { margin-top: 24rpx; padding: 22rpx; border-radius: 18rpx; background: var(--bg-soft, #fff8ef); }
+.checkout-cost-summary > view { display: flex; justify-content: space-between; align-items: baseline; gap: 20rpx; font-size: 25rpx; margin-top: 10rpx; }
+.checkout-cost-summary > view:first-child { margin-top: 0; }
+.checkout-cost-summary .checkout-cost-tip { display: block; margin-top: 18rpx; color: var(--text-secondary, #7a6a5e); font-size: 23rpx; line-height: 1.6; }
+.checkout-deposit-price { font-size: 36rpx; color: #d45f22; font-weight: 850; }
+.checkout-rule-heading { display: flex; align-items: center; gap: 12rpx; margin-top: 24rpx; font-size: 27rpx; font-weight: 800; }
+.checkout-rule-number { width: 38rpx; height: 38rpx; line-height: 38rpx; text-align: center; border-radius: 12rpx; background: #fff0e2; color: #d45f22; }
+.checkout-inline-error { margin-top: 20rpx; padding: 20rpx; border-radius: 16rpx; color: #9a3412; background: #fff2e8; font-size: 24rpx; line-height: 1.65; overflow-wrap: anywhere; }
+.checkout-consent-done { margin-top: 24rpx; display: flex; gap: 10rpx; align-items: center; font-size: 24rpx; color: #187548; }
+.checkout-consent-done .remix-icon { font-size: 32rpx; flex-shrink: 0; }
+.checkout-choose-address { width: 100%; gap: 12rpx; border-radius: 18rpx; }
+.checkout-manual-label { margin: 24rpx 0 8rpx; text-align: center; color: var(--text-secondary, #7a6a5e); font-size: 22rpx; }
+.checkout-region-picker { display: flex; gap: 10rpx; align-items: center; justify-content: space-between; min-height: 76rpx; padding: 12rpx 18rpx; box-sizing: border-box; border: 1rpx solid #eedbcc; border-radius: 8rpx; background: #fff8ec; font-size: 26rpx; line-height: 1.5; }
+.checkout-region-picker .muted { margin: 0; }
+.checkout-region-picker > text:first-child { flex: 1; min-width: 0; }
+.input-invalid { border-color: #dc5a30; }
+.checkout-field-error { margin-top: 8rpx; color: #b54120; font-size: 22rpx; line-height: 1.5; }
+.checkout-footer-hint { margin-bottom: 14rpx; text-align: center; color: var(--text-secondary, #7a6a5e); font-size: 23rpx; }
+.checkout-footer-total { display: flex; justify-content: space-between; align-items: baseline; gap: 20rpx; margin-bottom: 18rpx; font-size: 25rpx; }
+.checkout-footer-total > text:last-child { color: #d45f22; font-size: 34rpx; font-weight: 850; }
+.deposit-modal-footer .checkout-refresh { width: 100%; margin-top: 0; }
+.deposit-address-confirmed { display: flex; gap: 12rpx; align-items: flex-start; padding: 20rpx; margin-top: 20rpx; border-radius: 18rpx; background: #edf8ef; }
+.deposit-address-confirmed > .remix-icon { font-size: 32rpx; color: #187548; }
+.deposit-address-confirmed .strong-text { font-size: 25rpx; color: #187548; line-height: 1.6; }
+.deposit-address-confirmed > view { flex: 1; min-width: 0; overflow-wrap: anywhere; }

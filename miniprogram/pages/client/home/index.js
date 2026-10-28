@@ -207,6 +207,8 @@ Page({
     isHotServicesLooping: false,
     featuredSitters: [],
     coupons: [],
+    noticeTicker: { enabled: false, items: [] },
+    maintenance: { petRanking: false, booking: false, invitation: false },
     claimingCouponId: '',
     repeatOrder: null,
     recentOrders: [],
@@ -261,6 +263,7 @@ Page({
     if (!this._heroRestored) {
       this._heroRestored = true
       const cached = getCachedSystemSettings()
+      this.setData({ noticeTicker: cached.noticeTicker || { enabled: false, items: [] }, maintenance: cached.maintenance || this.data.maintenance })
       if (cached.homeHeroCarousel && cached.homeHeroCarousel.enabled) this.applyHeroCarousel(cached.homeHeroCarousel)
     }
     this.loadHeroCarousel()
@@ -271,6 +274,11 @@ Page({
     if (this.data.isHotServicesLooping) {
       this.startHotServicesAutoScroll()
     }
+  },
+
+  showNoticeTickerItem(e) {
+    const text = e.currentTarget.dataset.text
+    if (text) wx.showModal({ title: '平台公告', content: text, showCancel: false })
   },
 
   async loadCommunityGroups() {
@@ -557,9 +565,20 @@ Page({
     this.setData(getThemeState(theme.value))
   },
 
+  showModuleMaintenance(url) {
+    const path = String(url || '').split('?')[0]
+    const module = path === '/pages/client/orders/create/index' ? 'booking'
+      : path === '/pages/client/pet-beauty/activity/index' ? 'petRanking' : ''
+    if (!module || this.data.maintenance?.[module] !== true) return false
+    const label = module === 'booking' ? '预约下单' : '宠物排行榜'
+    wx.showModal({ title: '功能维护', content: `${label}功能暂时不可使用，正在维护中`, showCancel: false })
+    return true
+  },
+
   go(e) {
     const url = e.currentTarget.dataset.url
     if (!url) return
+    if (this.showModuleMaintenance(url)) return
     const pages = getCurrentPages()
     const current = pages[pages.length - 1]
     const currentRoute = current && current.route ? '/' + current.route : ''
@@ -572,6 +591,7 @@ Page({
   goProtected(e) {
     const url = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.url
     if (!url || this._navigatingLock || this.data.protectedNavigationUrl) return
+    if (this.showModuleMaintenance(url)) return
     this._navigatingLock = true
     const requestSeq = this._protectedNavigationSeq = (this._protectedNavigationSeq || 0) + 1
     const isActive = () => this._isPageActive !== false && requestSeq === this._protectedNavigationSeq
@@ -804,6 +824,7 @@ Page({
 
   loadHomePageData() {
     const requestSeq = this._homeDataRequestSeq = (this._homeDataRequestSeq || 0) + 1
+    const settingsSeq = this._displaySettingsRequestSeq = (this._displaySettingsRequestSeq || 0) + 1
     const location = getSelectedLocation()
     const params = location ? { latitude: location.latitude, longitude: location.longitude } : {}
     return callFunction('system', 'getHomePageData', params)
@@ -812,6 +833,7 @@ Page({
         const homePage = homeData.settings && homeData.settings.homePage ? homeData.settings.homePage : this.data.homePage
         const servicePrices = normalizeHomeServicePrices(homeData.servicePrices || [])
         this.setData({
+          ...this.getDisplaySettingsPatch(homeData.settings, settingsSeq),
           homePage: {
             ...homePage,
             modules: { ...defaultModules, ...(homePage.modules || {}) }
@@ -911,11 +933,25 @@ Page({
     this._lotteryFloatTimer = null
   },
 
+  getDisplaySettingsPatch(settings, requestSeq) {
+    if (requestSeq < (this._displaySettingsAppliedSeq || 0)) return {}
+    this._displaySettingsAppliedSeq = requestSeq
+    return {
+      noticeTicker: settings?.noticeTicker || { enabled: false, items: [] },
+      maintenance: settings?.maintenance || this.data.maintenance
+    }
+  },
+
   loadHeroCarousel() {
     const seq = this._heroSettingsRequestSeq = (this._heroSettingsRequestSeq || 0) + 1
+    const settingsSeq = this._displaySettingsRequestSeq = (this._displaySettingsRequestSeq || 0) + 1
     return loadSystemSettings()
       .then((settings) => {
-        if (seq === this._heroSettingsRequestSeq) return this.applyHeroCarousel(settings.homeHeroCarousel)
+        if (seq === this._heroSettingsRequestSeq) {
+          const patch = this.getDisplaySettingsPatch(settings, settingsSeq)
+          if (Object.keys(patch).length) this.setData(patch)
+          return this.applyHeroCarousel(settings.homeHeroCarousel)
+        }
       })
       .catch(() => {
         if (seq === this._heroSettingsRequestSeq) this.setData({ heroLoading: false })
@@ -1016,6 +1052,7 @@ Page({
       const current = pages[pages.length - 1]
       const currentRoute = current && current.route ? '/' + current.route : ''
       const targetPath = targetUrl.split('?')[0]
+      if (this.showModuleMaintenance(targetPath)) return
       if (currentRoute === targetPath) return
 
       const mainNavUrls = [

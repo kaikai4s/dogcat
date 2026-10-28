@@ -100,24 +100,36 @@ function showError(error) {
   if (!message || message.includes('cancel') || message.includes('canceled')) {
     return
   }
+  if (typeof wx !== 'undefined' && typeof wx.hideLoading === 'function') {
+    try { wx.hideLoading() } catch (_) {}
+  }
   const title = isCloudResultExpired(error)
     ? '连接已过期，请重试；如刚返回小程序，请重新打开页面。'
     : message.includes('collection.get') || message.includes('-501003')
     ? '请先在云开发中创建数据库集合并部署 api 云函数'
     : message
-  const shouldUseModal = title.length > 18 || /AI|模型|图片|照片|云开发/.test(title)
+  const shouldUseModal = title.length > 18 || /AI|模型|图片|照片|云开发|失败|拒绝|异常|违规|超额|不可|禁止|冲突|超时/.test(title)
   if (shouldUseModal) {
-    wx.showModal({
-      title: '操作失败',
-      content: title,
-      showCancel: false
-    })
+    if (typeof wx !== 'undefined' && typeof wx.showModal === 'function') {
+      wx.showModal({
+        title: '操作提示',
+        content: title,
+        showCancel: false
+      })
+    }
     return
   }
-  wx.showToast({
-    title,
-    icon: 'none'
-  })
+  if (typeof wx !== 'undefined' && typeof wx.showToast === 'function') {
+    setTimeout(() => {
+      try {
+        wx.showToast({
+          title,
+          icon: 'none',
+          duration: 2500
+        })
+      } catch (_) {}
+    }, 50)
+  }
 }
 
 let loadingBus
@@ -293,6 +305,8 @@ function getCachedSystemSettings() {
     subscription: normalizeSubscriptionConfig(cached.subscription),
     homeHeroCarousel: normalizeHomeHeroCarousel(cached.homeHeroCarousel),
     homePage: normalizeHomePageConfig(cached.homePage),
+    noticeTicker: cached.noticeTicker || { enabled: false, items: [] },
+    maintenance: { petRanking: cached.maintenance?.petRanking === true, booking: cached.maintenance?.booking === true, invitation: cached.maintenance?.invitation === true },
     staffSupplies: cached.staffSupplies || null
   }
 }
@@ -305,6 +319,8 @@ function setCachedSystemSettings(settings) {
     subscription: normalizeSubscriptionConfig(source.subscription),
     homeHeroCarousel: normalizeHomeHeroCarousel(source.homeHeroCarousel),
     homePage: normalizeHomePageConfig(source.homePage),
+    noticeTicker: source.noticeTicker || { enabled: false, items: [] },
+    maintenance: { petRanking: source.maintenance?.petRanking === true, booking: source.maintenance?.booking === true, invitation: source.maintenance?.invitation === true },
     staffSupplies: source.staffSupplies || null
   }
   wx.setStorageSync(SYSTEM_SETTINGS_STORAGE_KEY, normalized)
@@ -563,7 +579,7 @@ function clearPendingInvite() {
 
 function getCurrentUser(options = {}) {
   const cached = getCachedUser()
-  if (cached) return Promise.resolve(cached)
+  if (cached && !options.force) return Promise.resolve(cached)
   if (options.silent !== false && wx.getStorageSync(AUTH_LOGGED_OUT_KEY)) return Promise.resolve(null)
   const action = options.sessionOnly ? 'checkSession' : 'me'
   let pending = pendingUserRequests.get(action)

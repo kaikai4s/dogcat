@@ -1,4 +1,4 @@
-const { callFunction, showError, showLoading, hideLoading, savePendingInvite, ensureLogin } = require('../../../../utils/cloud')
+const { callFunction, showError, showLoading, hideLoading, savePendingInvite, ensureLogin, loadSystemSettings, getCachedSystemSettings } = require('../../../../utils/cloud')
 const { copyText } = require('../../../../utils/clipboard')
 
 const withdrawStatusText = {
@@ -45,6 +45,8 @@ Page({
     loading: false,
     summary: null,
     inviteCode: '',
+    invitationMaintenance: false,
+    maintenanceLoading: true,
     bindCode: '',
     incomingInviteCode: '',
     autoBindingInvite: false,
@@ -67,6 +69,7 @@ Page({
   },
 
   onShow() {
+    this.refreshMaintenance()
     ensureLogin({ content: '登录后可查看资产和邀请收益。' })
       .then(() => this.load())
       .catch(() => {})
@@ -75,11 +78,21 @@ Page({
   async onPullDownRefresh() {
     try {
       await ensureLogin({ content: '登录后可查看资产和邀请收益。' })
+      await this.refreshMaintenance()
       await this.load()
     } catch (_) {
     } finally {
       wx.stopPullDownRefresh()
     }
+  },
+
+  refreshMaintenance() {
+    const cached = getCachedSystemSettings()
+    this.setData({ invitationMaintenance: cached.maintenance?.invitation === true, maintenanceLoading: true })
+    return loadSystemSettings().then((settings) => {
+      this.setData({ invitationMaintenance: settings.maintenance?.invitation === true, maintenanceLoading: false })
+      if (this.data.summary && !this.data.invitationMaintenance) return this.autoBindIncomingInvite(this.data.summary)
+    }).catch(() => this.setData({ maintenanceLoading: false }))
   },
 
   async load() {
@@ -103,7 +116,7 @@ Page({
         invitationShareImageUrl: summary.invitationShareImageUrl || '',
         withdrawAmount: maxAmount > 0 ? maxAmount.toFixed(2) : ''
       })
-      await this.autoBindIncomingInvite(summary)
+      if (!this.data.invitationMaintenance && !this.data.maintenanceLoading) await this.autoBindIncomingInvite(summary)
     } catch (error) {
       showError(error)
     } finally {
@@ -120,10 +133,12 @@ Page({
   },
 
   copyInviteCode() {
+    if (this.data.invitationMaintenance || this.data.maintenanceLoading) return
     copyText(this.data.inviteCode, { successTitle: '邀请码已复制', emptyTitle: '暂无邀请码' })
   },
 
   async autoBindIncomingInvite(summary = {}) {
+    if (this.data.invitationMaintenance || this.data.maintenanceLoading) return
     const inviteCode = String(this.data.incomingInviteCode || '').trim().toUpperCase()
     if (!inviteCode || this.data.autoBindingInvite || summary.inviterOpenid || inviteCode === String(summary.inviteCode || '').trim().toUpperCase()) return
     this.setData({ autoBindingInvite: true })
@@ -278,6 +293,7 @@ Page({
   },
 
   async bindInvite() {
+    if (this.data.invitationMaintenance || this.data.maintenanceLoading) return
     const inviteCode = this.data.bindCode.trim()
     if (!inviteCode) return wx.showToast({ title: '请输入邀请码', icon: 'none' })
     try {
@@ -323,6 +339,7 @@ Page({
   },
 
   onShareAppMessage() {
+    if (this.data.invitationMaintenance || this.data.maintenanceLoading) return { title: '我的资产', path: '/pages/client/profile/assets/index' }
     const code = this.data.inviteCode || ''
     const shareObj = {
       title: '邀请好友注册，领取活动收益',

@@ -61,6 +61,12 @@ module.exports = function createService({
     }
   }
 
+  function normalizeNoticeTicker(value = {}) {
+    const source = value && typeof value === 'object' ? value : {}
+    return { enabled: source.enabled === true,
+      items: (Array.isArray(source.items) ? source.items : []).map((text) => safeText(text).trim()).filter(Boolean).slice(0, 10) }
+  }
+
   function normalizePricingSurcharges(config = {}) {
     const source = typeof config === 'object' && config !== null ? config : {}
     const rawDates = Array.isArray(source.dateSurcharges) ? source.dateSurcharges : []
@@ -270,6 +276,9 @@ module.exports = function createService({
       },
       homeHeroCarousel: normalizeHomeHeroCarousel(value.homeHeroCarousel),
       homePage: normalizeHomePageConfig(value.homePage),
+      noticeTicker: normalizeNoticeTicker(value.noticeTicker === undefined ? existingSettings.noticeTicker : value.noticeTicker),
+      maintenance: Object.fromEntries(['petRanking', 'booking', 'invitation'].map(key =>
+        [key, (value.maintenance?.[key] ?? existingSettings.maintenance?.[key]) === true])),
       payment: normalizePaymentConfig(payment, existingPayment, includeSecrets),
       settlement: {
         staffCommissionRate: Math.min(Math.max(Number(settlement.staffCommissionRate ?? 0.7), 0), 1),
@@ -361,6 +370,13 @@ module.exports = function createService({
   }
 
   async function saveSystemSettings(settings) {
+    if (settings.noticeTicker) {
+      const items = settings.noticeTicker.items
+      if (!Array.isArray(items) || items.length > 10 || items.some((text) => typeof text !== 'string' || !text.trim() || text.trim().length > 120)) {
+        throw new Error('【消息滚动栏】最多发布10条，每条需为1至120字')
+      }
+      if (settings.noticeTicker.enabled && !items.length) throw new Error('【消息滚动栏】开启前请添加消息')
+    }
     if (settings.staffDeposit) {
       const amount = Number(settings.staffDeposit.amount ?? 0)
       // 先验证基本条件，避免 amountYuanToFen 抛出通用错误
@@ -424,6 +440,12 @@ module.exports = function createService({
     const existing = await db.collection('platform_configs').where({ key: 'system_settings' }).limit(1).get()
     const previousValue = existing.data[0] ? existing.data[0].value : {}
     const value = normalizeSystemSettings(settings, { includeSecrets: true, existingSettings: previousValue, existingPayment: previousValue.payment || {} })
+    if (value.staffSupplies.shippingEnabled && (
+      !Number.isFinite(value.staffSupplies.supplyFeeAmount) ||
+      value.staffSupplies.supplyFeeAmount <= 0 ||
+      !value.staffDeposit.enabled ||
+      value.staffSupplies.supplyFeeAmount >= value.staffDeposit.amount
+    )) throw new Error('【首次用品寄送】用品费用必须大于0且小于已启用的保证金金额')
     if (settings.playground) {
       const world = require('./playground-world')
       await db.runTransaction(async tx => {

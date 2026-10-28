@@ -157,6 +157,37 @@ test('saved resident metadata cannot re-list a disabled or deleted maintained co
   assert.equal((await f.playground('a', 'listCommunities')).list.length, 0)
 })
 
+test('deleting a maintained community preserves resident plots but closes every new entrance', async () => {
+  const f = fixture([managed()])
+  const home = { serviceCommunityId: id, name: '阳光小区' }
+  await f.playground('a', 'saveCommunity', { community: home })
+  const sceneId = world.communityId(f.user('a'))
+  const plot = { _id: 'home-a', kind: 'plot', buildingType: 'residential', ownerOpenid: 'a', communityId: sceneId,
+    plotId: 'home-a', x: 30, z: 30, size: 48 }
+  f.db.state.pet_playground_plots = [plot]
+  const deleteCommunity = data => f.context.runAdminRequest('communityMap', 'deleteAdmin', data, () => f.map('admin', 'deleteAdmin', data))
+  await deleteCommunity({ id, editVersion: 1 })
+  assert.equal(f.db.state.platform_configs[0].enabled, false)
+  assert.ok(f.db.state.platform_configs[0].retiredAt)
+  assert.equal(f.db.state.pet_playground_plots.find(row => row._id === plot._id).communityId, sceneId)
+  assert.equal(f.user('a').residentialCommunity.serviceCommunityId, id)
+  assert.equal((await f.playground('b', 'listCommunities')).list.length, 0)
+  assert.equal((await f.playground('a', 'listCommunities')).list.length, 0)
+  assert.equal((await f.playground('a', 'getCommunityInfo', { community: home })).retired, true)
+  await assert.rejects(f.playground('b', 'getCommunityInfo', { community: home }), /已删除/)
+  await assert.rejects(f.playground('b', 'saveCommunity', { community: home }), /停用/)
+  await assert.rejects(f.playground('b', 'enterScene', { community: home }), /已删除/)
+  const result = await f.playground('a', 'enterScene', {})
+  assert.equal(result.scene.sceneId, sceneId)
+  assert.equal(result.scene.communityRetired, true)
+  assert.equal(result.scene.visiting, false)
+  assert.equal(result.scene.plot?.id, plot._id)
+  const auth = require('../../cloudfunctions/api/handlers/auth')(f.context)
+  const unchangedHome = await auth('a', 'updateCommunity', { community: home })
+  assert.equal(unchangedHome.residentialCommunity.serviceCommunityId, id)
+  await assert.rejects(auth('b', 'updateCommunity', { community: home }), /已删除/)
+})
+
 test('incomplete maintained coordinates do not produce selectable rows which fail upon entry', async () => {
   const f = fixture([managed({ latitude: null }), managed({ _id: 'map_community_' + 'd'.repeat(24), latitude: 0, longitude: 0 })])
   assert.equal((await f.playground('a', 'listCommunities')).list.length, 0)

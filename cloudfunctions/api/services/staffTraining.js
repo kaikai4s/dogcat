@@ -1,3 +1,5 @@
+const legacyQuiz = require('../config/legacy-staff-training-quiz')
+
 module.exports = function createService({
   DEFAULT_DISPOSABLE_SUPPLY_ITEMS,
   DEFAULT_STAFF_TRAINING_PASS_SCORE,
@@ -68,15 +70,21 @@ module.exports = function createService({
       return {
         id: safeText(item.id).trim() || `q${index + 1}`,
         type: 'single',
+        category: safeText(item.category).trim(),
         question,
         options,
         answer
       }
     }).filter(Boolean)
 
+    // Upgrade only the untouched legacy five; explicit selections and custom exams stay intact.
+    const shape = rows => rows.map(({ id, question, options, answer }) => ({ id, question, options, answer }))
+    const legacyDefault = !training.quizBankVersion && JSON.stringify(shape(quiz)) === JSON.stringify(shape(legacyQuiz))
+    const effectiveQuiz = quiz.length && !legacyDefault ? quiz : DEFAULT_STAFF_TRAINING_QUIZ
     return {
       passScore,
-      quiz: quiz.length ? quiz : DEFAULT_STAFF_TRAINING_QUIZ,
+      quizBankVersion: 2,
+      quiz: effectiveQuiz.map(item => ({ ...item, options: item.options.map(option => ({ ...option })) })),
       videos: normalizeTrainingVideos(training.videos),
       videoAuditGuide: normalizeVideoAuditGuide(training.videoAuditGuide)
     }
@@ -90,8 +98,8 @@ module.exports = function createService({
     return {
       enabled: deposit.enabled === true && Number.isFinite(Number(deposit.amount)) && Number(deposit.amount) > 0,
       amount: Number.isFinite(Number(deposit.amount)) ? Math.max(Number(deposit.amount || 0), 0) : 0,
-      rulesText: safeText(deposit.rulesText).trim() || '资料审核通过后需支付宠托师保证金；退出宠托师且无未结事项时可申请退还。',
-      refundRulesText: safeText(deposit.refundRulesText).trim() || '退出宠托师时平台审核后按可退余额原路退回。',
+      rulesText: safeText(deposit.rulesText).trim() || '资料审核通过后需支付宠托师保证金；首次用品寄送与费用另行确认。',
+      refundRulesText: safeText(deposit.refundRulesText).trim() || '未确认或未发货的首次用品不收取费用；已发货的按确认时费用及减免审核结果结算。',
       forfeitRulesText: safeText(deposit.forfeitRulesText).trim() || '如出现私单、严重服务违规、虚假打卡等不合规行为，平台可按规则扣除或没收保证金。'
     }
   }
@@ -200,6 +208,8 @@ module.exports = function createService({
 
     return {
       reimbursementEnabled: supplies.reimbursementEnabled !== false,
+      shippingEnabled: supplies.shippingEnabled === true,
+      supplyFeeAmount: normalizeTransferLimit(supplies.supplyFeeAmount === undefined ? 0 : supplies.supplyFeeAmount),
       maxReimbursementAmount: Number.isFinite(Number(supplies.maxReimbursementAmount)) && Number(supplies.maxReimbursementAmount) > 0 ? Number(supplies.maxReimbursementAmount) : 200,
       reimbursementAmount: Number.isFinite(Number(supplies.reimbursementAmount)) && Number(supplies.reimbursementAmount) > 0 ? Math.round(Number(supplies.reimbursementAmount) * 100) / 100 : (Number.isFinite(Number(supplies.maxReimbursementAmount)) && Number(supplies.maxReimbursementAmount) > 0 ? Number(supplies.maxReimbursementAmount) : 200),
       reimbursementMode: ['order_count', 'invite_count', 'either'].includes(safeText(supplies.reimbursementMode).trim()) ? safeText(supplies.reimbursementMode).trim() : 'order_count',

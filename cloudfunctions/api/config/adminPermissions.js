@@ -1,18 +1,18 @@
 const definitions = [
-  ['communityMap', '小区地图', 'communityMap', 'listAdmin:查看公共小区 saveAdmin:维护公共小区 rejectApplication:驳回新增申请'],
+  ['communityMap', '小区地图', 'communityMap', 'listAdmin:查看公共小区 saveAdmin:维护公共小区 deleteAdmin:删除公共小区 rejectApplication:驳回新增申请'],
   ['buildings','乐园建筑与土地','playgroundBuilding','list:查看配置 prepareUpload:上传建筑素材 save:保存建筑 remove:删除建筑 savePlotAccess:配置土地等级'],
   ['farm', '农作物管理', 'playgroundFarm', 'list:查看农作物 prepareUpload:上传阶段素材 save:保存及上下架 remove:删除植物'],
-  ['playground', '乐园形象定制', 'playgroundAppearance', 'listAdmin:申请列表 detailAdmin:查看照片 prepareUpload:上传图集 publish:发布专属形象 reject:退回申请'],
+  ['playground', '乐园形象定制', 'playgroundAppearance', 'listAdmin:申请列表 detailAdmin:查看照片 prepareUpload:上传图集 publish:发布专属形象 reject:退回申请 disableAppearance:作废专属形象 enableAppearance:重新启用专属形象'],
   ['overview', '控制台与通知', 'admin', 'dashboard:查看统计 listAdminNotifications:查看通知 getAdminNotificationBadge:通知角标 markAdminNotificationRead:标记已读 sendSystemNotification:发送系统通知 listSystemNotifications:系统通知列表 revokeSystemNotification:撤回系统通知'],
   ['orders', '服务订单', 'admin', 'listOrders:订单列表 getOrderDetail:订单详情 getEvidence:服务证据 listOrderSessionMessages:查看服务会话记录 assignOrder:派单 updateOrderStatus:修改状态 manualCompleteOrder:人工完单 refundOrder:退款 batchDeleteOrders:删除订单 republishOrderAsUrgent:加急重发 addOrderDepositPenaltyEvidence:录入扣罚证据 listOrderDepositPenaltyEvidences:查看扣罚证据'],
   ['users', '用户资料', 'admin', 'listUsers:用户列表 getUserDetail:用户详情 updateUserProfile:编辑用户 deleteUser:删除用户 hardDeleteUser:彻底删除用户'],
   ['staff', '宠托师', 'admin', 'listStaffProfiles:宠托师列表 setSitterFeatured:推荐设置 listStaffAudits:资质列表 auditStaff:审核资质 completeStaffGender:核实补录性别 revokeStaff:撤销资格 listTrainingAudits:培训列表 auditTrainingVideo:培训审核 updateVideoAuditGuide:审核指引 listPromotionApplications:转正列表 getPromotionApplicationDetail:转正详情 auditPromotionApplication:转正审核'],
-  ['finance', '财务', 'admin', 'financeDashboard:财务看板 listFinanceLogs:资金流水 listPayments:支付单 listRefunds:退款单 listStaffEarnings:收益明细 listWithdrawRequests:提现列表 listUserAssetWithdrawals:用户资产提现列表 getStaffSettlementPreview:结清收益预览 settleStaffEarningsByWechat:结清收益微信转账 createStaffManualTailSettlement:发起人工尾款结清 auditWithdrawRequest:审核提现 auditUserAssetWithdrawal:审核用户资产提现 queryWithdrawTransfer:查询微信提现 retryWithdrawTransfer:重试微信提现 releaseFailedWithdraw:释放失败提现 markWithdrawPaid:确认提现付款 listStaffDeposits:保证金列表 getStaffDepositDetail:保证金详情 batchRequireDepositRepay:要求补缴 requestStaffDepositRefund:发起保证金退还 auditDepositRefund:审核保证金退款 confirmDepositRefund:确认保证金退款 syncDepositRefund:同步保证金原路退款 forfeitStaffDeposit:没收保证金 listSupplyReimbursements:报销列表 auditSupplyReimbursement:审核报销 paySupplyReimbursement:确认报销付款'],
+  ['finance', '财务', 'admin', 'financeDashboard:财务看板 listFinanceLogs:资金流水 listPayments:支付单 listRefunds:退款单 listStaffEarnings:收益明细 listWithdrawRequests:提现列表 listUserAssetWithdrawals:用户资产提现列表 getStaffSettlementPreview:结清收益预览 settleStaffEarningsByWechat:结清收益微信转账 createStaffManualTailSettlement:发起人工尾款结清 auditWithdrawRequest:审核提现 auditUserAssetWithdrawal:审核用户资产提现 queryWithdrawTransfer:查询微信提现 retryWithdrawTransfer:重试微信提现 releaseFailedWithdraw:释放失败提现 markWithdrawPaid:确认提现付款 listStaffDeposits:保证金列表 getStaffDepositDetail:保证金详情 getStaffDepositRefundPreview:退款结算预览 shipStaffSupplies:寄送首次用品 batchRequireDepositRepay:要求补缴 requestStaffDepositRefund:发起保证金退还 auditDepositRefund:审核保证金退款 confirmDepositRefund:确认保证金退款 autoRefundStaffDeposit:自动退还保证金 syncDepositRefund:同步保证金原路退款 forfeitStaffDeposit:没收保证金 listSupplyReimbursements:报销列表 auditSupplyReimbursement:审核报销 paySupplyReimbursement:确认报销付款'],
   ['prices', '服务配置', 'admin', 'listServicePrices:查看价格 saveServicePrice:编辑价格 deleteServicePrice:删除价格 resetDefaultServicePrices:重置价格 listServiceCheckinRules:打卡规则 saveServiceCheckinRules:编辑打卡规则 resetDefaultServiceCheckinRules:重置打卡规则'],
   ['marketing', '营销与会员', 'admin', 'listCouponTemplates:优惠券模板 saveCouponTemplate:编辑优惠券 deleteCouponTemplate:删除优惠券 issueCouponToUser:发放优惠券 issueCouponByLevels:分层发券 listMemberLevels:会员等级 saveMemberLevel:编辑会员等级 deleteMemberLevel:删除会员等级 listPetTitles:宠物头衔 savePetTitle:编辑头衔 deletePetTitle:删除头衔 listPetVaccineCertifications:宠物疫苗审核 auditPetVaccineCertification:审核疫苗认证 grantUserAssetCash:发放用户可提现零钱 grantPoints:调整积分 listPointLogs:积分流水 getCheckinMonthConfig:签到配置 saveCheckinMonthConfig:编辑签到配置 publishRewardMailByLevels:发放奖励 publishRetroCardMail:发放补签卡 publishPetTitleMail:发放头衔 saveLotteryActivity:编辑抽奖 listLotteryActivities:抽奖列表 toggleLotteryActivity:抽奖开关 deleteLotteryActivity:删除抽奖'],
   ['feedback', '反馈', 'admin', 'listFeedback:查看反馈 replyFeedback:回复反馈'],
   ['settings', '系统配置', 'admin', 'getSystemSettings:查看配置 listSubscriptionDeliveries:查看通知投递 retrySubscriptionDelivery:重试通知投递'],
-  ['mall', '商城', 'adminMall', 'listCategories:查看分类 saveCategory:编辑分类 deleteCategory:删除分类 listProducts:商品列表 saveProduct:编辑商品 toggleProductStatus:上下架 listOrders:订单列表 getOrderDetail:订单详情 listExpressCompanies:查看快递公司 queryOrderLogistics:查询订单物流 shipOrder:发货 updateOrderStatus:修改订单 refundOrder:退款 auditRefund:审核售后'],
+  ['mall', '商城', 'adminMall', 'listCategories:查看分类 saveCategory:编辑分类 deleteCategory:删除分类 listProducts:商品列表 saveProduct:编辑商品 toggleProductStatus:上下架 getShopConfig:查看微信小店配置 saveShopConfig:编辑微信小店配置 listOrders:订单列表 getOrderDetail:订单详情 listExpressCompanies:查看快递公司 queryOrderLogistics:查询订单物流 shipOrder:发货 updateOrderStatus:修改订单 refundOrder:退款 auditRefund:审核售后'],
   ['incidents', '纠纷', 'incident', 'listIncidents:纠纷列表 getIncidentDetail:纠纷详情 appendIncidentComment:留言 uploadIncidentEvidence:上传证据 updateIncidentStatus:更新状态 resolveIncident:标记解决 proposeResolution:处理方案 freezeStaffEarning:冻结收益 linkRefund:关联退款 closeIncident:结案扣减'],
   ['payments', '支付与活动维护', 'payment', 'createRefund:发起退款 listRefunds:查看退款 queryRefund:查询退款'],
   ['beauty', '选美活动管理', 'petBeauty', 'settleMonthlyRanking:结算月度排名 disqualifyPetBeautyCandidate:取消参赛资格 reinstatePetBeautyCandidate:恢复参赛资格 grantPetBeautyChampionPrize:发放冠军奖金 syncBeautyPhotoFlags:同步美照状态'],
@@ -39,7 +39,7 @@ const descriptions = {
 }
 const splitGroups = [
   ['withdrawals', '提现审核与微信转账', 'finance', 'listWithdrawRequests listUserAssetWithdrawals getStaffSettlementPreview settleStaffEarningsByWechat createStaffManualTailSettlement auditWithdrawRequest auditUserAssetWithdrawal queryWithdrawTransfer retryWithdrawTransfer releaseFailedWithdraw markWithdrawPaid'],
-  ['deposits', '保证金与扣罚', 'finance', 'listStaffDeposits getStaffDepositDetail batchRequireDepositRepay requestStaffDepositRefund auditDepositRefund confirmDepositRefund syncDepositRefund forfeitStaffDeposit'],
+  ['deposits', '保证金与扣罚', 'finance', 'listStaffDeposits getStaffDepositDetail getStaffDepositRefundPreview shipStaffSupplies batchRequireDepositRepay requestStaffDepositRefund auditDepositRefund confirmDepositRefund autoRefundStaffDeposit syncDepositRefund forfeitStaffDeposit'],
   ['supplies', '用品报销', 'finance', 'listSupplyReimbursements auditSupplyReimbursement paySupplyReimbursement'],
   ['membership', '会员、头衔与疫苗', 'marketing', 'listMemberLevels saveMemberLevel deleteMemberLevel listPetTitles savePetTitle deletePetTitle listPetVaccineCertifications auditPetVaccineCertification publishPetTitleMail'],
   ['rewards', '积分、签到与抽奖', 'marketing', 'grantPoints listPointLogs getCheckinMonthConfig saveCheckinMonthConfig publishRetroCardMail saveLotteryActivity listLotteryActivities toggleLotteryActivity deleteLotteryActivity grantUserAssetCash']
@@ -52,8 +52,10 @@ for (const [id, label, from, names] of splitGroups) {
   source.actions = source.actions.filter(item => !keys.has(item.split(':')[0]))
   groups.splice(groups.indexOf(source) + 1, 0, { id, label, module: source.module, actions })
 }
-const sensitive = new Set(('communityMap.rejectApplication order.checkOverdueOrders staff.checkUpcomingReminders admin.refundOrder admin.batchDeleteOrders admin.deleteUser admin.hardDeleteUser admin.revokeStaff admin.settleStaffEarningsByWechat admin.createStaffManualTailSettlement admin.auditWithdrawRequest admin.auditUserAssetWithdrawal admin.retryWithdrawTransfer admin.releaseFailedWithdraw admin.markWithdrawPaid admin.batchRequireDepositRepay admin.requestStaffDepositRefund admin.auditDepositRefund admin.confirmDepositRefund admin.syncDepositRefund admin.forfeitStaffDeposit admin.auditSupplyReimbursement admin.paySupplyReimbursement admin.grantPoints admin.grantUserAssetCash admin.issueCouponToUser admin.issueCouponByLevels admin.publishRewardMailByLevels admin.publishRetroCardMail admin.publishPetTitleMail admin.resetDefaultServicePrices admin.resetDefaultServiceCheckinRules admin.sendSystemNotification adminMall.refundOrder adminMall.auditRefund incident.freezeStaffEarning incident.closeIncident payment.createRefund petBeauty.settleMonthlyRanking petBeauty.grantPetBeautyChampionPrize questionnaire.retryReward questionnaire.retryAllRewards').split(' '))
+const sensitive = new Set(('communityMap.rejectApplication order.checkOverdueOrders staff.checkUpcomingReminders admin.refundOrder admin.batchDeleteOrders admin.deleteUser admin.hardDeleteUser admin.revokeStaff admin.settleStaffEarningsByWechat admin.createStaffManualTailSettlement admin.auditWithdrawRequest admin.auditUserAssetWithdrawal admin.retryWithdrawTransfer admin.releaseFailedWithdraw admin.markWithdrawPaid admin.batchRequireDepositRepay admin.requestStaffDepositRefund admin.auditDepositRefund admin.confirmDepositRefund admin.autoRefundStaffDeposit admin.shipStaffSupplies admin.syncDepositRefund admin.forfeitStaffDeposit admin.auditSupplyReimbursement admin.paySupplyReimbursement admin.grantPoints admin.grantUserAssetCash admin.issueCouponToUser admin.issueCouponByLevels admin.publishRewardMailByLevels admin.publishRetroCardMail admin.publishPetTitleMail admin.resetDefaultServicePrices admin.resetDefaultServiceCheckinRules admin.sendSystemNotification adminMall.refundOrder adminMall.auditRefund incident.freezeStaffEarning incident.closeIncident payment.createRefund petBeauty.settleMonthlyRanking petBeauty.grantPetBeautyChampionPrize questionnaire.retryReward questionnaire.retryAllRewards').split(' '))
+sensitive.add('communityMap.deleteAdmin')
 const details = {
+  'communityMap.deleteAdmin': '从公开目录删除小区，阻止新访客及新住户进入，保留原住户庄园并持续提醒搬迁。',
   'communityMap.rejectApplication': '填写原因并永久驳回新增小区申请，通过系统通知告知原申请人；同一小区不再接受申请。',
   'admin.dashboard': '查看全平台订单数量、待审核数量及经营汇总，包含跨业务统计。',
   'admin.getAdminNotificationBadge': '查看后台通知未读数及紧急待办摘要。',
@@ -111,8 +113,9 @@ depend('admin.queryWithdrawTransfer admin.retryWithdrawTransfer admin.releaseFai
 depend('admin.auditUserAssetWithdrawal', 'admin.listUserAssetWithdrawals')
 depend('admin.settleStaffEarningsByWechat', 'admin.getStaffSettlementPreview admin.listWithdrawRequests admin.queryWithdrawTransfer')
 depend('admin.createStaffManualTailSettlement', 'admin.getStaffSettlementPreview admin.listStaffProfiles admin.listWithdrawRequests')
-depend('admin.requestStaffDepositRefund admin.auditDepositRefund admin.confirmDepositRefund admin.syncDepositRefund admin.forfeitStaffDeposit admin.getStaffDepositDetail', 'admin.listStaffDeposits')
+depend('admin.requestStaffDepositRefund admin.auditDepositRefund admin.confirmDepositRefund admin.syncDepositRefund admin.forfeitStaffDeposit admin.getStaffDepositDetail admin.getStaffDepositRefundPreview admin.autoRefundStaffDeposit admin.shipStaffSupplies', 'admin.listStaffDeposits')
 depend('admin.batchRequireDepositRepay', 'admin.listStaffProfiles')
+depend('admin.requestStaffDepositRefund admin.auditDepositRefund admin.autoRefundStaffDeposit', 'admin.getStaffDepositRefundPreview')
 depend('admin.auditSupplyReimbursement admin.paySupplyReimbursement', 'admin.listSupplyReimbursements')
 depend('admin.saveServiceCheckinRules admin.resetDefaultServiceCheckinRules', 'admin.listServicePrices admin.listServiceCheckinRules')
 depend('admin.grantPoints admin.publishRetroCardMail', 'admin.listPointLogs')
@@ -126,6 +129,7 @@ depend('admin.sendSystemNotification admin.revokeSystemNotification', 'admin.lis
 depend('admin.retrySubscriptionDelivery', 'admin.getSystemSettings admin.listSubscriptionDeliveries')
 depend('adminMall.shipOrder adminMall.updateOrderStatus adminMall.refundOrder adminMall.auditRefund adminMall.queryOrderLogistics', 'adminMall.listOrders')
 depend('adminMall.saveProduct adminMall.toggleProductStatus adminMall.saveCategory adminMall.deleteCategory', 'adminMall.listProducts adminMall.listCategories')
+depend('adminMall.saveShopConfig', 'adminMall.getShopConfig adminMall.listProducts')
 depend('questionnaire.create', 'questionnaire.listAdmin')
 depend('questionnaire.update questionnaire.publish questionnaire.close questionnaire.delete questionnaire.clone questionnaire.responses questionnaire.detailAdmin', 'questionnaire.listAdmin')
 depend('questionnaire.update questionnaire.responses questionnaire.analyzeAI questionnaire.getAiReport', 'questionnaire.listAdmin questionnaire.detailAdmin')
@@ -135,7 +139,7 @@ depend('admin.listSubscriptionDeliveries', 'admin.getSystemSettings')
 depend('admin.listSystemNotifications', 'admin.listAdminNotifications')
 depend('admin.listServiceCheckinRules', 'admin.listServicePrices')
 depend('playgroundAppearance.detailAdmin', 'playgroundAppearance.listAdmin')
-depend('playgroundAppearance.prepareUpload playgroundAppearance.publish playgroundAppearance.reject', 'playgroundAppearance.listAdmin playgroundAppearance.detailAdmin')
+depend('playgroundAppearance.prepareUpload playgroundAppearance.publish playgroundAppearance.reject playgroundAppearance.disableAppearance playgroundAppearance.enableAppearance', 'playgroundAppearance.listAdmin playgroundAppearance.detailAdmin')
 depend('incident.getIncidentDetail', 'incident.listIncidents')
 depend('incident.updateIncidentStatus incident.proposeResolution incident.linkRefund incident.freezeStaffEarning incident.appendIncidentComment incident.closeIncident', 'incident.listIncidents incident.getIncidentDetail')
 depend('adminMall.getOrderDetail', 'adminMall.listOrders')

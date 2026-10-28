@@ -93,7 +93,7 @@ admin.financeDashboard 调用 financeAggregation，不再读取六个集合的�
 staffFunds 将保证金缴纳、退出申请、退款审批、实际退款确认、没收及报销申请/审批/付款确认迁入事务。财务记录、资料状态、资金流水及相应审计记录一起提交；迟到的缴纳回调不会恢复已经退还或没收的余额。
 
 - 保证金退款分为 requested -> approved（status 为 refund_approved）-> success。审核通过不扣余额、不增加 refundedAmount、不记退款支出；管理员实际付款并核对凭证后，调用 confirmDepositRefund，必须提供 paymentConfirmed: true 和非空 paymentReference。这只是人工账务确认，不发起网关退款，也不自动验证凭证真实性。
-- 没收仅允许 paid/partially_refunded 且没有待审核/待执行退款的记录。按分校验 paidAmount = refundedAmount + forfeitedAmount + availableRefundAmount，余额异常停止处理。没收必须带 clientRequestId；同请求同参数只扣一次，异参拒绝。前端网络失败会保存原请求号，重试同金额同原因复用，成功后清除。
+- 没收仅允许 paid/partially_refunded 且没有待审核/待执行退款的记录。按分校验 paidAmount = refundedAmount + forfeitedAmount + supplyFeeDeductedAmount + availableRefundAmount，余额异常停止处理。已确认规则且已发货的首次用品，在退出退款审核时按确认时的费用快照结算；减免申请待审先暂停，审核通过不扣用品费用。未确认或未发货不扣，旧已缴用户须主动确认才适用新规则。没收必须带 clientRequestId；同请求同参数只扣一次，异参拒绝。前端网络失败会保存原请求号，重试同金额同原因复用，成功后清除。
 - 退出申请在事务中重新读取保证金、用户和资料，更新与 orderAssignment 共用的用户 staffAssignmentRevision，以约束新接单竞争。未完成订单、未结纠纷使用状态过滤后 limit(1)，不再读取前 100 条历史记录后过滤；包含 day_completed、waiting_client、waiting_staff、triaging、refund_pending 等状态。
 - 同一员工首次报销使用固定申请 ID，并事务写入资料中的 supplyApplicationId，防止并发重复申请；兼容查询历史随机 ID 记录。审批金额须为有效分精度正数，不超过申请金额，不再把非法审批金额静默替换为全额。
 - paySupplyReimbursement 同样要求实际付款确认及凭证号，只记录 MANUAL_CONFIRMED，不伪造微信 SUCCESS。审批通过本身不生成 WAIT_USER_CONFIRM；只有真实待确认状态及 transferPackageInfo 齐全时，前端才显示微信收款确认入口。

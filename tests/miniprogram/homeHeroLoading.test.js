@@ -58,6 +58,28 @@ test('home loads hero independently while the aggregate home request is still pe
   assert.equal(ctx.page.data.heroCarouselEnabled, true, 'a slow aggregate response cannot overwrite fresh hero settings')
 })
 
+test('home notices and maintenance cannot be overwritten by an older settings response', async () => {
+  const newerHome = setup()
+  newerHome.page.loadHeroCarousel()
+  newerHome.page.loadHomePageData()
+  newerHome.home.resolve({ settings: { noticeTicker: { enabled: true, items: ['新公告'] }, maintenance: { booking: true } } })
+  await flush()
+  newerHome.settings.resolve({ noticeTicker: { enabled: true, items: ['旧公告'] }, maintenance: { booking: false }, homeHeroCarousel: {} })
+  await flush()
+  assert.equal(newerHome.page.data.noticeTicker.items[0], '新公告')
+  assert.equal(newerHome.page.data.maintenance.booking, true)
+
+  const newerSettings = setup()
+  newerSettings.page.loadHomePageData()
+  newerSettings.page.loadHeroCarousel()
+  newerSettings.settings.resolve({ noticeTicker: { enabled: true, items: ['新公告'] }, maintenance: { booking: true }, homeHeroCarousel: {} })
+  await flush()
+  newerSettings.home.resolve({ settings: { noticeTicker: { enabled: true, items: ['旧公告'] }, maintenance: { booking: false } } })
+  await flush()
+  assert.equal(newerSettings.page.data.noticeTicker.items[0], '新公告')
+  assert.equal(newerSettings.page.data.maintenance.booking, true)
+})
+
 test('a recreated home displays reusable signed URLs synchronously and keeps links before refreshing', async () => {
   const storage = {}
   const first = setup({ storage })
@@ -130,5 +152,37 @@ test('home service price cards have uniform height and clamp long title text', (
   assert.match(wxss, /\.service-price-name\s*\{[^}]*height:\s*76rpx;/)
   assert.match(wxss, /\.service-price-name\s*\{[^}]*-webkit-line-clamp:\s*2;/)
   assert.match(wxss, /\.service-price-text\s*\{[^}]*margin-top:\s*auto;/)
+})
+
+test('newbie coupon action stays inside narrow scroll cards without native button minimum sizing', () => {
+  const wxml = fs.readFileSync(path.join(root, 'pages/client/home/index.wxml'), 'utf8')
+  const wxss = fs.readFileSync(path.join(root, 'pages/client/home/index.wxss'), 'utf8')
+  assert.match(wxml, /<view class="coupon-claim-btn [^\"]*"[^>]*bindtap="claimNewbieCoupon"><text class="coupon-claim-label">/)
+  assert.doesNotMatch(wxml, /<button class="coupon-claim-btn/)
+  assert.match(wxss, /\.coupon-claim-btn\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0;[^}]*max-width:\s*100%;/)
+  assert.match(wxss, /\.coupon-claim-label\s*\{[^}]*max-width:\s*100%;[^}]*text-overflow:\s*ellipsis;/)
+})
+
+test('home only shows real newbie coupons and keeps the fixed card layout', async () => {
+  const pageScript = fs.readFileSync(path.join(root, 'pages/client/home/index.js'), 'utf8')
+  const wxml = fs.readFileSync(path.join(root, 'pages/client/home/index.wxml'), 'utf8')
+  assert.doesNotMatch(pageScript, /couponPreview|NEWBIE_COUPON_PREVIEW|canPreviewNewbieCoupons/)
+  assert.doesNotMatch(wxml, /预览效果|开发版样式预览/)
+  assert.match(wxml, /wx:if="\{\{homePage\.modules\.newbieCoupon && coupons\.length\}\}"/)
+  assert.match(wxml, /class="coupon-claim-btn [^\"]*"[^>]*bindtap="claimNewbieCoupon"/)
+
+  const empty = setup()
+  empty.page.onShow()
+  assert.equal(empty.page.data.coupons.length, 0)
+  empty.home.resolve({ settings: {}, coupons: [] })
+  await flush()
+  assert.equal(empty.page.data.coupons.length, 0)
+
+  const real = setup()
+  real.page.loadHomePageData()
+  real.home.resolve({ settings: {}, coupons: [{ _id: 'real-coupon', name: '新人券', discountAmount: 10 }] })
+  await flush()
+  assert.equal(real.page.data.coupons.length, 1)
+  assert.equal(real.page.data.coupons[0]._id, 'real-coupon')
 })
 

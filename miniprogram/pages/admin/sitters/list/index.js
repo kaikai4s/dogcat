@@ -8,12 +8,16 @@ const statusTabs = [
   { label: '已通过', value: 'approved' },
   { label: '待审核', value: 'pending' },
   { label: '未通过', value: 'rejected' },
-  { label: '已移除', value: 'revoked' }
+  { label: '已移除', value: 'revoked' },
+  { label: '零保证金·可移除', value: 'can_revoke' }
 ]
 
 function withDisplay(profile, selectedIds = []) {
   const reviewCount = Number(profile.reviewCount || 0)
   const depositBalance = profile.depositBalance != null ? Number(profile.depositBalance) : 0
+  const canRevokeStaff = profile.canRevokeStaff !== undefined
+    ? Boolean(profile.canRevokeStaff)
+    : (profile.auditStatus === 'approved' && depositBalance <= 0)
   return {
     ...profile,
     depositId: profile.depositId || '',
@@ -33,7 +37,7 @@ function withDisplay(profile, selectedIds = []) {
     })),
     featuredActionText: profile.isFeatured ? '取消精选' : '设为精选',
     actionText: profile.auditStatus === 'pending' ? '去审核' : '查看资料',
-    canRevokeStaff: profile.auditStatus === 'approved',
+    canRevokeStaff,
     avatarText: (profile.userNickname || profile.realName || '托').slice(0, 1),
     expanded: false,
     selected: selectedIds.includes(profile._id)
@@ -54,6 +58,7 @@ Page({
     maxDeposit: '',
     hasViolations: '', // '' (全部) | 'yes' (仅有违规) | 'no' (无违规)
     requireRepayStatus: '', // '' (全部) | 'yes' (需补缴) | 'no' (正常)
+    canRevokeStatus: '', // '' (全部) | 'yes' (保证金为0·可移除) | 'no' (不可移除)
     showFilterPanel: false,
     selectedIds: [],
     selectedProfiles: [],
@@ -79,7 +84,13 @@ Page({
     settlementStaffId: '',
     settlementProgress: '',
     settlementResumeStaffId: '',
-    depositRefundBusy: false
+    depositRefundBusy: false,
+    showDepositRefundModal: false,
+    depositRefundPreview: null,
+    depositRefundPreviewLoading: false,
+    depositRefundError: '',
+    depositRefundReason: '',
+    depositRefundStaff: null
   },
 
     onPullDownRefresh() {
@@ -97,6 +108,7 @@ Page({
 
   onUnload() {
     this._settlementPageUnloaded = true
+    this._depositRefundPreviewVersion = (this._depositRefundPreviewVersion || 0) + 1
   },
 
   loadDepositConfig() {
@@ -121,6 +133,7 @@ Page({
     callFunction('admin', 'listStaffProfiles', {
       keyword: this.data.keyword,
       auditStatus: this.data.auditStatus,
+      canRevoke: this.data.canRevokeStatus,
       minDeposit: this.data.minDeposit,
       maxDeposit: this.data.maxDeposit,
       hasViolations: this.data.hasViolations,
@@ -185,12 +198,18 @@ Page({
     this.setData({ requireRepayStatus: val })
   },
 
+  selectCanRevokeFilter(e) {
+    const val = e.currentTarget.dataset.value || ''
+    this.setData({ canRevokeStatus: val })
+  },
+
   resetFilter() {
     this.setData({
       minDeposit: '',
       maxDeposit: '',
       hasViolations: '',
-      requireRepayStatus: ''
+      requireRepayStatus: '',
+      canRevokeStatus: ''
     })
     this.load({ reset: true })
   },
@@ -558,7 +577,15 @@ Page({
       if (error.code === 'STAFF_SETTLEMENT_REVIEW_REQUIRED') wx.removeStorageSync(storageKey)
       if (!this._settlementPageUnloaded) {
         this.setData({ settlementResumeStaffId: error.code === 'STAFF_SETTLEMENT_REVIEW_REQUIRED' ? '' : staffProfileId })
-        showError(error)
+        if (operation && operation.batchIndex > 0) {
+          wx.showModal({
+            title: '部分转账已发起',
+            content: `前 ${operation.batchIndex} 笔转账已成功发起；后续批次因提示“${error.message || '网络或商户额度受限'}”暂停。未完成的批次可在财务管理处理或稍后点击继续结清，不会重复打款。`,
+            showCancel: false
+          })
+        } else {
+          showError(error)
+        }
       }
     } finally {
       if (!this._settlementPageUnloaded) {
@@ -629,24 +656,87 @@ Page({
   },
 
   async refundDeposit(e) {
-    if (this.data.depositRefundBusy) return
+    if (this.data.depositRefundBusy || this.data.depositRefundPreviewLoading) return
     const item = e.currentTarget.dataset.item
     if (!item?.depositId) return
-    const response = await new Promise(resolve => wx.showModal({
-      title: '发起退还保证金', editable: true, placeholderText: '请填写退还原因（最多200字）',
-      content: `可退余额 ${item.depositBalanceText}。本操作提交退款审核。微信支付的保证金审核通过后自动发起原路退款，其他渠道需实际退款并登记凭证；退出前须结清收益。`,
-      confirmText: '提交审核', success: resolve, fail: () => resolve({ confirm: false })
-    }))
-    if (!response.confirm || this.data.depositRefundBusy) return
-    const reason = String(response.content || '').trim()
-    if (!reason || reason.length > 200) return wx.showToast({ title: '请填写退还原因，最多200字', icon: 'none' })
-    this.setData({ depositRefundBusy: true })
+    this.setData({ showDepositRefundModal: true, depositRefundStaff: item, depositRefundReason: '', depositRefundPreview: null, depositRefundError: '' })
+    await this.refreshDepositRefundPreview()
+  },
+
+  async refreshDepositRefundPreview() {
+    const item = this.data.depositRefundStaff
+    if (this.data.depositRefundBusy || this.data.depositRefundPreviewLoading || !this.data.showDepositRefundModal || !item?.depositId) return
+    const version = this._depositRefundPreviewVersion = (this._depositRefundPreviewVersion || 0) + 1
+    this.setData({ depositRefundPreviewLoading: true, depositRefundError: '' })
     try {
+      const preview = await callFunction('admin', 'getStaffDepositRefundPreview', { id: item.depositId })
+      if (version !== this._depositRefundPreviewVersion || this._settlementPageUnloaded || !this.data.showDepositRefundModal) return
+      this.setData({ depositRefundPreview: this.formatDepositRefundPreview(preview) })
+    } catch (error) {
+      if (version === this._depositRefundPreviewVersion && !this._settlementPageUnloaded && this.data.showDepositRefundModal) this.setData({ depositRefundError: error.message || '结算状态读取失败，请重试' })
+    } finally {
+      if (version === this._depositRefundPreviewVersion && !this._settlementPageUnloaded) this.setData({ depositRefundPreviewLoading: false })
+    }
+  },
+
+  formatDepositRefundPreview(preview) {
+    const view = { ...preview }
+    for (const field of ['availableRefundAmount', 'supplyFeeAmount', 'supplyFeeDeductedAmount', 'supplyFeeDue', 'estimatedRefundAmount']) {
+      view[`${field}Text`] = preview[field] == null ? '待核定' : Number(preview[field]).toFixed(2)
+    }
+    return view
+  },
+
+  closeDepositRefundModal() {
+    if (this.data.depositRefundBusy) return
+    this._depositRefundPreviewVersion = (this._depositRefundPreviewVersion || 0) + 1
+    this.setData({ showDepositRefundModal: false, depositRefundPreviewLoading: false })
+  },
+
+  viewDepositRefundFinance() {
+    const staff = this.data.depositRefundStaff
+    if (!staff || this.data.depositRefundBusy) return
+    this.closeDepositRefundModal()
+    wx.navigateTo({ url: `/pages/admin/finance/index?tab=deposits&staffOpenid=${encodeURIComponent(staff.openid || '')}` })
+  },
+
+  viewDepositReimbursement() {
+    const staff = this.data.depositRefundStaff
+    if (!staff || this.data.depositRefundBusy) return
+    this.closeDepositRefundModal()
+    wx.navigateTo({ url: `/pages/admin/finance/index?tab=supplies&staffOpenid=${encodeURIComponent(staff.openid || '')}` })
+  },
+
+  noop() {},
+
+  inputDepositRefundReason(e) {
+    this.setData({ depositRefundReason: e.detail.value })
+  },
+
+  async submitDepositRefund() {
+    if (this.data.depositRefundBusy || this.data.depositRefundPreviewLoading || !this.data.showDepositRefundModal || !this.data.depositRefundPreview || this.data.depositRefundPreview.blocked || this.data.depositRefundPreview.canRequestRefund === false) return
+    const item = this.data.depositRefundStaff
+    const reason = String(this.data.depositRefundReason || '').trim()
+    if (!reason || reason.length > 200) return wx.showToast({ title: '请填写退还原因，最多200字', icon: 'none' })
+    this.setData({ depositRefundBusy: true, depositRefundError: '' })
+    try {
+      const preview = await callFunction('admin', 'getStaffDepositRefundPreview', { id: item.depositId })
+      if (this._settlementPageUnloaded) return
+      const previous = this.data.depositRefundPreview
+      this.setData({ depositRefundPreview: this.formatDepositRefundPreview(preview) })
+      if (preview.blocked) throw new Error(preview.blockedReason)
+      if (preview.canRequestRefund === false) throw new Error('该笔保证金已进入退款流程或已结清，请查看财务处理进度')
+      if (preview.estimatedRefundAmount !== previous.estimatedRefundAmount || preview.reimbursementStatus !== previous.reimbursementStatus) {
+        throw new Error('报销状态或退款金额已更新，请核对明细后重新提交')
+      }
       await callFunction('admin', 'requestStaffDepositRefund', { id: item.depositId, reason })
-      wx.showToast({ title: '已提交退款审核' })
-      wx.navigateTo({ url: `/pages/admin/finance/index?tab=deposits&action=refund&staffOpenid=${encodeURIComponent(item.openid)}` })
-    } catch (error) { showError(error) }
-    finally { this.setData({ depositRefundBusy: false }); this.load({ reset: true }) }
+      if (this._settlementPageUnloaded) return
+      this.setData({ showDepositRefundModal: false })
+      wx.showToast({ title: '已提交退款审核', icon: 'none' })
+      this.load({ reset: true })
+    } catch (error) {
+      if (!this._settlementPageUnloaded) this.setData({ depositRefundError: error.message || '提交失败，请刷新核对后重试' })
+    } finally { if (!this._settlementPageUnloaded) this.setData({ depositRefundBusy: false }) }
   },
 
   viewStaffFinance(e) {
@@ -656,6 +746,24 @@ Page({
   revokeStaff(e) {
     const staffProfileId = e.currentTarget.dataset.id
     if (!staffProfileId) return
+    const profile = (this.data.profiles || []).find((p) => p._id === staffProfileId)
+    if (profile && profile.canRevokeStaff === false) {
+      let reason = '该宠托师尚有未结清款项，无法直接移除身份。'
+      if (profile.depositBalance > 0) {
+        reason = `该宠托师保证金尚未结清（余额 ${profile.depositBalanceText}），请先退还或扣除保证金。`
+      } else if (profile.hasUnsettledDeposit) {
+        reason = '该宠托师存在待处理或审核中的保证金记录，请先在财务管理完成处理后再移除。'
+      } else if (profile.withdrawableAmount > 0) {
+        reason = `该宠托师尚有可提现收益 ${profile.withdrawableAmountText}，请先使用“收益转账结清”发起商家转账。`
+      }
+      wx.showModal({
+        title: '无法移除身份',
+        content: reason,
+        showCancel: false,
+        confirmText: '我知道了'
+      })
+      return
+    }
     wx.showModal({
       title: '移除宠托师身份',
       content: '确认后该用户会失去宠托师角色和接单资格。请先用“收益转账结清”发起商家微信转账，并处理保证金退还。仍有待结算、冻结或未到账资金时不能移除；历史收益账目会保留。',

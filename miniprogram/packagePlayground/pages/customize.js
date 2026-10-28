@@ -2,7 +2,7 @@ const {callFunction,ensureLogin,showError}=require('../../utils/cloud')
 const {choosePhotos,uploadFile,STATUS_TEXT}=require('../utils/playgroundAppearanceUpload')
 const {formatDateTime}=require('../../utils/format')
 Page({
-  data:{loading:true,busy:false,progress:'',targets:[],targetIndex:0,photos:[],remark:'',applications:[],cursor:'',hasMore:false,error:''},
+  data:{loading:true,busy:false,progress:'',targets:[],targetIndex:0,photos:[],remark:'',applications:[],cursor:'',hasMore:false,error:'',eligibility:null},
   onLoad(query={}) {this.initialPetId=query.petId||''},
   onShow() {this.closed=false;ensureLogin({content:'登录后申请专属形象。'}).then(()=>this.load()).catch(showError)},
   onUnload() {this.closed=true;this.loadToken=(this.loadToken||0)+1},
@@ -15,7 +15,7 @@ Page({
       const targets=[{id:'character',targetType:'character',name:'我的角色',label:'我的角色'},...(options.pets||[]).map((pet)=>({...pet,targetType:'pet',label:`宠物 · ${pet.name}（${pet.species==='cat'?'猫咪':'狗狗'} · ${pet.id.slice(-4)}）`}))]
       const previous=this.data.targets[this.data.targetIndex]
       const selected=targets.findIndex((t)=>t.id===(previous?previous.id:this.initialPetId))
-      this.setData({targets,targetIndex:Math.max(0,selected),applications:this.decorate(requests.list),cursor:requests.nextCursor,hasMore:!!requests.nextCursor})
+      this.setData({targets,targetIndex:Math.max(0,selected),eligibility:options.eligibility||null,applications:this.decorate(requests.list),cursor:requests.nextCursor,hasMore:!!requests.nextCursor})
     } catch(error) {if(!this.closed&&token===this.loadToken)this.setData({error:error.message||'申请加载失败'})}
     finally {if(!this.closed&&token===this.loadToken)this.setData({loading:false})}
   },
@@ -45,6 +45,7 @@ Page({
     if(this.data.busy)return
     const choice=this.data.targets[this.data.targetIndex],photos=[...this.data.photos],remark=this.data.remark
     if(!choice||!photos.length)return showError(new Error('请选择定制对象，并至少上传一张清晰照片'))
+    if(this.data.eligibility&&!this.data.eligibility.canApply)return showError(new Error(this.data.eligibility.unavailableReason||'暂未满足专属形象定制申请条件'))
     this.setData({busy:true,progress:'正在创建申请…'})
     try {
       const draft=await callFunction('playgroundAppearance','createDraft',{targetType:choice.targetType,petId:choice.targetType==='pet'?choice.id:''})

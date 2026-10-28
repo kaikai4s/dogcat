@@ -104,8 +104,9 @@ module.exports = function createService({
       isSimulated: false, provider: 'juhe', message: traces.length ? '' : '暂未查询到物流轨迹，请稍后再试' }
   }
 
-  async function queryOrderLogistics(order) {
+  async function queryOrderLogistics(order, collectionName = 'mall_orders') {
     if (!order) throw new Error('订单不存在')
+    if (!['mall_orders', 'staff_deposits'].includes(collectionName)) throw new Error('物流记录类型不支持')
     if (!order.trackingNo) return { hasLogistics: false, message: '订单尚未发货，暂无物流信息' }
     const company = normalizeExpressCompany(order.expressCompany)
     const settings = typeof getSystemSettings === 'function' ? await getSystemSettings({ includeSecrets: true }) : {}
@@ -115,7 +116,8 @@ module.exports = function createService({
       trackingNo: order.trackingNo, statusCode: 'pending', stateText: '暂无轨迹', isDelivered: false, traces: [], isSimulated: false, provider }
     if (config.enabled === false) return { ...base, message: '物流查询暂未开启，请稍后再试' }
     // Never reuse simulated records or records belonging to a previous carrier/tracking number.
-    const cache = order.logisticsCache
+    const cacheField = collectionName === 'staff_deposits' ? 'supplyLogisticsCache' : 'logisticsCache'
+    const cache = order[cacheField]
     if (cache && cache.isSimulated === false && cache.provider === provider && cache.trackingNo === order.trackingNo && cache.companyCode === company.code && sameShipment(order, cache.shipment)) {
       const age = new Date(now()).getTime() - new Date(cache.updatedAt || 0).getTime()
       if (age >= 0 && (age < 30 * 60 * 1000 || cache.isDelivered)) return { ...base, ...cache }
@@ -140,10 +142,15 @@ module.exports = function createService({
     if (!result) return { ...base, message: '暂未获取到物流信息，请稍后重试' }
     if (result.traces.length) {
       const cached = await db.runTransaction(async tx => {
-        const latest = await readOptionalDocument(tx, 'mall_orders', order._id)
-        if (!sameShipment(latest, order)) return false
-        await tx.collection('mall_orders').doc(order._id).update({ data: {
-          logisticsCache: { ...result, shipment: shipmentIdentity(order), updatedAt: now() }
+        const latest = await readOptionalDocument(tx, collectionName, order._id)
+        const currentShipment = collectionName === 'staff_deposits' ? {
+          trackingNo: latest?.supplyShipment?.trackingNo,
+          expressCompany: latest?.supplyShipment?.expressCompany,
+          shippedAt: latest?.supplyShipment?.shippedAt
+        } : latest
+        if (!sameShipment(currentShipment, order)) return false
+        await tx.collection(collectionName).doc(order._id).update({ data: {
+          [cacheField]: { ...result, shipment: shipmentIdentity(order), updatedAt: now() }
         } })
         return true
       }).catch(() => null)

@@ -795,3 +795,22 @@
 
 
 
+
+/* Compact question summaries keep the 50-question bank manageable on phones. */
+.quiz-bank-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 16rpx; margin: 18rpx 0; }
+.quiz-bank-toolbar button { margin: 0; }
+.quiz-bank-panel { padding: 22rpx; border: 1rpx solid #cce0d8; border-radius: 20rpx; background: #f3f8f5; margin-bottom: 22rpx; }
+.quiz-bank-search { margin-top: 20rpx; }
+.quiz-bank-list { max-height: 700rpx; height: 600rpx; margin-bottom: 20rpx; }
+.quiz-bank-item { padding: 22rpx 0; border-bottom: 1rpx solid #dce8e2; }
+.quiz-bank-item-main { display: flex; align-items: flex-start; gap: 10rpx; }
+.quiz-bank-item-main > view { flex: 1; min-width: 0; }
+.quiz-bank-category { color: #61756b; font-size: 22rpx; }
+.quiz-bank-question, .quiz-summary-title { color: #233c32; font-size: 27rpx; line-height: 1.6; word-break: break-all; }
+.quiz-bank-preview { padding: 12rpx 0 0 58rpx; font-size: 24rpx; line-height: 1.7; color: #52635c; }
+.quiz-bank-answer { color: #286d52; font-weight: 600; margin-top: 8rpx; }
+.quiz-bank-empty { padding: 48rpx 16rpx; text-align: center; color: #78877f; }
+.quiz-summary { flex: 1; min-width: 0; }
+.quiz-expand-label { color: #327a65; font-size: 23rpx; }
+.quiz-editor-body { border-top: 1rpx solid #e1e8e4; padding-top: 18rpx; }
+.quiz-question-textarea { width: 100%; box-sizing: border-box; min-height: 100rpx; }

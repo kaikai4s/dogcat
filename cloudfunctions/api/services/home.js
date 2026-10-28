@@ -227,6 +227,8 @@ module.exports = function createService({
       settings: {
         homeHeroCarousel: settings.homeHeroCarousel,
         homePage: settings.homePage,
+        noticeTicker: settings.noticeTicker,
+        maintenance: settings.maintenance,
         petBeautyContestEnabled: settings.petBeautyContest?.enabled !== false
       },
       servicePrices: servicePrices.filter((item) => item.key !== VISIT_FEE_SERVICE_KEY && item.enabled !== false && item.showOnHome === true).slice(0, 6).map((item) => ({

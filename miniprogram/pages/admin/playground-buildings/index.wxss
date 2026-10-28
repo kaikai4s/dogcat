@@ -84,6 +84,12 @@
   box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.04);
 }
 
+.plot-access-content { width: 100%; min-width: 0; }
+.plot-level-row { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; padding: 10rpx 0; }
+.plot-level-label { display: flex; align-items: center; gap: 8rpx; font-size: 26rpx; }
+.plot-level-count { display: flex; align-items: center; gap: 8rpx; font-size: 24rpx; }
+.plot-level-count input { width: 94rpx; height: 54rpx; padding: 0 10rpx; border: 1rpx solid #c4d5bf; border-radius: 6rpx; text-align: center; }
+
 .card-image-wrap {
   width: 140rpx;
   height: 140rpx;

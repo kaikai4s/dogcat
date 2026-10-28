@@ -37,6 +37,61 @@
     <view class="todo-action">去审核</view>
   </view>
 
+  <!-- 骨架预加载区域：在刚进入页面尚未获取到数据时展示，高保真占位避免页面突然撑开跳动 -->
+  <block wx:if="{{dashboardLoading && !dashboard}}">
+    <!-- 6 宫格核心指标骨架屏 -->
+    <view class="stats-grid admin-stats-grid skeleton-stats-grid">
+      <view class="stat-card skeleton-stat-card" wx:for="{{[1, 2, 3, 4, 5, 6]}}" wx:key="*this">
+        <view class="skeleton-shimmer skeleton-stat-num"></view>
+        <view class="skeleton-shimmer skeleton-stat-lbl"></view>
+      </view>
+    </view>
+
+    <!-- 本月趋势卡片骨架屏 -->
+    <view class="card chart-card skeleton-panel-card">
+      <view class="between chart-head">
+        <view>
+          <view class="skeleton-shimmer skeleton-title-line"></view>
+          <view class="skeleton-shimmer skeleton-sub-line" style="margin-top: 10rpx;"></view>
+        </view>
+        <view class="skeleton-shimmer skeleton-badge-box"></view>
+      </view>
+      <view class="chart-legend" style="margin: 22rpx 0 16rpx;">
+        <view class="skeleton-shimmer skeleton-legend-pill"></view>
+        <view class="skeleton-shimmer skeleton-legend-pill" style="width: 110rpx;"></view>
+      </view>
+      <view class="skeleton-chart-box">
+        <view class="skeleton-chart-col" wx:for="{{[45, 60, 30, 75, 40, 85, 55, 90, 35, 65]}}" wx:key="*this">
+          <view class="skeleton-shimmer skeleton-bar" style="height: {{item}}%;"></view>
+          <view class="skeleton-shimmer skeleton-bar-label"></view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 收入分析卡片骨架屏 -->
+    <view class="card revenue-card skeleton-panel-card">
+      <view class="between revenue-head">
+        <view>
+          <view class="skeleton-shimmer skeleton-title-line"></view>
+          <view class="skeleton-shimmer skeleton-sub-line" style="margin-top: 10rpx; width: 260rpx;"></view>
+        </view>
+        <view class="skeleton-shimmer skeleton-month-pill"></view>
+      </view>
+      <view class="revenue-grid">
+        <view class="revenue-stat skeleton-revenue-stat" wx:for="{{[1, 2, 3]}}" wx:key="*this">
+          <view class="skeleton-shimmer skeleton-revenue-num"></view>
+          <view class="skeleton-shimmer skeleton-revenue-lbl"></view>
+        </view>
+      </view>
+      <view class="skeleton-chart-box" style="margin-top: 24rpx; height: 160rpx;">
+        <view class="skeleton-chart-col" wx:for="{{[30, 50, 70, 40, 80, 60, 90, 45, 65, 85]}}" wx:key="*this">
+          <view class="skeleton-shimmer skeleton-bar" style="height: {{item}}%;"></view>
+          <view class="skeleton-shimmer skeleton-bar-label"></view>
+        </view>
+      </view>
+    </view>
+  </block>
+
   <view class="stats-grid admin-stats-grid" wx:if="{{dashboard}}">
     <view class="stat-card" wx:for="{{overviewStats}}" wx:key="label">
       <view class="stat-number">{{item.value}}</view>

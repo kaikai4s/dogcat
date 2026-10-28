@@ -62,6 +62,25 @@ test('approval automatically starts original-payment refund, then scheduled quer
   assert.equal(f.db.state.staff_deposit_events.filter(row => row.type === 'refund').length, 1)
 })
 
+test('original-payment refund subtracts first-supply cost and keeps the original paid total', async () => {
+  const f = fixture(({ gatewayRefund }) => ({ ...gatewayRefund, status: 'SUCCESS' }), { amount: 500 })
+  Object.assign(f.db.state.staff_deposits[0], {
+    supplyPolicyAcceptedAt: '2026-10-28T00:00:00.000Z', supplyFeeAmount: 120,
+    supplyShipment: { expressCompany: '测试快递', trackingNo: 'TEST123' }
+  })
+  const preview = await f.handler('admin', 'getStaffDepositRefundPreview', { id: 'd' })
+  assert.equal(preview.estimatedRefundAmount, 380)
+  const result = await f.approve()
+  assert.equal(result.refundStatus, 'success')
+  assert.deepEqual(f.calls[0].body.amount, { refund: 38000, total: 50000, currency: 'CNY' })
+  assert.equal(f.db.state.staff_deposits[0].refundedAmount, 380)
+  assert.equal(f.db.state.staff_deposits[0].supplyFeeDeductedAmount, 120)
+  assert.equal(f.db.state.staff_deposit_events.filter(row => row.type === 'supply_fee').length, 1)
+  await f.service.syncStaffDepositRefund('d')
+  assert.equal(f.calls.length, 1)
+  assert.equal(f.db.state.staff_deposit_events.filter(row => row.type === 'supply_fee').length, 1)
+})
+
 test('lost submit response recovers with original refund number and amount after explicit absence', async () => {
   const f = fixture(({ method, gatewayRefund, calls }) => {
     if (calls.length === 1) throw new Error('response lost')

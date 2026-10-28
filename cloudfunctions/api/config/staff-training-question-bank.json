@@ -1,0 +1,1127 @@
+[
+  {
+    "id": "q6",
+    "type": "single",
+    "category": "入户与钥匙安全",
+    "question": "首次上门发现门锁与客户描述不一致，客户暂时联系不上，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "尝试附近其他房门"
+      },
+      {
+        "value": "B",
+        "label": "请邻居帮忙开门"
+      },
+      {
+        "value": "C",
+        "label": "暂停入户，通过平台核实地址和开门方式"
+      },
+      {
+        "value": "D",
+        "label": "自行联系开锁人员"
+      }
+    ],
+    "answer": "C"
+  },
+  {
+    "id": "q7",
+    "type": "single",
+    "category": "入户与钥匙安全",
+    "question": "准备开门时听见宠物持续抓门，客户备注“容易冲门”。哪种入户方式最妥当？",
+    "options": [
+      {
+        "value": "A",
+        "label": "快速开门再关门"
+      },
+      {
+        "value": "B",
+        "label": "先确认防逃条件，按约定控制开门；无法安全进入时联系客户或平台"
+      },
+      {
+        "value": "C",
+        "label": "让邻居先把宠物引出来"
+      },
+      {
+        "value": "D",
+        "label": "将门留缝等待宠物远离"
+      }
+    ],
+    "answer": "B"
+  },
+  {
+    "id": "q8",
+    "type": "single",
+    "category": "入户与钥匙安全",
+    "question": "客户说钥匙藏在门口，但约定位置没有找到，应当怎么处理？",
+    "options": [
+      {
+        "value": "A",
+        "label": "搜寻门口所有包裹和鞋柜"
+      },
+      {
+        "value": "B",
+        "label": "询问邻居是否保管备用钥匙"
+      },
+      {
+        "value": "C",
+        "label": "联系客户核实，按平台规则记录等待和处理结果"
+      },
+      {
+        "value": "D",
+        "label": "先打卡，之后补服务"
+      }
+    ],
+    "answer": "C"
+  },
+  {
+    "id": "q9",
+    "type": "single",
+    "category": "入户与钥匙安全",
+    "question": "客户让你把门锁密码发给一位自称其朋友的人，对方希望提前入户。应当怎么做？",
+    "options": [
+      {
+        "value": "A",
+        "label": "对方能说出客户姓名即可发送"
+      },
+      {
+        "value": "B",
+        "label": "请对方承诺保密后发送"
+      },
+      {
+        "value": "C",
+        "label": "通过客户原有联系渠道核实授权，并按平台规则留痕处理"
+      },
+      {
+        "value": "D",
+        "label": "让对方提供自己的密码作为交换"
+      }
+    ],
+    "answer": "C"
+  },
+  {
+    "id": "q10",
+    "type": "single",
+    "category": "入户与钥匙安全",
+    "question": "入户后发现室内有人且身份不明，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "继续服务，避免耽误时间"
+      },
+      {
+        "value": "B",
+        "label": "核实是否为客户授权人员；有安全疑虑时退出并联系平台"
+      },
+      {
+        "value": "C",
+        "label": "要求对方出示身份证并拍照"
+      },
+      {
+        "value": "D",
+        "label": "与对方争论入户权限"
+      }
+    ],
+    "answer": "B"
+  },
+  {
+    "id": "q11",
+    "type": "single",
+    "category": "入户与钥匙安全",
+    "question": "照片已上传，但不确定阳台门是否恢复约定状态，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "上传成功即可离开"
+      },
+      {
+        "value": "B",
+        "label": "先离开，再备注可能未关"
+      },
+      {
+        "value": "C",
+        "label": "等客户看照片自行判断"
+      },
+      {
+        "value": "D",
+        "label": "离开前重新核对宠物位置、门窗和门锁，确认后再结束服务"
+      }
+    ],
+    "answer": "D"
+  },
+  {
+    "id": "q12",
+    "type": "single",
+    "category": "入户与钥匙安全",
+    "question": "客户临时要求把备用钥匙放进未约定的公开位置，应当如何处理？",
+    "options": [
+      {
+        "value": "A",
+        "label": "立即照做，无需记录"
+      },
+      {
+        "value": "B",
+        "label": "在可留痕渠道确认位置和风险，必要时请平台协助"
+      },
+      {
+        "value": "C",
+        "label": "自行选择隐蔽位置"
+      },
+      {
+        "value": "D",
+        "label": "交给路过的物业人员"
+      }
+    ],
+    "answer": "B"
+  },
+  {
+    "id": "q13",
+    "type": "single",
+    "category": "入户与钥匙安全",
+    "question": "离开后怀疑门没锁好，已经赶往下一单，正确做法是？",
+    "options": [
+      {
+        "value": "A",
+        "label": "等客户回家检查"
+      },
+      {
+        "value": "B",
+        "label": "订单完成后不再处理"
+      },
+      {
+        "value": "C",
+        "label": "立即联系客户和平台，安排尽快核实并记录结果"
+      },
+      {
+        "value": "D",
+        "label": "删除离开记录"
+      }
+    ],
+    "answer": "C"
+  },
+  {
+    "id": "q14",
+    "type": "single",
+    "category": "订单与服务边界",
+    "question": "首次服务前，客户只提供地址和开门方式，最需要进一步核实哪组信息？",
+    "options": [
+      {
+        "value": "A",
+        "label": "宠物身份与数量、服务要求、行为风险和紧急联系安排"
+      },
+      {
+        "value": "B",
+        "label": "客户职业、收入和外出原因"
+      },
+      {
+        "value": "C",
+        "label": "客户社交账号和装修风格"
+      },
+      {
+        "value": "D",
+        "label": "是否愿意好评和续单"
+      }
+    ],
+    "answer": "A"
+  },
+  {
+    "id": "q15",
+    "type": "single",
+    "category": "订单与服务边界",
+    "question": "订单照顾一只猫，到场发现另一只也需要照顾，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "完全忽略另一只"
+      },
+      {
+        "value": "B",
+        "label": "不作记录，按两只完成服务"
+      },
+      {
+        "value": "C",
+        "label": "核实新增需求，通过平台确认范围；紧急安全问题先上报处理"
+      },
+      {
+        "value": "D",
+        "label": "要求私下付款，否则离开"
+      }
+    ],
+    "answer": "C"
+  },
+  {
+    "id": "q16",
+    "type": "single",
+    "category": "订单与服务边界",
+    "question": "客户要求执行你未受培训、也不在授权范围内的操作，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "看短视频后尝试"
+      },
+      {
+        "value": "B",
+        "label": "说明能力与服务边界，请平台协助安排合适处理方式"
+      },
+      {
+        "value": "C",
+        "label": "客户承诺免责后执行"
+      },
+      {
+        "value": "D",
+        "label": "避免差评，先做再说"
+      }
+    ],
+    "answer": "B"
+  },
+  {
+    "id": "q17",
+    "type": "single",
+    "category": "订单与服务边界",
+    "question": "交通问题可能导致晚到，下一单也可能受影响，最合适的处理方式是？",
+    "options": [
+      {
+        "value": "A",
+        "label": "完成两单后统一解释"
+      },
+      {
+        "value": "B",
+        "label": "尽早告知客户及平台，协调安排，如实记录实际时间"
+      },
+      {
+        "value": "C",
+        "label": "缩短第一单服务时间"
+      },
+      {
+        "value": "D",
+        "label": "按约定时间填写打卡"
+      }
+    ],
+    "answer": "B"
+  },
+  {
+    "id": "q18",
+    "type": "single",
+    "category": "订单与服务边界",
+    "question": "客户说“今天不用做某项服务，但仍按全部完成打卡”，应当怎么处理？",
+    "options": [
+      {
+        "value": "A",
+        "label": "按要求填写完成"
+      },
+      {
+        "value": "B",
+        "label": "记录变更要求，按平台规则调整，如实记录实际服务"
+      },
+      {
+        "value": "C",
+        "label": "用上次照片证明完成"
+      },
+      {
+        "value": "D",
+        "label": "不回复但勾选全部完成"
+      }
+    ],
+    "answer": "B"
+  },
+  {
+    "id": "q19",
+    "type": "single",
+    "category": "订单与服务边界",
+    "question": "客户要求让你的朋友代替本人上门，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "有养宠经验即可代替"
+      },
+      {
+        "value": "B",
+        "label": "把钥匙交给朋友"
+      },
+      {
+        "value": "C",
+        "label": "通过平台正式调整人员，不自行转交订单与入户权限"
+      },
+      {
+        "value": "D",
+        "label": "让朋友使用自己的账号"
+      }
+    ],
+    "answer": "C"
+  },
+  {
+    "id": "q20",
+    "type": "single",
+    "category": "订单与服务边界",
+    "question": "现场发现宠物有明显攻击风险，但订单未备注，应当如何处理？",
+    "options": [
+      {
+        "value": "A",
+        "label": "接单后必须完成全部操作"
+      },
+      {
+        "value": "B",
+        "label": "客户口头免责后继续"
+      },
+      {
+        "value": "C",
+        "label": "评估风险、记录事实，联系客户和平台，未确认前暂停危险操作"
+      },
+      {
+        "value": "D",
+        "label": "立即取消，不说明原因"
+      }
+    ],
+    "answer": "C"
+  },
+  {
+    "id": "q21",
+    "type": "single",
+    "category": "喂养与清洁执行",
+    "question": "指定食物已用完，家中还有另一种未确认用途的食物，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "凭经验选择替代"
+      },
+      {
+        "value": "B",
+        "label": "联系客户确认替代方案，不随意改变喂养安排"
+      },
+      {
+        "value": "C",
+        "label": "用自己的零食代替"
+      },
+      {
+        "value": "D",
+        "label": "多加水就算完成喂食"
+      }
+    ],
+    "answer": "B"
+  },
+  {
+    "id": "q22",
+    "type": "single",
+    "category": "喂养与清洁执行",
+    "question": "两只宠物有不同喂养要求，现场出现抢食，最妥当的做法是？",
+    "options": [
+      {
+        "value": "A",
+        "label": "混合后平均分配"
+      },
+      {
+        "value": "B",
+        "label": "让进食快的先吃完"
+      },
+      {
+        "value": "C",
+        "label": "凭体型判断食物"
+      },
+      {
+        "value": "D",
+        "label": "核对身份与要求，按约定安全分开投喂，记录异常"
+      }
+    ],
+    "answer": "D"
+  },
+  {
+    "id": "q23",
+    "type": "single",
+    "category": "喂养与清洁执行",
+    "question": "客户说“和昨天一样”，但你看不到昨天的具体投喂记录，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "按包装推荐量投喂"
+      },
+      {
+        "value": "B",
+        "label": "按自己的经验投喂"
+      },
+      {
+        "value": "C",
+        "label": "核实食物、数量和方式后再执行"
+      },
+      {
+        "value": "D",
+        "label": "少喂一半，无需告知"
+      }
+    ],
+    "answer": "C"
+  },
+  {
+    "id": "q24",
+    "type": "single",
+    "category": "喂养与清洁执行",
+    "question": "指定食物包装破损、内容物异常，客户暂未回复，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "暂不使用，记录情况，联系客户及平台确认后续安排"
+      },
+      {
+        "value": "B",
+        "label": "挑正常部分投喂"
+      },
+      {
+        "value": "C",
+        "label": "少量试喂后观察"
+      },
+      {
+        "value": "D",
+        "label": "自购其他食物，不告知"
+      }
+    ],
+    "answer": "A"
+  },
+  {
+    "id": "q25",
+    "type": "single",
+    "category": "喂养与清洁执行",
+    "question": "饮水设备看起来有水，但不确定是否正常出水，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "拍下水箱即可"
+      },
+      {
+        "value": "B",
+        "label": "检查实际供水，按约定处理并反馈设备异常"
+      },
+      {
+        "value": "C",
+        "label": "插电就算正常"
+      },
+      {
+        "value": "D",
+        "label": "拆开电路自行维修"
+      }
+    ],
+    "answer": "B"
+  },
+  {
+    "id": "q26",
+    "type": "single",
+    "category": "喂养与清洁执行",
+    "question": "客户提供两种清洁用品，没有说明能否混用，正确做法是？",
+    "options": [
+      {
+        "value": "A",
+        "label": "少量混合，没有气味就用"
+      },
+      {
+        "value": "B",
+        "label": "按各自标签和用途使用，不自行混合，避免宠物接触处理中的区域"
+      },
+      {
+        "value": "C",
+        "label": "使用气味更强的一种并提高浓度"
+      },
+      {
+        "value": "D",
+        "label": "混合后开窗即可"
+      }
+    ],
+    "answer": "B"
+  },
+  {
+    "id": "q27",
+    "type": "single",
+    "category": "喂养与清洁执行",
+    "question": "排泄污染范围明显超过常规清理约定，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "不管也不告知"
+      },
+      {
+        "value": "B",
+        "label": "先防止接触危险或污染区域，记录情况并确认额外处理范围"
+      },
+      {
+        "value": "C",
+        "label": "翻找客户全部用品"
+      },
+      {
+        "value": "D",
+        "label": "把污染物藏起来"
+      }
+    ],
+    "answer": "B"
+  },
+  {
+    "id": "q28",
+    "type": "single",
+    "category": "喂养与清洁执行",
+    "question": "清洁时发现客户物品原本已损坏，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "不记录，发现后再解释"
+      },
+      {
+        "value": "B",
+        "label": "及时客观记录并告知，不擅自丢弃或修复"
+      },
+      {
+        "value": "C",
+        "label": "移到拍不到的位置"
+      },
+      {
+        "value": "D",
+        "label": "认定为宠物造成并要求客户确认"
+      }
+    ],
+    "answer": "B"
+  },
+  {
+    "id": "q29",
+    "type": "single",
+    "category": "互动牵引与防走失",
+    "question": "宠物躲在家具后，不愿互动且无明显即时危险，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "强行拖出拍照"
+      },
+      {
+        "value": "B",
+        "label": "用工具驱赶"
+      },
+      {
+        "value": "C",
+        "label": "保持距离，按约定观察和服务，不为拍照强迫接触"
+      },
+      {
+        "value": "D",
+        "label": "直接离开不反馈"
+      }
+    ],
+    "answer": "C"
+  },
+  {
+    "id": "q30",
+    "type": "single",
+    "category": "互动牵引与防走失",
+    "question": "宠物在角落持续威吓，尚有近距离接触项目未完成，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "引到无退路的位置操作"
+      },
+      {
+        "value": "B",
+        "label": "抓紧完成以缩短接触"
+      },
+      {
+        "value": "C",
+        "label": "暂停逼近，保持距离，联系客户和平台调整方式"
+      },
+      {
+        "value": "D",
+        "label": "惩罚制止后继续"
+      }
+    ],
+    "answer": "C"
+  },
+  {
+    "id": "q31",
+    "type": "single",
+    "category": "互动牵引与防走失",
+    "question": "客户说“从来不咬人”，但现场表现出明显攻击风险，应以什么为依据？",
+    "options": [
+      {
+        "value": "A",
+        "label": "客户描述，继续操作"
+      },
+      {
+        "value": "B",
+        "label": "现场实际风险，暂停危险操作并上报"
+      },
+      {
+        "value": "C",
+        "label": "体型，小型宠物无需防范"
+      },
+      {
+        "value": "D",
+        "label": "戴手套即可继续全部操作"
+      }
+    ],
+    "answer": "B"
+  },
+  {
+    "id": "q32",
+    "type": "single",
+    "category": "互动牵引与防走失",
+    "question": "外出前发现牵引装备与备注照片不同，应当优先怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "放在门口就可以用"
+      },
+      {
+        "value": "B",
+        "label": "只检查干净程度"
+      },
+      {
+        "value": "C",
+        "label": "先出门再调整"
+      },
+      {
+        "value": "D",
+        "label": "核对适配、连接和外出要求，不能保证安全时暂停外出"
+      }
+    ],
+    "answer": "D"
+  },
+  {
+    "id": "q33",
+    "type": "single",
+    "category": "互动牵引与防走失",
+    "question": "遛犬时陌生人要求抚摸，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "喜欢狗就可以"
+      },
+      {
+        "value": "B",
+        "label": "保持控制与安全距离，未经明确允许不安排接触"
+      },
+      {
+        "value": "C",
+        "label": "把绳交给对方体验"
+      },
+      {
+        "value": "D",
+        "label": "让对方用食物吸引犬只"
+      }
+    ],
+    "answer": "B"
+  },
+  {
+    "id": "q34",
+    "type": "single",
+    "category": "互动牵引与防走失",
+    "question": "客户允许不牵绳，但平台要求全程牵引，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "按客户习惯执行"
+      },
+      {
+        "value": "B",
+        "label": "确认无人就解开"
+      },
+      {
+        "value": "C",
+        "label": "遵守平台牵引规则，解释并保留沟通记录"
+      },
+      {
+        "value": "D",
+        "label": "拍照时再系上"
+      }
+    ],
+    "answer": "C"
+  },
+  {
+    "id": "q35",
+    "type": "single",
+    "category": "互动牵引与防走失",
+    "question": "途中牵引装备损坏，附近无可靠替代品，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "先确保安全可控，暂停原计划，联系客户或平台协调"
+      },
+      {
+        "value": "B",
+        "label": "抓住项圈继续原路线"
+      },
+      {
+        "value": "C",
+        "label": "解开后让宠物跟随"
+      },
+      {
+        "value": "D",
+        "label": "改为自由活动"
+      }
+    ],
+    "answer": "A"
+  },
+  {
+    "id": "q36",
+    "type": "single",
+    "category": "互动牵引与防走失",
+    "question": "宠物意外脱离控制后，最不应当做的是？",
+    "options": [
+      {
+        "value": "A",
+        "label": "立即报告位置、时间和情况"
+      },
+      {
+        "value": "B",
+        "label": "保障自身安全并配合寻找"
+      },
+      {
+        "value": "C",
+        "label": "为避免追责长时间自行寻找，不通知客户和平台"
+      },
+      {
+        "value": "D",
+        "label": "按情况请求适当协助"
+      }
+    ],
+    "answer": "C"
+  },
+  {
+    "id": "q37",
+    "type": "single",
+    "category": "互动牵引与防走失",
+    "question": "户外环境突然恶化，继续凑满时长会增加风险，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "必须完成原时长"
+      },
+      {
+        "value": "B",
+        "label": "优先安全撤离，及时说明原因，如实记录实际服务"
+      },
+      {
+        "value": "C",
+        "label": "返回后修改时长记录"
+      },
+      {
+        "value": "D",
+        "label": "让宠物独自等待"
+      }
+    ],
+    "answer": "B"
+  },
+  {
+    "id": "q38",
+    "type": "single",
+    "category": "异常与应急沟通",
+    "question": "发现宠物状态明显异常但不能判断原因，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "凭经验下结论并处理"
+      },
+      {
+        "value": "B",
+        "label": "客观记录，及时联系客户和平台，必要时寻求专业兽医帮助"
+      },
+      {
+        "value": "C",
+        "label": "不影响拍照就不反馈"
+      },
+      {
+        "value": "D",
+        "label": "下次再观察"
+      }
+    ],
+    "answer": "B"
+  },
+  {
+    "id": "q39",
+    "type": "single",
+    "category": "异常与应急沟通",
+    "question": "向客户报告异常时，哪一种表达最合适？",
+    "options": [
+      {
+        "value": "A",
+        "label": "肯定是之前喂养有问题，你自己负责"
+      },
+      {
+        "value": "B",
+        "label": "14:10发现连续异常表现，目前在客厅，已暂停互动并联系平台，请确认后续安排"
+      },
+      {
+        "value": "C",
+        "label": "情况不好，具体说不清"
+      },
+      {
+        "value": "D",
+        "label": "应该没事，已按正常完成"
+      }
+    ],
+    "answer": "B"
+  },
+  {
+    "id": "q40",
+    "type": "single",
+    "category": "异常与应急沟通",
+    "question": "明显紧急状况下，客户和备用联系人均暂时联系不上，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "一直等待回复"
+      },
+      {
+        "value": "B",
+        "label": "按平台应急流程升级求助，在授权和能力范围内采取必要安全措施"
+      },
+      {
+        "value": "C",
+        "label": "直接离开"
+      },
+      {
+        "value": "D",
+        "label": "公开发布客户地址求助"
+      }
+    ],
+    "answer": "B"
+  },
+  {
+    "id": "q41",
+    "type": "single",
+    "category": "异常与应急沟通",
+    "question": "客户要求临时执行没有清晰书面说明的用药或护理操作，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "按药品外观推测"
+      },
+      {
+        "value": "B",
+        "label": "拼接不同记录中的要求"
+      },
+      {
+        "value": "C",
+        "label": "暂停操作，核实专业指示、客户授权及平台允许范围"
+      },
+      {
+        "value": "D",
+        "label": "询问其他客户经验后执行"
+      }
+    ],
+    "answer": "C"
+  },
+  {
+    "id": "q42",
+    "type": "single",
+    "category": "异常与应急沟通",
+    "question": "服务中发生宠物伤人事件，正确处理顺序是？",
+    "options": [
+      {
+        "value": "A",
+        "label": "先谈赔偿再决定求助"
+      },
+      {
+        "value": "B",
+        "label": "先完成剩余服务"
+      },
+      {
+        "value": "C",
+        "label": "避免继续受伤，按紧急程度寻求专业救助，及时报告并保留事实记录"
+      },
+      {
+        "value": "D",
+        "label": "先删除照片避免客户担心"
+      }
+    ],
+    "answer": "C"
+  },
+  {
+    "id": "q43",
+    "type": "single",
+    "category": "异常与应急沟通",
+    "question": "发现漏水、异味、冒烟等房屋安全隐患，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "不属于宠物服务，继续原计划"
+      },
+      {
+        "value": "B",
+        "label": "优先保障人员和宠物安全，按风险联系客户、平台及相应应急服务"
+      },
+      {
+        "value": "C",
+        "label": "自行拆修设备"
+      },
+      {
+        "value": "D",
+        "label": "只拍照不报告"
+      }
+    ],
+    "answer": "B"
+  },
+  {
+    "id": "q44",
+    "type": "single",
+    "category": "证据与隐私保护",
+    "question": "服务结束后发现漏拍关键证据，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "用上次同项目照片"
+      },
+      {
+        "value": "B",
+        "label": "借同事相似照片"
+      },
+      {
+        "value": "C",
+        "label": "先勾选完成，等询问再解释"
+      },
+      {
+        "value": "D",
+        "label": "如实说明，按要求补充可核实记录，不伪造照片或时间"
+      }
+    ],
+    "answer": "D"
+  },
+  {
+    "id": "q45",
+    "type": "single",
+    "category": "证据与隐私保护",
+    "question": "网络不佳导致上传失败，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "用旧图按时提交"
+      },
+      {
+        "value": "B",
+        "label": "保留本次原始记录，按规则反馈并补传，不伪造时间"
+      },
+      {
+        "value": "C",
+        "label": "勾选上传成功"
+      },
+      {
+        "value": "D",
+        "label": "删除照片凭记忆填写"
+      }
+    ],
+    "answer": "B"
+  },
+  {
+    "id": "q46",
+    "type": "single",
+    "category": "证据与隐私保护",
+    "question": "喂食证据照片背景出现证件和门锁密码纸条，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "调整范围或遮挡隐私后重新取证，避免上传敏感信息"
+      },
+      {
+        "value": "B",
+        "label": "仅供客户看就不用处理"
+      },
+      {
+        "value": "C",
+        "label": "先上传再提醒删除"
+      },
+      {
+        "value": "D",
+        "label": "发工作群请大家判断"
+      }
+    ],
+    "answer": "A"
+  },
+  {
+    "id": "q47",
+    "type": "single",
+    "category": "证据与隐私保护",
+    "question": "客户允许服务拍摄，你想将视频发到个人公开账号，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "允许拍摄就等于允许公开"
+      },
+      {
+        "value": "B",
+        "label": "遮住姓名即可"
+      },
+      {
+        "value": "C",
+        "label": "遵守平台规则，针对公开发布用途取得明确授权"
+      },
+      {
+        "value": "D",
+        "label": "只发几秒无需授权"
+      }
+    ],
+    "answer": "C"
+  },
+  {
+    "id": "q48",
+    "type": "single",
+    "category": "证据与隐私保护",
+    "question": "客户投诉而你认为自己无错，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "删除争议记录"
+      },
+      {
+        "value": "B",
+        "label": "争论并要求撤回"
+      },
+      {
+        "value": "C",
+        "label": "提交完整客观记录，配合平台核实"
+      },
+      {
+        "value": "D",
+        "label": "公开客户信息求支持"
+      }
+    ],
+    "answer": "C"
+  },
+  {
+    "id": "q49",
+    "type": "single",
+    "category": "证据与隐私保护",
+    "question": "离开后发现漏做服务，客户尚未察觉，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "下次多做抵消，不说明"
+      },
+      {
+        "value": "B",
+        "label": "及时报告，确认补救方案，如实记录结果"
+      },
+      {
+        "value": "C",
+        "label": "修改为已完成"
+      },
+      {
+        "value": "D",
+        "label": "私下转账，要求不向平台反馈"
+      }
+    ],
+    "answer": "B"
+  },
+  {
+    "id": "q50",
+    "type": "single",
+    "category": "证据与隐私保护",
+    "question": "客户要求绕过平台私下续单，应当怎么办？",
+    "options": [
+      {
+        "value": "A",
+        "label": "熟客可例外"
+      },
+      {
+        "value": "B",
+        "label": "不使用平台聊天即可"
+      },
+      {
+        "value": "C",
+        "label": "按平台规则引导正规渠道下单，保留必要记录"
+      },
+      {
+        "value": "D",
+        "label": "私下服务，出事再补订单"
+      }
+    ],
+    "answer": "C"
+  }
+]
