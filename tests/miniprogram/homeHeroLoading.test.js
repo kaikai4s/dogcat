@@ -147,6 +147,8 @@ test('leaving the home invalidates outstanding settings and pull-down refresh al
 
 test('home service price cards have uniform height and clamp long title text', () => {
   const wxss = fs.readFileSync(path.join(root, 'pages/client/home/index.wxss'), 'utf8')
+  assert.match(wxss, /\.service-price-card,\s*\.sitter-home-card\s*\{[^}]*padding:\s*24rpx;[^}]*background:\s*linear-gradient\(180deg, #ffffff 0%, #fffaf4 100%\);[^}]*border:\s*1rpx solid rgba\(255, 153, 102, 0\.14\);/s)
+  assert.doesNotMatch(wxss, /\.service-price-card,\s*\.featured-sitters-heading/)
   assert.match(wxss, /\.service-price-card\s*\{[^}]*height:\s*420rpx;/)
   assert.match(wxss, /\.service-price-card\s*\{[^}]*flex-direction:\s*column;/)
   assert.match(wxss, /\.service-price-name\s*\{[^}]*height:\s*76rpx;/)

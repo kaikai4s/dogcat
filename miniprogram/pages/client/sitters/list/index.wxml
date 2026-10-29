@@ -1,30 +1,21 @@
 <dovlin-refresh id="dovlinRefresh" bind:refresh="onCustomRefresh" bind:scrolltolower="onReachBottom">
 <view class="page sitter-page sitter-list-page {{themeClass}} {{fontClass}}">
   <view class="sitter-hero">
-    <view class="hero-topline">
-      <view class="badge hero-badge">认证宠护团队</view>
-      <view class="hero-count" wx:if="{{total > 0}}">{{total}} 位宠托师</view>
-    </view>
-    <view class="sitter-hero-title">寻找身边的安心宠托师</view>
-    <view class="sitter-hero-subtitle">实名与健康审核 · 服务过程有记录</view>
-    <view class="sitter-hero-filter" wx:if="{{staffGenderRequirement !== 'any'}}">当前仅展示{{staffGenderRequirement === 'male' ? '男性' : '女性'}}宠托师</view>
-
     <view class="sitter-hero-actions">
-      <view class="sitter-location-bar" bindtap="updateLocation" aria-label="切换服务位置">
-        <text class="remix-icon ri-map-pin-2-line location-pin"></text>
+      <view class="sitter-location-bar" bindtap="updateLocation" aria-role="button" aria-label="切换服务位置" hover-class="sitter-location-bar-hover" hover-stay-time="120">
+        <text class="remix-icon ri-map-pin-2-fill location-pin"></text>
         <text class="location-name">{{locationName}}</text>
         <text class="location-arrow remix-icon ri-arrow-down-s-line"></text>
       </view>
-      <button class="sitter-map-btn" bindtap="openMap" aria-label="在地图上按小区查找宠托师">
-        <text class="remix-icon ri-map-pin-line"></text><text>看地图</text>
-      </button>
     </view>
+    <view class="sitter-hero-title">寻找身边的安心宠托师</view>
+    <view class="sitter-hero-filter" wx:if="{{staffGenderRequirement !== 'any'}}">当前仅展示{{staffGenderRequirement === 'male' ? '男性' : '女性'}}宠托师</view>
   </view>
 
   <view class="sitter-search-wrap">
     <view class="search-card">
       <view class="remix-icon ri-search-line search-icon-cute"></view>
-      <input class="search-input" placeholder="输入城市、区域或宠托师姓名" value="{{keyword}}" bindinput="inputKeyword" confirm-type="search" bindconfirm="search" />
+      <input class="search-input" placeholder="城市、区域或宠托师" value="{{keyword}}" bindinput="inputKeyword" confirm-type="search" bindconfirm="search" />
       <view class="search-btn-cute" bindtap="search">搜索</view>
     </view>
   </view>
@@ -52,9 +43,11 @@
     </view>
     <view class="filter-section last">
       <view class="filter-title">排序方式</view>
-      <view class="filter-row wrap">
-        <view class="filter-chip {{sortBy === item.value ? 'active' : ''}}" wx:for="{{sortOptions}}" wx:key="value" data-sort="{{item.value}}" bindtap="chooseSort">{{item.label}}</view>
-      </view>
+      <scroll-view class="filter-scroll sort-options-scroll" scroll-x enhanced show-scrollbar="{{false}}" scroll-into-view="sort-{{sortBy}}" scroll-with-animation="{{true}}">
+        <view class="filter-row sort-options-row">
+          <view id="sort-{{item.value}}" class="filter-chip {{sortBy === item.value ? 'active' : ''}}" wx:for="{{sortOptions}}" wx:key="value" data-sort="{{item.value}}" bindtap="chooseSort">{{item.label}}</view>
+        </view>
+      </scroll-view>
     </view>
   </view>
 
@@ -166,6 +159,10 @@
 
 </view>
 </dovlin-refresh>
+
+<button class="sitter-map-btn {{themeClass}} {{fontClass}}" bindtap="openMap" aria-label="在地图上按小区查找宠托师" hover-class="sitter-map-btn-hover" hover-stay-time="120">
+  <text class="remix-icon ri-map-pin-line"></text><text>地图找宠托师</text>
+</button>
 
   <view class="selector-mask {{fontClass}}" wx:if="{{showCitySelector}}" bindtap="closeCitySelector">
     <view class="selector-sheet" catchtap="noop">

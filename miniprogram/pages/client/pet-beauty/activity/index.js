@@ -108,6 +108,8 @@ Page({
     themeClass: 'theme-day',
     rankingMaintenance: false,
     maintenanceLoading: true,
+    activityReady: false,
+    activityLoadError: false,
     monthKey: '',
     currentMonthKey: '',
     selectedMonthIndex: 0,
@@ -137,8 +139,8 @@ Page({
     previewModalPhotoIndex: 0,
     contestConfig: {
       enabled: true,
-      firstPrizeAmount: 500,
-      rewardAmount: 500,
+      firstPrizeAmount: 0,
+      rewardAmount: 0,
       posterUrl: '',
       posterFileId: '',
       bannerTitle: '最美爱宠月度大赛',
@@ -197,25 +199,28 @@ Page({
     this.applyCurrentTheme()
     if (typeof cloud.loadSystemSettings !== 'function') {
       this.setData({ maintenanceLoading: false })
-      this.loadHome()
       this.loadHistoryMonths()
-      return
+      return this.loadHome()
     }
     this.setData({ maintenanceLoading: true })
     return cloud.loadSystemSettings().then((settings) => {
       const paused = settings.maintenance?.petRanking === true
       this.setData({ rankingMaintenance: paused, maintenanceLoading: false })
       if (paused) return
-      this.loadHome()
       this.loadHistoryMonths()
+      return this.loadHome()
     }).catch((error) => {
-      this.setData({ maintenanceLoading: false })
+      this.setData({ maintenanceLoading: false, activityLoadError: !this.data.activityReady })
       showError(error)
     })
   },
 
   backFromMaintenance() {
     wx.navigateBack({ delta: 1, fail: () => wx.redirectTo({ url: '/pages/client/home/index' }) })
+  },
+
+  retryActivity() {
+    return this.onShow()
   },
 
   applyCurrentTheme() {
@@ -245,9 +250,9 @@ Page({
 
   loadHome() {
     if (this.data.loading) return
-    this.setData({ loading: true })
+    this.setData({ loading: true, activityLoadError: false })
     const pendingInvite = this._pendingInvite || {}
-    callFunction('petBeauty', 'getActivityHome', { ...pendingInvite })
+    return callFunction('petBeauty', 'getActivityHome', { ...pendingInvite })
       .then((res) => {
         const monthKey = res.monthKey || ''
         const contestConfig = res.contestConfig || this.data.contestConfig
@@ -266,6 +271,7 @@ Page({
           inviteCode: res.inviteCode || this.data.inviteCode || '',
           userOpenid: res.userOpenid || this.data.userOpenid || '',
           contestConfig,
+          activityReady: true,
           candidates: res.candidates || [],
           ...rankingViewData(res.ranking || []),
           keyword: '',
@@ -280,7 +286,7 @@ Page({
         })
       })
       .catch((err) => {
-        this.setData({ loading: false })
+        this.setData({ loading: false, activityLoadError: !this.data.activityReady })
         showError(err)
       })
   },

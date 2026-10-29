@@ -30,7 +30,7 @@
 .hero-desc { margin-top: 12rpx; font-size: 26rpx; line-height: 1.6; opacity: .94; }
 .hero-actions { gap: 18rpx; margin-top: 24rpx; flex-wrap: wrap; }
 
-.small-btn { min-width: 170rpx; height: 66rpx; line-height: 66rpx; border-radius: 999rpx; font-size: 24rpx; }
+.small-btn { display: flex; align-items: center; justify-content: center; min-width: 170rpx; height: 66rpx; padding: 0 16rpx; line-height: 1.2; border-radius: 999rpx; font-size: 24rpx; }
 .loading-card, .empty-card, .dock-item, .pet-strip, .popover-card {
   background: rgba(255, 255, 255, .92);
   border-radius: 34rpx;

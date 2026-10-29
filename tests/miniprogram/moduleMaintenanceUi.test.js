@@ -64,6 +64,53 @@ test('ranking maintenance skips ranking reads and shows its unavailable state', 
   assert.match(read('pages/client/pet-beauty/activity/index.wxml'), /宠物排行榜功能暂时不可使用，正在维护中/)
 })
 
+test('ranking waits for live contest configuration before showing its content', async () => {
+  let resolveHome
+  const page = pageFrom('pages/client/pet-beauty/activity/index.js', {
+    loadSystemSettings: async () => ({ maintenance: { petRanking: false } }),
+    callFunction: (_, action) => {
+      if (action === 'getActivityHome') return new Promise(resolve => { resolveHome = resolve })
+      if (action === 'listHistoryMonths') return Promise.resolve({ months: [] })
+      return Promise.resolve({ list: [], page: 1 })
+    }
+  }, { setNavigationBarTitle() {} })
+
+  const pending = page.onShow()
+  await flush()
+  assert.equal(page.data.maintenanceLoading, false)
+  assert.equal(page.data.activityReady, false)
+  assert.equal(page.data.contestConfig.firstPrizeAmount, 0)
+  assert.match(read('pages/client/pet-beauty/activity/index.wxml'), /!maintenanceLoading && activityReady/)
+  resolveHome({ monthKey: '2026-10', contestConfig: { enabled: false, firstPrizeAmount: 0 }, ranking: [] })
+  await pending
+  assert.equal(page.data.activityReady, true)
+  assert.equal(page.data.contestConfig.enabled, false)
+})
+
+test('ranking load error shows retry rather than placeholder prize', async () => {
+  let attempts = 0
+  const page = pageFrom('pages/client/pet-beauty/activity/index.js', {
+    loadSystemSettings: async () => ({ maintenance: { petRanking: false } }),
+    callFunction: (_, action) => {
+      if (action === 'getActivityHome') {
+        attempts++
+        return attempts === 1 ? Promise.reject(new Error('offline')) : Promise.resolve({ monthKey: '2026-10', contestConfig: { enabled: false, firstPrizeAmount: 0 } })
+      }
+      if (action === 'listHistoryMonths') return Promise.resolve({ months: [] })
+      return Promise.resolve({ list: [], page: 1 })
+    },
+    showError() {}
+  }, { setNavigationBarTitle() {} })
+
+  await page.onShow()
+  assert.equal(page.data.activityReady, false)
+  assert.equal(page.data.activityLoadError, true)
+  assert.match(read('pages/client/pet-beauty/activity/index.wxml'), /bindtap="retryActivity"/)
+  await page.retryActivity()
+  assert.equal(page.data.activityReady, true)
+  assert.equal(page.data.activityLoadError, false)
+})
+
 test('invitation maintenance preserves asset history and withdrawal while blocking binding and referral sharing', async () => {
   const calls = []
   const page = pageFrom('pages/client/profile/assets/index.js', {

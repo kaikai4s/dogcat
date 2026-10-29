@@ -505,7 +505,7 @@
 
 .quick-action-panel {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10rpx;
   padding: 22rpx 12rpx;
 }
@@ -587,6 +587,47 @@
   margin-top: 24rpx;
   white-space: nowrap;
 }
+
+.featured-sitters-heading {
+  gap: 16rpx;
+  min-height: 44rpx;
+}
+
+.featured-sitters-heading .section-link {
+  padding: 6rpx 0;
+  line-height: 1.25;
+}
+
+.sitter-map-entry {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  min-height: 48rpx;
+  margin-top: 12rpx;
+  color: #e9672f;
+  font-size: 24rpx;
+  font-weight: 850;
+}
+
+.sitter-map-entry .remix-icon {
+  width: 28rpx;
+  height: 28rpx;
+  color: inherit;
+  font-size: 26rpx;
+}
+
+.sitter-map-entry-hint {
+  margin-left: 4rpx;
+  color: #8e8580;
+  font-size: 22rpx;
+  font-weight: 500;
+}
+
+.sitter-map-entry-arrow { margin-left: auto; }
+
+.featured-sitters-section .sitter-scroll { margin-top: 16rpx; }
+
+.sitter-heading-pressed { opacity: 0.72; }
 
 .service-price-card,
 .sitter-home-card {

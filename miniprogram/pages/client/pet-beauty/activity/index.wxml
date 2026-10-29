@@ -1,5 +1,5 @@
 <wxs module="cardDrag" src="./card-stack.wxs" />
-<view wx:if="{{!rankingMaintenance && !maintenanceLoading}}" class="page pet-beauty-page view-{{rankView}} {{themeClass}}">
+<view wx:if="{{!rankingMaintenance && !maintenanceLoading && activityReady}}" class="page pet-beauty-page view-{{rankView}} {{themeClass}}">
   <!-- 活动海报 & 冠军大奖专区 -->
   <view class="beauty-poster-section">
     <!-- 运营上传的定制活动海报 (完整呈现2.5:1或16:9横屏海报，不裁切内容，骨骼预加载，轻薄磨砂角标不挡画面) -->
@@ -578,12 +578,21 @@
     </view>
   </view>
 </view>
-<view wx:else class="ranking-maintenance-screen {{themeClass}}">
-  <view wx:if="{{!maintenanceLoading}}" class="ranking-maintenance-inner">
+<view wx:else class="ranking-maintenance-screen {{themeClass}} {{!rankingMaintenance ? 'ranking-loading-screen' : ''}}">
+  <view wx:if="{{!maintenanceLoading && rankingMaintenance}}" class="ranking-maintenance-inner">
     <text class="remix-icon ri-time-line ranking-maintenance-icon"></text>
     <view class="ranking-maintenance-title">宠物排行榜正在维护</view>
     <view class="ranking-maintenance-description">宠物排行榜功能暂时不可使用，正在维护中。</view>
     <button class="ranking-maintenance-back" bindtap="backFromMaintenance">返回</button>
+  </view>
+  <view wx:elif="{{!maintenanceLoading && activityLoadError}}" class="ranking-maintenance-inner">
+    <view class="ranking-maintenance-title">排行榜暂时无法加载</view>
+    <view class="ranking-maintenance-description">请检查网络后重试</view>
+    <button class="ranking-maintenance-back" bindtap="retryActivity">重新加载</button>
+  </view>
+  <view wx:else class="ranking-maintenance-inner ranking-initial-loading">
+    <text class="remix-icon ri-heart-3-line ranking-loading-icon"></text>
+    <view class="ranking-maintenance-description">正在加载本月榜单…</view>
   </view>
 </view>
 <global-loading />
