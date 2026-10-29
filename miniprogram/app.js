@@ -3,6 +3,7 @@ const { envList, getActiveEnvId } = require('./envList')
 const { getSavedThemeKey, applyTheme, getThemeState } = require('./utils/theme')
 const { getSavedFontKey, applyFont, getFontState } = require('./utils/font')
 const { copyText } = require('./utils/clipboard')
+const pageShare = require('./utils/page-share')
 const serviceTracking = require('./utils/serviceTrackingManager')
 require('./utils/format')
 require('./utils/nav')
@@ -12,15 +13,36 @@ function installGlobalPreferencePagePatch() {
   if (typeof Page !== 'function' || Page.__preferencePatched) return
   const originalPage = Page
   Page = function patchedPage(options = {}) {
+    const originalOnLoad = options.onLoad
     const originalOnShow = options.onShow
+    const originalAppMessage = options.onShareAppMessage
+    const originalTimeline = options.onShareTimeline
     options.data = { themeClass: 'theme-day', fontClass: 'font-system', ...(options.data || {}) }
+    options.onLoad = function shareAwareOnLoad(...args) {
+      if (pageShare.shouldRedirectSharedHome(this, args[0])) {
+        this._shareLandingRedirect = true
+        wx.reLaunch({ url: pageShare.HOME_PATH })
+        return
+      }
+      if (typeof originalOnLoad === 'function') return originalOnLoad.apply(this, args)
+    }
     options.onShow = function preferenceOnShow(...args) {
+      if (this._shareLandingRedirect) return
+      pageShare.prepareShareMenu()
       const theme = applyTheme(null, false)
       const font = applyFont()
       if (!this.data || this.data.themeClass !== theme.className || this.data.fontClass !== font.className) {
         this.setData({ ...getThemeState(theme.value), ...getFontState(font.value) })
       }
       if (typeof originalOnShow === 'function') return originalOnShow.apply(this, args)
+    }
+    options.onShareAppMessage = function sharedAppMessage(...args) {
+      const result = typeof originalAppMessage === 'function' ? originalAppMessage.apply(this, args) : pageShare.publicTarget(this)
+      return pageShare.decorateAppMessage(this, result)
+    }
+    options.onShareTimeline = function sharedTimeline(...args) {
+      const result = typeof originalTimeline === 'function' ? originalTimeline.apply(this, args) : null
+      return pageShare.decorateTimeline(this, result, originalAppMessage)
     }
     return originalPage(options)
   }

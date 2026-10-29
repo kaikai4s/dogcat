@@ -29,8 +29,6 @@
   overflow-x: hidden;
 }
 
-.booking-notice-ticker { margin: 18rpx 30rpx 0; }
-
 .order-create-page::before,
 .order-create-page::after {
   display: none;
@@ -426,6 +424,16 @@
   font-size: 25rpx;
   font-weight: 850;
 }
+
+.upload-btn {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  gap: 8rpx;
+  line-height: 1.35;
+}
+
+.upload-btn-label { white-space: nowrap; }
 
 .sitter-change-btn {
   width: auto;
@@ -859,16 +867,29 @@ textarea {
   justify-content: center;
   gap: 8rpx;
   margin-top: 14rpx;
-  margin-bottom: 14rpx;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   background: #fff7ed;
   color: #ea580c;
   border: 1rpx dashed #fdba74;
   font-size: 24rpx;
   font-weight: 700;
-  height: 68rpx;
-  line-height: 68rpx;
+  min-height: 76rpx;
+  height: auto;
+  padding: 12rpx;
+  line-height: 1.35;
   border-radius: 14rpx;
 }
+
+.rec-time-btn text:last-child { white-space: nowrap; }
+.rec-time-hint { margin: 6rpx 0 14rpx; text-align: center; font-size: 22rpx; color: #916b50; }
+
+.client-note-field { min-width: 0; margin-top: 24rpx; }
+.client-note-field .strong { font-size: 26rpx; }
+.client-note-field .muted { font-size: 22rpx; font-weight: 400; }
+.client-note-hint { margin: 8rpx 0 12rpx; line-height: 1.5; }
+.client-note-field textarea { width: 100%; min-height: 130rpx; box-sizing: border-box; }
 
 .step-text .strong {
   color: #2d211a;

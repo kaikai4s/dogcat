@@ -1,0 +1,20 @@
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
+
+const root = path.join(__dirname, '../../miniprogram/pages/client/orders/create')
+
+test('booking has a separate service note, no announcement, and compact lock buttons', () => {
+  const wxml = fs.readFileSync(path.join(root, 'index.wxml'), 'utf8')
+  const js = fs.readFileSync(path.join(root, 'index.js'), 'utf8')
+  const wxss = fs.readFileSync(path.join(root, 'index.wxss'), 'utf8')
+  assert.doesNotMatch(wxml, /<notice-marquee/)
+  assert.match(wxml, /maxlength="300"[^>]*value="{{form.clientNote}}"[^>]*data-field="clientNote"/)
+  assert.match(js, /clientNote: ''/)
+  assert.match(js, /\.\.\.form,/)
+  assert.match(wxml, /使用推荐有效期/)
+  assert.match(wxml, /上传钥匙位置照片/)
+  assert.match(wxss, /\.rec-time-btn text:last-child \{ white-space: nowrap; \}/)
+  assert.match(wxss, /\.upload-btn-label \{ white-space: nowrap; \}/)
+})

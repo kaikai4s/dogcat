@@ -79,6 +79,7 @@ module.exports = function createService({
       ...withMaskedContact,
       addressDetail: '接单后可见',
       doorplate: '接单后可见',
+      clientNote: '',
       addressLatitude: approximateLatitude,
       addressLongitude: approximateLongitude,
       locationIsApproximate: hasCoordinate,

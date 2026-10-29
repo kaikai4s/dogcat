@@ -85,6 +85,7 @@
       </view>
     </view>
     <view class="info-row"><view class="label">地址</view><view class="value">{{detail.order.serviceAddress}}</view></view>
+    <view class="info-row" wx:if="{{detail.order.clientNote}}"><view class="label">服务备注</view><view class="value">{{detail.order.clientNote}}</view></view>
     <view class="info-row" wx:if="{{detail.order.addressDetail}}"><view class="label">详细地址</view><view class="value">{{detail.order.addressDetail}}</view></view>
     <view class="info-row"><view class="label">状态</view><view class="soft-badge status-badge">{{detail.order.statusText}}</view></view>
     <view class="info-row" wx:if="{{detail.order.autoCompleted}}"><view class="label">完单方式</view><view class="soft-badge auto-badge"><text class="remix-icon ri-sparkling-fill"></text><text>系统超时智能结算</text></view></view>

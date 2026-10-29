@@ -80,7 +80,7 @@ function withServiceActionState(order) {
   const currentSession = activeSession || nextSession || null
   const walkDurationRows = buildDurationRows(order, 'walk')
   const playDurationRows = buildDurationRows(order, 'play')
-  const customerRemarkText = order.clientRemark || order.customerRemark || order.orderRemark || order.remark || (order.orderHomeSecurity && order.orderHomeSecurity.entryNotes) || (order.homeSecuritySnapshot && order.homeSecuritySnapshot.entryNotes) || ''
+  const customerRemarkText = order.clientNote || order.clientRemark || order.customerRemark || order.orderRemark || order.remark || (order.orderHomeSecurity && order.orderHomeSecurity.entryNotes) || (order.homeSecuritySnapshot && order.homeSecuritySnapshot.entryNotes) || ''
   const petNoticeRows = buildPetNoticeRows(order)
   const highRiskCareCards = petNoticeRows.filter((card) => card.isHighRisk)
   const nowTs = Date.now()

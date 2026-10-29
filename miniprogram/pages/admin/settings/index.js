@@ -330,6 +330,11 @@ function normalizeCheckinShareConfig(checkinShare = {}) {
   }
 }
 
+function normalizeGeneralShareConfig(generalShare = {}) {
+  const imageUrl = String(generalShare.imageUrl || '').trim()
+  return { imageUrl, imageTempUrl: /^https?:\/\//.test(imageUrl) ? imageUrl : '' }
+}
+
 function normalizeNoticeTicker(value = {}) {
   return { enabled: value.enabled === true, items: Array.isArray(value.items) ? value.items.slice() : [] }
 }
@@ -526,6 +531,7 @@ function buildSettingSummary(settings = {}) {
   const customerService = settings.customerService || normalizeCustomerServiceConfig()
   const officialAccount = settings.officialAccount || normalizeOfficialAccountConfig(settings.officialAccount, customerService)
   const checkinShare = settings.checkinShare || normalizeCheckinShareConfig()
+  const generalShare = settings.generalShare || normalizeGeneralShareConfig()
   const noticeTicker = settings.noticeTicker || normalizeNoticeTicker()
   const settlement = settings.settlement || normalizeSettlementConfig()
   const reliability = settings.reliability || normalizeReliabilityConfig()
@@ -542,6 +548,7 @@ function buildSettingSummary(settings = {}) {
     customerService: `${customerService.phone || '未配置电话'} · ${customerService.workHours || '未配置时间'}`,
     officialAccount: `${officialAccount.enabled ? '服务号已启用' : '服务号已停用'} · ${officialAccount.name || '未配置名称'} · ${officialAccount.qrCodeUrl ? '已上传二维码' : '未传二维码'}`,
     checkinShare: `${checkinShare.title || '未配置标题'} · ${checkinShare.imageUrl ? '已配置封面' : '未配置封面'}`,
+    generalShare: generalShare.imageUrl ? '已配置通用封面' : '使用默认封面',
     noticeTicker: `${noticeTicker.enabled ? '展示中' : '已关闭'} · ${noticeTicker.items.length} 条消息`,
     maintenance: ['petRanking', 'booking', 'invitation'].filter(key => settings.maintenance?.[key] === true).length + '/3 项维护中',
     settlementReliability: `分成 ${Math.round(Number(settlement.staffCommissionRate || 0) * 100)}% · 完单 ${settlement.settlementDelayDays} 天后可提现 · 最低 ¥${Number(settlement.minWithdrawAmount || 0).toFixed(2)}`,
@@ -594,6 +601,7 @@ Page({
       customerService: normalizeCustomerServiceConfig(),
       officialAccount: normalizeOfficialAccountConfig(),
       checkinShare: normalizeCheckinShareConfig(),
+      generalShare: normalizeGeneralShareConfig(),
       noticeTicker: normalizeNoticeTicker(),
       maintenance: { petRanking: false, booking: false, invitation: false },
       homeHeroCarousel: normalizeCarouselConfig(),
@@ -614,6 +622,7 @@ Page({
       customerService: normalizeCustomerServiceConfig(),
       officialAccount: normalizeOfficialAccountConfig(),
       checkinShare: normalizeCheckinShareConfig(),
+      generalShare: normalizeGeneralShareConfig(),
       noticeTicker: normalizeNoticeTicker(),
       maintenance: { petRanking: false, booking: false, invitation: false },
       homeHeroCarousel: normalizeCarouselConfig(),
@@ -642,6 +651,7 @@ Page({
     uploadingPoster: false,
     uploadingCheckinShareImage: false,
     uploadingInvitationShareImage: false,
+    uploadingGeneralShareImage: false,
     uploadingOfficialAccountQrCode: false,
     uploadingTrainingVideo: false,
     uploadingTrainingPoster: false,
@@ -656,7 +666,7 @@ Page({
   },
 
   onShow() {
-    if (!this.data.showSettingModal && !this.data.uploadingInvitationShareImage && !this.data.uploadingCheckinShareImage) this.load()
+    if (!this.data.showSettingModal && !this.data.uploadingInvitationShareImage && !this.data.uploadingCheckinShareImage && !this.data.uploadingGeneralShareImage) this.load()
   },
 
   load() {
@@ -682,6 +692,7 @@ Page({
           customerService: normalizeCustomerServiceConfig(settings.customerService),
           officialAccount: normalizeOfficialAccountConfig(settings.officialAccount, settings.customerService),
           checkinShare: normalizeCheckinShareConfig(settings.checkinShare),
+          generalShare: normalizeGeneralShareConfig(settings.generalShare),
           noticeTicker: normalizeNoticeTicker(settings.noticeTicker),
           maintenance: settings.maintenance || { petRanking: false, booking: false, invitation: false },
           homeHeroCarousel: normalizeCarouselConfig(settings.homeHeroCarousel),
@@ -710,6 +721,7 @@ Page({
           this.resolveTrainingVideoUrls(normalized.staffTraining.videos)
           this.resolveCheckinShareImageUrl(normalized.checkinShare.imageUrl)
           this.resolveInvitationShareImageUrl(normalized.invitation.shareImageUrl)
+          this.resolveGeneralShareImageUrl(normalized.generalShare.imageUrl)
           this.resolveOfficialAccountQrCodeUrl(normalized.officialAccount.qrCodeUrl)
           this.resolvePetBeautyPosterUrl(normalized.petBeautyContest.posterFileId)
         })
@@ -1121,6 +1133,37 @@ Page({
     })
   },
 
+  resolveGeneralShareImageUrl(imageUrl) {
+    if (!imageUrl) {
+      this.setData({ 'settings.generalShare.imageTempUrl': '' })
+      return
+    }
+    if (/^https?:\/\//.test(imageUrl)) {
+      this.setData({ 'settings.generalShare.imageTempUrl': imageUrl })
+      return
+    }
+    wx.cloud.getTempFileURL({
+      fileList: [imageUrl],
+      success: (res) => {
+        const file = res.fileList && res.fileList[0]
+        if (this.data.settings.generalShare.imageUrl === imageUrl) {
+          this.setData({ 'settings.generalShare.imageTempUrl': (file && file.tempFileURL) || '' })
+        }
+      }
+    })
+  },
+
+  chooseGeneralShareImage() { this.uploadShareCover('generalShare') },
+
+  removeGeneralShareImage() {
+    this.setData({ 'settings.generalShare.imageUrl': '', 'settings.generalShare.imageTempUrl': '' })
+  },
+
+  previewGeneralShareImage() {
+    const url = this.data.settings.generalShare.imageTempUrl
+    if (url) wx.previewImage({ current: url, urls: [url] })
+  },
+
   chooseInvitationShareImage() { this.uploadShareCover('invitation') },
 
   removeInvitationShareImage() {
@@ -1159,7 +1202,14 @@ Page({
   },
 
   uploadShareCover(section) {
-    const loadingKey = section === 'invitation' ? 'uploadingInvitationShareImage' : 'uploadingCheckinShareImage'
+    const coverFields = {
+      invitation: { loadingKey: 'uploadingInvitationShareImage', cloudPath: 'invitation_share', urlKey: 'shareImageUrl', tempKey: 'shareImageTempUrl' },
+      checkinShare: { loadingKey: 'uploadingCheckinShareImage', cloudPath: 'checkin_share', urlKey: 'imageUrl', tempKey: 'imageTempUrl' },
+      generalShare: { loadingKey: 'uploadingGeneralShareImage', cloudPath: 'general_share', urlKey: 'imageUrl', tempKey: 'imageTempUrl' }
+    }
+    const fields = coverFields[section]
+    if (!fields) return
+    const { loadingKey, cloudPath: pathPrefix, urlKey, tempKey } = fields
     if (this.data[loadingKey]) return
     wx.chooseMedia({
       count: 1,
@@ -1169,14 +1219,12 @@ Page({
         const file = res.tempFiles && res.tempFiles[0]
         const filePath = file && (file.tempFilePath || file.path)
         if (!filePath) return showError(new Error('请选择有效图片'))
-        const cloudPath = `${section === 'invitation' ? 'invitation_share' : 'checkin_share'}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`
+        const cloudPath = `${pathPrefix}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`
         this.setData({ [loadingKey]: true })
         wx.showLoading({ title: '上传封面...' })
         try {
           const upload = await uploadImage({ cloudPath, filePath, config: { env: getCloudEnv() } })
           if (!upload || !upload.fileID) throw new Error('封面上传失败，请重试')
-          const urlKey = section === 'invitation' ? 'shareImageUrl' : 'imageUrl'
-          const tempKey = section === 'invitation' ? 'shareImageTempUrl' : 'imageTempUrl'
           this.setData({ [`settings.${section}.${urlKey}`]: upload.fileID, [`settings.${section}.${tempKey}`]: filePath })
           wx.showToast({ title: '封面上传成功，请保存设置', icon: 'none' })
           wx.cloud.getTempFileURL({ fileList: [upload.fileID], config: { env: getCloudEnv() }, success: (result) => {
@@ -2039,7 +2087,7 @@ Page({
   save() {
     if (this.data.saving) return
     if (!this.data.loaded) return showError(new Error('请等待设置加载成功后再保存'))
-    if (this.data.uploadingTrainingVideo || this.data.uploadingTrainingPoster || this.data.uploadingInvitationShareImage || this.data.uploadingCheckinShareImage) {
+    if (this.data.uploadingTrainingVideo || this.data.uploadingTrainingPoster || this.data.uploadingInvitationShareImage || this.data.uploadingCheckinShareImage || this.data.uploadingGeneralShareImage) {
       wx.showToast({ title: '请等待素材上传完成', icon: 'none' })
       return
     }
@@ -2183,6 +2231,7 @@ Page({
         title: checkinShare.title || '',
         imageUrl: checkinShare.imageUrl || ''
       },
+      generalShare: { imageUrl: this.data.settings.generalShare.imageUrl || '' },
       homePage: this.data.settings.homePage,
       noticeTicker: { enabled: this.data.settings.noticeTicker.enabled, items: notices },
       maintenance: this.data.settings.maintenance,
@@ -2227,6 +2276,7 @@ Page({
           officialAccount: normalizeOfficialAccountConfig(settings.officialAccount, settings.customerService),
           invitation: normalizeInvitationConfig(settings.invitation),
           checkinShare: normalizeCheckinShareConfig(settings.checkinShare),
+          generalShare: normalizeGeneralShareConfig(settings.generalShare),
           noticeTicker: normalizeNoticeTicker(settings.noticeTicker),
           maintenance: settings.maintenance || { petRanking: false, booking: false, invitation: false },
           homeHeroCarousel: normalizeCarouselConfig(settings.homeHeroCarousel),
@@ -2255,6 +2305,7 @@ Page({
         this.resolveTrainingVideoUrls(normalized.staffTraining.videos)
         this.resolveInvitationShareImageUrl(normalized.invitation.shareImageUrl)
         this.resolveCheckinShareImageUrl(normalized.checkinShare.imageUrl)
+        this.resolveGeneralShareImageUrl(normalized.generalShare.imageUrl)
         this.resolvePetBeautyPosterUrl(normalized.petBeautyContest.posterFileId)
         wx.showToast({ title: '设置已保存' })
       })

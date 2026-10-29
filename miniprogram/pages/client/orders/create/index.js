@@ -428,7 +428,6 @@ function getInitialServiceTime() {
 
 typeof Page === 'function' ? Page({
   data: {
-    noticeTicker: { enabled: false, items: [] },
     bookingMaintenance: false,
     maintenanceLoading: true,
     themeClass: 'theme-day',
@@ -478,6 +477,7 @@ typeof Page === 'function' ? Page({
       keyLocation: '',
       keyImageFileIds: [],
       entryNotes: '',
+      clientNote: '',
       orderType: 'single',
       ...getInitialServiceTime(),
       startTime: '',
@@ -576,12 +576,12 @@ typeof Page === 'function' ? Page({
   onShow() {
     this.applyCurrentTheme()
     const cached = getCachedSystemSettings()
-    this.setData({ noticeTicker: cached.noticeTicker || { enabled: false, items: [] }, bookingMaintenance: cached.maintenance?.booking === true, maintenanceLoading: true })
+    this.setData({ bookingMaintenance: cached.maintenance?.booking === true, maintenanceLoading: true })
     this.consumeSelectedCoupon()
     this.updateMinTime()
     return loadSystemSettings().then((settings) => {
       const paused = settings.maintenance?.booking === true
-      this.setData({ noticeTicker: settings.noticeTicker || { enabled: false, items: [] }, bookingMaintenance: paused, maintenanceLoading: false })
+      this.setData({ bookingMaintenance: paused, maintenanceLoading: false })
       if (paused) return null
       this.initPricingSurcharges(settings && settings.pricingSurcharges)
       return ensureLogin({ content: '登录后可创建预约订单。' })
@@ -1988,6 +1988,7 @@ typeof Page === 'function' ? Page({
     if (form.lockMethod === 'one_time_code' && !coversServiceTime(form.startTime, form.endTime, form.doorLockCodeStartTime, form.doorLockCodeEndTime)) return '一次性密码有效期需要覆盖完整服务时间'
     if (form.lockMethod === 'key' && !String(form.keyLocation || '').trim()) return '请填写钥匙放置位置'
     if (form.lockMethod === 'key' && !(form.keyImageFileIds || []).length) return '请上传钥匙放置位置图片'
+    if (String(form.clientNote || '').trim().length > 300) return '服务备注最多填写300字'
     if (!form.startDate || !form.startClock) return '请选择开始时间'
     if (form.orderType === 'multi_day' && (!form.endDate || form.endDate < form.startDate)) return '请选择正确的连续服务结束日期'
     const sessions = buildDailySessions(form)

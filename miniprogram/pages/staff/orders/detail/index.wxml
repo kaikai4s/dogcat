@@ -117,6 +117,7 @@
     </view>
     <view class="info-row"><view class="label">订单号</view><view class="value">{{order.orderNo}}</view></view>
     <view class="info-row"><view class="label">服务项目</view><view class="value">{{order.serviceSummary || (order.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view></view>
+    <view class="info-row" wx:if="{{order.clientNote}}"><view class="label">客户服务备注</view><view class="value">{{order.clientNote}}</view></view>
     <view class="info-row"><view class="label">服务地址</view><view class="value">{{order.serviceAddress}}</view></view>
     <view class="info-row" wx:if="{{order.addressDetail}}"><view class="label">详细地址</view><view class="value">{{order.addressDetail}}</view></view>
     <view class="info-row" wx:if="{{order.doorplate}}"><view class="label">门牌说明</view><view class="value">{{order.doorplate}}</view></view>

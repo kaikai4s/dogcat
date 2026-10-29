@@ -37,10 +37,16 @@ function installAdminPageGuard() {
   Page = function guardedPage(options) {
     const load = options.onLoad, show = options.onShow
     options.onLoad = function (...args) {
+      if (String(this.route || '').startsWith('pages/admin/') && args[0] && args[0].sharedHome === '1') {
+        this._shareLandingRedirect = true
+        wx.reLaunch({ url: '/pages/client/home/index' })
+        return
+      }
       if (!String(this.route || '').startsWith('pages/admin/')) return load && load.apply(this, args)
       this._adminLoadArgs = args
     }
     options.onShow = function (...args) {
+      if (this._shareLandingRedirect) return
       if (!String(this.route || '').startsWith('pages/admin/')) return show && show.apply(this, args)
       const { callFunction, showError } = require('./cloud')
       return callFunction('admin', 'getMyAdminAccess').then(async access => {

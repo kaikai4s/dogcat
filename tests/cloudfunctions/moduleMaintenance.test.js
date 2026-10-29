@@ -44,6 +44,21 @@ test('saving only maintenance preserves published notices, while explicitly clea
   assert.deepEqual(cleared.data.noticeTicker, { enabled: false, items: [] })
 })
 
+test('general cover is public, survives partial saves, and can be removed explicitly', async () => {
+  const { admin, client } = fixture()
+  const imageUrl = 'cloud://test/general_share/cover.jpg'
+  const invalid = await admin.main({ module: 'admin', action: 'saveSystemSettings', data: { generalShare: { imageUrl: '/private/file.jpg' } } })
+  assert.equal(invalid.ok, false)
+  const saved = await admin.main({ module: 'admin', action: 'saveSystemSettings', data: { generalShare: { imageUrl } } })
+  assert.equal(saved.ok, true, saved.message)
+  await admin.main({ module: 'admin', action: 'saveSystemSettings', data: { maintenance: { booking: true } } })
+  const publicSettings = await client.main({ module: 'system', action: 'getSettings' })
+  assert.equal(publicSettings.data.generalShare.imageUrl, imageUrl)
+  const removed = await admin.main({ module: 'admin', action: 'saveSystemSettings', data: { generalShare: { imageUrl: '' } } })
+  assert.equal(removed.ok, true, removed.message)
+  assert.equal(removed.data.generalShare.imageUrl, '')
+})
+
 test('ranking maintenance rejects reads and voting; booking maintenance rejects quote/create but not order history', async () => {
   const { db, client } = fixture()
   const settings = { _id: 'settings', key: 'system_settings', value: { maintenance: { petRanking: true, booking: true } } }

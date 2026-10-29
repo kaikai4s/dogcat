@@ -39,6 +39,20 @@ test('extra pet charges preserve cents in quotes and created orders', async () =
   assert.equal(order.data.payAmount, 69.25)
 })
 
+test('service note persists, is hidden before staff assignment, and rejects oversized input', async () => {
+  const { db, context } = setup()
+  const fn = loadCloudFunction('api', db, 'client')
+  const data = { petId: 'p1', serviceTypes: ['visit_fee', 'feed'], serviceAddress: '地址', addressDetail: '1栋', doorplate: '101', startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00' }
+  const tooLong = await fn.main({ module: 'order', action: 'createOrder', data: { ...data, clientNote: '注意'.repeat(151) } })
+  assert.equal(tooLong.ok, false)
+  assert.match(tooLong.message, /服务备注最多填写300字/)
+  const saved = await fn.main({ module: 'order', action: 'createOrder', data: { ...data, clientNote: '  猫粮放在左侧柜子  ' } })
+  assert.equal(saved.ok, true, saved.message)
+  assert.equal(saved.data.clientNote, '猫粮放在左侧柜子')
+  assert.equal(db.state.orders[0].clientNote, '猫粮放在左侧柜子')
+  assert.equal(context.maskOrderForStaffPreview(db.state.orders[0]).clientNote, '')
+})
+
 for (const moduleName of ['order', 'mall']) {
   test(`${moduleName}: concurrent retries of one request create only one order`, async () => {
     const { db } = setup()

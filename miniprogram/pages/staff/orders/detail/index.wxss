@@ -250,6 +250,7 @@
   font-weight: 760;
   text-align: right;
   max-width: 65%;
+  overflow-wrap: anywhere;
 }
 
 .info-row .value.red {

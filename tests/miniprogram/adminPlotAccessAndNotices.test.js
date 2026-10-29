@@ -50,7 +50,7 @@ test('plot level checkboxes retain their selected state and submit incremental c
   ])
 })
 
-test('both admin share cover uploads use processed image upload and keep the unsaved cover when returning from picker', async () => {
+test('all admin share cover uploads use processed image upload and keep the unsaved cover when returning from picker', async () => {
   const uploads = [], errors = [], toasts = []
   const wx = {
     chooseMedia(options) { options.success({ tempFiles: [{ tempFilePath: '/tmp/cover.png' }] }) },
@@ -62,18 +62,19 @@ test('both admin share cover uploads use processed image upload and keep the uns
     imageUpload: { async uploadImage(options) { uploads.push(options); return { fileID: `cloud://test/${options.cloudPath}` } } }
   }, wx)
   page.data.showSettingModal = true
-  for (const section of ['invitation', 'checkinShare']) {
-    section === 'invitation' ? page.chooseInvitationShareImage() : page.chooseCheckinShareImage()
+  const chooseBySection = { invitation: 'chooseInvitationShareImage', checkinShare: 'chooseCheckinShareImage', generalShare: 'chooseGeneralShareImage' }
+  for (const section of ['invitation', 'checkinShare', 'generalShare']) {
+    page[chooseBySection[section]]()
     page.onShow()
     await flush()
     const key = section === 'invitation' ? 'shareImageUrl' : 'imageUrl'
     assert.match(page.data.settings[section][key], /^cloud:\/\/test\//)
   }
-  assert.equal(uploads.length, 2)
+  assert.equal(uploads.length, 3)
   assert.equal(uploads[0].config.env, 'test-env')
   assert.equal(uploads[1].filePath, '/tmp/cover.png')
   assert.equal(errors.length, 0)
-  assert.equal(toasts.length, 2)
+  assert.equal(toasts.length, 3)
 })
 
 test('saving settings waits for the check-in cover upload and includes its completed file ID', async () => {

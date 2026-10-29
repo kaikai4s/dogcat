@@ -333,6 +333,9 @@ module.exports = function createService({
         title: safeText((value.checkinShare || {}).title).trim() || '来签到领福利，补签卡也能拿',
         imageUrl: safeText((value.checkinShare || {}).imageUrl).trim()
       },
+      generalShare: {
+        imageUrl: safeText(((value.generalShare === undefined ? existingSettings.generalShare : value.generalShare) || {}).imageUrl).trim()
+      },
       pricingSurcharges: normalizePricingSurcharges(value.pricingSurcharges),
       logistics: normalizeLogisticsConfig(logistics, existingSettings.logistics, includeSecrets),
       petBeautyContest: normalizePetBeautyContestConfig(value.petBeautyContest, existingSettings.petBeautyContest)
@@ -371,6 +374,10 @@ module.exports = function createService({
   }
 
   async function saveSystemSettings(settings) {
+    const generalShareImage = safeText(settings.generalShare && settings.generalShare.imageUrl).trim()
+    if (generalShareImage && !/^(cloud:\/\/|https:\/\/)/.test(generalShareImage)) {
+      throw new Error('【通用分享封面】请上传有效的云存储图片')
+    }
     if (settings.noticeTicker) {
       const items = settings.noticeTicker.items
       if (!Array.isArray(items) || items.length > 10 || items.some((text) => typeof text !== 'string' || !text.trim() || text.trim().length > 120)) {

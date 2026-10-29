@@ -52,15 +52,14 @@ test('long notices remain complete and use a proportional scrolling duration', (
   assert.ok(component.data.duration > 10)
 })
 
-test('both client pages render the shared seamless horizontal marquee', () => {
+test('only the home page renders the seamless horizontal marquee', () => {
   const home = fs.readFileSync(path.join(root, 'pages/client/home/index.wxml'), 'utf8')
   const booking = fs.readFileSync(path.join(root, 'pages/client/orders/create/index.wxml'), 'utf8')
   const markup = fs.readFileSync(path.join(componentPath, 'index.wxml'), 'utf8')
   const styles = fs.readFileSync(path.join(componentPath, 'index.wxss'), 'utf8')
-  for (const page of [home, booking]) {
-    assert.match(page, /<notice-marquee[^>]+notice="{{noticeTicker}}"/)
-    assert.doesNotMatch(page, /ticker-swiper/)
-  }
+  assert.match(home, /<notice-marquee[^>]+notice="{{noticeTicker}}"/)
+  assert.doesNotMatch(booking, /<notice-marquee/)
+  assert.doesNotMatch(booking, /ticker-swiper/)
   assert.match(markup, /wx:for="{{\[0, 1\]}}"/)
   assert.match(markup, /bindtap="showNotice"/)
   assert.match(styles, /animation:\s*notice-scroll\s+12s\s+linear\s+infinite/)

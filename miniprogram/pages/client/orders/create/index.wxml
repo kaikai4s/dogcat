@@ -1,7 +1,4 @@
 <view wx:if="{{!bookingMaintenance && !maintenanceLoading}}" class="page order-create-page {{themeClass}} {{fontClass}}">
-  <view class="booking-notice-ticker" wx:if="{{noticeTicker.enabled && noticeTicker.items.length}}">
-    <notice-marquee notice="{{noticeTicker}}" theme="{{themeClass}}" font-class="{{fontClass}}" />
-  </view>
   <view class="booking-hero">
     <view class="booking-badge">立即预约</view>
     <view class="booking-title">安排一次安心上门照护</view>
@@ -299,7 +296,8 @@
       </view>
 
       <input password placeholder="智能门锁App生成的一次性密码（本单专用）" value="{{form.doorLockCode}}" data-field="doorLockCode" bindinput="input" />
-      <button class="ghost-btn rec-time-btn" bindtap="applyRecommendedCodeTimes"><text class="remix-icon ri-magic-line"></text> 一键对齐推荐有效区间（服务前15分 ~ 结束后30分）</button>
+      <button class="ghost-btn rec-time-btn" bindtap="applyRecommendedCodeTimes" aria-label="一键对齐推荐有效区间"><text class="remix-icon ri-magic-line"></text><text>使用推荐有效期</text></button>
+      <view class="rec-time-hint">一键对齐推荐有效区间：服务前15分钟至结束后30分钟</view>
       <view class="picker-grid">
         <picker mode="date" value="{{form.doorLockCodeStartDate}}" bindchange="chooseCodeStartDate"><view class="field">生效日期：{{form.doorLockCodeStartDate}}</view></picker>
         <picker mode="time" value="{{form.doorLockCodeStartClock}}" bindchange="chooseCodeStartClock"><view class="field">生效时间：{{form.doorLockCodeStartClock}}</view></picker>
@@ -338,7 +336,7 @@
       </view>
 
       <input placeholder="钥匙存放详细位置（若为密码盒请注明开盒密码）" value="{{form.keyLocation}}" data-field="keyLocation" bindinput="input" />
-      <button class="ghost upload-btn" loading="{{uploadingKeyImage}}" disabled="{{uploadingKeyImage}}" bindtap="chooseKeyImage"><text class="remix-icon ri-camera-line"></text> 上传钥匙位置参考图片</button>
+      <button class="ghost upload-btn" loading="{{uploadingKeyImage}}" disabled="{{uploadingKeyImage}}" bindtap="chooseKeyImage"><text class="remix-icon ri-camera-line"></text><text class="upload-btn-label">上传钥匙位置照片</text></button>
       <view class="image-list" wx:if="{{form.keyImageFileIds.length}}">
         <view class="image-chip" wx:for="{{form.keyImageFileIds}}" wx:key="*this" data-index="{{index}}" bindtap="removeKeyImage">图片{{index + 1}} · 点击移除</view>
       </view>
@@ -421,6 +419,11 @@
       <view class="strong">{{selectedAvailability.status === 'available' ? selectedAvailability.slotText : '当天休息'}}</view>
       <view class="muted">{{selectedAvailability.source === 'exception' ? '按日期例外' : '按周规则'}} · 已接订单 {{selectedAvailability.busyOrders.length || 0}} 个</view>
       <view class="muted">{{selectedAvailability.timeFitText}}</view>
+    </view>
+    <view class="client-note-field">
+      <view class="strong">给宠托师的服务备注 <text class="muted">（选填）</text></view>
+      <view class="muted client-note-hint">可填写喂养习惯、用品位置或本次照护重点；门锁密码请在入户方式中单独填写。</view>
+      <textarea maxlength="300" placeholder="例如：猫粮在厨房左侧柜子，每次喂半勺" value="{{form.clientNote}}" data-field="clientNote" bindinput="input" />
     </view>
   </view>
 

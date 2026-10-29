@@ -147,6 +147,14 @@
       <view class="setting-summary-line">配置签到中心邀请好友分享标题和封面。</view>
     </view>
 
+    <view class="admin-compact-card setting-overview-card" data-panel="generalShare" bindtap="openSettingModal">
+      <view class="admin-summary-row">
+        <view class="admin-summary-main"><view class="admin-summary-title">通用分享封面</view><view class="admin-summary-sub">{{settingSummary.generalShare}}</view></view>
+        <view class="meta-chip chip-primary">编辑</view>
+      </view>
+      <view class="setting-summary-line">除签到和邀请活动外，好友卡片与朋友圈统一使用此封面。</view>
+    </view>
+
     <view class="admin-compact-card setting-overview-card" data-panel="noticeTicker" bindtap="openSettingModal">
       <view class="admin-summary-row"><view class="admin-summary-main"><view class="admin-summary-title">用户端消息滚动栏</view><view class="admin-summary-sub">{{settingSummary.noticeTicker}}</view></view><view class="meta-chip chip-primary">编辑</view></view>
       <view class="setting-summary-line">发布后在首页顶部和预约下单页显示。</view>
@@ -231,7 +239,7 @@
     </view>
   </view>
 
-  <button wx:if="{{adminSuper}}" class="primary save-settings-btn" disabled="{{saving || uploadingTrainingVideo || uploadingTrainingPoster || uploadingInvitationShareImage || uploadingCheckinShareImage}}" bindtap="save">{{saving ? '保存中...' : '保存全局设置'}}</button>
+  <button wx:if="{{adminSuper}}" class="primary save-settings-btn" disabled="{{saving || uploadingTrainingVideo || uploadingTrainingPoster || uploadingInvitationShareImage || uploadingCheckinShareImage || uploadingGeneralShareImage}}" bindtap="save">{{saving ? '保存中...' : '保存全局设置'}}</button>
 
   <view class="modal-backdrop" wx:if="{{showSettingModal}}" bindtap="closeSettingModal" catchtouchmove="noop">
     <view class="modal-card settings-modal-card" catchtap="noop">
@@ -249,6 +257,7 @@
         <view class="modal-title" wx:if="{{activeSettingPanel === 'subscription'}}">订阅消息</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'customerService'}}">客服与转接</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'checkinShare'}}">签到分享卡片</view>
+        <view class="modal-title" wx:if="{{activeSettingPanel === 'generalShare'}}">通用分享封面</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'noticeTicker'}}">用户端消息滚动栏</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'settlementReliability'}}">结算与可靠性</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'invitation'}}">邀请活动与用户资产</view>
@@ -636,6 +645,22 @@
               <view wx:else class="checkin-share-placeholder"><text class="remix-icon ri-image-add-line"></text><text>{{uploadingCheckinShareImage ? '上传中...' : '上传分享封面图'}}</text></view>
             </view>
             <view class="checkin-share-file" wx:if="{{settings.checkinShare.imageUrl}}">{{settings.checkinShare.imageUrl}}</view>
+          </view>
+        </view>
+
+        <view wx:if="{{activeSettingPanel === 'generalShare'}}" class="setting-modal-section">
+          <view class="field-item">
+            <text class="label">好友卡片与朋友圈封面</text>
+            <view class="checkin-share-upload" wx:if="{{adminSuper}}" bindtap="chooseGeneralShareImage">
+              <image wx:if="{{settings.generalShare.imageTempUrl}}" class="checkin-share-preview" src="{{settings.generalShare.imageTempUrl}}" mode="aspectFill" />
+              <view wx:else class="checkin-share-placeholder"><text class="remix-icon ri-image-add-line"></text><text>{{uploadingGeneralShareImage ? '上传中...' : '上传通用分享封面'}}</text></view>
+            </view>
+            <image wx:elif="{{settings.generalShare.imageTempUrl}}" class="checkin-share-preview" src="{{settings.generalShare.imageTempUrl}}" mode="aspectFill" />
+            <view class="oa-qrcode-ops" wx:if="{{adminSuper && settings.generalShare.imageUrl}}">
+              <button class="btn btn-outline btn-xs" bindtap="previewGeneralShareImage">查看大图</button>
+              <button class="btn btn-outline btn-xs btn-danger" bindtap="removeGeneralShareImage">删除</button>
+            </view>
+            <view class="muted">未上传时使用平台默认封面；签到和邀请活动的独立封面不受影响。上传完成后还需保存设置。</view>
           </view>
         </view>
 
@@ -1028,7 +1053,7 @@
 
       <view class="modal-actions">
         <button class="ghost" style="flex: 1;" bindtap="closeSettingModal">关闭</button>
-        <button wx:if="{{adminSuper}}" class="primary" style="flex: 2;" disabled="{{saving || uploadingTrainingVideo || uploadingTrainingPoster || uploadingInvitationShareImage || uploadingCheckinShareImage}}" bindtap="save">{{saving ? '保存中...' : '保存设置'}}</button>
+        <button wx:if="{{adminSuper}}" class="primary" style="flex: 2;" disabled="{{saving || uploadingTrainingVideo || uploadingTrainingPoster || uploadingInvitationShareImage || uploadingCheckinShareImage || uploadingGeneralShareImage}}" bindtap="save">{{saving ? '保存中...' : '保存设置'}}</button>
       </view>
     </view>
   </view>
