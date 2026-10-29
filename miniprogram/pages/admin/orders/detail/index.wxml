@@ -105,6 +105,7 @@
   </view>
 
   <!-- 费用与收益分成结算卡片 -->
+  <view class="admin-card financial-card" wx:if="{{detail.order.profitError}}">{{detail.order.profitError}}，收益暂不估算。请核对宠托师管理中的个人提成比例。</view>
   <view class="admin-card financial-card" wx:if="{{detail.order.profitSummary && detail.order.profitSummary.hasPayment}}">
     <view class="card-subtitle-between">
       <view class="card-subtitle">
@@ -128,7 +129,8 @@
       <view class="profit-item staff-item">
         <view class="profit-label">宠托师收益</view>
         <view class="profit-amount staff-amount">¥{{detail.order.profitSummary.staffReward}}</view>
-        <view class="profit-sub">{{detail.order.profitSummary.commissionRateText}}分成<text wx:if="{{detail.order.profitSummary.deductAmount > 0}}"> (含扣除¥{{detail.order.profitSummary.deductAmount}})</text></view>
+        <view class="profit-sub" wx:if="{{detail.order.profitSummary.settlementStatus === 'refunded'}}">已全额退款，无收益</view>
+        <view class="profit-sub" wx:else>{{detail.order.profitSummary.commissionRateText}}<text wx:if="{{!detail.order.profitSummary.isFixedUrgentReward}}">分成</text><text wx:if="{{detail.order.profitSummary.deductAmount > 0}}"> (含扣除¥{{detail.order.profitSummary.deductAmount}})</text></view>
       </view>
 
       <view class="profit-item platform-item">
@@ -137,7 +139,7 @@
           <text wx:if="{{detail.order.profitSummary.isSubsidy}}">-¥{{detail.order.profitSummary.subsidyAmount}}</text>
           <text wx:else>¥{{detail.order.profitSummary.platformProfit}}</text>
         </view>
-        <view class="profit-sub">{{detail.order.profitSummary.platformProfitRateText}}</view>
+        <view class="profit-sub">{{detail.order.profitSummary.settlementStatus === 'refunded' ? '已全额退款' : detail.order.profitSummary.platformProfitRateText}}</view>
       </view>
     </view>
 
@@ -155,7 +157,11 @@
         <view class="label">核实违规扣款</view>
         <view class="value danger-text">扣除违规金额 ¥{{detail.order.adminManualDeductEarning}} · 扣减金额留存平台</view>
       </view>
-      <view class="info-row">
+      <view class="info-row" wx:if="{{detail.order.profitSummary.settlementStatus !== 'refunded' && detail.order.profitSummary.isFixedUrgentReward}}">
+        <view class="label">固定奖励规则</view>
+        <view class="value muted">宠托师固定奖励 ¥{{detail.order.urgentStaffReward}} · {{detail.order.profitSummary.platformProfitRateText}}（完单后计入宠托师钱包）</view>
+      </view>
+      <view class="info-row" wx:elif="{{detail.order.profitSummary.settlementStatus !== 'refunded'}}">
         <view class="label">分成比例规则</view>
         <view class="value muted">基础分成：宠托师 {{detail.order.profitSummary.commissionRateText}} · 平台 {{detail.order.profitSummary.platformProfitRateText}}（完单后计入宠托师钱包）</view>
       </view>

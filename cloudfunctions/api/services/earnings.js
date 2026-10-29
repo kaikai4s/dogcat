@@ -1,3 +1,5 @@
+const { readOptionalDocument } = require('../utils/documentPages')
+
 module.exports = function createService({
   db,
   getSystemSettings,
@@ -8,6 +10,19 @@ module.exports = function createService({
   function splitOrderCents(grossCents, rate) {
     const platformCents = Math.round(grossCents * (1 - rate))
     return { platformCents, staffCents: grossCents - platformCents }
+  }
+
+  async function resolveStaffCommissionRate(order, defaultRate) {
+    const fallback = Number(defaultRate)
+    if (!order?.staffOpenid) return fallback
+    const direct = order.staffProfileId ? await readOptionalDocument(db, 'staff_profiles', order.staffProfileId) : null
+    const profile = direct?.openid === order.staffOpenid ? direct
+      : ((await db.collection('staff_profiles').where({ openid: order.staffOpenid }).limit(1).get()).data || [])[0]
+    const override = profile?.commissionRateOverride
+    if (override === undefined || override === null || override === '') return fallback
+    const rate = Number(override)
+    if (!Number.isFinite(rate) || rate < 0 || rate > 1) throw new Error('宠托师个人提成比例异常，请联系管理员核对')
+    return rate
   }
 
   async function calculateStaffEarningForOrder(order) {
@@ -23,7 +38,7 @@ module.exports = function createService({
     }
     if (!order.payAmount) return { earningAmount: 0, commissionRate: 0.7 }
     const settings = await getSystemSettings()
-    const rate = Number(settings.settlement.staffCommissionRate ?? 0.7)
+    const rate = await resolveStaffCommissionRate(order, settings.settlement.staffCommissionRate ?? 0.7)
     const grossCents = Math.round(Number(order.payAmount || 0) * 100)
     const { staffCents } = splitOrderCents(grossCents, rate)
     const earningAmount = staffCents / 100
@@ -38,7 +53,7 @@ module.exports = function createService({
   async function ensureStaffEarning(order, completedAt = now(), options = {}) {
     if (!order || !order._id || !order.staffOpenid) return null
     const settings = await getSystemSettings()
-    const rate = Number(settings.settlement.staffCommissionRate ?? 0.7)
+    const rate = await resolveStaffCommissionRate(order, settings.settlement.staffCommissionRate ?? 0.7)
     const grossCents = Math.round(Number(order.payAmount || 0) * 100)
     const grossAmount = grossCents / 100
     let baseCents = splitOrderCents(grossCents, rate).staffCents
@@ -338,7 +353,7 @@ module.exports = function createService({
     const payAmount = Number(order.payAmount || 0)
     const refundAmount = Number(order.refundAmount || 0)
     const netPayAmount = Math.max(0, Math.round((payAmount - refundAmount) * 100) / 100)
-    const rate = Number(commissionRate ?? 0.7)
+    const rate = Number(actualEarning?.commissionRate ?? commissionRate ?? 0.7)
     const ratePercentText = `${Math.round(rate * 100)}%`
     const platformRatePercentText = `${Math.max(0, 100 - Math.round(rate * 100))}%`
 
@@ -390,11 +405,14 @@ module.exports = function createService({
     let deductAmount = 0
     let commissionText = ratePercentText
     const isUrgent = Boolean(order.isUrgent && Number(order.urgentStaffReward) > 0)
+    const isFixedUrgentReward = isUrgent && order.completionType !== 'admin_manual'
 
     if (actualEarning && typeof actualEarning.amount === 'number') {
       staffReward = Number(actualEarning.amount)
       deductAmount = Number(actualEarning.deductAmount || 0)
-      if (actualEarning.commissionRate) {
+      if (isFixedUrgentReward) {
+        commissionText = '加急补贴一口价'
+      } else if (actualEarning.commissionRate !== undefined && actualEarning.commissionRate !== null) {
         commissionText = `${Math.round(actualEarning.commissionRate * 100)}%`
       }
     } else if (order.completionType === 'admin_manual' && order.adminManualStaffReward !== undefined) {
@@ -442,8 +460,9 @@ module.exports = function createService({
       platformProfit,
       commissionRate: rate,
       commissionRateText: commissionText,
-      platformProfitRateText: isSubsidy ? '平台加急补贴' : platformRatePercentText,
+      platformProfitRateText: isFixedUrgentReward ? (isSubsidy ? '平台补贴差额' : '固定奖励后留存') : (isSubsidy ? '平台加急补贴' : platformRatePercentText),
       isUrgent,
+      isFixedUrgentReward,
       isSubsidy,
       subsidyAmount,
       deductAmount,
@@ -453,6 +472,7 @@ module.exports = function createService({
   }
 
   return {
+    resolveStaffCommissionRate,
     calculateStaffEarningForOrder,
     calculateAvailableAt,
     ensureStaffEarning,

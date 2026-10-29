@@ -102,6 +102,12 @@
   margin-top: 16rpx;
 }
 
+.commission-hint { margin-top: 12rpx; font-size: 23rpx; line-height: 1.5; }
+.commission-mode { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; margin: 24rpx 0; font-size: 26rpx; }
+.commission-input { display: flex; align-items: center; gap: 12rpx; border: 1rpx solid #d1d5db; border-radius: 8rpx; padding: 0 18rpx; }
+.commission-input input { flex: 1; min-width: 0; height: 80rpx; margin: 0; }
+.commission-input text { flex-shrink: 0; }
+
 .openid-box {
   margin-top: 12rpx;
   padding: 12rpx 16rpx;

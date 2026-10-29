@@ -102,6 +102,7 @@
           <view class="meta-chip">{{item.ratingText}}</view>
           <view class="meta-chip deposit-chip {{item.depositBalance < 100 ? 'danger-chip' : ''}}">保证金: {{item.depositBalanceText}}</view>
           <view class="meta-chip withdraw-chip">可提现: {{item.withdrawableAmountText}}</view>
+          <view class="meta-chip">{{item.commissionPercentText}}</view>
           <view class="meta-chip can-revoke-chip" wx:if="{{item.canRevokeStaff && item.auditStatus === 'approved'}}">可移除身份</view>
           <view class="meta-chip danger-chip" wx:if="{{item.requireDepositRepay}}">需重新缴纳保证金</view>
           <view class="meta-chip danger-chip" wx:if="{{item.problemOrderCount > 0}}">异常订单 {{item.problemOrderCount}}</view>
@@ -112,6 +113,7 @@
 
     <view class="admin-summary-row sitter-action-row">
       <button wx:if="{{adminSuper || adminPermissions.admin_listStaffAudits}}" class="mini-btn" data-id="{{item._id}}" bindtap="detail">{{item.actionText}}</button>
+      <button wx:if="{{adminSuper || adminPermissions.admin_setStaffCommissionRate}}" class="mini-btn ghost-mini" data-id="{{item._id}}" bindtap="openCommissionEditor"><text class="remix-icon ri-equalizer-line"></text>设置提成</button>
       <button class="mini-btn" wx:if="{{adminSuper || adminPermissions.admin_settleStaffEarningsByWechat}}" data-id="{{item._id}}" bindtap="settleEarnings" disabled="{{settlementBusy}}" loading="{{settlementBusy && settlementStaffId === item._id}}">收益转账结清</button>
       <button class="mini-btn ghost-mini" wx:if="{{adminSuper || adminPermissions.admin_createStaffManualTailSettlement}}" data-id="{{item._id}}" bindtap="settleManualTail" disabled="{{settlementBusy}}">小额尾款人工结清</button>
       <button class="mini-btn ghost-mini" wx:if="{{item.depositBalance > 0 && (adminSuper || adminPermissions.admin_requestStaffDepositRefund)}}" data-item="{{item}}" bindtap="refundDeposit" disabled="{{depositRefundBusy}}">退还保证金</button>
@@ -184,6 +186,22 @@
   </view>
 
   <button class="ghost" wx:if="{{hasMore}}" loading="{{loading}}" disabled="{{loading}}" bindtap="loadMore">{{loading ? '加载中...' : '加载更多'}}</button>
+
+  <view class="modal-mask" wx:if="{{commissionStaff}}">
+    <view class="modal-card commission-modal">
+      <view class="modal-title">设置宠托师个人提成</view>
+      <view class="modal-summary">
+        <view class="strong">{{commissionStaff.realName || commissionStaff.userNickname}}</view>
+        <view class="muted commission-hint">平台统一比例 {{defaultCommissionPercent}}%。仅影响此后结算的普通订单；已入账收益及加急固定奖励不变。</view>
+      </view>
+      <view class="commission-mode"><text>沿用平台统一比例</text><switch checked="{{commissionUseDefault}}" disabled="{{commissionSaving}}" bindchange="changeCommissionMode" /></view>
+      <view class="form-section" wx:if="{{!commissionUseDefault}}">
+        <view class="form-label">个人提成比例（0–100%）</view>
+        <view class="commission-input"><input type="digit" value="{{commissionPercentInput}}" placeholder="例如 75 表示 75%" bindinput="inputCommissionPercent" disabled="{{commissionSaving}}" /><text>%</text></view>
+      </view>
+      <view class="modal-actions"><button class="ghost-btn" bindtap="closeCommissionEditor" disabled="{{commissionSaving}}">取消</button><button class="primary-btn" bindtap="saveCommissionRate" loading="{{commissionSaving}}" disabled="{{commissionSaving}}">保存</button></view>
+    </view>
+  </view>
 
   <!-- 批量要求重新缴纳保证金弹窗 -->
   <view class="modal-mask" wx:if="{{showRepayModal}}">

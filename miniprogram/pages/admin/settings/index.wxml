@@ -163,7 +163,7 @@
       <view class="setting-summary-line">配置宠托师订单收益分成、完单后可提现等待时间和最低提现金额。</view>
     </view>
     <view class="admin-compact-card setting-overview-card" data-panel="invitation" bindtap="openSettingModal">
-      <view class="admin-summary-row"><view class="admin-summary-main"><view class="admin-summary-title">邀请活动与用户资产</view><view class="admin-summary-sub">{{settings.invitation.enabled ? '活动已开启' : '活动已关闭'}} · 每人邀请码唯一且仅可绑定一次</view></view><view class="meta-chip {{settings.invitation.enabled ? 'success' : 'warning'}}">{{settings.invitation.enabled ? '开启' : '关闭'}}</view></view>
+      <view class="admin-summary-row"><view class="admin-summary-main"><view class="admin-summary-title">邀请活动与用户资产</view><view class="admin-summary-sub">{{settings.invitation.enabled ? '活动已开启' : '活动已关闭'}} · 好友建档后发佣金{{settings.invitation.maxRewardPerUser ? ' · 每人上限 ¥' + settings.invitation.maxRewardPerUser : ''}}</view></view><view class="meta-chip {{settings.invitation.enabled ? 'success' : 'warning'}}">{{settings.invitation.enabled ? '开启' : '关闭'}}</view></view>
       <view class="setting-summary-line">配置邀请绑定收益、用户最低提现金额和活动开关。</view>
     </view>
 
@@ -420,9 +420,11 @@
           <view class="policy-notice danger-notice">微信支付商户号、API v3 密钥、商户证书和私钥在“支付与退款”面板配置；密钥不会在这里展示。</view>
         </view>
         <view wx:if="{{activeSettingPanel === 'invitation'}}" class="setting-modal-section">
-          <view class="policy-notice">邀请关系只能建立一次，手动输入和分享注册都会写入同一绑定记录；只有活动开启时才发放现金收益。</view>
+          <view class="policy-notice">邀请关系只能建立一次；好友绑定邀请码并建立宠物档案后，才可获得现金佣金。已发放的历史佣金不追回。</view>
           <view class="compact-toggle-row"><text>开启邀请活动</text><switch checked="{{settings.invitation.enabled}}" data-field="invitation.enabled" bindchange="staffPolicyInput" /></view>
-          <view class="field-item"><text class="label">每个有效绑定收益（元）</text><input class="input" type="digit" value="{{settings.invitation.rewardAmount}}" data-field="invitation.rewardAmount" bindinput="staffPolicyInput" /></view>
+          <view class="field-item"><text class="label">好友建档后每人奖励（元）</text><input class="input" type="digit" value="{{settings.invitation.rewardAmount}}" data-field="invitation.rewardAmount" bindinput="staffPolicyInput" /></view>
+          <view class="field-item"><text class="label">每位邀请人累计佣金上限（元）</text><input class="input" type="digit" value="{{settings.invitation.maxRewardPerUser}}" data-field="invitation.maxRewardPerUser" bindinput="staffPolicyInput" /></view>
+          <view class="muted">0 表示不设上限；已到账和已提现的邀请佣金都计入。达到上限时不再发放，剩余额度不足时按剩余额度发放。</view>
           <view class="field-item"><text class="label">用户最低提现金额（元）</text><input class="input" type="digit" value="{{settings.invitation.userMinWithdrawAmount}}" data-field="invitation.userMinWithdrawAmount" bindinput="staffPolicyInput" /></view>
           <view class="field-item">
             <text class="label">邀请分享封面</text>
@@ -648,7 +650,8 @@
         </view>
 
         <view wx:if="{{activeSettingPanel === 'settlementReliability'}}" class="setting-modal-section">
-          <view class="field-item"><text class="label">宠托师订单收益分成比例</text><input class="input" type="digit" value="{{settings.settlement.staffCommissionRate}}" data-field="staffCommissionRate" bindinput="settlementInput" placeholder="例如 0.70 表示 70%" /></view>
+          <view class="field-item"><text class="label">宠托师订单默认收益分成比例</text><input class="input" type="digit" value="{{settings.settlement.staffCommissionRate}}" data-field="staffCommissionRate" bindinput="settlementInput" placeholder="例如 0.70 表示 70%" /></view>
+          <view class="muted">单独设置的个人提成比例在“宠托师管理”中维护；未设置时使用此默认比例。</view>
           <view class="notice">订单完成后按此比例生成宠托师收益；输入 0-1 之间的小数，最多两位小数。</view>
           <view class="field-item"><text class="label">订单完成后几天可提现</text><input class="input" type="number" value="{{settings.settlement.settlementDelayDays}}" data-field="settlementDelayDays" bindinput="settlementInput" placeholder="填 0 表示完单后立即可提现" /></view>
           <view class="notice">用于控制宠托师收益从“待结算”进入“可提现”的等待天数，设置为 0 时完成订单后立即可提现。</view>

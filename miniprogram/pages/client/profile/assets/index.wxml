@@ -25,7 +25,7 @@
     <view class="section-head">
       <view>
         <view class="section-title">我的邀请码</view>
-        <view class="section-subtitle">邀请好友注册，获得活动收益</view>
+        <view class="section-subtitle">好友绑定邀请码并建立宠物档案后获得佣金</view>
       </view>
       <button wx:if="{{!invitationMaintenance && !maintenanceLoading}}" class="share-btn" open-type="share">分享邀请</button>
     </view>
@@ -34,6 +34,7 @@
       <text class="invite-code">{{inviteCode || '生成中'}}</text>
       <button class="copy-code-btn" bindtap="copyInviteCode" disabled="{{!inviteCode}}">复制邀请码</button>
     </view>
+    <view class="invitation-rule-tip" wx:if="{{summary && summary.invitationMaxRewardPerUser > 0}}">每人累计邀请佣金最多 ¥{{summary.invitationMaxRewardPerUser}}（已提现佣金也计入）</view>
     <view wx:if="{{!invitationMaintenance && !maintenanceLoading && (!summary || !summary.inviterOpenid)}}" class="bind-row">
       <input class="bind-input" placeholder="输入他人邀请码" value="{{bindCode}}" bindinput="inputBindCode" />
       <button class="bind-btn" bindtap="bindInvite">绑定</button>
@@ -93,7 +94,7 @@
             <view class="record-time">{{item.invitedOpenidMasked ? item.invitedOpenidMasked + ' · ' : ''}}{{beijingTime.format(item.createdAt)}}</view>
           </view>
           <view class="invite-reward">
-            <text class="reward-amount">+¥{{item.rewardAmount || 0}}</text>
+            <text class="reward-amount" wx:if="{{item.rewardStatus === 'success'}}">+¥{{item.rewardAmount || 0}}</text>
             <text class="status-pill {{item.rewardStatus || 'pending'}}">{{item.rewardStatusText || '待入账'}}</text>
           </view>
         </view>
@@ -109,7 +110,7 @@
       <view wx:else class="record-list">
         <view wx:for="{{summary.earnings}}" wx:key="_id" class="record-row">
           <view class="record-main">
-            <view class="record-title">{{item.sourceType === 'invite_binding' ? '邀请绑定收益' : item.sourceType}}</view>
+            <view class="record-title">{{item.sourceType === 'invite_binding' ? '邀请活动佣金' : item.sourceType}}</view>
             <view class="record-time">{{beijingTime.format(item.createdAt)}}</view>
           </view>
           <text class="income-amount">+¥{{item.amount}}</text>

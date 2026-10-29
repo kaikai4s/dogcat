@@ -12,6 +12,7 @@ module.exports = function createHandler(context) {
     ensurePetExclusiveId,
     equipPetTitle,
     generatePetExclusiveId,
+    bindInviteRelation,
     getCloudbaseAiGatewayEnvId,
     getSystemSettings,
     getUser,
@@ -391,6 +392,11 @@ module.exports = function createHandler(context) {
         updatedAt: time
       }
       const created = await db.collection('pets').add({ data: pet })
+      // Pet creation is durable even if reward settlement temporarily fails; login retries it.
+      if (user.inviterOpenid && typeof bindInviteRelation === 'function') {
+        try { await bindInviteRelation(user) }
+        catch (error) { console.error('[invite-reward-after-pet]', { openid, message: error.message }) }
+      }
       return { _id: created._id, ...pet }
     }
     if (action === 'updatePet') {

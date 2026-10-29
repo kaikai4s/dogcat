@@ -36,6 +36,7 @@ function withDisplay(profile, selectedIds = []) {
           : ({ pending: '审核中', approved: '已通过', transferring: '打款中', transfer_failed: '打款失败', rejected: '已驳回', paid: '已到账' })[history.status] || history.status || '处理中'
     })),
     featuredActionText: profile.isFeatured ? '取消精选' : '设为精选',
+    commissionPercentText: profile.commissionRateOverride == null ? '沿用平台统一比例' : `个人提成 ${Math.round(Number(profile.commissionRateOverride) * 10000) / 100}%`,
     actionText: profile.auditStatus === 'pending' ? '去审核' : '查看资料',
     canRevokeStaff,
     avatarText: (profile.userNickname || profile.realName || '托').slice(0, 1),
@@ -63,6 +64,11 @@ Page({
     selectedIds: [],
     selectedProfiles: [],
     standardDepositAmount: '500.00',
+    defaultCommissionPercent: 70,
+    commissionStaff: null,
+    commissionUseDefault: true,
+    commissionPercentInput: '',
+    commissionSaving: false,
     showRepayModal: false,
     repayReasonInput: '',
     submittingRepay: false,
@@ -149,6 +155,7 @@ Page({
           page: pageData.page,
           hasMore: pageData.hasMore,
           total: pageData.total,
+          defaultCommissionPercent: Math.round(Number(pageData.defaultCommissionRate ?? 0.7) * 10000) / 100,
           loading: false
         })
       })
@@ -286,6 +293,45 @@ Page({
     const profile = this.data.profiles[index]
     if (!profile) return
     this.setData({ [`profiles[${index}].expanded`]: !profile.expanded })
+  },
+
+  openCommissionEditor(e) {
+    const staff = this.data.profiles.find(p => p._id === e.currentTarget.dataset.id)
+    if (!staff) return
+    this.setData({
+      commissionStaff: staff,
+      commissionUseDefault: staff.commissionRateOverride == null,
+      commissionPercentInput: staff.commissionRateOverride == null ? '' : String(Math.round(Number(staff.commissionRateOverride) * 10000) / 100)
+    })
+  },
+
+  changeCommissionMode(e) { this.setData({ commissionUseDefault: e.detail.value }) },
+  inputCommissionPercent(e) { this.setData({ commissionPercentInput: e.detail.value }) },
+  closeCommissionEditor() {
+    if (!this.data.commissionSaving) this.setData({ commissionStaff: null })
+  },
+
+  async saveCommissionRate() {
+    if (!this.data.commissionStaff || this.data.commissionSaving) return
+    const text = String(this.data.commissionPercentInput || '').trim()
+    const percent = Number(text)
+    if (!this.data.commissionUseDefault && (!/^\d+(?:\.\d{1,2})?$/.test(text) || !Number.isFinite(percent) || percent < 0 || percent > 100)) {
+      return showError(new Error('请输入 0 至 100 之间的百分比，最多两位小数'))
+    }
+    this.setData({ commissionSaving: true })
+    try {
+      const result = await callFunction('admin', 'setStaffCommissionRate', {
+        staffProfileId: this.data.commissionStaff._id,
+        useDefault: this.data.commissionUseDefault,
+        commissionPercent: text
+      })
+      this.setData({
+        profiles: this.data.profiles.map(p => p._id !== result.staffProfileId ? p : { ...withDisplay({ ...p, commissionRateOverride: result.commissionRateOverride }, this.data.selectedIds), expanded: p.expanded }),
+        commissionStaff: null
+      })
+      wx.showToast({ title: '提成比例已更新', icon: 'success' })
+    } catch (error) { showError(error) }
+    finally { this.setData({ commissionSaving: false }) }
   },
 
   detail(e) {

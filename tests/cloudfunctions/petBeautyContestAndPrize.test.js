@@ -474,7 +474,7 @@ test('最美宠物大赛: 后台向第1名用户发放可提现零钱奖金与�
   assert.equal(assetFinal.data.availableAmount, 854.88)
 })
 
-test('最美宠物大赛: getActivityHome 返回用户邀请码和 openid，且新用户携带邀请参数进入时自动绑定邀请人并赠送收益与投票数', async () => {
+test('最美宠物大赛: 邀请绑定立即赠票，现金佣金在好友建立宠物档案后入账', async () => {
   const db = createCollectionStore({
     users: [
       { _id: 'inviter_user', openid: 'inviter_openid', roles: ['client'], status: 'active', inviteCode: 'INVTEST01', retroCardCount: 0 },
@@ -540,6 +540,9 @@ test('最美宠物大赛: getActivityHome 返回用户邀请码和 openid，且�
   assert.equal(db.state.pet_beauty_bonus_votes.length, 1)
   assert.equal(db.state.pet_beauty_bonus_votes[0].openid, 'inviter_openid')
 
+  assert.equal(db.state.user_asset_earnings.length, 0)
+  const petCreated = await newFn.main({ module: 'pet', action: 'createPet', data: { name: '小狗', avatarFileId: 'cloud://pet.jpg' } })
+  assert.equal(petCreated.ok, true, petCreated.message)
   // 邀请人钱包佣金收益到账 (5元)
   assert.equal(db.state.user_asset_earnings.length, 1)
   assert.equal(db.state.user_asset_earnings[0].userOpenid, 'inviter_openid')

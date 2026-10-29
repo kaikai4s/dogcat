@@ -91,6 +91,7 @@
           <text class="pill-val">{{item.profitSummary.isSubsidy ? ('-¥' + item.profitSummary.subsidyAmount) : ('¥' + item.profitSummary.platformProfit)}}</text>
         </view>
       </view>
+      <view class="muted" wx:if="{{item.profitError}}">{{item.profitError}}，收益暂不估算</view>
     </view>
     <button class="primary-btn mini-assign-btn" wx:if="{{(item.status === 'paid') && (adminSuper || adminPermissions.admin_assignOrder)}}" size="mini" data-id="{{item._id}}" bindtap="assign"><text class="remix-icon ri-user-shared-line"></text><text>派单</text></button>
   </view>

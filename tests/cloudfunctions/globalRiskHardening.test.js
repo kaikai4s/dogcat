@@ -18,7 +18,7 @@ test('parallel first logins create only one user document and stable identity', 
 
 test('invitation reward retries use persisted reward identity after a settings change', async () => {
   const invite = { _id: 'invite_client', inviterOpenid: 'inviter', invitedOpenid: 'client' }
-  const { db, service } = context({ user_invites: [invite] })
+  const { db, service } = context({ user_invites: [invite], pets: [{ _id: 'pet_client', openid: 'client', name: '宠物' }] })
   optimistic(db)
   await service.grantInviteReward(invite, { settings: { enabled: true, rewardAmount: 5 } })
   const firstId = db.state.user_asset_earnings[0]._id

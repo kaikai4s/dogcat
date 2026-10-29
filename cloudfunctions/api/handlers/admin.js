@@ -29,6 +29,7 @@ module.exports = function createHandler(context) {
     buildOrderProfitSummary,
     buildSubscriptionData,
     calculateStaffEarningForOrder,
+    resolveStaffCommissionRate,
     cleanupUserPersonalData,
     couponUsageScopeText,
     createRefundForOrder,
@@ -1224,6 +1225,7 @@ module.exports = function createHandler(context) {
     }
     if (action === 'listStaffProfiles') {
       await refreshStaffEarnings()
+      const defaultCommissionRate = Number((await getSystemSettings()).settlement?.staffCommissionRate ?? 0.7)
       const rawAuditStatus = safeText(data.auditStatus).trim()
       const isCanRevokeAuditStatus = rawAuditStatus === 'can_revoke'
       const auditStatus = isCanRevokeAuditStatus ? 'approved' : rawAuditStatus
@@ -1372,6 +1374,7 @@ module.exports = function createHandler(context) {
             auditRemark: profile.auditRemark || '',
             staffLevel: workflow.staffLevel,
             staffLevelText: workflow.staffLevelText,
+            commissionRateOverride: profile.commissionRateOverride ?? null,
             onboardingStatus: workflow.onboardingStatus,
             onboardingStatusText: workflow.onboardingStatusText,
             videoAuditStatus: workflow.videoAuditStatus,
@@ -1435,7 +1438,8 @@ module.exports = function createHandler(context) {
           total,
           page,
           pageSize,
-          hasMore: offset + pageSize < total
+          hasMore: offset + pageSize < total,
+          defaultCommissionRate
         }
       }
 
@@ -1479,7 +1483,7 @@ module.exports = function createHandler(context) {
         return true
       })
 
-      return paginateList(filtered, data)
+      return { ...paginateList(filtered, data), defaultCommissionRate }
     }
     if (action === 'batchRequireDepositRepay') {
       const ids = Array.isArray(data.staffProfileIds) ? data.staffProfileIds.filter(Boolean) : (data.staffProfileId ? [data.staffProfileId] : [])
@@ -1564,6 +1568,22 @@ module.exports = function createHandler(context) {
         requireDepositRepayReason: profile ? (profile.requireDepositRepayReason || '') : '',
         events
       }
+    }
+    if (action === 'setStaffCommissionRate') {
+      const staffProfileId = safeText(data.staffProfileId).trim()
+      if (!staffProfileId) throw new Error('请选择宠托师')
+      const profile = (await db.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))).data
+      if (!profile || !profile.openid) throw new Error('宠托师不存在')
+      const reset = data.useDefault === true
+      const text = safeText(data.commissionPercent).trim()
+      const percent = Number(text)
+      if (!reset && (!/^\d+(?:\.\d{1,2})?$/.test(text) || !Number.isFinite(percent) || percent < 0 || percent > 100)) {
+        throw new Error('个人提成比例须为 0 至 100%，最多两位小数')
+      }
+      const rate = reset ? null : Math.round(percent * 100) / 10000
+      await db.collection('staff_profiles').doc(staffProfileId).update({ data: { commissionRateOverride: rate, updatedAt: now() } })
+      await logAdmin(admin, 'staff_profile', staffProfileId, 'setStaffCommissionRate', { commissionRateOverride: rate, useDefault: reset })
+      return { staffProfileId, commissionRateOverride: rate }
     }
     if (action === 'setSitterFeatured') {
       const staffProfileId = safeText(data.staffProfileId).trim()
@@ -1691,16 +1711,36 @@ module.exports = function createHandler(context) {
       const page = paginateList(orders, data)
       const settings = await getSystemSettings().catch(() => ({}))
       const commissionRate = Number(settings?.settlement?.staffCommissionRate ?? 0.7)
+      const earningsByOrderId = new Map()
+      const earningOrderIds = page.list.filter(item => item.staffOpenid).map(item => item._id)
+      for (let i = 0; i < earningOrderIds.length; i += 20) {
+        const rows = await readScopedDocuments('staff_earnings', { orderId: db.command.in(earningOrderIds.slice(i, i + 20)) }, 'createdAt', 'desc')
+        rows.forEach(row => { if (!earningsByOrderId.has(row.orderId)) earningsByOrderId.set(row.orderId, row) })
+      }
+      const rateCache = new Map()
       const list = await Promise.all(page.list.map(async (item) => {
         const display = await attachAdminOrderContactData(item)
-        const profitSummary = typeof buildOrderProfitSummary === 'function'
-          ? buildOrderProfitSummary(item, null, commissionRate)
+        const actualEarning = earningsByOrderId.get(item._id) || null
+        const key = item.staffOpenid || ''
+        let orderRate = actualEarning?.commissionRate ?? commissionRate
+        let profitError = ''
+        if (!actualEarning && key) {
+          if (!rateCache.has(key)) rateCache.set(key, resolveStaffCommissionRate(item, commissionRate))
+          try { orderRate = await rateCache.get(key) }
+          catch (error) {
+            console.error('[listOrders] commission rate unavailable:', { orderId: item._id, message: error.message })
+            profitError = '宠托师提成比例待核对'
+          }
+        }
+        const profitSummary = !profitError && typeof buildOrderProfitSummary === 'function'
+          ? buildOrderProfitSummary(item, actualEarning, orderRate)
           : null
         return {
           ...display,
           profitSummary,
-          staffReward: profitSummary ? profitSummary.staffReward : 0,
-          platformProfit: profitSummary ? profitSummary.platformProfit : 0
+          profitError,
+          staffReward: profitSummary ? profitSummary.staffReward : null,
+          platformProfit: profitSummary ? profitSummary.platformProfit : null
         }
       }))
       return { ...page, list }
@@ -1777,13 +1817,22 @@ module.exports = function createHandler(context) {
       const earningRows = await readScopedDocuments('staff_earnings', { orderId: id }, 'createdAt', 'desc').catch(() => [])
       const actualEarning = earningRows[0] || null
       const settings = await getSystemSettings().catch(() => ({}))
-      const commissionRate = Number(settings?.settlement?.staffCommissionRate ?? 0.7)
-      const profitSummary = typeof buildOrderProfitSummary === 'function'
+      let commissionRate = actualEarning?.commissionRate ?? settings?.settlement?.staffCommissionRate ?? 0.7
+      let profitError = ''
+      if (!actualEarning && order.data.staffOpenid) {
+        try { commissionRate = await resolveStaffCommissionRate(order.data, commissionRate) }
+        catch (error) {
+          console.error('[getOrderDetail] commission rate unavailable:', { orderId: id, message: error.message })
+          profitError = '宠托师提成比例待核对'
+        }
+      }
+      const profitSummary = !profitError && typeof buildOrderProfitSummary === 'function'
         ? buildOrderProfitSummary(order.data, actualEarning, commissionRate)
         : null
       displayOrder.profitSummary = profitSummary
-      displayOrder.staffReward = profitSummary ? profitSummary.staffReward : 0
-      displayOrder.platformProfit = profitSummary ? profitSummary.platformProfit : 0
+      displayOrder.profitError = profitError
+      displayOrder.staffReward = profitSummary ? profitSummary.staffReward : null
+      displayOrder.platformProfit = profitSummary ? profitSummary.platformProfit : null
       displayOrder.actualStaffEarning = actualEarning
 
       if (action === 'getEvidence') await logAdmin(admin, 'order', id, 'getEvidence', { trackCount: trackRows.length, checkinCount: checkinRows.filter(isActiveCheckin).length })

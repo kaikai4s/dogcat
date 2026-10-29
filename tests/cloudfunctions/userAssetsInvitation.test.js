@@ -1,8 +1,20 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { createCollectionStore, loadCloudFunction } = require('./helpers')
+const createContext = require('../../cloudfunctions/api/services/context')
+const optimistic = require('./optimisticTransactions')
 
-test('invite binding grants one idempotent user asset earning and supports user withdrawal', async () => {
+test('admin invitation settings persist a bounded personal cap and reject invalid values', async () => {
+  const db = createCollectionStore({ platform_configs: [] })
+  const service = createContext({ db, cloud: {} })
+  await service.saveSystemSettings({ invitation: { enabled: true, rewardAmount: 5, maxRewardPerUser: 7.5 } })
+  assert.equal((await service.getSystemSettings()).invitation.maxRewardPerUser, 7.5)
+  for (const maxRewardPerUser of [-1, 7.555, Number.MAX_SAFE_INTEGER]) {
+    await assert.rejects(() => service.saveSystemSettings({ invitation: { maxRewardPerUser } }), /邀请活动设置/)
+  }
+})
+
+test('invite binding grants cash only after the invited user creates a pet profile', async () => {
   const db = createCollectionStore({
     users: [
       { _id: 'u_admin', openid: 'admin', roles: ['admin'], status: 'active' },
@@ -22,6 +34,11 @@ test('invite binding grants one idempotent user asset earning and supports user 
   await invited.main({ module: 'auth', action: 'login', data: { inviteCode: inviterLogin.data.inviteCode } })
   await invited.main({ module: 'auth', action: 'login', data: { inviteCode: inviterLogin.data.inviteCode } })
   assert.equal(db.state.user_invites.length, 1)
+  assert.equal(db.state.user_asset_earnings.length, 0)
+  const pending = await inviter.main({ module: 'finance', action: 'getUserAssetSummary' })
+  assert.equal(pending.data.invites[0].rewardStatusText, '待好友建档')
+  const created = await invited.main({ module: 'pet', action: 'createPet', data: { name: '小猫', avatarFileId: 'cloud://pet.jpg' } })
+  assert.equal(created.ok, true, created.message)
   assert.equal(db.state.user_asset_earnings.length, 1)
   assert.equal(db.state.user_asset_earnings[0].amount, 5)
   const summary = await inviter.main({ module: 'finance', action: 'getUserAssetSummary' })
@@ -35,6 +52,9 @@ test('invite binding grants one idempotent user asset earning and supports user 
   const changedSummary = await inviter.main({ module: 'finance', action: 'getUserAssetSummary' })
   assert.equal(changedSummary.data.invites[0].rewardAmount, 5)
   await invited2.main({ module: 'auth', action: 'login', data: { inviteCode: inviterLogin.data.inviteCode } })
+  assert.equal(db.state.user_asset_earnings.length, 1)
+  const secondPet = await invited2.main({ module: 'pet', action: 'createPet', data: { name: '小狗', avatarFileId: 'cloud://pet2.jpg' } })
+  assert.equal(secondPet.ok, true, secondPet.message)
   const secondSummary = await inviter.main({ module: 'finance', action: 'getUserAssetSummary' })
   assert.equal(secondSummary.data.availableAmount, 8)
   assert.deepEqual(secondSummary.data.invites.map(row => row.rewardAmount).sort((a, b) => a - b), [3, 5])
@@ -43,6 +63,117 @@ test('invite binding grants one idempotent user asset earning and supports user 
   assert.equal(request.data.assetType, 'user')
   const approved = await admin.main({ module: 'admin', action: 'auditWithdrawRequest', data: { id: request.data._id, approved: true } })
   assert.equal(approved.data.status, 'approved')
+})
+
+test('personal commission cap includes withdrawn historical rewards and allows only the remaining cents', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'inviter', openid: 'inviter' }],
+    pets: [{ _id: 'pet1', openid: 'friend1', createdAt: '2026-10-29' }, { _id: 'pet2', openid: 'friend2', createdAt: '2026-10-29' }],
+    user_invites: [1, 2].map(i => ({ _id: `invite_${i}`, inviterOpenid: 'inviter', invitedOpenid: `friend${i}`, rewardAmount: 5 })),
+    user_asset_earnings: [{ _id: 'history', userOpenid: 'inviter', sourceType: 'invite_binding', amount: 4.5, status: 'withdrawn' }]
+  })
+  const service = createContext({ db, cloud: {} })
+  const settings = { enabled: true, rewardAmount: 5, maxRewardPerUser: 7 }
+  const first = await service.grantInviteReward(db.state.user_invites[0], { settings })
+  assert.equal(first.amount, 2.5)
+  assert.equal(db.state.users[0].inviteCommissionEarnedFen, 700)
+  const noMore = await service.grantInviteReward(db.state.user_invites[1], { settings })
+  assert.equal(noMore, null)
+  assert.equal(db.state.user_invites[1].rewardLimitReached, true)
+  assert.equal(db.state.user_asset_earnings.length, 2)
+  settings.maxRewardPerUser = 10
+  const afterIncrease = await service.grantInviteReward(db.state.user_invites[1], { settings })
+  assert.equal(afterIncrease.amount, 3)
+  assert.equal(db.state.users[0].inviteCommissionEarnedFen, 1000)
+  assert.equal((await service.grantInviteReward(db.state.user_invites[1], { settings })).amount, 3)
+  assert.equal(db.state.user_asset_earnings.length, 3)
+})
+
+test('binding after pet creation pays once and does not revoke historical commission', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'inviter', openid: 'inviter', inviteCode: 'INV123', status: 'active' }, { _id: 'friend', openid: 'friend', status: 'active' }],
+    pets: [{ _id: 'pet1', openid: 'friend' }],
+    platform_configs: [{ _id: 'settings', key: 'system_settings', value: { invitation: { enabled: true, rewardAmount: 5, maxRewardPerUser: 5 } } }],
+    user_invites: [], user_asset_earnings: []
+  })
+  const client = loadCloudFunction('api', db, 'friend')
+  const bound = await client.main({ module: 'finance', action: 'bindInviteCode', data: { inviteCode: 'INV123' } })
+  assert.equal(bound.ok, true, bound.message)
+  assert.equal(db.state.user_asset_earnings.length, 1)
+  assert.equal(db.state.user_asset_earnings[0].amount, 5)
+  const service = createContext({ db, cloud: {} })
+  db.state.pets = []
+  db.state.platform_configs[0].value.invitation.maxRewardPerUser = 1
+  await service.grantInviteReward(db.state.user_invites[0], { settings: { enabled: true, rewardAmount: 5, maxRewardPerUser: 1 } })
+  assert.equal(db.state.user_asset_earnings.length, 1)
+  assert.equal(db.state.user_invites[0].rewardAmount, 5)
+})
+
+test('manual invite binding succeeds despite a temporary reward read failure and pays on login retry', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'inviter', openid: 'inviter', inviteCode: 'INV123', status: 'active' }, { _id: 'friend', openid: 'friend', status: 'active' }],
+    pets: [{ _id: 'pet1', openid: 'friend' }],
+    platform_configs: [{ _id: 'settings', key: 'system_settings', value: { invitation: { enabled: true, rewardAmount: 5 } } }],
+    user_invites: [], user_asset_earnings: []
+  })
+  const runTransaction = db.runTransaction.bind(db)
+  let readFails = true
+  db.runTransaction = callback => runTransaction(tx => callback({
+    ...tx,
+    collection(name) {
+      const collection = tx.collection(name)
+      if (name === 'pets' && readFails) collection.where = () => { throw new Error('temporary pet read failure') }
+      return collection
+    }
+  }))
+  const friend = loadCloudFunction('api', db, 'friend')
+  const bound = await friend.main({ module: 'finance', action: 'bindInviteCode', data: { inviteCode: 'INV123' } })
+  assert.equal(bound.ok, true, bound.message)
+  assert.equal(db.state.users[1].inviterOpenid, 'inviter')
+  assert.equal(db.state.user_invites.length, 1)
+  assert.equal(db.state.user_asset_earnings.length, 0)
+
+  readFails = false
+  const login = await friend.main({ module: 'auth', action: 'login', data: {} })
+  assert.equal(login.ok, true, login.message)
+  assert.equal(db.state.user_asset_earnings.length, 1)
+  assert.equal(db.state.user_asset_earnings[0].amount, 5)
+})
+
+test('partial withdrawal keeps the invitation award total and permits no duplicate payout', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'inviter', openid: 'inviter', inviteCode: 'INV123', status: 'active' }],
+    pets: [{ _id: 'pet1', openid: 'friend' }],
+    user_invites: [{ _id: 'invite_friend', inviterOpenid: 'inviter', invitedOpenid: 'friend', rewardAmount: 5, rewardEarningId: 'earning_original', rewarded: true }],
+    user_asset_earnings: [
+      { _id: 'earning_original', userOpenid: 'inviter', sourceType: 'invite_binding', sourceId: 'invite_friend', amount: 3, status: 'available' },
+      { _id: 'earning_slice', userOpenid: 'inviter', sourceType: 'invite_binding', sourceId: 'invite_friend', splitFromEarningId: 'earning_original', amount: 2, status: 'withdrawn' }
+    ]
+  })
+  const service = createContext({ db, cloud: {} })
+  const rewarded = await service.grantInviteReward(db.state.user_invites[0], { settings: { enabled: true, rewardAmount: 5, maxRewardPerUser: 3 } })
+  assert.equal(rewarded._id, 'earning_original')
+  assert.equal(db.state.user_invites[0].rewardAmount, 5)
+  assert.equal(db.state.user_asset_earnings.length, 2)
+  const summary = await service.getUserAssetSummary('inviter')
+  assert.equal(summary.invites[0].rewardAmount, 5)
+  assert.equal(summary.invites[0].rewardStatusText, '已入账')
+})
+
+test('simultaneous pet-qualified invitations cannot exceed the personal commission cap', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'inviter', openid: 'inviter' }],
+    pets: [{ _id: 'pet1', openid: 'friend1' }, { _id: 'pet2', openid: 'friend2' }],
+    user_invites: [1, 2].map(i => ({ _id: `invite_${i}`, inviterOpenid: 'inviter', invitedOpenid: `friend${i}`, rewardAmount: 5 })),
+    user_asset_earnings: []
+  })
+  const service = createContext({ db, cloud: {} })
+  optimistic(db)
+  await Promise.all(db.state.user_invites.map(invite => service.grantInviteReward(invite, {
+    settings: { enabled: true, rewardAmount: 5, maxRewardPerUser: 7 }
+  })))
+  assert.equal(db.state.user_asset_earnings.reduce((sum, earning) => sum + earning.amount, 0), 7)
+  assert.equal(db.state.users[0].inviteCommissionEarnedFen, 700)
 })
 test('user asset withdrawal splits earnings and settles after transfer starts', async () => {
   const db = createCollectionStore({

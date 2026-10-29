@@ -74,15 +74,25 @@ module.exports = function createService({
       const current = await readOptionalDocument(reader, 'user_invites', invite._id)
       if (!current || current.inviterOpenid !== invite.inviterOpenid || current.invitedOpenid !== invite.invitedOpenid) throw new Error('邀请关系已变化，请刷新后重试')
       const amount = Object.prototype.hasOwnProperty.call(current, 'rewardAmount') ? Number(current.rewardAmount) : Number(settings.rewardAmount || 0)
-      const priorRows = (await reader.collection('user_asset_earnings').where({ sourceType: 'invite_binding', sourceId: invite._id }).limit(2).get()).data || []
-      if (priorRows.length > 1) throw new Error('邀请奖励存在重复记录，请联系平台核对')
-      const earningId = current.rewardEarningId || (priorRows[0] && priorRows[0]._id) || idFor('invite_reward', [invite._id, amount])
+      const priorRows = await readDocuments(reader, db.command, 'user_asset_earnings', { sourceType: 'invite_binding', sourceId: invite._id })
+      const roots = priorRows.filter(row => !row.splitFromEarningId)
+      if (roots.length > 1 || (priorRows.length && roots.length !== 1)) throw new Error('邀请奖励存在重复记录，请联系平台核对')
+      const earningId = current.rewardEarningId || (roots[0] && roots[0]._id) || idFor('invite_reward', [invite._id, amount])
       const existing = await readOptionalDocument(reader, 'user_asset_earnings', earningId)
       if (existing) {
         if (existing.userOpenid !== current.inviterOpenid || existing.sourceId !== invite._id || existing.sourceType !== 'invite_binding') throw new Error('邀请奖励归属异常')
+        const parts = new Set([roots[0]._id])
+        let previousSize = 0
+        while (parts.size !== previousSize) {
+          previousSize = parts.size
+          priorRows.forEach(row => { if (parts.has(row.splitFromEarningId)) parts.add(row._id) })
+        }
+        if (parts.size !== priorRows.length || priorRows.some(row => row.userOpenid !== current.inviterOpenid)) throw new Error('邀请奖励记录归属异常')
+        const totalFen = priorRows.reduce((total, row) => total + cents(row.amount, true), 0)
+        if (!Number.isSafeInteger(totalFen)) throw new Error('邀请佣金累计金额超出安全范围')
         await reader.collection('user_invites').doc(invite._id).update({ data: {
           rewardEarningId: earningId,
-          rewardAmount: cents(existing.amount, true) / 100,
+          rewardAmount: totalFen / 100,
           rewarded: true,
           rewardedAt: current.rewardedAt || existing.createdAt || time,
           updatedAt: time
@@ -91,14 +101,40 @@ module.exports = function createService({
       }
       if (current.rewardEarningId) throw new Error('邀请奖励记录缺失，请联系平台核对')
       if (settings.enabled !== true || !Number.isFinite(amount) || amount <= 0) return null
-      cents(amount, true)
+      const pets = await readDocuments(reader, db.command, 'pets', { openid: current.invitedOpenid })
+      const firstPet = pets.find(pet => !pet.deletedAt)
+      if (!firstPet) return null
+      let awardFen = cents(amount, true)
+      const maxFen = cents(settings.maxRewardPerUser || 0)
+      if (maxFen > 0) {
+        const inviters = (await reader.collection('users').where({ openid: current.inviterOpenid }).limit(1).get()).data || []
+        const inviter = inviters[0]
+        if (!inviter) throw new Error('邀请人账户不存在，无法计算累计佣金')
+        const earlier = await readDocuments(reader, db.command, 'user_asset_earnings', { userOpenid: current.inviterOpenid, sourceType: 'invite_binding' })
+        const ledgerFen = earlier.reduce((total, row) => total + cents(row.amount), 0)
+        if (!Number.isSafeInteger(ledgerFen)) throw new Error('邀请佣金累计金额超出安全范围')
+        const recordedFen = inviter.inviteCommissionEarnedFen
+        const earnedFen = Math.max(ledgerFen, Number.isSafeInteger(recordedFen) && recordedFen >= 0 ? recordedFen : 0)
+        awardFen = Math.min(awardFen, Math.max(0, maxFen - earnedFen))
+        if (awardFen === 0) {
+          await reader.collection('user_invites').doc(invite._id).update({ data: {
+            petProfileCreatedAt: current.petProfileCreatedAt || firstPet.createdAt || time,
+            rewardLimitReached: true, updatedAt: time
+          } })
+          return null
+        }
+        await reader.collection('users').doc(inviter._id).update({ data: {
+          inviteCommissionEarnedFen: earnedFen + awardFen, updatedAt: time
+        } })
+      }
+      const grantedAmount = awardFen / 100
       const earning = {
         _id: earningId,
         userOpenid: invite.inviterOpenid,
         sourceType: 'invite_binding',
         sourceId: invite._id,
         invitedOpenid: invite.invitedOpenid || '',
-        amount,
+        amount: grantedAmount,
         status: 'available',
         activityEnabled: true,
         createdAt: time,
@@ -109,7 +145,9 @@ module.exports = function createService({
       await reader.collection('user_asset_earnings').doc(earningId).set({ data: earningData })
       await reader.collection('user_invites').doc(invite._id).update({ data: {
         rewardEarningId: earningId,
-        rewardAmount: amount,
+        rewardAmount: grantedAmount,
+        petProfileCreatedAt: current.petProfileCreatedAt || firstPet.createdAt || time,
+        rewardLimitReached: false,
         rewarded: true,
         rewardedAt: time,
         updatedAt: time
@@ -152,27 +190,34 @@ module.exports = function createService({
     const settings = await getInviteSettings()
     const withdraws = await readDocuments(db, db.command, 'withdraw_requests', { assetType: 'user', userOpenid: openid })
     const invites = await readDocuments(db, db.command, 'user_invites', { inviterOpenid: openid })
-    const earningsByInviteId = new Map(summary.rows.filter((row) => row.sourceType === 'invite_binding' && row.sourceId).map((row) => [row.sourceId, row]))
+    const earningsByInviteId = new Map()
+    summary.rows.filter(row => row.sourceType === 'invite_binding' && row.sourceId).forEach(row => {
+      const recorded = earningsByInviteId.get(row.sourceId) || { amountFen: 0 }
+      recorded.amountFen += cents(row.amount)
+      earningsByInviteId.set(row.sourceId, recorded)
+    })
     const invitedUsersByOpenid = await getUsersByOpenids(invites.map(invite => invite.invitedOpenid))
     const invitationRewardAmount = Number(settings.rewardAmount || 0)
     const decoratedInvites = invites.map((invite) => {
       const earning = earningsByInviteId.get(invite._id)
       const invitedUser = invitedUsersByOpenid.get(invite.invitedOpenid) || null
-      const rewardAmount = Number((earning && earning.amount) ?? invite.rewardAmount ?? 0)
+      const rewardAmount = earning ? earning.amountFen / 100 : Number(invite.rewardAmount ?? 0)
       let rewardStatus = 'pending'
       let rewardStatusText = '待入账'
       if (invite.rewardEarningId || earning) {
         rewardStatus = 'success'
         rewardStatusText = '已入账'
-      } else if (invite.rewarded && invite.rewardType && invite.rewardType !== 'cash') {
-        rewardStatus = 'success'
-        rewardStatusText = '已奖励'
+      } else if (invite.rewardLimitReached) {
+        rewardStatus = 'muted'
+        rewardStatusText = '已达累计上限'
       } else if (settings.enabled !== true) {
         rewardStatus = 'muted'
         rewardStatusText = '活动未开启'
       } else if (!Number.isFinite(invitationRewardAmount) || invitationRewardAmount <= 0) {
-        rewardStatus = invite.rewarded ? 'success' : 'muted'
-        rewardStatusText = invite.rewarded ? '已奖励' : '无现金奖励'
+        rewardStatus = 'muted'
+        rewardStatusText = '无现金奖励'
+      } else if (!invite.petProfileCreatedAt) {
+        rewardStatusText = '待好友建档'
       }
       return {
         ...invite,
@@ -242,6 +287,7 @@ module.exports = function createService({
       minWithdrawAmount: Math.max(0.10, Number(settings.userMinWithdrawAmount ?? settings.minWithdrawAmount ?? 10)),
       invitationEnabled: settings.enabled === true,
       invitationRewardAmount,
+      invitationMaxRewardPerUser: Number(settings.maxRewardPerUser || 0),
       invitationShareImageUrl: safeText(settings.shareImageUrl).trim(),
       wechatTransferQuota,
       hasPendingWithdrawConfirm: decoratedWithdraws.some(w => w.canConfirmTransfer),
@@ -283,7 +329,11 @@ module.exports = function createService({
       await tx.collection('users').doc(user._id).update({ data: { inviterOpenid: inviter.openid, updatedAt: time } })
       return { ...record, _id: inviteId }
     })
-    await grantInviteReward({ ...result, _id: result._id || inviteId, inviteCode: result.inviteCode || code })
+    try {
+      await grantInviteReward({ ...result, _id: result._id || inviteId, inviteCode: result.inviteCode || code })
+    } catch (error) {
+      console.error('[invite-reward-after-bind]', { invitedOpenid: openid, message: error.message })
+    }
     return { ...user, inviterOpenid: result.inviterOpenid || inviter.openid, boundInviteCode: result.inviteCode || code }
   }
 

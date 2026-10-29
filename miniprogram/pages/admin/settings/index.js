@@ -155,6 +155,7 @@ function normalizeInvitationConfig(invitation = {}) {
     ...invitation,
     enabled: invitation.enabled === true,
     rewardAmount: validAmount(invitation.rewardAmount, true) ? Number(invitation.rewardAmount) : 0,
+    maxRewardPerUser: validAmount(invitation.maxRewardPerUser, true) ? Number(invitation.maxRewardPerUser) : 0,
     userMinWithdrawAmount: validAmount(invitation.userMinWithdrawAmount, true) ? Number(invitation.userMinWithdrawAmount) : 10,
     reimbursementMode: invitation.reimbursementMode === 'invite_count' ? 'invite_count' : 'order_count',
     reimbursementOrderCount: Math.max(0, Number(invitation.reimbursementOrderCount || 0)),
@@ -2058,7 +2059,7 @@ Page({
     for (const [field, label] of [['reimbursementOrderCount', '需完成订单数量'], ['reimbursementInviteCount', '需邀请绑定人数']]) {
       if (!validReimbursementCount(this.data.settings.staffSupplies[field])) return showError(new Error(`${label}须为有效的非负整数，不设门槛请填写 0`))
     }
-    if (!validAmount(this.data.settings.invitation.rewardAmount, true) || !validAmount(this.data.settings.invitation.userMinWithdrawAmount, true)) return showError(new Error('邀请收益和用户最低提现金额须为有效金额'))
+    if (!validAmount(this.data.settings.invitation.rewardAmount, true) || !validAmount(this.data.settings.invitation.maxRewardPerUser, true) || !validAmount(this.data.settings.invitation.userMinWithdrawAmount, true)) return showError(new Error('邀请收益、个人累计上限和用户最低提现金额须为有效金额'))
 
     const activeTab = this.data.activeTransferTab || 'commission'
     const allSceneTexts = {

@@ -629,6 +629,17 @@ module.exports = function createHandler(context) {
       if (order.status === 'day_completed') {
         update.serviceSessions = (order.serviceSessions || []).map((s) => s.status === 'completed' ? s : { ...s, status: 'cancelled', cancelledAt: time })
       }
+      let retainedEarningRate = null
+      if (order.status === 'day_completed' && order.staffOpenid && typeof ensureStaffEarning === 'function' &&
+          Number(order.payAmount || 0) > Number(quote.refundAmount || 0)) {
+        const existingEarning = (await db.collection('staff_earnings').where({ orderId: data.orderId }).limit(1).get()).data?.[0]
+        if (existingEarning?.commissionRate !== undefined && existingEarning?.commissionRate !== null) {
+          retainedEarningRate = existingEarning.commissionRate
+        } else {
+          const settings = await getSystemSettings()
+          retainedEarningRate = await context.resolveStaffCommissionRate(order, settings.settlement?.staffCommissionRate ?? 0.7)
+        }
+      }
       let refund = null
       if (order.paymentStatus === 'paid' && quote.refundAmount > 0) {
         refund = await createRefundForOrder(order, quote.refundAmount, reason || '宠物主取消', 'client_cancel', openid, clientRequestId, { cancelStatus: 'cancelled' })
@@ -645,11 +656,10 @@ module.exports = function createHandler(context) {
         }).catch(() => {})
         if (order.staffOpenid && typeof ensureStaffEarning === 'function') {
           const retainedAmount = Math.max(0, Number(order.payAmount || 0) - Number(quote.refundAmount || 0))
-          const settings = await getSystemSettings().catch(() => ({}))
-          const rate = Number(settings.settlement && settings.settlement.staffCommissionRate !== undefined ? settings.settlement.staffCommissionRate : 0.7)
+          const existingEarning = (await db.collection('staff_earnings').where({ orderId: data.orderId }).limit(1).get().catch(() => ({ data: [] })))?.data?.[0]
+          const rate = existingEarning?.commissionRate ?? retainedEarningRate
           const staffEarningAmount = Math.round(retainedAmount * rate * 100) / 100
           if (staffEarningAmount > 0) {
-            const existingEarning = (await db.collection('staff_earnings').where({ orderId: data.orderId }).limit(1).get().catch(() => ({ data: [] })))?.data?.[0]
             if (existingEarning && ['withdrawing', 'withdrawn', 'frozen'].includes(existingEarning.status)) {
               console.warn('[cancelOrder] staff earning is already withdrawing/withdrawn/frozen, skip override:', existingEarning._id)
             } else if (existingEarning && ['pending', 'available'].includes(existingEarning.status)) {
