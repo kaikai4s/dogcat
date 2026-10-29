@@ -1,0 +1,12 @@
+<view class="notice-marquee {{theme}} {{fontClass}}" wx:if="{{cycleItems.length}}">
+  <view class="notice-icon"><text class="ri-volume-up-line"></text></view>
+  <text class="notice-label">公告</text>
+  <view class="notice-divider"></view>
+  <view class="notice-window">
+    <view class="notice-track" style="animation-duration: {{duration}}s;">
+      <view class="notice-group" wx:for="{{[0, 1]}}" wx:key="*this">
+        <text class="notice-item" wx:for="{{cycleItems}}" wx:for-item="message" wx:key="id" data-text="{{message.text}}" bindtap="showNotice">{{message.text}}</text>
+      </view>
+    </view>
+  </view>
+</view>

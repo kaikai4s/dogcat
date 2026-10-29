@@ -1,27 +1,23 @@
 <dovlin-refresh id="dovlinRefresh" bind:refresh="onCustomRefresh" bind:scrolltolower="onReachBottom">
-<view class="page sitter-page {{themeClass}} {{fontClass}}">
+<view class="page sitter-page sitter-list-page {{themeClass}} {{fontClass}}">
   <view class="sitter-hero">
     <view class="hero-topline">
       <view class="badge hero-badge">认证宠护团队</view>
-      <view class="hero-count">{{total}} 位金牌宠托师</view>
+      <view class="hero-count" wx:if="{{total > 0}}">{{total}} 位宠托师</view>
     </view>
-    <view class="hero-title">寻找身边的安心宠托师</view>
-    <button class="ghost-btn" bindtap="openMap"><text class="remix-icon ri-map-pin-line"></text> 地图找宠托师 · 按小区查看</button>
-    <view class="hero-tip" wx:if="{{staffGenderRequirement !== 'any'}}">当前仅展示{{staffGenderRequirement === 'male' ? '男性' : '女性'}}宠托师</view>
-    <view class="hero-tip">100% 实名与健康审核 · 附近随时响应 · 服务过程全程记录</view>
+    <view class="sitter-hero-title">寻找身边的安心宠托师</view>
+    <view class="sitter-hero-subtitle">实名与健康审核 · 服务过程有记录</view>
+    <view class="sitter-hero-filter" wx:if="{{staffGenderRequirement !== 'any'}}">当前仅展示{{staffGenderRequirement === 'male' ? '男性' : '女性'}}宠托师</view>
 
-    <view class="sitter-location-bar" bindtap="updateLocation">
-      <view class="location-bar-left">
-        <view class="remix-icon ri-map-pin-2-fill location-pin"></view>
-        <view class="location-detail">
-          <view class="location-name-row">
-            <text class="location-name">{{locationName}}</text>
-            <text class="location-change-tag">切换</text>
-          </view>
-          <view class="location-address" wx:if="{{locationAddress}}">{{locationAddress}}</view>
-        </view>
+    <view class="sitter-hero-actions">
+      <view class="sitter-location-bar" bindtap="updateLocation" aria-label="切换服务位置">
+        <text class="remix-icon ri-map-pin-2-line location-pin"></text>
+        <text class="location-name">{{locationName}}</text>
+        <text class="location-arrow remix-icon ri-arrow-down-s-line"></text>
       </view>
-      <view class="location-arrow remix-icon ri-arrow-right-s-line"></view>
+      <button class="sitter-map-btn" bindtap="openMap" aria-label="在地图上按小区查找宠托师">
+        <text class="remix-icon ri-map-pin-line"></text><text>看地图</text>
+      </button>
     </view>
   </view>
 

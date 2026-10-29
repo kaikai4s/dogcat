@@ -79,15 +79,11 @@
         </view>
         <view class="remix-icon ri-arrow-down-s-line"></view>
       </view>
-      <view class="home-top-badge">上门宠护</view>
+      <view class="home-top-badge">Dovelin 多芙琳</view>
     </view>
 
     <view class="home-notice-ticker" wx:if="{{noticeTicker.enabled && noticeTicker.items.length}}">
-      <text class="remix-icon ri-notification-3-line"></text><text class="ticker-label">公告</text>
-      <swiper class="ticker-swiper" vertical="{{true}}" circular="{{noticeTicker.items.length > 1}}" autoplay="{{noticeTicker.items.length > 1}}" interval="4500" duration="400" disable-touch="{{noticeTicker.items.length < 2}}">
-        <swiper-item wx:for="{{noticeTicker.items}}" wx:key="*this" data-text="{{item}}" bindtap="showNoticeTickerItem"><view class="ticker-item">{{item}}</view></swiper-item>
-      </swiper>
-      <text class="remix-icon ri-arrow-right-s-line"></text>
+      <notice-marquee notice="{{noticeTicker}}" theme="{{themeClass}}" font-class="{{fontClass}}" />
     </view>
 
     <view class="hero-media-card" wx:if="{{heroCarouselEnabled && heroSlides.length > 0}}">

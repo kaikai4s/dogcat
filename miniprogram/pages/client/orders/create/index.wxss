@@ -29,11 +29,7 @@
   overflow-x: hidden;
 }
 
-.booking-notice-ticker { display: flex; align-items: center; gap: 10rpx; min-width: 0; height: 76rpx; padding: 0 30rpx; background: #fff4df; border-bottom: 1rpx solid #f2ddba; box-sizing: border-box; }
-.booking-notice-ticker .remix-icon { width: 30rpx; height: 30rpx; font-size: 28rpx; color: #bb5831; }
-.booking-ticker-label { flex-shrink: 0; font-size: 23rpx; font-weight: 800; color: #ac4f2c; }
-.booking-ticker-swiper { flex: 1; min-width: 0; height: 56rpx; }
-.booking-ticker-item { height: 56rpx; line-height: 56rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 25rpx; }
+.booking-notice-ticker { margin: 18rpx 30rpx 0; }
 
 .order-create-page::before,
 .order-create-page::after {

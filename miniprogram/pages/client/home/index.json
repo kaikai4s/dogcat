@@ -3,6 +3,7 @@
   "enablePullDownRefresh": false,
   "usingComponents": {
     "dovlin-refresh": "/components/dovlin-refresh/index",
-    "global-loading": "/components/global-loading/index"
+    "global-loading": "/components/global-loading/index",
+    "notice-marquee": "/components/notice-marquee/index"
   }
 }

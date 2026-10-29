@@ -276,11 +276,6 @@ Page({
     }
   },
 
-  showNoticeTickerItem(e) {
-    const text = e.currentTarget.dataset.text
-    if (text) wx.showModal({ title: '平台公告', content: text, showCancel: false })
-  },
-
   async loadCommunityGroups() {
     clearTimeout(this._groupNoticeTimer)
     const request = this._groupNoticeRequest = (this._groupNoticeRequest || 0) + 1

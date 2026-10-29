@@ -1,10 +1,6 @@
 <view wx:if="{{!bookingMaintenance && !maintenanceLoading}}" class="page order-create-page {{themeClass}} {{fontClass}}">
   <view class="booking-notice-ticker" wx:if="{{noticeTicker.enabled && noticeTicker.items.length}}">
-    <text class="remix-icon ri-notification-3-line"></text><text class="booking-ticker-label">公告</text>
-    <swiper class="booking-ticker-swiper" vertical="{{true}}" circular="{{noticeTicker.items.length > 1}}" autoplay="{{noticeTicker.items.length > 1}}" interval="4500" duration="400" disable-touch="{{noticeTicker.items.length < 2}}">
-      <swiper-item wx:for="{{noticeTicker.items}}" wx:key="*this" data-text="{{item}}" bindtap="showNoticeTickerItem"><view class="booking-ticker-item">{{item}}</view></swiper-item>
-    </swiper>
-    <text class="remix-icon ri-arrow-right-s-line"></text>
+    <notice-marquee notice="{{noticeTicker}}" theme="{{themeClass}}" font-class="{{fontClass}}" />
   </view>
   <view class="booking-hero">
     <view class="booking-badge">立即预约</view>

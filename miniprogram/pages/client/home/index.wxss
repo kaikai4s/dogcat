@@ -52,11 +52,7 @@
   padding-top: 10rpx;
 }
 
-.home-notice-ticker { position: relative; z-index: 2; display: flex; align-items: center; gap: 10rpx; min-width: 0; height: 72rpx; margin-top: 22rpx; padding: 0 18rpx; border-radius: 8rpx; background: rgba(255,255,255,.86); color: #51483e; box-sizing: border-box; }
-.home-notice-ticker .remix-icon { width: 30rpx; height: 30rpx; font-size: 28rpx; color: #cf6836; }
-.ticker-label { flex-shrink: 0; font-size: 23rpx; font-weight: 800; color: #ac4f2c; }
-.ticker-swiper { flex: 1; min-width: 0; height: 56rpx; }
-.ticker-item { height: 56rpx; line-height: 56rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 25rpx; }
+.home-notice-ticker { position: relative; z-index: 2; margin-top: 18rpx; }
 
 .home-location-card {
   min-width: 0;

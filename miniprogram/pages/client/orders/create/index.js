@@ -604,11 +604,6 @@ typeof Page === 'function' ? Page({
     wx.navigateBack({ delta: 1, fail: () => wx.redirectTo({ url: '/pages/client/home/index' }) })
   },
 
-  showNoticeTickerItem(e) {
-    const text = e.currentTarget.dataset.text
-    if (text) wx.showModal({ title: '平台公告', content: text, showCancel: false })
-  },
-
   updateMinTime() {
     const today = formatDate(new Date())
     const minClock = this.data.form.startDate === today ? formatTime(new Date()) : ''
