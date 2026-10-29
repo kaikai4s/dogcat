@@ -102,6 +102,8 @@ function parseAmount(value) {
 
 function decorateStaffFinance(item) {
   const result = { ...item, id: item._id || item.id }
+  result.refundAcceptanceUnconfirmed = !!item.refundNo && item.refundStatus !== 'success' && !item.wechatRefundId
+  if (result.refundAcceptanceUnconfirmed) result.statusText = '退款受理待核实'
   ;['amount', 'paidAmount', 'refundedAmount', 'forfeitedAmount', 'supplyFeeAmount', 'supplyFeeDeductedAmount', 'availableRefundAmount', 'approvedRefundAmount', 'approvedAmount'].forEach((key) => {
     result[`${key}Text`] = item[key] === undefined || item[key] === null ? '待核实' : money(item[key])
   })
@@ -838,8 +840,10 @@ Page({
     try {
       const result = await callFunction('admin', 'syncDepositRefund', { id: e.currentTarget.dataset.id })
       wx.hideLoading()
-      if (result?.refundLastError) wx.showModal({ title: '退款待处理', content: result.refundLastError, showCancel: false })
-      else wx.showToast({ title: result?.refundStatus === 'success' ? '退款已到账' : '已同步退款状态', icon: 'none' })
+      if (result?.refundStatus === 'success') wx.showToast({ title: '退款已核实到账', icon: 'none' })
+      else if (result?.retryAfterSeconds > 0) wx.showModal({ title: '等待微信退款核实', content: `${result.refundAcceptanceUnconfirmed ? '仅预留了退款商户单号，尚未取得微信受理回执' : '微信退款单已受理，正在核实最终结果'}；最早${Math.ceil(result.retryAfterSeconds / 60)}分钟后可再次查询；定时任务也会自动核对。请勿重复发起退款。${result.refundLastError ? `\n${result.refundLastError}` : ''}`, showCancel: false })
+      else if (result?.refundLastError) wx.showModal({ title: '退款待处理', content: result.refundLastError, showCancel: false })
+      else wx.showToast({ title: '已同步退款状态', icon: 'none' })
       await this.loadStaffFinance()
     } catch (error) { wx.hideLoading(); showError(error) }
     finally { this.setData({ actionBusy: false }) }

@@ -28,10 +28,11 @@ function normalizeDeposit(deposit) {
   if (!deposit) return null
   const status = String(deposit.status || '').toLowerCase()
   const refundStatus = String(deposit.refundStatus || '').toLowerCase()
+  const acceptanceUnconfirmed = refundStatus === 'processing' && deposit.refundNo && !deposit.wechatRefundId
   return {
     ...deposit,
-    statusText: depositStatusText[status] || deposit.statusText || (status ? '已记录' : ''),
-    refundStatusText: depositRefundStatusText[refundStatus] || (refundStatus ? '退款处理中' : '')
+    statusText: acceptanceUnconfirmed ? '退款受理待核实' : depositStatusText[status] || deposit.statusText || (status ? '已记录' : ''),
+    refundStatusText: acceptanceUnconfirmed ? '微信受理待核实' : depositRefundStatusText[refundStatus] || (refundStatus ? '退款处理中' : '')
   }
 }
 

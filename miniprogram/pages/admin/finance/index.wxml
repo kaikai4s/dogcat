@@ -163,7 +163,10 @@
         <button class="ghost-btn full-btn" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="shipStaffSupplies">确认首次用品发货</button>
       </block>
       <view class="info-row" wx:if="{{item.refundReason}}"><view class="label">退出退款原因</view><view class="value">{{item.refundReason}}</view></view>
-      <view class="info-row" wx:if="{{item.refundNo}}"><view class="label">微信退款商户单号</view><view class="value">{{item.refundNo}}</view></view>
+      <view class="info-row" wx:if="{{item.refundNo}}"><view class="label">{{item.refundAcceptanceUnconfirmed ? '系统预留退款商户单号' : '微信退款商户单号'}}</view><view class="value">{{item.refundNo}}</view></view>
+      <view class="info-row" wx:if="{{item.wechatRefundId}}"><view class="label">微信退款受理单号</view><view class="value">{{item.wechatRefundId}}</view></view>
+      <view class="info-row" wx:if="{{item.refundAcceptanceUnconfirmed}}"><view class="label">微信受理状态</view><view class="value danger">尚未取得微信受理回执；预留单号不代表微信已创建退款</view></view>
+      <view class="info-row" wx:if="{{item.canSyncRefund && item.refundNextCheckAt && item.refundStatus !== 'success'}}"><view class="label">最早可再次核对</view><view class="value">{{beijingTime.format(item.refundNextCheckAt)}}</view></view>
       <view class="info-row" wx:if="{{item.refundLastError}}"><view class="label">退款待处理原因</view><view class="value danger">{{item.refundLastError}}</view></view>
       <view class="info-row" wx:if="{{item.refundExitPending}}"><view class="label">退出进度</view><view class="value">退款已到账，待结清收益或其他保证金后完成退出</view></view>
       <view class="info-row" wx:if="{{item.lastForfeitReason}}"><view class="label">最近没收原因</view><view class="value">{{item.lastForfeitReason}}</view></view>

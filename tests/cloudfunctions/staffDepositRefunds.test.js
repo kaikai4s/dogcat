@@ -40,6 +40,10 @@ function fixture(reply, { earnings = [], amount = 99.99, forfeited = 0 } = {}) {
   return { db, context, service, calls, config, settings, approve, handler }
 }
 
+function allowNextGatewayCheck(f) {
+  f.db.state.staff_deposits[0].refundNextCheckAt = new Date(0)
+}
+
 test('approval automatically starts original-payment refund, then scheduled query books success once', async () => {
   const f = fixture(({ method, gatewayRefund }) => ({ ...gatewayRefund, status: method === 'POST' ? 'PROCESSING' : 'SUCCESS' }))
   const approved = await f.approve()
@@ -50,6 +54,7 @@ test('approval automatically starts original-payment refund, then scheduled quer
   assert.deepEqual(f.calls[0].body.amount, { refund: 9999, total: 9999, currency: 'CNY' })
   assert.equal(f.db.state.staff_deposits[0].refundedAmount, 0)
   assert.ok(f.db.state.users[0].roles.includes('staff'))
+  allowNextGatewayCheck(f)
   await f.service.reconcileStaffDepositRefunds()
   assert.equal(f.db.state.staff_deposits[0].refundedAmount, 99.99)
   assert.equal(f.db.state.staff_deposits[0].availableRefundAmount, 0)
@@ -90,11 +95,99 @@ test('lost submit response recovers with original refund number and amount after
   await f.approve()
   assert.equal(f.db.state.staff_deposits[0].refundStatus, 'processing')
   assert.match(f.db.state.staff_deposits[0].refundLastError, /response lost/)
+  assert.equal(f.db.state.staff_deposits[0].statusText, '退款受理待核实')
+  assert.equal(f.db.state.staff_deposits[0].wechatRefundId, undefined)
+  assert.ok(f.db.state.staff_deposits[0].refundNo)
   assert.equal(f.db.state.staff_deposits[0].refundedAmount, 0)
+  allowNextGatewayCheck(f)
   const result = await f.handler('admin', 'syncDepositRefund', { id: 'd' })
   assert.equal(result.refundStatus, 'success')
   assert.deepEqual(f.calls.map(row => row.method), ['POST', 'GET', 'POST'])
   assert.deepEqual(f.calls[0].body, f.calls[2].body)
+})
+
+test('limited refund submission reserves a number without claiming WeChat acceptance', async () => {
+  const f = fixture(({ method }) => {
+    if (method === 'POST') throw Object.assign(new Error('请求频率过高'), { code: 'FREQUENCY_LIMITED', statusCode: 429 })
+    throw Object.assign(new Error('原单不存在'), { code: 'RESOURCE_NOT_EXISTS' })
+  })
+  await f.approve()
+  const deposit = f.db.state.staff_deposits[0]
+  assert.equal(deposit.statusText, '退款受理待核实')
+  assert.equal(deposit.wechatRefundId, undefined)
+  assert.ok(deposit.refundNo)
+  assert.match(deposit.refundLastError, /提交未获受理确认/)
+  assert.ok(new Date(deposit.refundNextCheckAt).getTime() > Date.now())
+  assert.deepEqual(f.calls.map(call => call.method), ['POST'])
+  const pending = await f.service.syncStaffDepositRefund('d')
+  assert.equal(pending.refundAcceptanceUnconfirmed, true)
+  assert.equal(f.calls.length, 1)
+})
+
+test('recovers an older R-prefixed successful refund after the newer DR reservation is absent', async () => {
+  const paidAt = new Date('2026-10-28T12:36:49.000Z')
+  const legacyNo = `R${crypto.createHash('sha256').update(`staff_deposit_refund:d:${paidAt}`).digest('hex').slice(0, 24)}`
+  const f = fixture(({ method, path }) => {
+    if (method === 'POST') throw Object.assign(new Error('请求频率过高'), { statusCode: 429 })
+    if (!path.endsWith(`/${legacyNo}`)) throw Object.assign(new Error('原单不存在'), { code: 'RESOURCE_NOT_EXISTS' })
+    return { out_refund_no: legacyNo, refund_id: 'LEGACY-WX-REFUND', status: 'SUCCESS',
+      out_trade_no: 'PAY', transaction_id: 'WX', mchid: 'MCH',
+      amount: { refund: 9999, total: 9999, currency: 'CNY' } }
+  })
+  await f.approve()
+  const newerNo = f.db.state.staff_deposits[0].refundNo
+  assert.notEqual(newerNo, legacyNo)
+  f.db.state.staff_deposits[0].paidAt = paidAt
+  allowNextGatewayCheck(f)
+  const result = await f.service.syncStaffDepositRefund('d')
+  assert.equal(result.refundStatus, 'success')
+  assert.equal(f.db.state.staff_deposits[0].refundNo, legacyNo)
+  assert.equal(f.db.state.staff_deposits[0].refundPreviousReservedNo, newerNo)
+  assert.equal(f.db.state.staff_deposits[0].wechatRefundId, 'LEGACY-WX-REFUND')
+  assert.equal(f.db.state.staff_deposits[0].refundedAmount, 99.99)
+  assert.deepEqual(f.calls.map(call => call.method), ['POST', 'GET', 'GET'])
+  assert.equal(f.db.state.finance_logs.filter(row => row.action === 'deposit_refunded').length, 1)
+  await f.service.syncStaffDepositRefund('d')
+  assert.equal(f.calls.length, 3)
+})
+
+test('first approval verifies the old refund number before submitting any new refund', async () => {
+  const paidAt = new Date('2026-10-28T12:36:49.000Z')
+  const legacyNo = `R${crypto.createHash('sha256').update(`staff_deposit_refund:d:${paidAt}`).digest('hex').slice(0, 24)}`
+  const f = fixture(({ method, path }) => {
+    assert.equal(method, 'GET')
+    assert.ok(path.endsWith(`/${legacyNo}`))
+    return { out_refund_no: legacyNo, refund_id: 'LEGACY-WX-REFUND', status: 'SUCCESS',
+      out_trade_no: 'PAY', transaction_id: 'WX', mchid: 'MCH',
+      amount: { refund: 9999, total: 9999, currency: 'CNY' } }
+  })
+  f.db.state.staff_deposits[0].paidAt = paidAt
+  const result = await f.approve()
+  assert.equal(result.refundStatus, 'success')
+  assert.equal(f.db.state.staff_deposits[0].refundNo, legacyNo)
+  assert.equal(f.db.state.staff_deposits[0].refundedAmount, 99.99)
+  assert.deepEqual(f.calls.map(call => call.method), ['GET'])
+})
+
+test('an unrelated legacy refund cannot be booked and blocks a fresh refund submission', async () => {
+  const paidAt = new Date('2026-10-28T12:36:49.000Z')
+  const legacyNo = `R${crypto.createHash('sha256').update(`staff_deposit_refund:d:${paidAt}`).digest('hex').slice(0, 24)}`
+  const f = fixture(({ method, path }) => {
+    if (method === 'POST') throw new Error('submit timeout')
+    if (!path.endsWith(`/${legacyNo}`)) throw Object.assign(new Error('原单不存在'), { code: 'RESOURCE_NOT_EXISTS' })
+    return { out_refund_no: legacyNo, refund_id: 'WRONG-REFUND', status: 'SUCCESS',
+      out_trade_no: 'OTHER-ORDER', transaction_id: 'OTHER-TRANSACTION', mchid: 'MCH',
+      amount: { refund: 9999, total: 9999, currency: 'CNY' } }
+  })
+  await f.approve()
+  f.db.state.staff_deposits[0].paidAt = paidAt
+  allowNextGatewayCheck(f)
+  await f.service.syncStaffDepositRefund('d')
+  const deposit = f.db.state.staff_deposits[0]
+  assert.equal(deposit.refundedAmount, 0)
+  assert.equal(deposit.wechatRefundId, undefined)
+  assert.match(deposit.refundLastError, /与原保证金不匹配/)
+  assert.deepEqual(f.calls.map(call => call.method), ['POST', 'GET', 'GET'])
 })
 
 test('query timeout never submits another refund or books an unconfirmed refund', async () => {
@@ -103,6 +196,7 @@ test('query timeout never submits another refund or books an unconfirmed refund'
     return gatewayRefund
   })
   await f.approve()
+  allowNextGatewayCheck(f)
   await f.service.syncStaffDepositRefund('d')
   assert.deepEqual(f.calls.map(row => row.method), ['POST', 'GET'])
   assert.equal(f.db.state.staff_deposits[0].refundedAmount, 0)
@@ -131,9 +225,12 @@ test('successful refund is recorded while unsettled earnings keep staff exit pen
 test('concurrent successful queries record one refund and one financial outflow', async () => {
   const f = fixture(({ method, gatewayRefund }) => ({ ...gatewayRefund, status: method === 'POST' ? 'PROCESSING' : 'SUCCESS' }))
   await f.approve()
+  allowNextGatewayCheck(f)
   require('./optimisticTransactions')(f.db)
   const results = await Promise.all([f.service.syncStaffDepositRefund('d'), f.service.syncStaffDepositRefund('d')])
-  assert.ok(results.every(row => row.refundStatus === 'success'))
+  assert.ok(results.some(row => row.refundStatus === 'success'))
+  assert.ok(results.every(row => ['processing', 'success'].includes(row.refundStatus)))
+  assert.equal(f.db.state.staff_deposits[0].refundStatus, 'success')
   assert.equal(f.db.state.staff_deposits[0].refundedAmount, 99.99)
   assert.equal(f.db.state.finance_logs.filter(row => row.action === 'deposit_refunded').length, 1)
   assert.equal(f.db.state.staff_deposit_events.filter(row => row.type === 'refund').length, 1)
@@ -171,10 +268,62 @@ test('refund configuration changes leave the original refund available for recon
   const f = fixture()
   await f.approve()
   f.config.mchId = 'OTHER'
+  allowNextGatewayCheck(f)
   await f.service.syncStaffDepositRefund('d')
   assert.equal(f.calls.length, 1)
   assert.match(f.db.state.staff_deposits[0].refundLastError, /商户或小程序配置已变化/)
   assert.equal(f.db.state.staff_deposits[0].refundedAmount, 0)
+})
+
+test('gateway frequency limit defers retries and later confirms the existing refund without a second payout', async () => {
+  let queries = 0
+  const f = fixture(({ method, gatewayRefund }) => {
+    if (method === 'GET' && ++queries === 1) throw Object.assign(new Error('请求频率过高，请稍后重试'), { code: 'FREQUENCY_LIMITED', statusCode: 429 })
+    return { ...gatewayRefund, status: method === 'POST' ? 'PROCESSING' : 'SUCCESS' }
+  })
+  await f.approve()
+  const deferred = await f.handler('admin', 'syncDepositRefund', { id: 'd' })
+  assert.equal(deferred.refundStatus, 'processing')
+  assert.ok(deferred.retryAfterSeconds > 0)
+  assert.equal(f.calls.length, 1)
+  allowNextGatewayCheck(f)
+  const rateLimited = await f.handler('admin', 'syncDepositRefund', { id: 'd' })
+  assert.equal(rateLimited.refundStatus, 'processing')
+  assert.match(rateLimited.refundLastError, /至少5分钟后定时任务会自动核对/)
+  assert.ok(rateLimited.retryAfterSeconds > 0)
+  await f.service.reconcileStaffDepositRefunds()
+  assert.equal(f.calls.length, 2)
+  allowNextGatewayCheck(f)
+  const confirmed = await f.service.syncStaffDepositRefund('d')
+  assert.equal(confirmed.refundStatus, 'success')
+  assert.equal(confirmed.retryAfterSeconds, 0)
+  assert.equal(f.db.state.staff_deposits[0].refundedAmount, 99.99)
+  assert.deepEqual(f.calls.map(call => call.method), ['POST', 'GET', 'GET'])
+  assert.equal(f.db.state.finance_logs.filter(row => row.action === 'deposit_refunded').length, 1)
+})
+
+test('scheduled reconciliation reaches an eligible refund beyond a page of cooling records', async () => {
+  const f = fixture(({ gatewayRefund }) => ({ ...gatewayRefund, status: 'SUCCESS' }))
+  Object.assign(f.db.state.staff_deposits[0], { status: 'refund_approved', refundStatus: 'approved', approvedRefundAmount: 99.99 })
+  f.db.state.staff_deposits.push(...Array.from({ length: 101 }, (_, index) => ({
+    _id: `a${String(index).padStart(3, '0')}`, staffOpenid: `other_${index}`,
+    status: 'refunding', refundStatus: 'processing', refundNextCheckAt: new Date(Date.now() + 600000)
+  })))
+  const result = await f.service.reconcileStaffDepositRefunds()
+  assert.equal(result.checked, 1)
+  assert.equal(f.db.state.staff_deposits[0].refundStatus, 'success')
+  assert.equal(f.calls.length, 1)
+})
+
+test('existing refund can still be confirmed after new payment submissions are disabled', async () => {
+  const f = fixture(({ method, gatewayRefund }) => ({ ...gatewayRefund, status: method === 'POST' ? 'PROCESSING' : 'SUCCESS' }))
+  await f.approve()
+  f.settings.payment.mode = 'manual'
+  f.settings.payment.refundEnabled = false
+  allowNextGatewayCheck(f)
+  const confirmed = await f.service.syncStaffDepositRefund('d')
+  assert.equal(confirmed.refundStatus, 'success')
+  assert.deepEqual(f.calls.map(call => call.method), ['POST', 'GET'])
 })
 
 test('original non-WeChat payments retain explicit manual refund processing', async () => {

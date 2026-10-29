@@ -12,7 +12,7 @@ function pageWith(callFunction) {
     showModal(options) { modal = options }, showToast(options) { toasts.push(options) }, showLoading() {}, hideLoading() {},
     getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value), removeStorageSync: key => storage.delete(key)
   }
-  const decorate = vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/admin/finance/index.js'), 'utf8') + '\n;decorate', {
+  const decorators = vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/admin/finance/index.js'), 'utf8') + '\n;({decorate,decorateStaffFinance})', {
     wx, Page(value) { page = value }, require(name) {
       if (name.endsWith('/adminAccess')) return require('../../miniprogram/utils/adminAccess')
       if (name.endsWith('/admin-page-read')) return require('../../miniprogram/pages/admin/utils/admin-page-read')
@@ -26,7 +26,7 @@ function pageWith(callFunction) {
   page.setData = patch => Object.assign(page.data, patch)
   page.loadStaffFinance = () => {}
   page.load = () => {}
-  return { page, modal: () => modal, storage, toasts, decorate }
+  return { page, modal: () => modal, storage, toasts, ...decorators }
 }
 const tick = () => new Promise(resolve => setImmediate(resolve))
 
@@ -79,14 +79,43 @@ test('deposit approval explains automatic original-payment refund and reports un
   const calls = []
   const harness = pageWith(async (...args) => {
     calls.push(args)
+    if (args[1] === 'getStaffDepositRefundPreview') return { reimbursementStatusText: '已核对',
+      availableRefundAmount: 99.99, supplyFeeDue: 0, estimatedRefundAmount: 99.99 }
     return { status: 'refund_approved', refundStatus: 'approved', refundLastError: '微信退款功能尚未启用' }
   })
   harness.page.auditDepositRefund({ currentTarget: { dataset: { id: 'd', approved: true } } })
-  assert.match(harness.modal().content, /自动原路退回/)
+  await tick()
+  assert.match(harness.modal().content, /自动原路退款/)
   harness.modal().success({ confirm: true })
   await tick()
-  assert.equal(calls[0][1], 'auditDepositRefund')
+  assert.equal(calls[1][1], 'auditDepositRefund')
   assert.equal(harness.modal().content, '微信退款功能尚未启用')
+})
+
+test('pending deposit refund displays the cooldown and avoids implying success before WeChat confirmation', async () => {
+  const harness = pageWith(async () => ({ refundStatus: 'processing', refundAcceptanceUnconfirmed: true, retryAfterSeconds: 290,
+    refundLastError: '微信退款查询被限流' }))
+  await harness.page.syncDepositRefund({ currentTarget: { dataset: { id: 'd' } } })
+  assert.equal(harness.modal().title, '等待微信退款核实')
+  assert.match(harness.modal().content, /尚未取得微信受理回执/)
+  assert.match(harness.modal().content, /最早5分钟后可再次查询/)
+  assert.equal(harness.toasts.length, 0)
+  assert.equal(harness.page.data.actionBusy, false)
+})
+
+test('reserved refund number without WeChat receipt is not shown as accepted on either page', () => {
+  const h = pageWith(async () => ({}))
+  const reserved = h.decorateStaffFinance({ status: 'refunding', refundStatus: 'processing',
+    statusText: '微信原路退款处理中', refundNo: 'DR-SYNTHETIC' })
+  assert.equal(reserved.refundAcceptanceUnconfirmed, true)
+  assert.equal(reserved.statusText, '退款受理待核实')
+  const accepted = h.decorateStaffFinance({ ...reserved, wechatRefundId: 'WX-SYNTHETIC' })
+  assert.equal(accepted.refundAcceptanceUnconfirmed, false)
+  const source = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/staff/training/index.js'), 'utf8')
+  const normalize = vm.runInNewContext(source.slice(source.indexOf('const depositStatusText'), source.indexOf('function supplyAddressIssues')) + '\nnormalizeDeposit')
+  const staff = normalize({ ...reserved })
+  assert.equal(staff.statusText, '退款受理待核实')
+  assert.equal(staff.refundStatusText, '微信受理待核实')
 })
 
 test('historical approved deposits can synchronize and start their original refund from finance', async () => {
