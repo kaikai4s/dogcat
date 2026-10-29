@@ -116,7 +116,7 @@ test('2. unaccepted order expiration full refund restores used coupon to availab
 
   // 验证订单已过期并全额退款
   const order = db.state.orders.find((o) => o._id === orderId)
-  assert.equal(order.status, 'expired')
+  assert.equal(order.status, 'refunded')
   assert.equal(order.refundAmount, 40)
 
   // 验证优惠券已恢复

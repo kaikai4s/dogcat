@@ -1674,8 +1674,8 @@ test('paid order expires when service start time arrives without acceptance', as
   const accept = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { currentLatitude: 31.2, currentLongitude: 121.5, orderId: 'expired_order' } })
 
   assert.equal(list.ok, true)
-  assert.equal(list.data[0].status, 'expired')
-  assert.equal(db.state.orders[0].status, 'expired')
+  assert.equal(list.data[0].status, 'refunded')
+  assert.equal(db.state.orders[0].status, 'refunded')
   assert.equal(db.state.order_timeline.some((item) => item.type === 'expired'), true)
   assert.equal(accept.ok, false)
   assert.equal(accept.message, '订单状态不可接单')
@@ -2161,11 +2161,6 @@ test('real-device acceptance core flow covers client staff admin lifecycle', asy
   const directOrder = await clientFn.main({ module: 'order', action: 'createOrder', data: { petId: pet.data._id, serviceTypes: ['visit_fee', 'feed'], serviceAddress: '测试小区', addressDetail: '1栋', doorplate: '101', addressLatitude: 31.21, addressLongitude: 121.49, startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', durationMinutes: 60, publishMode: 'direct', staffProfileId: 'sp1', saveAddress: true } })
   const openOrder = await clientFn.main({ module: 'order', action: 'createOrder', data: { petId: pet.data._id, serviceTypes: ['visit_fee', 'feed'], serviceAddress: '测试小区', addressDetail: '1栋', doorplate: '101', addressLatitude: 31.21, addressLongitude: 121.49, startTime: '2099-07-29 10:00', endTime: '2099-07-29 11:00', durationMinutes: 60, publishMode: 'open' } })
   await clientFn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId: directOrder.data._id } })
-  const directEarningOrder = db.state.orders.find(o => o._id === directOrder.data._id)
-  if (directEarningOrder) {
-    directEarningOrder.paymentChannel = 'wechat'
-    directEarningOrder.isMockPayment = false
-  }
   await clientFn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId: openOrder.data._id } })
   const openAccepted = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { currentLatitude: 31.2, currentLongitude: 121.5, orderId: openOrder.data._id } })
   const directAccepted = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { currentLatitude: 31.2, currentLongitude: 121.5, orderId: directOrder.data._id } })
@@ -2183,8 +2178,6 @@ test('real-device acceptance core flow covers client staff admin lifecycle', asy
   const review = await clientFn.main({ module: 'order', action: 'createReview', data: { orderId: directOrder.data._id, rating: 5, content: '服务很好' } })
   const balance = await staffFn.main({ module: 'finance', action: 'getStaffBalance', data: {} })
   const withdraw = await staffFn.main({ module: 'finance', action: 'createWithdrawRequest', data: { accountName: '王小花', accountNo: 'wxid_staff', clientRequestId: 'withdraw_e2e' } })
-  const approved = await adminFn.main({ module: 'admin', action: 'auditWithdrawRequest', data: { id: withdraw.data._id, approved: true } })
-  const paidWithdraw = await adminFn.main({ module: 'admin', action: 'markWithdrawPaid', data: { id: withdraw.data._id, paymentConfirmed: true, paymentReference: 'receipt-1' } })
   const finance = await adminFn.main({ module: 'admin', action: 'financeDashboard', data: {} })
   const incident = await clientFn.main({ module: 'incident', action: 'createComplaint', data: { orderId: directOrder.data._id, description: '补充测试投诉', clientRequestId: 'incident_e2e' } })
   const resolution = await adminFn.main({ module: 'incident', action: 'proposeResolution', data: { incidentId: incident.data._id, resolutionType: 'explain', resolutionText: '已跟进说明' } })
@@ -2208,11 +2201,10 @@ test('real-device acceptance core flow covers client staff admin lifecycle', asy
   assert.equal(report.data.order.addressLatitude, undefined)
   assert.equal(report.data.order.contactPhone, undefined)
   assert.equal(review.ok, true)
-  assert.equal(balance.data.available, 80)
-  assert.equal(withdraw.ok, true)
-  assert.equal(approved.data.status, 'approved')
-  assert.equal(paidWithdraw.data.status, 'paid')
-  assert.equal(finance.data.counts.withdraws, 1)
+  assert.equal(balance.data.available, 0)
+  assert.equal(balance.data.mockTotal, 80)
+  assert.equal(withdraw.ok, false)
+  assert.equal(finance.data.counts.withdraws, 0)
   assert.equal(resolution.ok, true)
   assert.equal(closed.data.status, 'closed')
   assert.equal(detail.data.incident.status, 'closed')
@@ -2236,12 +2228,34 @@ test('client cancel order returns MVP refund quote and writes cancelled timeline
   assert.equal(quote.ok, true)
   assert.equal(quote.data.refundAmount, 80)
   assert.equal(cancel.ok, true)
+  assert.equal(cancel.data.refundStatus, 'partially_refunded')
   assert.equal(order.status, 'cancelled')
-  assert.equal(order.paymentStatus, 'refunding')
-  assert.equal(order.refundStatus, 'processing')
+  assert.equal(order.paymentStatus, 'paid')
+  assert.equal(order.refundStatus, 'partially_refunded')
   assert.equal(db.state.refunds.length, 1)
   assert.equal(db.state.refunds[0].refundAmount, 80)
   assert.equal(db.state.order_timeline[0].type, 'cancelled')
+  assert.equal(db.state.order_timeline[1].type, 'refund_success')
+})
+
+test('full mock refund reports completion and repeated client cancellation stays idempotent', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    orders: [{ _id: 'full_mock', clientOpenid: 'openid_client', status: 'paid', paymentStatus: 'paid',
+      paymentNo: 'P1', paymentChannel: 'mock', isMockPayment: true, payAmount: 100 }],
+    refunds: [], order_timeline: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+  const data = { orderId: 'full_mock', reason: '行程变化', clientRequestId: 'cancel-full' }
+  const first = await fn.main({ module: 'order', action: 'cancelOrder', data })
+  const repeated = await fn.main({ module: 'order', action: 'cancelOrder', data })
+  assert.equal(first.ok, true, first.message)
+  assert.equal(first.data.refundStatus, 'full_refunded')
+  assert.equal(repeated.ok, true, repeated.message)
+  assert.equal(repeated.data.refundStatus, 'full_refunded')
+  assert.equal(db.state.orders[0].status, 'refunded')
+  assert.equal(db.state.refunds.length, 1)
+  assert.deepEqual(db.state.order_timeline.map(row => row.type), ['cancelled', 'refund_success'])
 })
 
 
@@ -2453,7 +2467,8 @@ test('payment create status mock pay and admin refund permissions work', async (
   assert.equal(statusBeforePay.data.paymentStatus, 'paying')
   assert.equal(paid.ok, true)
   assert.equal(order.status, 'paid')
-  assert.equal(order.paymentStatus, 'refunding')
+  assert.equal(order.paymentStatus, 'paid')
+  assert.equal(order.refundStatus, 'partially_refunded')
   assert.equal(clientRefund.ok, false)
   assert.equal(adminRefund.ok, true)
   assert.equal(adminRefund.data.refundAmount, 30)
@@ -2703,7 +2718,7 @@ test('expired order creates unread order message', async () => {
   const summary = await fn.main({ module: 'message', action: 'getUnreadSummary', data: {} })
 
   assert.equal(list.ok, true)
-  assert.equal(db.state.orders[0].status, 'expired')
+  assert.equal(db.state.orders[0].status, 'refunded')
   assert.equal(db.state.order_messages.some((item) => item.eventType === 'expired' && item.title === '订单已过期'), true)
   assert.equal(summary.data.totalUnread, 1)
 })

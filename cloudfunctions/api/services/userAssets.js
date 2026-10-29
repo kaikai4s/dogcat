@@ -67,7 +67,8 @@ module.exports = function createService({
 
   async function grantInviteReward(invite, options = {}) {
     if (!invite || !invite._id || !invite.inviterOpenid) return null
-    const settings = options.settings || await getInviteSettings()
+    const platformSettings = await getSystemSettings()
+    const settings = options.settings || platformSettings.invitation || platformSettings.userAssets || { enabled: false }
     const time = now()
     const write = async (tx) => {
       const reader = tx || db
@@ -100,7 +101,7 @@ module.exports = function createService({
         return { ...existing, _id: earningId }
       }
       if (current.rewardEarningId) throw new Error('邀请奖励记录缺失，请联系平台核对')
-      if (settings.enabled !== true || !Number.isFinite(amount) || amount <= 0) return null
+      if (platformSettings.maintenance?.invitation === true || settings.enabled !== true || !Number.isFinite(amount) || amount <= 0) return null
       const pets = await readDocuments(reader, db.command, 'pets', { openid: current.invitedOpenid })
       const firstPet = pets.find(pet => !pet.deletedAt)
       if (!firstPet) return null
@@ -187,7 +188,8 @@ module.exports = function createService({
       user.inviteCode = generated
     }
     const summary = await summarizeUserAssets(openid)
-    const settings = await getInviteSettings()
+    const platformSettings = await getSystemSettings()
+    const settings = platformSettings.invitation || platformSettings.userAssets || { enabled: false, rewardAmount: 0, userMinWithdrawAmount: 10 }
     const withdraws = await readDocuments(db, db.command, 'withdraw_requests', { assetType: 'user', userOpenid: openid })
     const invites = await readDocuments(db, db.command, 'user_invites', { inviterOpenid: openid })
     const earningsByInviteId = new Map()
@@ -210,6 +212,9 @@ module.exports = function createService({
       } else if (invite.rewardLimitReached) {
         rewardStatus = 'muted'
         rewardStatusText = '已达累计上限'
+      } else if (platformSettings.maintenance?.invitation === true) {
+        rewardStatus = 'muted'
+        rewardStatusText = '活动维护中'
       } else if (settings.enabled !== true) {
         rewardStatus = 'muted'
         rewardStatusText = '活动未开启'

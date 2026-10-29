@@ -27,12 +27,18 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
     }
     return rows
   }
+  async function originalPaymentChannel(tx, orderId, order) {
+    const payments = (await tx.collection('payments').where({ orderId, status: db.command.in(['success', 'paid']) }).limit(2).get()).data || []
+    if (payments.length > 1) throw new Error('原支付记录重复，请先对账')
+    const channels = [order.paymentChannel, payments[0]?.channel, (order.wxTransactionId || order.isMockPayment === false) ? 'wechat' : '',
+      order.isMockPayment === true ? 'mock' : ''].filter(Boolean)
+    if (channels.includes('wechat') && channels.includes('mock')) throw new Error('原支付渠道记录不一致，请先对账')
+    return channels.includes('wechat') ? 'wechat' : (channels.includes('mock') ? 'mock' : '')
+  }
   async function requestOrderRefund(order, amount, reason, source, operatorOpenid, requestId = '', options = {}) {
     const requested = amountYuanToFen(amount)
     const settings = await getSystemSettings({ includeSecrets: true })
     assertPaymentModeAllowed(settings.payment)
-    if (settings.payment.mode === 'wechat' && settings.payment.refundEnabled === false) throw new Error('微信退款功能尚未启用')
-    if (settings.payment.mode === 'wechat' && !order.paymentNo && !order.wxTransactionId) throw new Error('缺少原支付凭证，请先对账')
     const resolved = await getPayableOrder(order._id)
     if (!resolved.order) throw new Error('订单不存在')
     const id = idFor(`${resolved.collectionName}:${order._id}:${operatorOpenid}:${requestId || crypto.randomBytes(16).toString('hex')}`)
@@ -46,6 +52,9 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         if (amountYuanToFen(existing.refundAmount) !== requested || existing.reason !== (reason || '') || existing.source !== source) throw new Error('同一退款请求不可更改金额或原因')
         return existing
       }
+      const refundChannel = (await originalPaymentChannel(tx, order._id, current)) || settings.payment.mode
+      if (refundChannel === 'wechat' && settings.payment.mode === 'wechat' && settings.payment.refundEnabled === false) throw new Error('微信退款功能尚未启用')
+      if (refundChannel === 'wechat' && !current.paymentNo && !current.wxTransactionId) throw new Error('缺少原支付凭证，请先对账')
       // Internal function hook only (never spread request data into options). The
       // guard and its writes share the refund reservation transaction and rollback.
       if (source === 'staff_cancel' && typeof options.beforeReserve !== 'function') throw new Error('缺少宠托师取消校验')
@@ -75,12 +84,12 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         paymentNo: current.paymentNo || '', wxTransactionId: current.wxTransactionId || '', refundNo: createRefundNo(),
         openid: current.clientOpenid || '', amount: Number(current.payAmount), refundAmount: requested / 100,
         reason: reason || '', source, operatorOpenid, clientRequestId: requestId, status: 'processing',
-        channel: settings.payment.mode, earningsAccountingVersion: 2, earningsApplied: settings.payment.mode === 'mock', requestedAt: time, createdAt: time, updatedAt: time }
+        channel: refundChannel, earningsAccountingVersion: 2, earningsApplied: false, requestedAt: time, createdAt: time, updatedAt: time }
       await tx.collection('refunds').doc(id).set({ data: value })
       await tx.collection(resolved.collectionName).doc(order._id).update({ data: {
         paymentStatus: 'refunding', refundStatus: 'processing', refundAmount: (reserved + requested) / 100,
         refundNo: value.refundNo, refundRevision: Number(current.refundRevision || 0) + 1, updatedAt: time,
-        pendingEarningRefundIds: settings.payment.mode === 'mock' ? (current.pendingEarningRefundIds || []) : [...new Set([...(current.pendingEarningRefundIds || []), id])],
+        pendingEarningRefundIds: [...new Set([...(current.pendingEarningRefundIds || []), id])],
         ...(options.cancelStatus ? { status: options.cancelStatus, cancelReason: reason || '', cancelledAt: time } : {}),
         ...(options.cancelStatus === 'expired' ? { expiredAt: time, expireReason: '服务开始时间前无人接单' } : {}),
         ...(source === 'mall_after_sale' && current.afterSaleType === 'return_and_refund' && current.refundStatus === 'return_shipped'
@@ -89,14 +98,9 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
       } })
       await tx.collection('payment_events').doc(id).set({ data: { eventType: 'refund_create', orderId: order._id,
         refundNo: value.refundNo, status: 'processing', detail: { refundAmount: value.refundAmount, source }, createdAt: time } })
-      if (settings.payment.mode === 'mock' && current.couponId && (reserved + requested >= total)) {
-        if (typeof restoreOrderCoupon === 'function') {
-          await restoreOrderCoupon(current.couponId, order._id, tx)
-        }
-      }
       if (typeof adjustStaffEarningsForRefund === 'function') {
         await adjustStaffEarningsForRefund(order._id, requested / 100, total / 100, reason, tx, {
-          phase: settings.payment.mode === 'mock' ? 'success' : 'reserve', refundId: id
+          phase: 'reserve', refundId: id
         })
       }
       return { _id: id, ...value }
@@ -121,7 +125,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
     const pendingByOrder = await Promise.all(candidates.map(async order => {
       try {
         const rows = (await db.collection('refunds').where({ orderId: order._id }).limit(51).get()).data || []
-        return rows.filter(row => row.channel === 'wechat' && row.status === 'processing' && (!row.collectionName || row.collectionName === collectionName))
+        return rows.filter(row => ['wechat', 'mock'].includes(row.channel) && row.status === 'processing' && (!row.collectionName || row.collectionName === collectionName))
       } catch (error) {
         console.error('[refund-display-read]', { orderId: order._id, message: error.message })
         return []
@@ -129,7 +133,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
     }))
     const pending = pendingByOrder.flat().sort((a, b) => new Date(a.updatedAt || 0) - new Date(b.updatedAt || 0)).slice(0, 10)
     const checkedIds = new Set(pending.map(refund => refund.orderId))
-    // Old mock refunds must not indefinitely occupy the first ten candidates.
+    // Orders without a pending refund must not indefinitely occupy the first ten candidates.
     candidates.forEach((order, index) => { if (!pendingByOrder[index].length) checkedIds.add(order._id) })
     await Promise.all(pending.map(refund => syncOrderRefund(refund, { retryMissing: false })
       .catch(error => console.error('[refund-display-sync]', { refundId: refund._id, message: error.message }))))
@@ -147,38 +151,41 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
   }
 
   async function dispatchOrderRefund(refund, { queryFirst = false, retryMissing = true } = {}) {
-    if (refund.status === 'success' || refund.status === 'failed' || refund.channel === 'mock') return refund
-    const settings = await getSystemSettings({ includeSecrets: true })
-    if (settings.payment.mode !== 'wechat' || (!queryFirst && settings.payment.refundEnabled === false)) throw new Error('微信退款功能尚未启用')
-    const config = getWechatPayConfig(settings)
+    if (refund.status === 'success' || refund.status === 'failed') return refund
+    const isMock = refund.channel === 'mock'
     const body = { out_refund_no: refund.refundNo, reason: refund.reason || '订单退款',
       amount: { refund: amountYuanToFen(refund.refundAmount), total: amountYuanToFen(refund.amount), currency: 'CNY' },
       ...(refund.wxTransactionId ? { transaction_id: refund.wxTransactionId } : { out_trade_no: refund.paymentNo }) }
-    let response
-    try {
-      if (queryFirst) {
-        let missing = false
-        try {
-          response = await wechatPayRequest('GET', `/v3/refund/domestic/refunds/${encodeURIComponent(refund.refundNo)}`, null, config)
-        } catch (error) {
-          // Only an explicit not-found result permits resubmitting the original
-          // authorized refund. Network/auth errors must leave its quota reserved.
-          if (error.code !== 'RESOURCE_NOT_EXISTS') throw error
-          if (!retryMissing) throw new Error('微信尚未查到原退款单，等待系统重试')
-          if (settings.payment.refundEnabled === false) throw new Error('微信退款功能尚未启用，原退款单尚未受理')
-          missing = true
+    let response = isMock ? { status: 'SUCCESS', out_refund_no: refund.refundNo, amount: body.amount } : null
+    if (!isMock) {
+      const settings = await getSystemSettings({ includeSecrets: true })
+      if (settings.payment.mode !== 'wechat' || (!queryFirst && settings.payment.refundEnabled === false)) throw new Error('微信退款功能尚未启用')
+      const config = getWechatPayConfig(settings)
+      try {
+        if (queryFirst) {
+          let missing = false
+          try {
+            response = await wechatPayRequest('GET', `/v3/refund/domestic/refunds/${encodeURIComponent(refund.refundNo)}`, null, config)
+          } catch (error) {
+            // Only an explicit not-found result permits resubmitting the original
+            // authorized refund. Network/auth errors must leave its quota reserved.
+            if (error.code !== 'RESOURCE_NOT_EXISTS') throw error
+            if (!retryMissing) throw new Error('微信尚未查到原退款单，等待系统重试')
+            if (settings.payment.refundEnabled === false) throw new Error('微信退款功能尚未启用，原退款单尚未受理')
+            missing = true
+          }
+          if (!missing && (!response || !response.out_refund_no || !response.amount || !['SUCCESS', 'PROCESSING', 'CLOSED', 'ABNORMAL'].includes(response.status))) {
+            throw new Error('微信退款查询结果不完整')
+          }
         }
-        if (!missing && (!response || !response.out_refund_no || !response.amount || !['SUCCESS', 'PROCESSING', 'CLOSED', 'ABNORMAL'].includes(response.status))) {
-          throw new Error('微信退款查询结果不完整')
-        }
+        // Always reuse the same number, including recovery of rejected requests.
+        if (!response) response = await wechatPayRequest('POST', '/v3/refund/domestic/refunds', body, config)
+        if (response.out_refund_no && response.out_refund_no !== refund.refundNo) throw new Error('微信退款单号不一致')
+        if (response.amount && (response.amount.refund !== body.amount.refund || response.amount.total !== body.amount.total)) throw new Error('微信退款金额不一致')
+      } catch (error) {
+        await db.collection('refunds').doc(refund._id).update({ data: { lastError: String(error.message || error).slice(0, 300), updatedAt: now() } })
+        throw new Error(`微信退款结果待核实，请使用原请求重试：${error.message}`)
       }
-      // Always reuse the same number, including recovery of rejected requests.
-      if (!response) response = await wechatPayRequest('POST', '/v3/refund/domestic/refunds', body, config)
-      if (response.out_refund_no && response.out_refund_no !== refund.refundNo) throw new Error('微信退款单号不一致')
-      if (response.amount && (response.amount.refund !== body.amount.refund || response.amount.total !== body.amount.total)) throw new Error('微信退款金额不一致')
-    } catch (error) {
-      await db.collection('refunds').doc(refund._id).update({ data: { lastError: String(error.message || error).slice(0, 300), updatedAt: now() } })
-      throw new Error(`微信退款结果待核实，请使用原请求重试：${error.message}`)
     }
     const resolved = await getPayableOrder(refund.orderId)
     const result = await db.runTransaction(async tx => {
@@ -186,6 +193,9 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
       if (!latest || latest.status === 'success' || latest.status === 'failed') return latest || refund
       const order = (await tx.collection(resolved.collectionName).doc(refund.orderId).get().catch(() => ({ data: null }))).data
       if (!order) throw new Error('订单不存在')
+      if (isMock && await originalPaymentChannel(tx, refund.orderId, order) === 'wechat') {
+        throw new Error('原订单为微信支付，模拟退款单不能自动确认，请核对原支付及退款记录')
+      }
       const rows = await totals(tx, refund.orderId)
       let status = 'processing'
       let failReason = ''
@@ -199,8 +209,8 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         failReason = '微信退款异常'
       }
       const time = now()
-      const patch = { status, wxRefundId: response.refund_id || '', gatewayStatus: response.status || '',
-        rawRequest: sanitizeWechatPayload(body), rawResponse: sanitizeWechatPayload(response),
+      const patch = { status, wxRefundId: isMock ? '' : (response.refund_id || ''), gatewayStatus: isMock ? 'MOCK_SUCCESS' : (response.status || ''),
+        rawRequest: isMock ? null : sanitizeWechatPayload(body), rawResponse: isMock ? null : sanitizeWechatPayload(response),
         lastError: status === 'failed' ? (failReason || response.status || '') : '',
         failReason: status === 'failed' ? (failReason || response.status || '') : '',
         updatedAt: time,
@@ -263,7 +273,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         ...(shouldRestoreStock ? { stockRestorePending: true, stockRestoreCheckedAt: time, stockRestoreError: '' } : {}),
         updatedAt: time
       } })
-      if ((status === 'success' || status === 'failed') && resolved.collectionName !== 'mall_orders') {
+      if ((status === 'success' || status === 'failed') && !isMock && resolved.collectionName !== 'mall_orders') {
         const completedRefund = { ...latest, ...patch }
         await enqueueOrderNotification(tx, order.clientOpenid, 'refundResult', order, notificationDetail(completedRefund), 'client', notificationKey(completedRefund))
       }
@@ -273,7 +283,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         }
         await tx.collection('finance_logs').doc(refund._id).set({ data: {
           action: 'refund_success', targetType: 'refund', targetId: refund._id, orderId: refund.orderId,
-          amountDelta: -Number(refund.refundAmount), detail: { refundNo: refund.refundNo }, createdAt: time
+          amountDelta: isMock ? 0 : -Number(refund.refundAmount), detail: { refundNo: refund.refundNo, isMock }, createdAt: time
         } })
       } else if (status === 'failed') {
         await tx.collection('payment_events').doc(`${refund._id}_failed`).set({ data: {
@@ -284,7 +294,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
       return { ...latest, ...patch }
     })
     if (result?.status === 'success' && resolved.collectionName === 'mall_orders') await inventory.restorePendingStock(refund.orderId)
-    if (result && ['success', 'failed'].includes(result.status) && resolved.collectionName !== 'mall_orders') {
+    if (result && ['success', 'failed'].includes(result.status) && !isMock && resolved.collectionName !== 'mall_orders') {
       // The committed queue survives a send failure or a process restart.
       await notifyOrder(resolved.order.clientOpenid, 'refundResult', resolved.order, notificationDetail(result), 'client', notificationKey(result))
         .catch(error => console.error('[refund-notification]', { refundId: result._id, message: error.message }))
@@ -312,6 +322,17 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         }
       } catch (error) {
         console.error('[refund-reconcile]', { id: row._id, message: error.message })
+      }
+    }
+
+    const mockRows = (await db.collection('refunds').where({ status: 'processing', channel: 'mock' }).orderBy('updatedAt', 'asc').limit(30).get()).data || []
+    for (const row of mockRows) {
+      try { await syncOrderRefund(row) }
+      catch (error) {
+        await db.collection('refunds').where({ _id: row._id, status: 'processing' }).update({ data: {
+          lastError: String(error.message || error).slice(0, 300), updatedAt: now()
+        } }).catch(updateError => console.error('[mock-refund-reconcile-update]', { id: row._id, message: updateError.message }))
+        console.error('[mock-refund-reconcile]', { id: row._id, message: error.message })
       }
     }
 
@@ -357,7 +378,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
     }
 
     const stockChecked = await inventory.retryPendingStock()
-    return rows.length + allFailed.length + stockChecked
+    return rows.length + mockRows.length + allFailed.length + stockChecked
   }
   return { requestOrderRefund, dispatchOrderRefund, syncOrderRefund, refreshOrderRefunds, reconcilePendingRefunds }
 }

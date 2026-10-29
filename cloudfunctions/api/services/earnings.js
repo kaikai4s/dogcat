@@ -12,6 +12,39 @@ module.exports = function createService({
     return { platformCents, staffCents: grossCents - platformCents }
   }
 
+  async function hasSuccessfulMockPayment(reader, orderId) {
+    const payments = (await reader.collection('payments').where({
+      orderId, status: db.command.in(['success', 'paid'])
+    }).limit(2).get()).data || []
+    return payments.some(payment => payment.channel === 'mock')
+  }
+
+  async function isMockEarning(earning) {
+    if (earning.isMock === true || earning.paymentChannel === 'mock') return true
+    if (!earning.orderId) return false
+    if (await hasSuccessfulMockPayment(db, earning.orderId)) return true
+    const order = await readOptionalDocument(db, 'orders', earning.orderId)
+    return order?.paymentChannel === 'mock' || order?.isMockPayment === true
+  }
+
+  async function quarantineMockEarning(earning, status, time) {
+    await db.runTransaction(async tx => {
+      const latest = await readOptionalDocument(tx, 'staff_earnings', earning._id)
+      if (!latest || latest.status !== status) return
+      await tx.collection('staff_earnings').doc(earning._id).update({ data: {
+        status: 'mock_settled', isMock: true, paymentChannel: 'mock', isWithdrawable: false,
+        mockReason: '历史模拟测试订单自动订正隔离', updatedAt: time
+      } })
+      const log = await readOptionalDocument(tx, 'finance_logs', earning._id)
+      if (log && log.targetId === earning._id && ['staff_earning_created', 'staff_earning_mock_created'].includes(log.action)) {
+        await tx.collection('finance_logs').doc(earning._id).update({ data: {
+          action: 'staff_earning_mock_created', amountDelta: 0,
+          detail: { ...(log.detail || {}), paymentChannel: 'mock', isMock: true, isWithdrawable: false }
+        } })
+      }
+    })
+  }
+
   async function resolveStaffCommissionRate(order, defaultRate) {
     const fallback = Number(defaultRate)
     if (!order?.staffOpenid) return fallback
@@ -128,17 +161,8 @@ module.exports = function createService({
         if (!String(error.message || error.errMsg).includes(`document with _id ${order._id} does not exist`)) throw error
       }
       const channelCandidate = order.paymentChannel || currentOrder?.paymentChannel || ''
-      let isMock = order.isMockPayment === true || currentOrder?.isMockPayment === true || channelCandidate === 'mock'
-      if (!isMock && !channelCandidate) {
-        try {
-          const paymentsRes = await transaction.collection('payments').where({ orderId: order._id }).limit(2).get()
-          const paymentList = paymentsRes.data || []
-          const succPayment = paymentList.find(p => p.status === 'success' || p.status === 'paid')
-          if (succPayment && succPayment.channel === 'mock') {
-            isMock = true
-          }
-        } catch (_) {}
-      }
+      const isMock = order.isMockPayment === true || currentOrder?.isMockPayment === true || channelCandidate === 'mock' ||
+        await hasSuccessfulMockPayment(transaction, order._id)
       const paymentChannel = isMock ? 'mock' : (channelCandidate || 'wechat')
       const value = {
         ...earning,
@@ -176,11 +200,12 @@ module.exports = function createService({
         targetId: earningId,
         orderId: order._id,
         staffOpenid: order.staffOpenid,
-        amountDelta: isMock ? 0 : earningAmount,
+        amountDelta: isMock ? 0 : value.amount,
         detail: {
           commissionRate: rate,
           originalAmount,
           deductAmount,
+          refundDeductedAmount: value.deductedAmount || 0,
           deductReason,
           isDeducted: deductAmount > 0,
           paymentChannel,
@@ -207,34 +232,8 @@ module.exports = function createService({
         const res = await db.collection('staff_earnings').where(where).orderBy('_id', 'asc').limit(100).get()
         const availableRows = res.data || []
         for (const earning of availableRows) {
-          let isMockEarning = earning.isMock === true || earning.paymentChannel === 'mock'
-          if (!isMockEarning && earning.isMock === undefined && earning.orderId) {
-            try {
-              const payments = (await db.collection('payments').where({ orderId: earning.orderId }).limit(2).get()).data || []
-              const succPayment = payments.find(p => p.status === 'success' || p.status === 'paid')
-              if (succPayment && succPayment.channel === 'mock') {
-                isMockEarning = true
-              } else {
-                const orderRes = await db.collection('orders').doc(earning.orderId).get().catch(() => ({ data: null }))
-                const orderData = orderRes && orderRes.data
-                if (orderData && (orderData.paymentChannel === 'mock' || orderData.isMockPayment === true)) {
-                  isMockEarning = true
-                }
-              }
-            } catch (_) {}
-          }
-
-          if (isMockEarning) {
-            await db.collection('staff_earnings').doc(earning._id).update({
-              data: {
-                status: 'mock_settled',
-                isMock: true,
-                paymentChannel: 'mock',
-                isWithdrawable: false,
-                mockReason: '历史模拟测试订单自动订正隔离',
-                updatedAt: time
-              }
-            }).catch(() => {})
+          if (await isMockEarning(earning)) {
+            await quarantineMockEarning(earning, 'available', time)
             continue
           }
 
@@ -258,7 +257,9 @@ module.exports = function createService({
         if (availableRows.length < 100) break
         availCursor = availableRows[availableRows.length - 1]._id
       }
-    } catch (_) {}
+    } catch (error) {
+      throw new Error(`收益支付渠道核对失败：${error.message}`)
+    }
 
     // 2. 正常处理 pending 收益的延期到期转 available 及 pending mock 清洗
     const query = openid ? { staffOpenid: openid, status: 'pending' } : { status: 'pending' }
@@ -269,34 +270,8 @@ module.exports = function createService({
       const res = await db.collection('staff_earnings').where(where).orderBy('_id', 'asc').limit(100).get()
       const rows = res.data || []
       for (const earning of rows) {
-        let isMockEarning = earning.isMock === true || earning.paymentChannel === 'mock'
-        if (!isMockEarning && earning.isMock === undefined && earning.orderId) {
-          try {
-            const payments = (await db.collection('payments').where({ orderId: earning.orderId }).limit(2).get()).data || []
-            const succPayment = payments.find(p => p.status === 'success' || p.status === 'paid')
-            if (succPayment && succPayment.channel === 'mock') {
-              isMockEarning = true
-            } else {
-              const orderRes = await db.collection('orders').doc(earning.orderId).get().catch(() => ({ data: null }))
-              const orderData = orderRes && orderRes.data
-              if (orderData && (orderData.paymentChannel === 'mock' || orderData.isMockPayment === true)) {
-                isMockEarning = true
-              }
-            }
-          } catch (_) {}
-        }
-
-        if (isMockEarning) {
-          await db.collection('staff_earnings').where({ _id: earning._id, status: 'pending' }).update({
-            data: {
-              status: 'mock_settled',
-              isMock: true,
-              paymentChannel: 'mock',
-              isWithdrawable: false,
-              mockReason: '历史模拟测试订单自动订正隔离',
-              updatedAt: time
-            }
-          })
+        if (await isMockEarning(earning)) {
+          await quarantineMockEarning(earning, 'pending', time)
           continue
         }
         const availableAt = parseDateValue(earning.availableAt)

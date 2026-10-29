@@ -216,30 +216,13 @@ test('mall partial compensation refund success restores preRefundStatus and upda
   assert.equal(auditRes.ok, true)
   assert.equal(auditRes.data.refundAmount, 20)
 
-  // 此时退款单创建成功，订单进入退款处理中
+  // 模拟支付的退款直接结算，不等待微信网关。
   const refundRecord = db.state.refunds.find(r => r.orderId === 'order_compensation_test')
   assert.ok(refundRecord, '退款记录已生成')
-  assert.equal(refundRecord.status, 'processing')
+  assert.equal(refundRecord.status, 'success')
   assert.equal(refundRecord.refundAmount, 20)
 
-  // 3. 模拟微信支付退款成功通知 / 对账结算（settlement）
-  const createContext = require('../../cloudfunctions/api/services/context')
-  const baseContext = createContext({ db, cloud: {} })
-  const refundService = require('../../cloudfunctions/api/services/refunds')({
-    ...baseContext,
-    getSystemSettings: async () => ({ payment: { mode: 'wechat', refundEnabled: true } }),
-    getWechatPayConfig: () => ({ appId: 'app', mchId: 'mch', apiV3Key: 'key', certSerialNo: 'cert', privateKey: 'pk' }),
-    wechatPayRequest: async () => ({
-      status: 'SUCCESS',
-      out_refund_no: refundRecord.refundNo,
-      refund_id: 'WX_REF_COMPENSATION_001',
-      amount: { refund: 2000, total: 10000 },
-      success_time: new Date().toISOString()
-    })
-  })
-  await refundService.dispatchOrderRefund({ ...refundRecord, channel: 'wechat' })
-
-  // 4. 校验订单状态已从 refund_applied 恢复为 shipped（preRefundStatus），同时 refundStatus 变为 partially_refunded
+  // 校验订单状态已从 refund_applied 恢复为 shipped（preRefundStatus）。
   const finalOrder = db.state.mall_orders.find(o => o._id === 'order_compensation_test')
   assert.equal(finalOrder.status, 'shipped', '部分补偿退款完成后，主状态必须恢复为 preRefundStatus(shipped)，不能卡在 refund_applied')
   assert.equal(finalOrder.refundStatus, 'partially_refunded')

@@ -80,14 +80,20 @@ for (const status of ['CLOSED', 'ABNORMAL']) {
   })
 }
 
-for (const mode of ['wechat', 'mock']) {
-  test(`processing ${mode} refund never reports success or consumes result consent`, async () => {
-    const { refund, sent, deliveries } = fixture({ mode, status: 'PROCESSING' })
-    assert.equal((await refund()).status, 'processing')
-    assert.equal(sent.length, 0)
-    assert.equal(deliveries().length, 0)
-  })
-}
+test('processing WeChat refund never reports success or consumes result consent', async () => {
+  const { refund, sent, deliveries } = fixture({ status: 'PROCESSING' })
+  assert.equal((await refund()).status, 'processing')
+  assert.equal(sent.length, 0)
+  assert.equal(deliveries().length, 0)
+})
+
+test('mock refund settles locally without sending a real-money refund notification', async () => {
+  const { refund, sent, deliveries, db } = fixture({ mode: 'mock', status: 'PROCESSING' })
+  assert.equal((await refund()).status, 'success')
+  assert.equal(db.state.orders[0].refundedAmount, 25.5)
+  assert.equal(sent.length, 0)
+  assert.equal(deliveries().length, 0)
+})
 
 test('uncertain gateway response waits for reconciliation before sending the result', async () => {
   const { refund, refunds, sent, gateway } = fixture()

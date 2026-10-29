@@ -79,6 +79,10 @@ test('refund triggers automatic voiding or deduction of staff earnings', async (
     }
   })
   assert.equal(fullRefundRes.ok, true, fullRefundRes.error || '')
+  assert.equal(db.state.refunds[0].status, 'success')
+  assert.equal(db.state.orders[0].paymentStatus, 'refunded')
+  assert.equal(db.state.orders[0].refundStatus, 'full_refunded')
+  assert.equal(db.state.orders[0].refundedAmount, 100)
 
   const earningFull = db.state.staff_earnings.find(e => e._id === 'earning_full')
   assert.equal(earningFull.status, 'refunded_void')
@@ -100,6 +104,10 @@ test('refund triggers automatic voiding or deduction of staff earnings', async (
     }
   })
   assert.equal(partRefundRes.ok, true, partRefundRes.error || '')
+  assert.equal(db.state.refunds[1].status, 'success')
+  assert.equal(db.state.orders[1].paymentStatus, 'paid')
+  assert.equal(db.state.orders[1].refundStatus, 'partially_refunded')
+  assert.equal(db.state.orders[1].refundedAmount, 50)
 
   const earningPart = db.state.staff_earnings.find(e => e._id === 'earning_part')
   assert.equal(earningPart.status, 'pending')

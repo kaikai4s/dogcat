@@ -601,7 +601,10 @@ module.exports = function createHandler(context) {
     if (action === 'cancelOrder') {
       const clientRequestId = getClientRequestId(data)
       const { order } = await requireClientOrder(openid, data.orderId, '无权取消订单')
-      if (order.status === 'cancelled') return { orderId: data.orderId, status: 'cancelled', refundStatus: order.refundStatus || '', refundAmount: Number(order.refundAmount || 0), refundNo: order.refundNo || '' }
+      if (order.status === 'cancelled' || (order.status === 'refunded' && order.cancelledAt)) {
+        return { orderId: data.orderId, status: 'cancelled', refundStatus: order.refundStatus || '',
+          refundAmount: Number(order.refundAmount || 0), refundNo: order.refundNo || '' }
+      }
       const reason = safeText(data.reason).trim()
       if (reason.length > 200) throw new Error('取消原因不能超过 200 字')
       if (reason && typeof checkTextSecurity === 'function') {
@@ -687,7 +690,8 @@ module.exports = function createHandler(context) {
           }
         }
       }
-      const cancelledOrder = { ...order, _id: data.orderId, ...update }
+      const refundOrder = refund ? (await db.collection('orders').doc(data.orderId).get()).data : null
+      const cancelledOrder = refundOrder || { ...order, _id: data.orderId, ...update }
       if (typeof destroyOrderHomeSecuritySecrets === 'function') {
         await destroyOrderHomeSecuritySecrets(data.orderId, {
           reason: 'order_cancelled',
@@ -715,14 +719,22 @@ module.exports = function createHandler(context) {
       if (order.staffOpenid) {
         await notifyOrder(order.staffOpenid, 'orderCancelled', cancelledOrder, cancellationDetail, 'staff', `order_cancelled:staff:${data.orderId}:${clientRequestId}`).catch(error => console.error('[cancelOrder] staff notification error:', error.message))
       }
-      if (refund) await appendOrderTimeline(data.orderId, 'refund_processing', '退款处理中', `退款金额 ¥${quote.refundAmount}`, 'system')
+      if (refund) {
+        const refundTimeline = refund.status === 'success'
+          ? { type: 'refund_success', title: '退款成功' }
+          : refund.status === 'failed'
+            ? { type: 'refund_failed', title: '退款失败' }
+            : { type: 'refund_processing', title: '退款处理中' }
+        await appendOrderTimeline(data.orderId, refundTimeline.type, refundTimeline.title, `退款金额 ¥${quote.refundAmount}`, 'system')
+      }
       if (order.groupBuyId || order.source === 'community_groupbuy') {
         const groupBuy = require('../services/playground-group-buy')(context)
         if (typeof groupBuy.onOrderCancelled === 'function') {
           await groupBuy.onOrderCancelled(data.orderId, order.groupBuyId).catch((e) => console.error('[cancelOrder] sync group buy error:', e))
         }
       }
-      return { orderId: data.orderId, status: 'cancelled', refundStatus: quote.refundStatus, refundAmount: quote.refundAmount, refundNo: refund ? refund.refundNo : '' }
+      return { orderId: data.orderId, status: 'cancelled', refundStatus: cancelledOrder.refundStatus,
+        refundAmount: quote.refundAmount, refundNo: refund ? refund.refundNo : '' }
     }
 
     if (action === 'requestEarlyStart') {

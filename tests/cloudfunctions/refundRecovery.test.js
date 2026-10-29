@@ -204,3 +204,117 @@ test('legacy mock refunds do not prevent later real refunds from being synchroni
   assert.equal(second.find(row => row._id === 'order').paymentStatus, 'refunded')
   assert.equal(f.calls.length, 2)
 })
+
+test('mock partial and full refunds settle balances, coupons and finance logs once', async () => {
+  const db = createCollectionStore({
+    orders: [{ _id: 'mock-order', clientOpenid: 'client', paymentNo: 'mock-payment',
+      payAmount: 100, paymentStatus: 'paid', status: 'completed', couponId: 'coupon' }],
+    user_coupons: [{ _id: 'coupon', openid: 'client', status: 'used', usedOrderId: 'mock-order', validTo: '2099-01-01' }],
+    staff_earnings: [], finance_logs: [], refunds: []
+  })
+  optimistic(db)
+  const context = createContext({ db, cloud: {} })
+  const service = require('../../cloudfunctions/api/services/refunds')({ ...context,
+    getSystemSettings: async () => ({ payment: { mode: 'mock' } }), assertPaymentModeAllowed: () => {}
+  })
+  const partial = await service.requestOrderRefund(db.state.orders[0], 30, 'partial', 'admin', 'admin', 'part-1')
+  assert.equal(partial.status, 'success')
+  assert.equal(db.state.orders[0].paymentStatus, 'paid')
+  assert.equal(db.state.orders[0].refundStatus, 'partially_refunded')
+  assert.equal(db.state.orders[0].refundedAmount, 30)
+  assert.equal(db.state.user_coupons[0].status, 'used')
+
+  const full = await service.requestOrderRefund(db.state.orders[0], 70, 'remainder', 'admin', 'admin', 'part-2')
+  assert.equal(full.status, 'success')
+  assert.equal(db.state.orders[0].paymentStatus, 'refunded')
+  assert.equal(db.state.orders[0].refundStatus, 'full_refunded')
+  assert.equal(db.state.orders[0].refundedAmount, 100)
+  assert.equal(db.state.user_coupons[0].status, 'available')
+  assert.equal(db.state.finance_logs.filter(row => row.action === 'refund_success').length, 2)
+  assert.ok(db.state.finance_logs.every(row => row.amountDelta === 0))
+  await service.syncOrderRefund(partial)
+  await service.reconcilePendingRefunds()
+  assert.equal(db.state.finance_logs.filter(row => row.action === 'refund_success').length, 2)
+})
+
+test('previously stuck mock refunds are finalized by reconciliation without applying earnings twice', async () => {
+  const db = createCollectionStore({
+    orders: [{ _id: 'legacy-order', clientOpenid: 'client', paymentNo: 'mock-payment',
+      payAmount: 100, paymentStatus: 'refunding', refundStatus: 'processing', refundAmount: 100,
+      refundedAmount: 0, status: 'cancelled' }],
+    refunds: [{ _id: 'legacy-refund', orderId: 'legacy-order', collectionName: 'orders',
+      refundNo: 'mock-refund', amount: 100, refundAmount: 100, channel: 'mock',
+      status: 'processing', earningsAccountingVersion: 2, earningsApplied: true }],
+    staff_earnings: [{ _id: 'earning', orderId: 'legacy-order', staffOpenid: 'staff',
+      amount: 0, originalAmount: 70, deductedAmount: 70, status: 'refunded_void' }], finance_logs: []
+  })
+  const context = createContext({ db, cloud: {} })
+  const service = require('../../cloudfunctions/api/services/refunds')({ ...context,
+    getSystemSettings: async () => ({ payment: { mode: 'wechat' } })
+  })
+  await service.reconcilePendingRefunds()
+  assert.equal(db.state.refunds[0].status, 'success')
+  assert.equal(db.state.orders[0].status, 'refunded')
+  assert.equal(db.state.orders[0].paymentStatus, 'refunded')
+  assert.equal(db.state.orders[0].refundedAmount, 100)
+  assert.equal(db.state.staff_earnings[0].amount, 0)
+  assert.equal(db.state.staff_earnings[0].deductedAmount, 70)
+  assert.equal(db.state.finance_logs.filter(row => row.action === 'staff_earning_voided').length, 0)
+})
+
+test('invalid mock refunds do not indefinitely block later valid refunds', async t => {
+  const errors = t.mock.method(console, 'error', () => {})
+  const orders = Array.from({ length: 31 }, (_, i) => ({ _id: `order-${i}`, clientOpenid: 'client',
+    payAmount: 1, paymentNo: `pay-${i}`, paymentStatus: 'refunding', refundStatus: 'processing',
+    refundAmount: 1, status: 'cancelled', paymentChannel: i < 30 ? 'wechat' : 'mock' }))
+  const refunds = orders.map((order, i) => ({ _id: `refund-${i}`, orderId: order._id,
+    collectionName: 'orders', refundNo: `R${i}`, amount: 1, refundAmount: 1, channel: 'mock',
+    status: 'processing', updatedAt: new Date(Date.UTC(2026, 0, 1, 0, 0, i)) }))
+  const db = createCollectionStore({ orders, refunds })
+  const context = createContext({ db, cloud: {} })
+  const service = require('../../cloudfunctions/api/services/refunds')({ ...context,
+    getSystemSettings: async () => ({ payment: { mode: 'wechat' } })
+  })
+  await service.reconcilePendingRefunds()
+  assert.equal(db.state.refunds[30].status, 'processing')
+  assert.equal(db.state.refunds[0].lastError.includes('原订单为微信支付'), true)
+  await service.reconcilePendingRefunds()
+  assert.equal(db.state.refunds[30].status, 'success')
+  assert.equal(db.state.orders[30].paymentStatus, 'refunded')
+  assert.equal(errors.mock.callCount(), 59)
+})
+
+test('the original payment channel takes precedence over a later payment-mode change', async () => {
+  const db = createCollectionStore({
+    orders: [
+      { _id: 'real-order', clientOpenid: 'client', payAmount: 100, paymentStatus: 'paid',
+        status: 'paid', paymentNo: 'real-payment', wxTransactionId: 'wechat-transaction', paymentChannel: 'wechat' },
+      { _id: 'test-order', clientOpenid: 'client', payAmount: 20, paymentStatus: 'paid',
+        status: 'paid', paymentNo: 'test-payment', paymentChannel: 'mock', isMockPayment: true }
+    ],
+    payments: [{ _id: 'real-payment', orderId: 'real-order', status: 'success', channel: 'wechat' }],
+    refunds: [], finance_logs: []
+  })
+  const context = createContext({ db, cloud: {} })
+  const mockConfigured = require('../../cloudfunctions/api/services/refunds')({ ...context,
+    getSystemSettings: async () => ({ payment: { mode: 'mock' } }), assertPaymentModeAllowed: () => {}
+  })
+  await assert.rejects(mockConfigured.requestOrderRefund(db.state.orders[0], 100, 'real', 'admin', 'admin', 'real'), /微信退款功能尚未启用/)
+  assert.equal(db.state.refunds[0].channel, 'wechat')
+  assert.equal(db.state.refunds[0].status, 'processing')
+  assert.equal(db.state.orders[0].refundedAmount || 0, 0)
+
+  db.state.refunds[0].channel = 'mock'
+  await assert.rejects(mockConfigured.syncOrderRefund(db.state.refunds[0]), /原订单为微信支付/)
+  assert.equal(db.state.refunds[0].status, 'processing')
+  assert.equal(db.state.orders[0].refundedAmount || 0, 0)
+
+  const wechatConfigured = require('../../cloudfunctions/api/services/refunds')({ ...context,
+    getSystemSettings: async () => ({ payment: { mode: 'wechat', refundEnabled: true } }),
+    assertPaymentModeAllowed: () => {}
+  })
+  const testRefund = await wechatConfigured.requestOrderRefund(db.state.orders[1], 20, 'test', 'admin', 'admin', 'test')
+  assert.equal(testRefund.channel, 'mock')
+  assert.equal(testRefund.status, 'success')
+  assert.equal(db.state.orders[1].paymentStatus, 'refunded')
+})

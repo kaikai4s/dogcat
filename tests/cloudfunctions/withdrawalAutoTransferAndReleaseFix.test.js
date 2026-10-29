@@ -6,7 +6,7 @@ const createContext = require('../../cloudfunctions/api/services/context')
 const createTransfers = require('../../cloudfunctions/api/services/wechatTransfers')
 const createAdminHandler = require('../../cloudfunctions/api/handlers/admin')
 
-test('sub-10-cent failed withdrawal allows release directly without gateway confirmation', async () => {
+test('sub-10-cent failed withdrawal cannot release without original gateway confirmation', async () => {
   const db = createCollectionStore({
     withdraw_requests: [{
       _id: 'w_small',
@@ -27,15 +27,13 @@ test('sub-10-cent failed withdrawal allows release directly without gateway conf
   })
   const context = createContext({ db, cloud: {} })
   context.checkTextSecurity = async () => {}
-  const res = await context.releaseFailedWithdrawal({ openid: 'admin' }, { id: 'w_small' })
-  assert.equal(res.changed, true)
-  assert.equal(db.state.withdraw_requests[0].status, 'rejected')
-  assert.equal(db.state.withdraw_requests[0].transferStatus, 'released')
-  assert.equal(db.state.staff_earnings[0].status, 'available')
-  assert.equal(db.state.staff_earnings[0].withdrawRequestId, '')
+  await assert.rejects(context.releaseFailedWithdrawal({ openid: 'admin' }, { id: 'w_small' }), /查询并确认微信转账已失败/)
+  assert.equal(db.state.withdraw_requests[0].status, 'transfer_failed')
+  assert.equal(db.state.staff_earnings[0].status, 'withdrawing')
+  assert.equal(db.state.staff_earnings[0].withdrawRequestId, 'w_small')
 })
 
-test('querying WeChat when RESOURCE_NOT_EXISTS confirms gateway failure and allows release', async () => {
+test('RESOURCE_NOT_EXISTS alone does not confirm transfer failure or release funds', async () => {
   const calls = []
   const db = createCollectionStore({
     withdraw_requests: [{
@@ -81,18 +79,14 @@ test('querying WeChat when RESOURCE_NOT_EXISTS confirms gateway failure and allo
     prepareWechatSubmissionQuota: async () => {}
   })
 
-  // Manual query on the failed transfer
-  await transfers.queryWechatWithdrawalTransfer('w_missing')
-  assert.equal(db.state.withdraw_requests[0].gatewayFailureConfirmed, true)
-  assert.equal(db.state.withdraw_requests[0].wechatTransferState, 'NOT_FOUND')
-
-  // Now release succeeds
+  await assert.rejects(transfers.queryWechatWithdrawalTransfer('w_missing'), /微信尚未查到原转账单/)
+  assert.deepEqual(calls.map(call => call.method), ['GET'])
+  assert.notEqual(db.state.withdraw_requests[0].gatewayFailureConfirmed, true)
   const context = createContext({ db, cloud: {} })
   context.checkTextSecurity = async () => {}
-  const releaseRes = await context.releaseFailedWithdrawal({ openid: 'admin' }, { id: 'w_missing' })
-  assert.equal(releaseRes.changed, true)
-  assert.equal(db.state.staff_earnings[0].status, 'available')
-  assert.equal(db.state.staff_earnings[0].withdrawRequestId, '')
+  await assert.rejects(context.releaseFailedWithdrawal({ openid: 'admin' }, { id: 'w_missing' }), /查询并确认微信转账已失败/)
+  assert.equal(db.state.staff_earnings[0].status, 'withdrawing')
+  assert.equal(db.state.staff_earnings[0].withdrawRequestId, 'w_missing')
 })
 
 test('refreshStaffEarnings cleans up stale withdrawRequestId on available earnings', async () => {
@@ -181,10 +175,10 @@ test('admin auditWithdrawRequest automatically triggers submitWechatWithdrawalTr
   assert.equal(transferCalls[0].id, 'w_approve')
   assert.equal(res.status, 'transferring')
   assert.equal(res.transferStatus, 'processing')
-  assert.equal(res.autoTransferred, true)
+  assert.equal(db.state.withdraw_requests[0].status, 'transferring')
 })
 
-test('admin auditWithdrawRequest: auto transfer failure automatically transitions to transfer_failed status', async () => {
+test('admin rejects a sub-minimum WeChat withdrawal before attempting a transfer', async () => {
   const db = createCollectionStore({
     users: [
       { _id: 'admin', openid: 'admin', roles: ['admin'], status: 'active' },
@@ -218,19 +212,37 @@ test('admin auditWithdrawRequest: auto transfer failure automatically transition
   })
   const context = createContext({ db, cloud: {} })
   context.checkTextSecurity = async () => {}
-  context.submitWechatWithdrawalTransfer = async () => {
-    throw new Error('用户姓名与微信支付实名不匹配 (NOT_AUTH_USER_NAME)')
-  }
+  let transferCalls = 0
+  context.submitWechatWithdrawalTransfer = async () => { transferCalls++; throw new Error('unexpected transfer') }
 
   const handler = createAdminHandler(context)
-  const res = await handler('admin', 'auditWithdrawRequest', {
+  await assert.rejects(handler('admin', 'auditWithdrawRequest', {
     id: 'w_fail_auto',
     approved: true,
     auditRemark: '审核通过'
+  }), /最低 ¥0.10/)
+
+  assert.equal(transferCalls, 0)
+  assert.equal(db.state.withdraw_requests[0].status, 'pending')
+})
+
+test('approved transfer submission error remains approved for original-bill reconciliation', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'admin', openid: 'admin', roles: ['admin'], status: 'active' }],
+    withdraw_requests: [{ _id: 'w_failed_submit', staffOpenid: 'staff_1', amount: 50,
+      payoutChannel: 'wechat_wallet', status: 'pending', earningIds: ['earning'] }],
+    staff_earnings: [{ _id: 'earning', staffOpenid: 'staff_1', amount: 50,
+      status: 'withdrawing', withdrawRequestId: 'w_failed_submit' }],
+    finance_logs: [], admin_operation_logs: []
+  })
+  const context = createContext({ db, cloud: {} })
+  context.checkTextSecurity = async () => {}
+  context.submitWechatWithdrawalTransfer = async () => { throw new Error('transfer submission uncertain') }
+  const res = await createAdminHandler(context)('admin', 'auditWithdrawRequest', {
+    id: 'w_failed_submit', approved: true, auditRemark: '审核通过'
   })
 
-  assert.equal(res.status, 'transfer_failed')
-  assert.equal(res.autoTransferred, false)
-  assert.ok(res.transferError.includes('NOT_AUTH_USER_NAME'))
-  assert.equal(db.state.withdraw_requests[0].status, 'transfer_failed')
+  assert.equal(res.status, 'approved')
+  assert.match(res.lastTransferError, /transfer submission uncertain/)
+  assert.equal(db.state.withdraw_requests[0].status, 'approved')
 })

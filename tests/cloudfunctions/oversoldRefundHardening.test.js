@@ -140,10 +140,9 @@ test('2. scheduled reconcile: automatically retries oversoldRefundFailed orders 
   // 执行定时对账补偿任务
   await context.reconcilePendingRefunds()
 
-  // 验证订单已成功发起退款，且 oversoldRefundFailed 标记被清理为 false
+  // 原支付是微信；当前模拟配置不可将真实付款直接标记为已退款。
   const orderAfter = db.state.mall_orders.find(o => o._id === 'mall_ord_retry_test')
-  assert.equal(orderAfter.oversoldRefundFailed, false, 'oversoldRefundFailed must be cleared to false')
-  assert.ok(orderAfter.oversoldRefundRecoveredAt, 'Must record oversoldRefundRecoveredAt timestamp')
+  assert.equal(orderAfter.oversoldRefundFailed, true)
   assert.equal(orderAfter.paymentStatus, 'refunding')
   assert.equal(orderAfter.refundStatus, 'processing')
 
@@ -152,4 +151,18 @@ test('2. scheduled reconcile: automatically retries oversoldRefundFailed orders 
   assert.ok(refund, 'Refund record must be created by scheduled reconcile')
   assert.equal(refund.refundAmount, 88)
   assert.equal(refund.source, 'system_auto_refund')
+  assert.equal(refund.channel, 'wechat')
+
+  // 微信支付配置恢复后查询原退款单，完成结算并清除超卖预警。
+  const refundService = require('../../cloudfunctions/api/services/refunds')({ ...context,
+    getSystemSettings: async () => ({ payment: { mode: 'wechat', refundEnabled: true } }),
+    getWechatPayConfig: () => ({}),
+    wechatPayRequest: async () => ({ status: 'SUCCESS', out_refund_no: refund.refundNo,
+      refund_id: 'wx-refund', amount: { refund: 8800, total: 8800 } })
+  })
+  await refundService.reconcilePendingRefunds()
+  const recoveredOrder = db.state.mall_orders.find(o => o._id === 'mall_ord_retry_test')
+  assert.equal(recoveredOrder.oversoldRefundFailed, false)
+  assert.ok(recoveredOrder.oversoldRefundRecoveredAt)
+  assert.equal(recoveredOrder.paymentStatus, 'refunded')
 })

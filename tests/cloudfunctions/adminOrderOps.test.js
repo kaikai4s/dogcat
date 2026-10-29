@@ -129,7 +129,7 @@ test('admin can manually refund service order with custom amount and explanation
 
   let order = db.state.orders.find((o) => o._id === 'ord_1')
   assert.equal(order.refundAmount, 50)
-  assert.equal(order.refundStatus, 'processing')
+  assert.equal(order.refundStatus, 'partially_refunded')
 
   // Exceeding remaining refundable amount (120 - 50 = 70) should be rejected
   const overRefund = await adminFn.main({
@@ -148,12 +148,13 @@ test('admin can manually refund service order with custom amount and explanation
   })
   assert.equal(refund2.ok, true)
   assert.equal(refund2.data.totalRefundAmount, 120)
-  assert.equal(refund2.data.isFullRefund, false) // Reserved in mock mode; no gateway success yet.
+  assert.equal(refund2.data.isFullRefund, true)
 
   order = db.state.orders.find((o) => o._id === 'ord_1')
   assert.equal(order.refundAmount, 120)
-  assert.equal(order.status, 'paid')
-  assert.equal(order.paymentStatus, 'refunding')
+  assert.equal(order.status, 'refunded')
+  assert.equal(order.paymentStatus, 'refunded')
+  assert.equal(order.refundStatus, 'full_refunded')
 })
 
 test('admin can manually update mall order status and manually refund mall order', async () => {
@@ -185,7 +186,7 @@ test('admin can manually update mall order status and manually refund mall order
   assert.equal(refundRes.data.isFullRefund, false)
 
   assert.equal(db.state.mall_orders.find(row => row._id === 'mall_ord_1').refundAmount, 30)
-  assert.equal(db.state.mall_orders.find(row => row._id === 'mall_ord_1').refundStatus, 'processing')
+  assert.equal(db.state.mall_orders.find(row => row._id === 'mall_ord_1').refundStatus, 'partially_refunded')
 
   // 3. Exceeding max refundable amount check
   const overRefund = await adminFn.main({

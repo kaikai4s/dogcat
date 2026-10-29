@@ -47,7 +47,7 @@ for (const failingCollection of ['staff_earnings', 'finance_logs']) {
     const { db, ensureStaffEarning } = setup()
     const run = db.runTransaction
     db.runTransaction = callback => run(transaction => callback({ collection(name) {
-      return { doc(id) {
+      return { where: (...args) => transaction.collection(name).where(...args), doc(id) {
         const document = transaction.collection(name).doc(id)
         if (name === failingCollection) document.set = async () => { throw new Error('injected write failure') }
         return document
@@ -79,6 +79,21 @@ test('urgent rewards and deductions are reflected in the same committed finance 
   assert.equal(result.originalAmount, 150)
   assert.equal(db.state.finance_logs[0].amountDelta, 130)
   assert.equal(db.state.finance_logs[0].detail.deductAmount, 20)
+})
+
+test('an earning created after a refund logs only its actual credited balance', async () => {
+  for (const [refundedAmount, expected] of [[40, 42], [100, 0]]) {
+    const currentOrder = { ...order, refundedAmount }
+    const { db, ensureStaffEarning } = setup({ orders: [currentOrder] })
+    const earning = await ensureStaffEarning(currentOrder)
+    assert.equal(earning.amount, expected)
+    assert.equal(earning.deductedAmount, 70 - expected)
+    assert.equal(db.state.finance_logs[0].amountDelta, expected)
+    assert.equal(db.state.finance_logs[0].detail.refundDeductedAmount, 70 - expected)
+    assert.equal(earning.status, expected ? 'available' : 'refunded_void')
+    await ensureStaffEarning(currentOrder)
+    assert.equal(db.state.finance_logs.length, 1)
+  }
 })
 
 test('order revenue split rounds platform cents first and assigns staff the residual', async () => {
@@ -167,4 +182,62 @@ test('mock payment orders create mock_settled non-withdrawable earnings without 
   assert.equal(summary.available, 50)
   assert.equal(summary.total, 50)
   assert.equal(summary.mockTotal, 70)
+})
+
+test('a successful mock payment after failed attempts never creates withdrawable earnings', async () => {
+  const legacy = { ...order, paymentStatus: 'paid' }
+  const payments = [
+    { _id: 'attempt_1', orderId: order._id, status: 'failed', channel: 'wechat' },
+    { _id: 'attempt_2', orderId: order._id, status: 'failed', channel: 'mock' },
+    { _id: 'attempt_3', orderId: order._id, status: 'success', channel: 'mock' }
+  ]
+  const { db, ensureStaffEarning } = setup({ orders: [legacy], payments })
+  const earning = await ensureStaffEarning(legacy)
+  assert.equal(earning.status, 'mock_settled')
+  assert.equal(earning.isWithdrawable, false)
+  assert.equal(db.state.finance_logs[0].amountDelta, 0)
+})
+
+test('refresh quarantines previously misclassified available and pending mock earnings and fixes creation logs', async () => {
+  const payments = [
+    { _id: 'attempt_1', orderId: order._id, status: 'failed', channel: 'wechat' },
+    { _id: 'attempt_2', orderId: order._id, status: 'failed', channel: 'wechat' },
+    { _id: 'attempt_3', orderId: order._id, status: 'paid', channel: 'mock' }
+  ]
+  const rows = ['available', 'pending'].map(status => ({ _id: status, orderId: order._id, staffOpenid: 'staff',
+    status, amount: 70, isMock: false, paymentChannel: 'wechat', isWithdrawable: true, availableAt: '2026-09-01' }))
+  const logs = rows.map(row => ({ _id: row._id, targetId: row._id, action: 'staff_earning_created', amountDelta: 70,
+    detail: { paymentChannel: 'wechat', isMock: false } }))
+  const { db, refreshStaffEarnings } = setup({ orders: [{ ...order, paymentStatus: 'paid' }], payments,
+    staff_earnings: rows, finance_logs: logs })
+  await refreshStaffEarnings('staff')
+  assert.ok(db.state.staff_earnings.every(row => row.status === 'mock_settled' && row.isWithdrawable === false))
+  assert.ok(db.state.finance_logs.every(log => log.amountDelta === 0 && log.detail.isMock === true))
+})
+
+test('an unavailable payment ledger cannot release or create withdrawable earnings', async () => {
+  const { db, ensureStaffEarning, refreshStaffEarnings } = setup({
+    orders: [{ ...order, paymentStatus: 'paid' }],
+    staff_earnings: [{ _id: 'unverified', orderId: order._id, staffOpenid: 'staff',
+      status: 'available', amount: 70, isMock: false, paymentChannel: 'wechat' }]
+  })
+  const collection = db.collection.bind(db)
+  db.collection = name => {
+    const query = collection(name)
+    if (name === 'payments') query.get = async () => { throw new Error('payment ledger unavailable') }
+    return query
+  }
+  const runTransaction = db.runTransaction.bind(db)
+  db.runTransaction = callback => runTransaction(tx => callback({
+    collection(name) {
+      if (name === 'payments') return { where: () => ({ limit: () => ({
+        get: async () => { throw new Error('payment ledger unavailable') }
+      }) }) }
+      return tx.collection(name)
+    }
+  }))
+  await assert.rejects(ensureStaffEarning({ ...order, _id: 'new-order' }), /payment ledger unavailable/)
+  await assert.rejects(refreshStaffEarnings('staff'), /收益支付渠道核对失败/)
+  assert.equal(db.state.staff_earnings.length, 1)
+  assert.equal(db.state.finance_logs.length, 0)
 })

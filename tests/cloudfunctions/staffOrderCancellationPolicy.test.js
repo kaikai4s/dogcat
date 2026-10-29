@@ -326,8 +326,8 @@ test('Direct sitter cancellation: 10m grace period allows cancel & full refund, 
   assert.equal(cancelRes.data.returnsToPool, false)
 
   const order = db.state.orders.find(o => o._id === orderId)
-  assert.equal(order.status, 'cancelled')
-  assert.equal(order.paymentStatus, 'refunding')
+  assert.equal(order.status, 'refunded')
+  assert.equal(order.paymentStatus, 'refunded')
   assert.equal(order.staffOpenid, '')
 
   // 验证退款记录生成

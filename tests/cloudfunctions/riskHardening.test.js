@@ -112,16 +112,17 @@ test('concurrent refunds reserve the remaining amount without exceeding the orig
   assert.equal(results.filter(row => row.status === 'fulfilled').length, 1)
   assert.equal(db.state.refunds.length, 1)
   assert.equal(db.state.orders[0].refundAmount, 70)
-  assert.equal(db.state.orders[0].paymentStatus, 'refunding')
+  assert.equal(db.state.orders[0].paymentStatus, 'paid')
+  assert.equal(db.state.orders[0].refundedAmount, 70)
 })
 
-test('refund idempotency rejects changed parameters and does not label submitted money as refunded', async () => {
+test('mock refund idempotency rejects changed parameters and settles only once', async () => {
   const { db, requestOrderRefund } = refunds()
   const order = structuredClone(db.state.orders[0])
   await Promise.all([requestOrderRefund(order, 100, 'reason', 'admin', 'admin', 'once'), requestOrderRefund(order, 100, 'reason', 'admin', 'admin', 'once')])
   assert.equal(db.state.refunds.length, 1)
-  assert.equal(db.state.orders[0].refundStatus, 'processing')
-  assert.equal(db.state.orders[0].status, 'paid')
+  assert.equal(db.state.orders[0].refundStatus, 'full_refunded')
+  assert.equal(db.state.orders[0].status, 'refunded')
   await assert.rejects(requestOrderRefund(order, 90, 'reason', 'admin', 'admin', 'once'), /不可更改/)
 })
 

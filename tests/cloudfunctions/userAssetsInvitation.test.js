@@ -65,6 +65,37 @@ test('invite binding grants cash only after the invited user creates a pet profi
   assert.equal(approved.data.status, 'approved')
 })
 
+test('invitation maintenance postpones rewards for existing bindings until maintenance ends', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'inviter', openid: 'inviter', roles: ['client'], status: 'active', inviteCode: 'INV123' },
+      { _id: 'friend', openid: 'friend', roles: ['client'], status: 'active', inviterOpenid: 'inviter' }
+    ],
+    user_invites: [{ _id: 'invite_friend', inviterOpenid: 'inviter', invitedOpenid: 'friend', rewardAmount: 5 }],
+    pets: [], user_asset_earnings: [],
+    platform_configs: [{ _id: 'settings', key: 'system_settings', value: {
+      maintenance: { invitation: true }, invitation: { enabled: true, rewardAmount: 5 }
+    } }]
+  })
+  const friend = loadCloudFunction('api', db, 'friend')
+  const inviter = loadCloudFunction('api', db, 'inviter')
+  const created = await friend.main({ module: 'pet', action: 'createPet', data: { name: '小狗', avatarFileId: 'cloud://pet.jpg' } })
+  assert.equal(created.ok, true, created.message)
+  assert.equal((await friend.main({ module: 'auth', action: 'login', data: {} })).ok, true)
+  assert.equal(db.state.user_asset_earnings.length, 0)
+  const paused = await inviter.main({ module: 'finance', action: 'getUserAssetSummary' })
+  assert.equal(paused.data.invites[0].rewardStatusText, '活动维护中')
+
+  db.state.platform_configs[0].value.maintenance.invitation = false
+  assert.equal((await friend.main({ module: 'auth', action: 'login', data: {} })).ok, true)
+  assert.equal(db.state.user_asset_earnings.length, 1)
+  assert.equal(db.state.user_asset_earnings[0].amount, 5)
+  const resumed = await inviter.main({ module: 'finance', action: 'getUserAssetSummary' })
+  assert.equal(resumed.data.invites[0].rewardStatusText, '已入账')
+  await friend.main({ module: 'auth', action: 'login', data: {} })
+  assert.equal(db.state.user_asset_earnings.length, 1)
+})
+
 test('personal commission cap includes withdrawn historical rewards and allows only the remaining cents', async () => {
   const db = createCollectionStore({
     users: [{ _id: 'inviter', openid: 'inviter' }],
