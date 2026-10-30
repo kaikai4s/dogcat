@@ -15,6 +15,7 @@ module.exports = function createHandler(context) {
     safeText,
     summarizeStaffEarnings
   } = context
+  const { buildWithdrawalRules } = require('../services/withdrawalRules')
   const readAll = readScopedDocuments
   return async function finance(openid, action, data) {
     if (action === 'getStaffBalance') {
@@ -28,7 +29,15 @@ module.exports = function createHandler(context) {
       const wechatTransferQuota = typeof getWechatTransferQuotaSnapshot === 'function'
         ? await getWechatTransferQuotaSnapshot(openid, Math.round(Number(balance.availableAmount || balance.available || 0) * 100)).catch(() => null)
         : null
-      return { ...balance, minWithdrawAmount: Math.max(0.10, Number(settings.settlement.minWithdrawAmount || 0)), withdraws, assetSummary, wechatTransferQuota }
+      const minWithdrawAmount = Math.max(0.10, Number(settings.settlement.minWithdrawAmount || 0))
+      return {
+        ...balance,
+        minWithdrawAmount,
+        withdraws,
+        assetSummary,
+        wechatTransferQuota,
+        withdrawalRules: buildWithdrawalRules({ minAmount: minWithdrawAmount, quota: wechatTransferQuota || {}, settlementDelayDays: settings.settlement.settlementDelayDays, source: 'staff' })
+      }
     }
     if (action === 'listStaffEarnings') {
       await getUser(openid)

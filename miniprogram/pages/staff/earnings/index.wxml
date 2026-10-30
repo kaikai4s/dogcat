@@ -37,6 +37,19 @@
     <view class="withdraw-limit-tip" wx:if="{{balance.wechatTransferQuota}}" style="margin-top: 8rpx; color: #9a5a00;">今日平台剩余额度：{{balance.wechatTransferQuota.platformDailyRemainingAmount === null ? '不限' : '¥' + balance.wechatTransferQuota.platformDailyRemainingAmount}}</view>
     <view class="withdraw-limit-tip" style="margin-top: 8rpx; color: #78716c;">⏳ 平台结算保护期：订单完成后收益先进入【待结算】，到达缓冲期且无未决售后纠纷后自动转入【可提现余额】。</view>
     <view class="withdraw-limit-tip" wx:if="{{balance.hasMockEarnings}}" style="margin-top: 8rpx; color: #d97706;">🧪 模拟测试收益：¥{{balance.mockTotalText}}（模拟支付订单未发生真实微信支付交易，不计入可提现余额与对账结算）。</view>
+    <view class="withdraw-rules-card" wx:if="{{balance.withdrawalRules}}">
+      <view class="withdraw-rules-title"><view><text class="remix-icon ri-file-list-3-line"></text><text>提现规则</text></view><text class="withdraw-rules-caption">提交前请先阅读</text></view>
+      <view class="withdraw-rule-metrics">
+        <view class="withdraw-rule-metric"><text class="metric-value">{{balance.withdrawalRules.minAmountText}} - {{balance.withdrawalRules.singleMaxAmountText}}</text><text class="metric-label">单笔金额</text></view>
+        <view class="withdraw-rule-metric"><text class="metric-value metric-count-value">{{balance.withdrawalRules.dailyCountText}}</text><text class="metric-label">每日次数</text></view>
+      </view>
+      <view class="withdraw-rule-list">
+        <view class="withdraw-rule-item"><text class="remix-icon ri-calendar-check-line"></text><view><text class="rule-item-label">每日额度</text><text class="rule-item-desc">{{balance.withdrawalRules.dailyAmountText}}</text></view></view>
+        <view class="withdraw-rule-item"><text class="remix-icon ri-time-line"></text><view><text class="rule-item-label">申请时间</text><text class="rule-item-desc">{{balance.withdrawalRules.requestTimeText}}</text></view></view>
+        <view class="withdraw-rule-item"><text class="remix-icon ri-shield-check-line"></text><view><text class="rule-item-label">审核与到账</text><text class="rule-item-desc">{{balance.withdrawalRules.auditTimeText}}；{{balance.withdrawalRules.arrivalTimeText}}</text></view></view>
+      </view>
+      <view class="withdraw-rule-note">{{balance.withdrawalRules.settlementText}}</view>
+    </view>
   </view>
   <view class="card revenue-card" wx:if="{{balance.assetSummary}}">
     <view class="card-subtitle"><text class="remix-icon ri-user-add-line sub-icon"></text><text>邀请收益（独立资金来源）</text></view>
@@ -195,6 +208,10 @@
         <view class="info-row" wx:if="{{item.lastTransferError}}">
           <view class="label">打款说明</view>
           <view class="value price-highlight">{{item.lastTransferError}}</view>
+        </view>
+        <view class="info-row" wx:if="{{item.status !== 'paid' && item.updatedAt}}">
+          <view class="label">最近处理</view>
+          <view class="value muted">{{beijingTime.format(item.updatedAt)}}</view>
         </view>
         <view class="withdraw-hint-box" wx:if="{{item.status === 'transferring' && !item.canConfirmTransfer && !item.isAccepted}}">
           <text class="remix-icon ri-information-line"></text>

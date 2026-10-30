@@ -323,4 +323,26 @@ test('cardDrag raises active column and card z-index above other column regardle
   assert.equal(topCard1.getAppliedStyles()['z-index'], '')
 })
 
+test('multi-photo card stack presents cross-overlapping visual style in WXSS and WXS', () => {
+  const wxssPath = path.resolve(__dirname, '../../miniprogram/pages/client/pet-beauty/activity/index.wxss')
+  const wxss = fs.readFileSync(wxssPath, 'utf8')
+
+  // Verify next card has clockwise rotation and offset to expose upper-right corner
+  assert.match(wxss, /\.card-role-next\s*\{[^}]*rotate\(3\.5deg\)/)
+  assert.match(wxss, /\.card-role-next\s*\{[^}]*translate3d\(8rpx,\s*-10rpx,\s*0\)/)
+
+  // Verify bottom card has counter-clockwise rotation and offset to expose upper-left corner
+  assert.match(wxss, /\.card-role-bottom\s*\{[^}]*rotate\(-3\.5deg\)/)
+  assert.match(wxss, /\.card-role-bottom\s*\{[^}]*translate3d\(-8rpx,\s*-18rpx,\s*0\)/)
+
+  // Verify card layer has border contour and box shadow
+  assert.match(wxss, /\.card-layer\s*\{[^}]*border:\s*2rpx\s*solid\s*rgba\(255,\s*255,\s*255/)
+  assert.match(wxss, /\.gallery-body\s*\{[^}]*z-index:\s*11/)
+
+  // Verify modal stack also has cross-overlapping styles
+  assert.match(wxss, /\.modal-card-layer\.card-role-next\s*\{[^}]*rotate\(3\.5deg\)/)
+  assert.match(wxss, /\.modal-card-layer\.card-role-bottom\s*\{[^}]*rotate\(-3\.5deg\)/)
+})
+
+
 

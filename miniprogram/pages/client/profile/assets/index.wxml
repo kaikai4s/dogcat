@@ -14,6 +14,19 @@
     </view>
     <view class="hero-tip">最低提现 ¥{{summary.minWithdrawAmount || 0}}，提现申请提交后由平台审核处理</view>
     <view wx:if="{{summary && summary.wechatTransferQuota}}" class="quota-tip">今日平台剩余额度：{{summary.wechatTransferQuota.platformDailyRemainingAmount === null ? '不限' : '¥' + summary.wechatTransferQuota.platformDailyRemainingAmount}}</view>
+    <view class="withdraw-rules-card" wx:if="{{summary && summary.withdrawalRules}}">
+      <view class="withdraw-rules-title"><view><text class="remix-icon ri-file-list-3-line"></text><text>提现规则</text></view><text class="withdraw-rules-caption">提交前请先阅读</text></view>
+      <view class="withdraw-rule-metrics">
+        <view class="withdraw-rule-metric"><text class="metric-value">{{summary.withdrawalRules.minAmountText}} - {{summary.withdrawalRules.singleMaxAmountText}}</text><text class="metric-label">单笔金额</text></view>
+        <view class="withdraw-rule-metric"><text class="metric-value metric-count-value">{{summary.withdrawalRules.dailyCountText}}</text><text class="metric-label">每日次数</text></view>
+      </view>
+      <view class="withdraw-rule-list">
+        <view class="withdraw-rule-item"><text class="remix-icon ri-calendar-check-line"></text><view><text class="rule-item-label">每日额度</text><text class="rule-item-desc">{{summary.withdrawalRules.dailyAmountText}}</text></view></view>
+        <view class="withdraw-rule-item"><text class="remix-icon ri-time-line"></text><view><text class="rule-item-label">申请时间</text><text class="rule-item-desc">{{summary.withdrawalRules.requestTimeText}}</text></view></view>
+        <view class="withdraw-rule-item"><text class="remix-icon ri-shield-check-line"></text><view><text class="rule-item-label">审核与到账</text><text class="rule-item-desc">{{summary.withdrawalRules.auditTimeText}}；{{summary.withdrawalRules.arrivalTimeText}}</text></view></view>
+      </view>
+      <view class="withdraw-rule-note">{{summary.withdrawalRules.settlementText}}</view>
+    </view>
     <view class="withdraw-input-row">
       <text class="withdraw-input-prefix">¥</text>
       <input class="withdraw-input" type="digit" value="{{withdrawAmount}}" bindinput="inputWithdrawAmount" placeholder="输入提现金额" />
@@ -188,6 +201,10 @@
             <view class="detail-row" wx:if="{{item.paidAt}}">
               <text class="detail-label">到账时间</text>
               <text class="detail-value">{{beijingTime.format(item.paidAt)}}</text>
+            </view>
+            <view class="detail-row" wx:if="{{item.status !== 'paid' && item.updatedAt}}">
+              <text class="detail-label">最近处理</text>
+              <text class="detail-value">{{beijingTime.format(item.updatedAt)}}</text>
             </view>
           </view>
         </view>

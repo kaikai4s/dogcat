@@ -38,6 +38,21 @@ test('concurrent withdrawal requests can reserve each earning only once', async 
   assert.ok(db.state.staff_earnings.every(e => e.status === 'withdrawing' && e.withdrawRequestId === db.state.withdraw_requests[0]._id))
 })
 
+test('withdrawal rules expose the configured minimum and the user-facing timing policy', async () => {
+  const { db } = setup()
+  const service = createService({
+    db, crypto: require('node:crypto'), ...validation,
+    findByClientRequestId: async () => null,
+    getUser: async () => ({}), refreshStaffEarnings: async () => {},
+    getSystemSettings: async () => ({ settlement: { minWithdrawAmount: 18, settlementDelayDays: 2 } }), now: () => new Date()
+  })
+  const rules = require('../../cloudfunctions/api/services/withdrawalRules').buildWithdrawalRules({ minAmount: 18, settlementDelayDays: 2, source: 'staff' })
+  assert.equal(rules.minAmountText, '¥18.00')
+  assert.equal(rules.singleMaxAmountText, '¥200.00')
+  assert.match(rules.settlementText, /2天/)
+  assert.match(rules.auditTimeText, /审核时间/)
+})
+
 test('concurrent duplicate IDs and retries return the same committed request', async () => {
   const { db, createWithdrawRequest } = setup()
   const [first, duplicate] = await Promise.all([

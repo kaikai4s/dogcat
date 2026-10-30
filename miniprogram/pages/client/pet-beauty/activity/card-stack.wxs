@@ -1,11 +1,24 @@
 // 微信小程序最美宠物活动 - 卡片堆叠拖拽、位移旋转、甩出与缩放补位手势交互
-// 参考效果：位移与旋转成线性比例 (约 0.07deg/px)，下一张平滑缩放补位 (0.88 -> 1.0)
+// 参考效果：位移与旋转成线性比例 (约 0.07deg/px)，下一张平滑缩放补位与多图交叉重叠呈现
 
 var ROTATE_RATIO = 0.07; // 183px 位移对应 ~12.8° 旋转 (参考示例效果)
 var MAX_ROTATE = 18;     // 最大旋转角度限制 (防止剧烈甩飞翻转过大)
 var FLING_THRESHOLD = 50; // 水平甩出位移阈值 (px)
 var FAST_FLING_THRESHOLD = 25; // 快速滑动甩出位移阈值 (px)
 var FAST_FLING_TIME = 260; // 快速滑动时间阈值 (ms)
+
+// 多图交叉重叠默认形态参数 (次卡右偏顺时针露出右上角，底卡左偏逆时针形成交叉对衬)
+var NEXT_DEFAULT_SCALE = 0.96;
+var NEXT_DEFAULT_ROTATE = 3.5;
+var NEXT_DEFAULT_TX = 8;
+var NEXT_DEFAULT_TY = -10;
+var NEXT_DEFAULT_OPACITY = 0.94;
+
+var BOTTOM_DEFAULT_SCALE = 0.92;
+var BOTTOM_DEFAULT_ROTATE = -3.5;
+var BOTTOM_DEFAULT_TX = -8;
+var BOTTOM_DEFAULT_TY = -18;
+var BOTTOM_DEFAULT_OPACITY = 0.88;
 
 function touchstart(event, ownerInstance) {
   var touch = event.touches[0] || event.changedTouches[0];
@@ -142,28 +155,32 @@ function touchmove(event, ownerInstance) {
     'z-index': '100'
   });
 
-  // 下一层卡片跟随手势进度平滑缩放补位 (从 0.88 放大到 1.0，translateY 从 14rpx 回归 0)
+  // 下一层卡片跟随手势进度平滑缩放补位与归正 (从交叉重叠位置平滑过渡到顶层标准位置)
   var progress = Math.abs(dx) / 160;
   if (progress > 1) progress = 1;
 
   if (state.nextCard) {
-    var nextScale = 0.88 + (0.12 * progress);
-    var nextTranslateY = 14 * (1 - progress);
-    var nextOpacity = 0.88 + (0.12 * progress);
+    var nextScale = NEXT_DEFAULT_SCALE + ((1 - NEXT_DEFAULT_SCALE) * progress);
+    var nextRotate = NEXT_DEFAULT_ROTATE * (1 - progress);
+    var nextTx = NEXT_DEFAULT_TX * (1 - progress);
+    var nextTy = NEXT_DEFAULT_TY * (1 - progress);
+    var nextOpacity = NEXT_DEFAULT_OPACITY + ((1 - NEXT_DEFAULT_OPACITY) * progress);
     state.nextCard.setStyle({
-      'transform': 'scale(' + nextScale + ') translateY(' + nextTranslateY + 'rpx)',
+      'transform': 'scale(' + nextScale + ') translate3d(' + nextTx + 'rpx, ' + nextTy + 'rpx, 0) rotate(' + nextRotate + 'deg)',
       'opacity': '' + nextOpacity,
       'transition': 'none'
     });
   }
 
-  // 底层卡片 (第3层) 联动微放大 (从 0.80 放大到 0.88)
+  // 底层卡片 (第3层) 联动递进到次张卡片的交叉位置
   if (state.bottomCard) {
-    var bottomScale = 0.80 + (0.08 * progress);
-    var bottomTranslateY = 26 - (12 * progress);
-    var bottomOpacity = 0.60 + (0.28 * progress);
+    var bottomScale = BOTTOM_DEFAULT_SCALE + ((NEXT_DEFAULT_SCALE - BOTTOM_DEFAULT_SCALE) * progress);
+    var bottomRotate = BOTTOM_DEFAULT_ROTATE + ((NEXT_DEFAULT_ROTATE - BOTTOM_DEFAULT_ROTATE) * progress);
+    var bottomTx = BOTTOM_DEFAULT_TX + ((NEXT_DEFAULT_TX - BOTTOM_DEFAULT_TX) * progress);
+    var bottomTy = BOTTOM_DEFAULT_TY + ((NEXT_DEFAULT_TY - BOTTOM_DEFAULT_TY) * progress);
+    var bottomOpacity = BOTTOM_DEFAULT_OPACITY + ((NEXT_DEFAULT_OPACITY - BOTTOM_DEFAULT_OPACITY) * progress);
     state.bottomCard.setStyle({
-      'transform': 'scale(' + bottomScale + ') translateY(' + bottomTranslateY + 'rpx)',
+      'transform': 'scale(' + bottomScale + ') translate3d(' + bottomTx + 'rpx, ' + bottomTy + 'rpx, 0) rotate(' + bottomRotate + 'deg)',
       'opacity': '' + bottomOpacity,
       'transition': 'none'
     });
@@ -210,17 +227,17 @@ function touchend(event, ownerInstance) {
     // 下一张卡片丝滑顶上来，完全无缝补位 (scale 1.0, translateY 0, opacity 1.0)
     if (state.nextCard) {
       state.nextCard.setStyle({
-        'transform': 'scale(1) translateY(0)',
+        'transform': 'scale(1) translate3d(0, 0, 0) rotate(0deg)',
         'opacity': '1',
         'transition': 'all 0.26s cubic-bezier(0.2, 0.9, 0.3, 1)'
       });
     }
 
-    // 底层卡片平滑递进到下一层位置
+    // 底层卡片平滑递进到下一层交叉位置
     if (state.bottomCard) {
       state.bottomCard.setStyle({
-        'transform': 'scale(0.88) translateY(14rpx)',
-        'opacity': '0.88',
+        'transform': 'scale(' + NEXT_DEFAULT_SCALE + ') translate3d(' + NEXT_DEFAULT_TX + 'rpx, ' + NEXT_DEFAULT_TY + 'rpx, 0) rotate(' + NEXT_DEFAULT_ROTATE + 'deg)',
+        'opacity': '' + NEXT_DEFAULT_OPACITY,
         'transition': 'all 0.26s cubic-bezier(0.2, 0.9, 0.3, 1)'
       });
     }
@@ -241,16 +258,16 @@ function touchend(event, ownerInstance) {
 
     if (state.nextCard) {
       state.nextCard.setStyle({
-        'transform': 'scale(0.88) translateY(14rpx)',
-        'opacity': '0.88',
+        'transform': 'scale(' + NEXT_DEFAULT_SCALE + ') translate3d(' + NEXT_DEFAULT_TX + 'rpx, ' + NEXT_DEFAULT_TY + 'rpx, 0) rotate(' + NEXT_DEFAULT_ROTATE + 'deg)',
+        'opacity': '' + NEXT_DEFAULT_OPACITY,
         'transition': 'all 0.34s ease-out'
       });
     }
 
     if (state.bottomCard) {
       state.bottomCard.setStyle({
-        'transform': 'scale(0.80) translateY(26rpx)',
-        'opacity': '0.60',
+        'transform': 'scale(' + BOTTOM_DEFAULT_SCALE + ') translate3d(' + BOTTOM_DEFAULT_TX + 'rpx, ' + BOTTOM_DEFAULT_TY + 'rpx, 0) rotate(' + BOTTOM_DEFAULT_ROTATE + 'deg)',
+        'opacity': '' + BOTTOM_DEFAULT_OPACITY,
         'transition': 'all 0.34s ease-out'
       });
     }
@@ -287,16 +304,16 @@ function onActiveIndexChange(newValue, oldValue, ownerInstance, instance) {
     var nextCard = ownerInstance.selectComponent('#next-layer-' + petId);
     if (nextCard) {
       nextCard.setStyle({
-        'transform': 'scale(0.88) translateY(14rpx)',
-        'opacity': '0.88',
+        'transform': 'scale(' + NEXT_DEFAULT_SCALE + ') translate3d(' + NEXT_DEFAULT_TX + 'rpx, ' + NEXT_DEFAULT_TY + 'rpx, 0) rotate(' + NEXT_DEFAULT_ROTATE + 'deg)',
+        'opacity': '' + NEXT_DEFAULT_OPACITY,
         'transition': 'none'
       });
     }
     var bottomCard = ownerInstance.selectComponent('#bottom-layer-' + petId);
     if (bottomCard) {
       bottomCard.setStyle({
-        'transform': 'scale(0.80) translateY(26rpx)',
-        'opacity': '0.60',
+        'transform': 'scale(' + BOTTOM_DEFAULT_SCALE + ') translate3d(' + BOTTOM_DEFAULT_TX + 'rpx, ' + BOTTOM_DEFAULT_TY + 'rpx, 0) rotate(' + BOTTOM_DEFAULT_ROTATE + 'deg)',
+        'opacity': '' + BOTTOM_DEFAULT_OPACITY,
         'transition': 'none'
       });
     }

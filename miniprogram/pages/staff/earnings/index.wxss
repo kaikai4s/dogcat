@@ -120,6 +120,39 @@
   font-weight: 850;
 }
 
+.withdraw-rules-card {
+  margin-top: 18rpx;
+  padding: 20rpx;
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1rpx solid rgba(233, 103, 47, 0.14);
+}
+
+.withdraw-rules-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #7c4a2e;
+  font-size: 26rpx;
+  font-weight: 950;
+}
+
+.withdraw-rules-title > view { display: flex; align-items: center; gap: 8rpx; }
+.withdraw-rules-title .remix-icon { color: #e9672f; font-size: 30rpx; }
+.withdraw-rules-caption { color: #b28b72; font-size: 20rpx; font-weight: 700; }
+.withdraw-rule-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12rpx; margin-top: 16rpx; }
+.withdraw-rule-metric { min-width: 0; padding: 14rpx 16rpx; border-radius: 16rpx; background: rgba(255, 247, 237, 0.86); border: 1rpx solid rgba(233, 103, 47, 0.12); }
+.metric-value { display: block; color: #e9672f; font-size: 27rpx; font-weight: 950; line-height: 1.25; white-space: nowrap; }
+.metric-count-value { font-size: 23rpx; white-space: normal; overflow-wrap: anywhere; }
+.metric-label { display: block; margin-top: 4rpx; color: #a09282; font-size: 20rpx; }
+.withdraw-rule-list { margin-top: 14rpx; }
+.withdraw-rule-item { display: flex; align-items: flex-start; gap: 10rpx; padding: 10rpx 0; border-top: 1rpx solid rgba(124, 74, 46, 0.08); }
+.withdraw-rule-item > .remix-icon { flex: 0 0 30rpx; width: 30rpx; height: 30rpx; color: #e9672f; font-size: 27rpx; }
+.withdraw-rule-item > view { flex: 1; min-width: 0; }
+.rule-item-label { display: block; color: #7c4a2e; font-size: 22rpx; font-weight: 850; }
+.rule-item-desc { display: block; margin-top: 3rpx; color: #7a6a5e; font-size: 21rpx; line-height: 1.5; overflow-wrap: anywhere; }
+.withdraw-rule-note { margin-top: 14rpx; padding-top: 14rpx; border-top: 1rpx solid rgba(124, 74, 46, 0.1); color: #9a5a00; font-size: 22rpx; line-height: 1.5; }
+
 .form-card {
   margin-top: 24rpx;
 }

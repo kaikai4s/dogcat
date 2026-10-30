@@ -1,6 +1,7 @@
 const { readDocuments, readOptionalDocument } = require('../utils/documentPages')
 
 const { WECHAT_MIN_TRANSFER_CENTS, isAbsentSmallTransfer } = require('../utils/wechatTransferLimits')
+const { buildWithdrawalRules } = require('./withdrawalRules')
 
 module.exports = function createService({
   commitWechatTransferSuccessQuota,
@@ -295,6 +296,7 @@ module.exports = function createService({
       invitationMaxRewardPerUser: Number(settings.maxRewardPerUser || 0),
       invitationShareImageUrl: safeText(settings.shareImageUrl).trim(),
       wechatTransferQuota,
+      withdrawalRules: buildWithdrawalRules({ minAmount: Math.max(0.10, Number(settings.userMinWithdrawAmount ?? settings.minWithdrawAmount ?? 10)), quota: wechatTransferQuota || {}, source: 'user' }),
       hasPendingWithdrawConfirm: decoratedWithdraws.some(w => w.canConfirmTransfer),
       earnings: summary.rows,
       invites: decoratedInvites.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)),
