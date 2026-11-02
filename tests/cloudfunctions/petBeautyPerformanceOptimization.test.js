@@ -178,8 +178,11 @@ test('petBeauty performance: settleMonthlyRanking efficiently targets voted pets
   assert.equal(rankDoc.voteCount, 2)
 })
 
+const { toCstParts } = require('../../cloudfunctions/api/utils/time')
+
 test('petBeauty performance: countPetBeautyVotes uses short-term memory cache and invalidates upon casting vote', async () => {
-  const monthKey = '2026-10'
+  const monthKey = toCstParts().monthKey
+  const dateKey = toCstParts().dateKey
   const db = createCollectionStore({
     users: [
       { _id: 'u_voter', openid: 'voter_openid', roles: ['client'], status: 'active' },
@@ -189,7 +192,7 @@ test('petBeauty performance: countPetBeautyVotes uses short-term memory cache an
       { _id: 'pet_cache_test', openid: 'owner_openid', name: '缓存测试宠', hasBeautyPhotos: true, beautyPhotos: [{ fileId: 'cloud://photo1.jpg' }] }
     ],
     pet_beauty_votes: [
-      { _id: 'v_init', monthKey, petId: 'pet_cache_test', openid: 'other', dateKey: '2026-10-01', createdAt: '2026-10-01T10:00:00+08:00' }
+      { _id: 'v_init', monthKey, petId: 'pet_cache_test', openid: 'other', dateKey: `${monthKey}-01`, createdAt: `${monthKey}-01T10:00:00+08:00` }
     ],
     pet_beauty_bonus_votes: [],
     pet_beauty_month_locks: []
@@ -208,7 +211,7 @@ test('petBeauty performance: countPetBeautyVotes uses short-term memory cache an
 
   // 2. 模拟底层数据被增加，但在 TTL 缓存期内未投递新票，应命中缓存仍返回 1
   db.state.pet_beauty_votes.push({
-    _id: 'v_bypass', monthKey, petId: 'pet_cache_test', openid: 'bypass', dateKey: '2026-10-02', createdAt: '2026-10-02T10:00:00+08:00'
+    _id: 'v_bypass', monthKey, petId: 'pet_cache_test', openid: 'bypass', dateKey: `${monthKey}-02`, createdAt: `${monthKey}-02T10:00:00+08:00`
   })
   const home2 = await voterFn.main({
     module: 'petBeauty',

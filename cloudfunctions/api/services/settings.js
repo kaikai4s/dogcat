@@ -120,8 +120,12 @@ module.exports = function createService({
     const bannerSubtitle = safeText(source.bannerSubtitle || existing.bannerSubtitle).trim() || '晒出爱宠萌照 · 赢取月度现金大奖与全服专属头衔'
     const rulesSummary = safeText(source.rulesSummary || existing.rulesSummary).trim() || '每月评选 · 每日投1票 · 邀请新用户当日+1票 · 榜首享现金大奖'
     const detailedRules = safeText(source.detailedRules || existing.detailedRules).trim()
+    const enableFrontendDisqualify = source.enableFrontendDisqualify === undefined
+      ? (existing.enableFrontendDisqualify !== false)
+      : source.enableFrontendDisqualify !== false
     return {
       enabled: source.enabled === undefined ? existing.enabled !== false : source.enabled !== false,
+      enableFrontendDisqualify,
       firstPrizeAmount: Math.round(firstPrizeAmount * 100) / 100,
       rewardAmount: Math.round(firstPrizeAmount * 100) / 100,
       posterFileId,
@@ -252,6 +256,7 @@ module.exports = function createService({
     const juheTelecomKeyConfigured = maskSecret(juheTelecomKey || process.env.JUHE_TELECOM_KEY)
 
     const normalized = {
+      maxPetsPerUser: Math.max(1, Math.min(100, Math.round(Number(value.maxPetsPerUser ?? existingSettings.maxPetsPerUser ?? 20)))),
       enableTestAddressMode: value.enableTestAddressMode === true,
       playground: require('./playground-world').dimensions(value.playground || existingSettings.playground || {}),
       playgroundGroupBuy: require('./playground-config').groupConfig(value.playgroundGroupBuy || existingSettings.playgroundGroupBuy),

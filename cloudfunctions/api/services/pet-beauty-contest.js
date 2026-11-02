@@ -7,9 +7,17 @@ function publicContest(config = {}) {
   const defaults = {
     posterFileId: '', posterUrl: '', bannerTitle: '最美爱宠月度大赛',
     bannerSubtitle: '晒出爱宠萌照 · 争夺月度冠军现金大奖与全服专属头衔',
-    rulesSummary: '每月评选 · 每日投1票 · 邀请新用户当日+1票 · 榜首享现金大奖', detailedRules: ''
+    rulesSummary: '每月评选 · 每日投1票 · 邀请新用户当日+1票 · 榜首享现金大奖', detailedRules: '',
+    enableFrontendDisqualify: true
   }
   const amount = effectivePrize(config)
-  return { ...defaults, ...config, enabled: config.enabled !== false, firstPrizeAmount: amount, rewardAmount: amount }
+  return {
+    ...defaults,
+    ...config,
+    enabled: config.enabled !== false,
+    enableFrontendDisqualify: config.enableFrontendDisqualify !== false,
+    firstPrizeAmount: amount,
+    rewardAmount: amount
+  }
 }
 module.exports = { effectivePrize, publicContest }

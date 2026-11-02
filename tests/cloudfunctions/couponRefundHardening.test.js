@@ -36,7 +36,7 @@ test('1. paid order full refund on cancellation restores used coupon to availabl
         discountAmount: 20,
         payAmount: 80,
         couponId,
-        startTime: '2026-11-01 10:00', // 远期订单，取消可全额退款
+        startTime: '2027-11-01 10:00', // 远期订单，取消可全额退款
         createdAt: time
       }
     ],

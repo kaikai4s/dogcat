@@ -89,6 +89,8 @@ Page({
     beautyTitleSaving: false,
     uploadingVaccine: false,
     vaccineSubmitting: false,
+    saving: false,
+    deleting: false,
     vaccineFileIds: [],
     vaccineForm: { certificateNo: '', validUntil: '', ownerRemark: '' },
     form: {
@@ -549,7 +551,7 @@ Page({
   },
 
   save() {
-    if (this.data.beautyTitleSaving) return
+    if (this.data.saving || this.data.beautyTitleSaving) return
     const beautyPhotos = normalizeBeautyPhotos(this.data.form)
     if (!beautyPhotos.length) {
       wx.showToast({ title: '请上传至少一张宠物美照', icon: 'none' })
@@ -559,6 +561,7 @@ Page({
       wx.showToast({ title: '请填写宠物名字', icon: 'none' })
       return
     }
+    this.setData({ saving: true })
     const action = this.data.id ? 'updatePet' : 'createPet'
     const form = this.data.form
     const avatarFileId = String(form.avatarFileId || (beautyPhotos[0] && beautyPhotos[0].fileId) || '')
@@ -591,9 +594,37 @@ Page({
     callFunction('pet', action, data)
       .then(() => {
         wx.showToast({ title: '已保存' })
-        wx.navigateBack()
+        wx.navigateBack({ delta: 1, fail: () => wx.redirectTo({ url: '/pages/client/pets/list/index' }) })
       })
-      .catch(showError)
+      .catch((err) => {
+        this.setData({ saving: false })
+        showError(err)
+      })
+  },
+
+  deletePet() {
+    if (!this.data.id || this.data.deleting) return
+    wx.showModal({
+      title: '确认删除宠物档案？',
+      content: `确定删除宠物“${this.data.form.name || '该宠物'}”吗？删除后将无法恢复。`,
+      confirmColor: '#ef4444',
+      confirmText: '确认删除',
+      success: (res) => {
+        if (!res.confirm) return
+        this.setData({ deleting: true })
+        callFunction('pet', 'deletePet', { id: this.data.id })
+          .then(() => {
+            wx.showToast({ title: '已删除', icon: 'success' })
+            setTimeout(() => {
+              wx.navigateBack({ delta: 1, fail: () => wx.redirectTo({ url: '/pages/client/pets/list/index' }) })
+            }, 500)
+          })
+          .catch((err) => {
+            this.setData({ deleting: false })
+            showError(err)
+          })
+      }
+    })
   },
 
   ...navMethods()

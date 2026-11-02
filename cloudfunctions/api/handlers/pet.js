@@ -1,3 +1,5 @@
+const { toTimeValue } = require('../utils/time')
+
 module.exports = function createHandler(context) {
   const {
     callCloudbaseExtendAi,
@@ -338,10 +340,26 @@ module.exports = function createHandler(context) {
       const petName = safeText(data.name).trim()
       if (!petName) throw new Error('宠物名称不能为空')
       if (petName.length > 30) throw new Error('宠物名称不能超过 30 字')
-      const existingPetsRes = await db.collection('pets').where({ openid, deletedAt: null }).count().catch(() => null)
+      const systemSettings = typeof getSystemSettings === 'function' ? await getSystemSettings() : {}
+      const maxPets = Number(systemSettings.maxPetsPerUser || 20)
+      const existingPetsRes = await db.collection('pets').where({ openid }).count().catch(() => null)
       const existingPetCount = existingPetsRes && typeof existingPetsRes.total === 'number' ? existingPetsRes.total : null
-      if (existingPetCount !== null && existingPetCount >= 20) {
-        throw new Error('最多添加 20 只宠物档案，请整理已有档案后再添加')
+      if (existingPetCount !== null && existingPetCount >= maxPets) {
+        throw new Error(`最多添加 ${maxPets} 只宠物档案，请整理已有档案后再添加`)
+      }
+
+      // 防重复提交与并发幂等保护：10 秒内若已创建同名且同品种的宠物，直接返回已有记录，杜绝并发生成多只
+      const recentDuplicates = await db.collection('pets').where({
+        openid,
+        name: petName,
+        species: safeText(data.species || 'dog')
+      }).orderBy('createdAt', 'desc').limit(1).get().catch(() => ({ data: [] }))
+      if (recentDuplicates.data && recentDuplicates.data.length > 0) {
+        const lastPet = recentDuplicates.data[0]
+        const lastCreatedTs = toTimeValue(lastPet.createdAt)
+        if (lastCreatedTs > 0 && Math.abs(Date.now() - lastCreatedTs) < 10000) {
+          return { _id: lastPet._id, ...lastPet }
+        }
       }
       if (!safeFileId(data.avatarFileId) && !safeText(data.avatarFileId)) throw new Error('请上传至少一张宠物照片')
       const careProfile = normalizeCareProfile(data)
@@ -505,6 +523,10 @@ module.exports = function createHandler(context) {
 
       await releasePetTitleForPet(petId)
       await db.collection('pets').doc(petId).remove()
+      const votes = (await db.collection('pet_beauty_votes').where({ petId }).limit(100).get().catch(() => ({ data: [] }))).data || []
+      for (const v of votes) await db.collection('pet_beauty_votes').doc(v._id).remove().catch(() => {})
+      const ranks = (await db.collection('pet_beauty_month_rankings').where({ petId }).limit(100).get().catch(() => ({ data: [] }))).data || []
+      for (const r of ranks) await db.collection('pet_beauty_month_rankings').doc(r._id).remove().catch(() => {})
       return { id: petId }
     }
     throw new Error('未知 pet 操作')

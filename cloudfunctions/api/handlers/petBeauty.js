@@ -391,34 +391,57 @@ module.exports = function createHandler(context) {
 
     if (action === 'disqualifyPetBeautyCandidate') {
       await requireAdmin(openid)
-      const petId = safeText(data.petId).trim()
-      if (!petId) throw new Error('请选择要取消参赛资格的宠物')
-      const reason = safeText(data.reason).trim() || '违反大赛规则，取消参赛资格'
-      const petRes = await db.collection('pets').doc(petId).get().catch(() => ({ data: null }))
-      const pet = petRes && petRes.data
-      if (!pet) throw new Error('宠物不存在')
+      const inputId = safeText(data.petId || data.exclusiveId || data.id).trim()
+      if (!inputId) throw new Error('请提供要取消参赛资格的宠物ID或专属ID')
+      const reason = safeText(data.reason).trim() || '违反大赛规则（AI生成或网图），取消参赛资格'
+      let petRes = await db.collection('pets').doc(inputId).get().catch(() => ({ data: null }))
+      let pet = petRes && petRes.data
+      let actualPetId = inputId
+      if (!pet) {
+        const byExclusive = await db.collection('pets').where({ exclusiveId: inputId.toUpperCase() }).limit(1).get().catch(() => ({ data: [] }))
+        if (byExclusive.data && byExclusive.data[0]) {
+          pet = byExclusive.data[0]
+          actualPetId = pet._id
+        }
+      }
+      if (!pet) throw new Error('未找到对应宠物（请检查宠物ID或专属ID）')
       const time = nowText()
-      await db.collection('pets').doc(petId).update({
+      await db.collection('pets').doc(actualPetId).update({
         data: {
           beautyContestDisqualified: true,
           disqualifiedReason: reason,
           disqualifiedAt: time,
           disqualifiedBy: openid,
+          beautyTitle: null,
+          legacyBeautyTitle: null,
           updatedAt: time
         }
       })
-      return { petId, beautyContestDisqualified: true, disqualifiedReason: reason, disqualifiedAt: time }
+      const ranks = (await db.collection('pet_beauty_month_rankings').where({ petId: actualPetId }).limit(100).get().catch(() => ({ data: [] }))).data || []
+      for (const r of ranks) await db.collection('pet_beauty_month_rankings').doc(r._id).remove().catch(() => {})
+      if (typeof clearPetBeautyVotesCache === 'function') {
+        clearPetBeautyVotesCache(monthKey)
+      }
+      return { petId: actualPetId, exclusiveId: pet.exclusiveId, name: pet.name, beautyContestDisqualified: true, disqualifiedReason: reason, disqualifiedAt: time }
     }
 
     if (action === 'reinstatePetBeautyCandidate') {
       await requireAdmin(openid)
-      const petId = safeText(data.petId).trim()
-      if (!petId) throw new Error('请选择要恢复参赛资格的宠物')
-      const petRes = await db.collection('pets').doc(petId).get().catch(() => ({ data: null }))
-      const pet = petRes && petRes.data
-      if (!pet) throw new Error('宠物不存在')
+      const inputId = safeText(data.petId || data.exclusiveId || data.id).trim()
+      if (!inputId) throw new Error('请提供要恢复参赛资格的宠物ID或专属ID')
+      let petRes = await db.collection('pets').doc(inputId).get().catch(() => ({ data: null }))
+      let pet = petRes && petRes.data
+      let actualPetId = inputId
+      if (!pet) {
+        const byExclusive = await db.collection('pets').where({ exclusiveId: inputId.toUpperCase() }).limit(1).get().catch(() => ({ data: [] }))
+        if (byExclusive.data && byExclusive.data[0]) {
+          pet = byExclusive.data[0]
+          actualPetId = pet._id
+        }
+      }
+      if (!pet) throw new Error('未找到对应宠物（请检查宠物ID或专属ID）')
       const time = nowText()
-      await db.collection('pets').doc(petId).update({
+      await db.collection('pets').doc(actualPetId).update({
         data: {
           beautyContestDisqualified: false,
           disqualifiedReason: '',
@@ -426,7 +449,22 @@ module.exports = function createHandler(context) {
           updatedAt: time
         }
       })
-      return { petId, beautyContestDisqualified: false }
+      return { petId: actualPetId, exclusiveId: pet.exclusiveId, name: pet.name, beautyContestDisqualified: false }
+    }
+
+    if (action === 'listDisqualifiedPetBeautyCandidates') {
+      await requireAdmin(openid)
+      const res = await db.collection('pets').where({ beautyContestDisqualified: true }).limit(100).get().catch(() => ({ data: [] }))
+      return (res.data || []).map((pet) => ({
+        petId: pet._id,
+        exclusiveId: pet.exclusiveId || '',
+        name: pet.name || '',
+        avatarFileId: pet.avatarFileId || (pet.beautyPhotos && pet.beautyPhotos[0] && pet.beautyPhotos[0].fileId) || '',
+        species: pet.species || 'dog',
+        disqualifiedReason: pet.disqualifiedReason || '违反大赛规则',
+        disqualifiedAt: pet.disqualifiedAt || '',
+        disqualifiedBy: pet.disqualifiedBy || ''
+      }))
     }
 
     if (action === 'grantPetBeautyChampionPrize') {

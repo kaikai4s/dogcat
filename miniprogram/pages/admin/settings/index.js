@@ -504,6 +504,7 @@ function normalizePetBeautyContestConfig(contest = {}) {
   const firstPrizeAmount = Number(rawPrize === undefined || rawPrize === '' ? 500 : rawPrize)
   return {
     enabled: source.enabled !== false,
+    enableFrontendDisqualify: source.enableFrontendDisqualify !== false,
     firstPrizeAmount: Number.isFinite(firstPrizeAmount) ? Math.max(0, firstPrizeAmount) : 500,
     rewardAmount: Number.isFinite(firstPrizeAmount) ? Math.max(0, firstPrizeAmount) : 500,
     posterFileId: String(source.posterFileId || source.posterUrl || '').trim(),
@@ -554,7 +555,8 @@ function buildSettingSummary(settings = {}) {
     settlementReliability: `分成 ${Math.round(Number(settlement.staffCommissionRate || 0) * 100)}% · 完单 ${settlement.settlementDelayDays} 天后可提现 · 最低 ¥${Number(settlement.minWithdrawAmount || 0).toFixed(2)}`,
     carousel: `${carousel.enabled ? '轮播已启用' : '轮播已关闭'} · ${enabledCarouselCount}/${carouselItems.length} 个素材启用`,
     homePage: `${enabledModuleCount}/${homeModuleOptions.length} 个模块启用 · ${homePage.ctaTitle || '未配置标题'}`,
-    petBeautyContest: `${petBeautyContest.enabled === false ? '即将开始 · 无现金奖金' : '已开启 · 月度冠军 ¥' + petBeautyContest.firstPrizeAmount} · ${petBeautyContest.posterUrl ? '已配海报' : '默认海报'}`,
+    petBeautyContest: `${petBeautyContest.enabled === false ? '即将开始 · 无现金奖金' : '已开启 · 月度冠军 ¥' + petBeautyContest.firstPrizeAmount} · ${petBeautyContest.enableFrontendDisqualify !== false ? '前台下架开启' : '前台下架关闭'} · ${petBeautyContest.posterUrl ? '已配海报' : '默认海报'}`,
+    petProfileLimit: `每位用户上限 ${Number(settings.maxPetsPerUser || 20)} 只`,
     staffTraining: `及格 ${staffTraining.passScore} 分 · ${quiz.length} 道题 · ${enabledVideoCount}/${videos.length} 视频 · 审核微信: ${(staffTraining.videoAuditGuide && staffTraining.videoAuditGuide.wechatId) || '未配置'}`,
     pricingSurcharges: (settings.pricingSurcharges && settings.pricingSurcharges.enabled !== false)
       ? `${((settings.pricingSurcharges && settings.pricingSurcharges.dateSurcharges) || []).filter((d) => d.enabled !== false).length} 个日期加价 · ${((settings.pricingSurcharges && settings.pricingSurcharges.timeSlotSurcharges) || []).filter((s) => s.enabled !== false).length} 个时段加价`
@@ -607,6 +609,7 @@ Page({
       homeHeroCarousel: normalizeCarouselConfig(),
       homePage: normalizeHomePageConfig(),
       petBeautyContest: normalizePetBeautyContestConfig(),
+      maxPetsPerUser: 20,
       staffTraining: normalizeStaffTrainingConfig(),
       pricingSurcharges: normalizePricingSurcharges()
     },
@@ -628,6 +631,7 @@ Page({
       homeHeroCarousel: normalizeCarouselConfig(),
       homePage: normalizeHomePageConfig(),
       petBeautyContest: normalizePetBeautyContestConfig(),
+      maxPetsPerUser: 20,
       staffTraining: normalizeStaffTrainingConfig(),
       pricingSurcharges: normalizePricingSurcharges()
     }),
@@ -656,6 +660,7 @@ Page({
     uploadingTrainingVideo: false,
     uploadingTrainingPoster: false,
     uploadingPetBeautyPoster: false,
+    disqualifyInputId: '',
     activeTransferTab: 'commission',
     transferSceneTexts: {
       commission: '',
@@ -1271,6 +1276,10 @@ Page({
     if (!this.data.adminSuper) return
     this.setData({ 'settings.petBeautyContest.enabled': e.detail.value === true })
   },
+  toggleFrontendDisqualify(e) {
+    if (!this.data.adminSuper) return
+    this.setData({ 'settings.petBeautyContest.enableFrontendDisqualify': e.detail.value === true })
+  },
   toggleMaintenance(e) {
     if (!this.data.adminSuper) return
     const key = e.currentTarget.dataset.key
@@ -1364,6 +1373,52 @@ Page({
         const item = res.fileList && res.fileList[0]
         if (item && item.tempFileURL) {
           this.setData({ ['settings.petBeautyContest.posterTempUrl']: item.tempFileURL })
+        }
+      }
+    })
+  },
+
+  maxPetsPerUserInput(e) {
+    const val = Math.max(1, Math.min(100, parseInt(e.detail.value, 10) || 1))
+    this.setData({
+      'settings.maxPetsPerUser': val,
+      'settingSummary.petProfileLimit': `每位用户上限 ${val} 只`
+    })
+  },
+
+  inputDisqualifyId(e) {
+    this.setData({ disqualifyInputId: e.detail.value })
+  },
+
+  submitDisqualifyPet() {
+    const inputId = (this.data.disqualifyInputId || '').trim()
+    if (!inputId) {
+      wx.showToast({ title: '请输入宠物专属ID或宠物ID', icon: 'none' })
+      return
+    }
+    wx.showModal({
+      title: '取消参赛资格确认',
+      content: `确定取消宠物【${inputId}】的参赛资格并从大赛榜单下架吗？`,
+      confirmColor: '#e54d42',
+      confirmText: '确认下架',
+      success: (res) => {
+        if (res.confirm) {
+          wx.showLoading({ title: '正在下架...' })
+          callFunction('petBeauty', 'disqualifyPetBeautyCandidate', {
+            petId: inputId,
+            reason: '管理员后台治理违规/AI网图宠物下架'
+          }).then((result) => {
+            wx.hideLoading()
+            wx.showModal({
+              title: '下架成功',
+              content: `已成功取消【${result.name || inputId}】的参赛资格，该宠物已从最美宠物大赛榜单中移除。`,
+              showCancel: false
+            })
+            this.setData({ disqualifyInputId: '' })
+          }).catch((err) => {
+            wx.hideLoading()
+            showError(err)
+          })
         }
       }
     })
@@ -2237,9 +2292,12 @@ Page({
       maintenance: this.data.settings.maintenance,
       petBeautyContest: {
         ...this.data.settings.petBeautyContest,
+        enabled: this.data.settings.petBeautyContest?.enabled !== false,
+        enableFrontendDisqualify: this.data.settings.petBeautyContest?.enableFrontendDisqualify !== false,
         firstPrizeAmount: Number(this.data.settings.petBeautyContest?.firstPrizeAmount ?? 500),
         rewardAmount: Number(this.data.settings.petBeautyContest?.firstPrizeAmount ?? 500)
       },
+      maxPetsPerUser: Math.max(1, Math.min(100, Math.round(Number(this.data.settings.maxPetsPerUser || 20)))),
       staffTraining: {
         ...staffTraining,
         passScore: staffTraining.passScore,

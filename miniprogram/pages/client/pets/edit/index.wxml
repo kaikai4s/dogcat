@@ -151,6 +151,7 @@
     <input class="input-field" placeholder="AI 打招呼文案" value="{{form.aiGreeting}}" data-field="aiGreeting" bindinput="input" />
   </view>
 
-  <button class="primary-btn submit-btn" bindtap="save"><text class="remix-icon ri-save-3-line"></text><text>保存宠物档案</text></button>
+  <button class="primary-btn submit-btn" bindtap="save" disabled="{{saving || deleting}}" loading="{{saving}}"><text class="remix-icon ri-save-3-line"></text><text>{{saving ? '正在保存...' : '保存宠物档案'}}</text></button>
+  <button wx:if="{{id}}" class="ghost-btn delete-btn" style="margin-top: 24rpx; color: #ef4444; border-color: #fca5a5; background: #fff1f0;" bindtap="deletePet" disabled="{{saving || deleting}}" loading="{{deleting}}"><text class="remix-icon ri-delete-bin-line"></text><text>{{deleting ? '正在删除...' : '删除宠物档案'}}</text></button>
 </view>
 <global-loading />

@@ -1,5 +1,5 @@
 const cloud = require('../../../../utils/cloud') || {}
-const { callFunction, showError, ensureLogin, savePendingInvite } = cloud
+const { callFunction, showError, ensureLogin, savePendingInvite, getCachedUser } = cloud
 const showLoading = (opts) => {
   if (typeof cloud.showLoading === 'function') return cloud.showLoading(opts)
   if (typeof wx !== 'undefined' && typeof wx.showLoading === 'function') return wx.showLoading(opts)
@@ -139,6 +139,7 @@ Page({
     previewModalPhotoIndex: 0,
     contestConfig: {
       enabled: true,
+      enableFrontendDisqualify: true,
       firstPrizeAmount: 0,
       rewardAmount: 0,
       posterUrl: '',
@@ -153,7 +154,8 @@ Page({
     pageTitle: formatContestTitle(''),
     posterLoaded: false,
     photoLoadedMap: {},
-    showRulesModal: false
+    showRulesModal: false,
+    isAdmin: false
   },
 
   updateContestTitle(monthKey) {
@@ -197,6 +199,11 @@ Page({
   onShow() {
     this.updateContestTitle()
     this.applyCurrentTheme()
+    try {
+      const user = typeof getCachedUser === 'function' ? getCachedUser() : null
+      const isAdmin = Boolean(user && ((Array.isArray(user.roles) && user.roles.includes('admin')) || user.role === 'admin' || user.adminSuper))
+      this.setData({ isAdmin })
+    } catch (_) {}
     if (typeof cloud.loadSystemSettings !== 'function') {
       this.setData({ maintenanceLoading: false })
       this.loadHistoryMonths()
@@ -443,6 +450,53 @@ Page({
 
   closePreviewModal() {
     this.setData({ showPreviewModal: false, previewModalPet: null })
+  },
+
+  handleAdminDisqualify(e) {
+    const petId = (e && e.currentTarget && e.currentTarget.dataset && (e.currentTarget.dataset.id || e.currentTarget.dataset.petid)) || (this.data.previewModalPet && this.data.previewModalPet.petId)
+    const petName = (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.name) || (this.data.previewModalPet && this.data.previewModalPet.name) || '该宠物'
+    if (!petId) return
+    const reasons = [
+      'AI 生成图片，非真实自养宠物',
+      '网络盗图，非真实自养宠物',
+      '涉及违规刷票，取消参赛资格',
+      '其他违反大赛规则行为'
+    ]
+    if (typeof wx !== 'undefined' && typeof wx.showActionSheet === 'function') {
+      wx.showActionSheet({
+        itemList: reasons,
+        success: (res) => {
+          const reason = reasons[res.tapIndex]
+          wx.showModal({
+            title: '管理员违规下架确认',
+            content: `确定取消“${petName}”参赛资格并从大赛榜单下架吗？\n下架理由：${reason}`,
+            confirmText: '确认下架',
+            confirmColor: '#e54d42',
+            success: (confirmRes) => {
+              if (confirmRes.confirm) {
+                showLoading({ title: '正在下架...' })
+                callFunction('petBeauty', 'disqualifyPetBeautyCandidate', { petId, reason })
+                  .then(() => {
+                    hideLoading()
+                    wx.showToast({ title: '已取消参赛资格', icon: 'success' })
+                    this.closePreviewModal()
+                    this.loadContest()
+                  })
+                  .catch((err) => {
+                    hideLoading()
+                    showError(err)
+                  })
+              }
+            }
+          })
+        }
+      })
+    }
+  },
+
+  onPetCardLongPress(e) {
+    if (!this.data.isAdmin || this.data.contestConfig?.enableFrontendDisqualify === false) return
+    this.handleAdminDisqualify(e)
   },
 
   nextModalPhoto() {

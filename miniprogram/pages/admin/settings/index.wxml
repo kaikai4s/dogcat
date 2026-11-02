@@ -216,6 +216,17 @@
       <view class="setting-summary-line">配置月度第一名奖金、活动宣传海报、大赛标题及规则说明。</view>
     </view>
 
+    <view class="admin-compact-card setting-overview-card" data-panel="petProfileLimit" bindtap="openSettingModal">
+      <view class="admin-summary-row">
+        <view class="admin-summary-main">
+          <view class="admin-summary-title">用户宠物档案数量限制</view>
+          <view class="admin-summary-sub">{{settingSummary.petProfileLimit}}</view>
+        </view>
+        <view class="meta-chip chip-primary">配置</view>
+      </view>
+      <view class="setting-summary-line">限制单位用户最多可创建的宠物档案数量，防止无节制批量创建。</view>
+    </view>
+
     <view class="admin-compact-card setting-overview-card" data-panel="staffTraining" bindtap="openSettingModal">
       <view class="admin-summary-row">
         <view class="admin-summary-main">
@@ -264,6 +275,7 @@
         <view class="modal-title" wx:if="{{activeSettingPanel === 'carousel'}}">首页顶部轮播</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'homePage'}}">首页转化模块</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'petBeautyContest'}}">最美宠物大赛与奖金设置</view>
+        <view class="modal-title" wx:if="{{activeSettingPanel === 'petProfileLimit'}}">用户宠物档案数量限制</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'staffTraining'}}">宠托师培训</view>
         <view class="modal-close" bindtap="closeSettingModal">×</view>
       </view>
@@ -801,6 +813,37 @@
           <view class="field-item">
             <text class="label">详细规则特别补充说明 (选填)</text>
             <textarea class="textarea" value="{{settings.petBeautyContest.detailedRules}}" data-field="detailedRules" bindinput="petBeautyContestInput" placeholder="如有当月赞助商特别说明或加码福利，可在此输入补充规则" maxlength="1000" />
+          </view>
+
+          <view class="section-title-row"><text class="section-title">违规宠物取消参赛资格 (下架网图/AI图)</text></view>
+          <view class="module-switch-row">
+            <view>
+              <view class="label">前台榜单显示管理员快捷下架入口</view>
+              <view class="muted">开启后，管理员在前台大赛榜单预览时可见下架操作条与卡片下架按钮；关闭后前台不显示下架入口，保持与普通用户完全一致的纯净视图。</view>
+            </view>
+            <switch checked="{{settings.petBeautyContest.enableFrontendDisqualify !== false}}" disabled="{{!adminSuper}}" bindchange="toggleFrontendDisqualify" />
+          </view>
+          <view class="notice">可在最美宠物大赛前台页面快捷下架；也可在此输入宠物的“专属ID”（如 PFSJP3F）或宠物“数据库_id”进行一键取消资格。</view>
+          <view class="field-item">
+            <text class="label">宠物专属ID 或 宠物数据库_id</text>
+            <view style="display: flex; gap: 16rpx; align-items: center; margin-top: 8rpx;">
+              <input class="input" style="flex: 1;" value="{{disqualifyInputId}}" bindinput="inputDisqualifyId" placeholder="例如：PFSJP3F" />
+              <button class="small-btn danger" style="margin: 0; white-space: nowrap; padding: 0 24rpx; height: 72rpx; line-height: 72rpx;" bindtap="submitDisqualifyPet">一键下架</button>
+            </view>
+          </view>
+        </view>
+
+        <view wx:if="{{activeSettingPanel === 'petProfileLimit'}}" class="setting-modal-section">
+          <view class="section-title-row"><text class="section-title">用户宠物档案数量上限</text></view>
+          <view class="field-item">
+            <text class="label">单用户最大建档数量 (只)</text>
+            <input class="input" type="number" value="{{settings.maxPetsPerUser}}" bindinput="maxPetsPerUserInput" placeholder="默认 20，可配置范围 1~100" />
+          </view>
+          <view class="notice">
+            限制单个用户在系统中最多能创建的宠物档案数量（有效范围 1～100 只，默认 20 只）。超额后创建将收到温馨拦截提示，有效防止刷单或无节制批量创建。
+          </view>
+          <view class="policy-notice" style="margin-top: 16rpx;">
+            提示：修改后请点击最下方的【保存全局设置】按钮即可全网生效。
           </view>
         </view>
 
