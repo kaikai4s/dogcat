@@ -88,7 +88,8 @@ test('首页自定义导航栏交互逻辑: 胶囊适配、滚动阈值切换 is
     applyTheme: () => ({}),
     getThemeState: () => ({}),
     safeNavigateTo: () => {},
-    formatDateTime: () => ''
+    formatDateTime: () => '',
+    getDovlinLogoUrl: () => 'cloud://mock/packagePlayground/dovlin-logo-dog.png'
   }
 
   const mockHeroMedia = {

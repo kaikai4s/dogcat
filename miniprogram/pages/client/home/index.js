@@ -4,6 +4,8 @@ const { loadMessageUnread, startStaffEntryUnread, stopStaffEntryUnread } = requi
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { safeNavigateTo } = require('../../../utils/nav')
 const { formatDateTime } = require('../../../utils/format')
+const cloudAssets = require('../../../utils/cloud-assets')
+const getDovlinLogoUrl = (cloudAssets && cloudAssets.getDovlinLogoUrl) || (() => '')
 
 const VISIT_FEE_SERVICE_KEY = 'visit_fee'
 const RETIRED_SERVICE_KEYS = ['extra_pet']
@@ -202,6 +204,7 @@ const defaultModules = {
 Page({
   data: {
     themeClass: 'theme-day',
+    dovlinLogoDogUrl: getDovlinLogoUrl(),
     protectedNavigationUrl: '',
     locationName: '选择位置',
     locationTip: '点击选择当前位置或常用地址',

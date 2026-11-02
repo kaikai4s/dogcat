@@ -5,6 +5,8 @@ const { themeOptions, applyTheme, saveTheme, getThemeState } = require('../../..
 const { fontOptions, applyFont, saveFont, getFontState } = require('../../../utils/font')
 // Unread data here is fetched under this page's identity/request guards, not the shared role-only cache.
 const { copyText } = require('../../../utils/clipboard')
+const cloudAssets = require('../../../utils/cloud-assets')
+const getDovlinLogoUrl = (cloudAssets && cloudAssets.getDovlinLogoUrl) || (() => '')
 
 const staffEntryMap = {
   none: { title: '申请成为宠护师', tip: '提交资料后等待平台审核' },
@@ -68,6 +70,7 @@ function getInitialProfileData() {
     titleBarHeight: navInfo.titleBarHeight,
     navBarHeight: navInfo.navBarHeight,
     isNavScrolled: false,
+    dovlinLogoDogUrl: getDovlinLogoUrl(),
     loginAgreed: false,
     isGuest,
     isAdmin: roles.includes('admin'),

@@ -3,6 +3,8 @@ const { ensureLogin } = require('../../../../utils/cloud')
 const { loadMessageUnread } = require('../../../../utils/client-nav')
 const { withOrderText } = require('../../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
+const cloudAssets = require('../../../../utils/cloud-assets')
+const getDovlinLogoUrl = (cloudAssets && cloudAssets.getDovlinLogoUrl) || (() => '')
 
 const tabs = [
   { label: '全部', value: 'all' },
@@ -50,6 +52,7 @@ Page({
     titleBarHeight: 44,
     navBarHeight: 88,
     isNavScrolled: false,
+    dovlinLogoDogUrl: getDovlinLogoUrl(),
     ...getNavBarInfo(),
     themeClass: 'theme-day',
     tabs,

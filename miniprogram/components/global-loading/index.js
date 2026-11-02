@@ -1,9 +1,11 @@
 const { loadingBus } = require('../../utils/loadingBus')
+const { getLoadingCatUrl } = require('../../utils/cloud-assets')
 
 Component({
   data: {
     visible: false,
-    title: '加载中...'
+    title: '加载中...',
+    loadingCatUrl: getLoadingCatUrl()
   },
   lifetimes: {
     attached() {

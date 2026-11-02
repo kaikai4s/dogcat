@@ -3,7 +3,7 @@
   <view class="nav-bar-status-bar" style="height: {{statusBarHeight}}px;"></view>
   <view class="nav-bar-title-row" style="height: {{titleBarHeight}}px;">
     <view class="nav-brand-container">
-      <image class="nav-brand-dog-img" src="/images/dovlin/dovlin-logo-dog.png" mode="aspectFit" aria-hidden="true" />
+      <image class="nav-brand-dog-img" src="{{dovlinLogoDogUrl || '/images/dovlin/dovlin-logo-dog.png'}}" mode="aspectFit" aria-hidden="true" />
       <view class="nav-brand-text-box">
         <text class="nav-brand-cn">消息中心</text>
         <text class="nav-sparkle-star" aria-hidden="true">✦</text>

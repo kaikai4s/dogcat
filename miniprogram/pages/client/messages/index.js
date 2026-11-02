@@ -6,6 +6,8 @@ const refreshUnread = clientNav.refreshUnread || (() => Promise.resolve())
 const setCachedUnread = clientNav.setCachedUnread || (() => {})
 const applyUnreadState = clientNav.applyUnreadState || (() => {})
 const { applyTheme, getThemeState } = require('../../../utils/theme')
+const cloudAssets = require('../../../utils/cloud-assets')
+const getDovlinLogoUrl = (cloudAssets && cloudAssets.getDovlinLogoUrl) || (() => '')
 
 function pageList(result) {
   return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result || { list: [], hasMore: false, page: 1, total: 0 })
@@ -84,6 +86,7 @@ Page({
     titleBarHeight: 44,
     navBarHeight: 88,
     isNavScrolled: false,
+    dovlinLogoDogUrl: getDovlinLogoUrl(),
     ...getNavBarInfo(),
     themeClass: 'theme-day',
     activeTab: 'order', // 'order' | 'system'
