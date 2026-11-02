@@ -1,5 +1,9 @@
 {
-  "navigationBarTitleText": "消息",
+  "navigationStyle": "custom",
+  "navigationBarTextStyle": "black",
+  "navigationBarTitleText": "消息中心",
+  "backgroundColor": "#FFE7CB",
+  "backgroundColorTop": "#FFE7CB",
   "enablePullDownRefresh": false,
   "usingComponents": {
     "dovlin-refresh": "/components/dovlin-refresh/index",

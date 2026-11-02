@@ -1,11 +1,19 @@
-<dovlin-refresh id="dovlinRefresh" bind:refresh="onCustomRefresh" bind:scrolltolower="onReachBottom">
-<view class="page order-list-page {{themeClass}} {{fontClass}}">
-  <view class="order-list-hero">
-    <view class="order-list-kicker">我的预约</view>
-    <view class="order-list-title">订单中心</view>
-    <view class="order-list-desc">查看预约进度、服务状态和历史照护记录。</view>
+<!-- 自定义吸顶导航栏：未下滑时与页面背景平滑过渡，下滑后出现半透明毛玻璃与分割线，标题常驻吸顶对齐微信胶囊 -->
+<view class="custom-nav-bar {{isNavScrolled ? 'nav-scrolled' : 'nav-at-top'}}" style="height: {{navBarHeight}}px;">
+  <view class="nav-bar-status-bar" style="height: {{statusBarHeight}}px;"></view>
+  <view class="nav-bar-title-row" style="height: {{titleBarHeight}}px;">
+    <view class="nav-brand-container">
+      <image class="nav-brand-dog-img" src="/images/dovlin/dovlin-logo-dog.png" mode="aspectFit" aria-hidden="true" />
+      <view class="nav-brand-text-box">
+        <text class="nav-brand-cn">订单中心</text>
+        <text class="nav-sparkle-star" aria-hidden="true">✦</text>
+      </view>
+    </view>
   </view>
+</view>
 
+<dovlin-refresh id="dovlinRefresh" background="#FFE7CB" nav-bar-height="{{navBarHeight || 88}}" bind:refresh="onCustomRefresh" bind:scroll="onOrderScroll" bind:scrolltolower="onReachBottom">
+<view class="page order-list-page {{themeClass}} {{fontClass}}">
   <view class="order-filter-card">
     <view class="search-input-wrap">
       <text class="remix-icon ri-search-line search-icon"></text>
@@ -41,7 +49,7 @@
     </view>
   </view>
 
-  <scroll-view scroll-x class="status-tabs">
+  <scroll-view scroll-x class="status-tabs" style="top: {{navBarHeight || 88}}px;">
     <view class="status-tab {{activeStatus === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-status="{{item.value}}" bindtap="chooseStatus">{{item.label}}</view>
   </scroll-view>
 

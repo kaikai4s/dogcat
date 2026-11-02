@@ -1,4 +1,22 @@
-<dovlin-refresh id="dovlinRefresh" bind:refresh="onCustomRefresh">
+<!-- 自定义吸顶导航栏：未下滑时与页面背景平滑过渡，下滑后出现半透明毛玻璃与分割线，常驻吸顶对齐微信胶囊 -->
+<view class="custom-nav-bar {{isNavScrolled ? 'nav-scrolled' : 'nav-at-top'}}" style="height: {{navBarHeight}}px;">
+  <view class="nav-bar-status-bar" style="height: {{statusBarHeight}}px;"></view>
+  <view class="nav-bar-title-row" style="height: {{titleBarHeight}}px;">
+    <view class="nav-brand-container" wx:if="{{!showSettings}}">
+      <image class="nav-brand-dog-img" src="/images/dovlin/dovlin-logo-dog.png" mode="aspectFit" aria-hidden="true" />
+      <view class="nav-brand-text-box">
+        <text class="nav-brand-cn">会员中心</text>
+        <text class="nav-sparkle-star" aria-hidden="true">✦</text>
+      </view>
+    </view>
+    <view class="settings-back-btn" wx:else bindtap="backFromSettings">
+      <text class="remix-icon ri-arrow-left-s-line"></text>
+      <text class="settings-back-text">返回会员中心</text>
+    </view>
+  </view>
+</view>
+
+<dovlin-refresh id="dovlinRefresh" background="#FFE7CB" nav-bar-height="{{navBarHeight || 88}}" bind:refresh="onCustomRefresh" bind:scroll="onProfileScroll">
 <view wx:if="{{showSettings}}" class="profile-settings-page {{themeClass}} {{fontClass}}">
   <view class="settings-hero">
     <view class="settings-kicker">偏好与隐私</view>

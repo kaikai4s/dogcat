@@ -26,6 +26,31 @@ const emptySummary = {
   levelDescription: '', badgeTag: '', badgeStyle: '', nameColor: '', nameEffect: ''
 }
 
+function getNavBarInfo() {
+  let statusBarHeight = 44
+  let titleBarHeight = 44
+  try {
+    const windowInfo = (typeof wx !== 'undefined' && ((wx.getWindowInfo && wx.getWindowInfo()) || (wx.getSystemInfoSync && wx.getSystemInfoSync()))) || {}
+    if (windowInfo.statusBarHeight) {
+      statusBarHeight = windowInfo.statusBarHeight
+    }
+    const menu = typeof wx !== 'undefined' && wx.getMenuButtonBoundingClientRect ? wx.getMenuButtonBoundingClientRect() : null
+    if (menu && menu.top && menu.height) {
+      titleBarHeight = (menu.top - statusBarHeight) * 2 + menu.height
+    } else {
+      titleBarHeight = 44
+    }
+  } catch (_) {
+    statusBarHeight = 44
+    titleBarHeight = 44
+  }
+  return {
+    statusBarHeight,
+    titleBarHeight,
+    navBarHeight: statusBarHeight + titleBarHeight
+  }
+}
+
 function getInitialProfileData() {
   let user = null
   try {
@@ -36,8 +61,13 @@ function getInitialProfileData() {
   const roles = Array.isArray(user?.roles) ? user.roles : []
   const rawPhone = String(user?.phone || '')
   const phone = rawPhone ? `${rawPhone.slice(0, 3)}****${rawPhone.slice(-4)}` : ''
+  const navInfo = getNavBarInfo()
 
   const base = {
+    statusBarHeight: navInfo.statusBarHeight,
+    titleBarHeight: navInfo.titleBarHeight,
+    navBarHeight: navInfo.navBarHeight,
+    isNavScrolled: false,
     loginAgreed: false,
     isGuest,
     isAdmin: roles.includes('admin'),
@@ -124,7 +154,23 @@ function getInitialProfileData() {
 Page({
   data: getInitialProfileData(),
 
+  initNavBar() {
+    const navInfo = getNavBarInfo()
+    if (
+      this.data.statusBarHeight !== navInfo.statusBarHeight ||
+      this.data.titleBarHeight !== navInfo.titleBarHeight ||
+      this.data.navBarHeight !== navInfo.navBarHeight
+    ) {
+      this.setData({
+        statusBarHeight: navInfo.statusBarHeight,
+        titleBarHeight: navInfo.titleBarHeight,
+        navBarHeight: navInfo.navBarHeight
+      })
+    }
+  },
+
   onLoad(query = {}) {
+    this.initNavBar()
     this._visible = true
     this._unloaded = false
     this._life = 0
@@ -211,11 +257,20 @@ Page({
     })
   },
 
+  onProfileScroll(e) {
+    const scrollTop = e && e.detail ? e.detail.scrollTop : 0
+    const isNavScrolled = scrollTop > 12
+    if (this.data.isNavScrolled !== isNavScrolled) {
+      this.setData({ isNavScrolled })
+    }
+  },
+
   onPullDownRefresh() {
     return this.refreshProfile(true).finally(() => wx.stopPullDownRefresh())
   },
 
   onShow() {
+    this.initNavBar()
     this._visible = true
     this.restoreIdentity()
     wx.setNavigationBarTitle({ title: this.data.showSettings ? '设置' : '我的' })
@@ -687,6 +742,15 @@ Page({
     return this.ensurePageLogin({ content: '登录后可管理通知订阅。' })
       .then(() => this.active(this._entryTicket) && wx.navigateTo({ url: '/pages/common/subscriptions/index?role=client' }))
       .catch(() => {})
+  },
+
+  backFromSettings() {
+    if (typeof getCurrentPages === 'function' && getCurrentPages().length > 1) {
+      wx.navigateBack()
+    } else {
+      this.setData({ showSettings: false })
+      wx.setNavigationBarTitle({ title: '我的' })
+    }
   },
 
   openSettings() {

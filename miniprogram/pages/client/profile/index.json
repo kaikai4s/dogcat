@@ -1,6 +1,10 @@
 {
+  "navigationStyle": "custom",
+  "navigationBarTextStyle": "black",
   "navigationBarTitleText": "我的",
   "enablePullDownRefresh": false,
+  "backgroundColor": "#FFE7CB",
+  "backgroundColorTop": "#FFE7CB",
   "usingComponents": {
     "dovlin-refresh": "/components/dovlin-refresh/index",
     "global-loading": "/components/global-loading/index",

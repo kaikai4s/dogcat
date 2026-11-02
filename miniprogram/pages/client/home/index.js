@@ -20,6 +20,31 @@ const serviceIconMap = {
 
 const CUSTOM_SERVICE_COVERS_KEY = 'custom_service_covers'
 
+function getNavBarInfo() {
+  let statusBarHeight = 44
+  let titleBarHeight = 44
+  try {
+    const windowInfo = (typeof wx !== 'undefined' && ((wx.getWindowInfo && wx.getWindowInfo()) || (wx.getSystemInfoSync && wx.getSystemInfoSync()))) || {}
+    if (windowInfo.statusBarHeight) {
+      statusBarHeight = windowInfo.statusBarHeight
+    }
+    const menu = typeof wx !== 'undefined' && wx.getMenuButtonBoundingClientRect ? wx.getMenuButtonBoundingClientRect() : null
+    if (menu && menu.top && menu.height) {
+      titleBarHeight = (menu.top - statusBarHeight) * 2 + menu.height
+    } else {
+      titleBarHeight = 44
+    }
+  } catch (_) {
+    statusBarHeight = 44
+    titleBarHeight = 44
+  }
+  return {
+    statusBarHeight,
+    titleBarHeight,
+    navBarHeight: statusBarHeight + titleBarHeight
+  }
+}
+
 function getCustomServiceCovers() {
   try {
     return wx.getStorageSync(CUSTOM_SERVICE_COVERS_KEY) || {}
@@ -243,10 +268,36 @@ Page({
     heroAutoplay: true,
     heroPlayingVideoId: null,
     heroPausedByVideo: false,
-    pageScrollTop: 0
+    pageScrollTop: 0,
+
+    // 自定义吸顶导航栏状态
+    statusBarHeight: 44,
+    titleBarHeight: 44,
+    navBarHeight: 88,
+    isNavScrolled: false
+  },
+
+  onLoad(query) {
+    this.initNavBar()
+  },
+
+  initNavBar() {
+    const navInfo = getNavBarInfo()
+    if (
+      this.data.statusBarHeight !== navInfo.statusBarHeight ||
+      this.data.titleBarHeight !== navInfo.titleBarHeight ||
+      this.data.navBarHeight !== navInfo.navBarHeight
+    ) {
+      this.setData({
+        statusBarHeight: navInfo.statusBarHeight,
+        titleBarHeight: navInfo.titleBarHeight,
+        navBarHeight: navInfo.navBarHeight
+      })
+    }
   },
 
   onShow() {
+    this.initNavBar()
     this._staffEntryVisible = true
     startStaffEntryUnread(this)
     this._isPageActive = true
@@ -481,10 +532,34 @@ Page({
     })
   },
 
+  handleHomeScroll(scrollTop = 0) {
+    const isNavScrolled = scrollTop > 15
+    const updates = { pageScrollTop: scrollTop }
+    if (isNavScrolled !== this.data.isNavScrolled) {
+      updates.isNavScrolled = isNavScrolled
+    }
+    this.setData(updates)
+  },
+
+  onHomeScroll(e) {
+    const scrollTop = (e && e.detail && typeof e.detail.scrollTop === 'number') ? e.detail.scrollTop : 0
+    this.handleHomeScroll(scrollTop)
+  },
+
   onPageScroll(e) {
-    this.setData({
-      pageScrollTop: (e && e.scrollTop) || 0
-    })
+    const scrollTop = (e && typeof e.scrollTop === 'number') ? e.scrollTop : 0
+    this.handleHomeScroll(scrollTop)
+  },
+
+  onNavLogoTap() {
+    try {
+      const refreshComp = this.selectComponent('#dovlinRefresh')
+      if (refreshComp && typeof refreshComp.scrollToTop === 'function') {
+        refreshComp.scrollToTop()
+      } else if (typeof wx !== 'undefined' && wx.pageScrollTo) {
+        wx.pageScrollTo({ scrollTop: 0, duration: 300 })
+      }
+    } catch (_) {}
   },
 
   onCustomRefresh() {

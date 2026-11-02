@@ -34,12 +34,42 @@ function visibleOptions(options, active, count) {
   return list
 }
 
+function getNavBarInfo() {
+  let statusBarHeight = 44
+  let titleBarHeight = 44
+  try {
+    const windowInfo = (typeof wx !== 'undefined' && ((wx.getWindowInfo && wx.getWindowInfo()) || (wx.getSystemInfoSync && wx.getSystemInfoSync()))) || {}
+    if (windowInfo.statusBarHeight) {
+      statusBarHeight = windowInfo.statusBarHeight
+    }
+    const menu = typeof wx !== 'undefined' && wx.getMenuButtonBoundingClientRect ? wx.getMenuButtonBoundingClientRect() : null
+    if (menu && menu.top && menu.height) {
+      titleBarHeight = (menu.top - statusBarHeight) * 2 + menu.height
+    } else {
+      titleBarHeight = 44
+    }
+  } catch (_) {
+    statusBarHeight = 44
+    titleBarHeight = 44
+  }
+  return {
+    statusBarHeight,
+    titleBarHeight,
+    navBarHeight: statusBarHeight + titleBarHeight
+  }
+}
+
 Page({
   openMap() {
     const city = this.data.activeCity === '全部' ? '' : this.data.activeCity
     wx.navigateTo({ url: '/pages/common/community-map/index?mode=sitters&city=' + encodeURIComponent(city) + '&gender=' + this.data.staffGenderRequirement })
   },
   data: {
+    statusBarHeight: 44,
+    titleBarHeight: 44,
+    navBarHeight: 88,
+    isNavScrolled: false,
+    ...getNavBarInfo(),
     themeClass: 'theme-day',
     staffGenderRequirement: 'any',
     keyword: '',
@@ -69,7 +99,23 @@ Page({
     messageHasUnread: false
   },
 
+  initNavBar() {
+    const navInfo = getNavBarInfo()
+    if (
+      this.data.statusBarHeight !== navInfo.statusBarHeight ||
+      this.data.titleBarHeight !== navInfo.titleBarHeight ||
+      this.data.navBarHeight !== navInfo.navBarHeight
+    ) {
+      this.setData({
+        statusBarHeight: navInfo.statusBarHeight,
+        titleBarHeight: navInfo.titleBarHeight,
+        navBarHeight: navInfo.navBarHeight
+      })
+    }
+  },
+
   onLoad(options = {}) {
+    this.initNavBar()
     this.setData({ staffGenderRequirement: ['male', 'female'].includes(options.staffGenderRequirement) ? options.staffGenderRequirement : 'any' })
   },
 
@@ -82,6 +128,14 @@ Page({
     })
   },
 
+  onSitterScroll(e) {
+    const scrollTop = e && e.detail ? e.detail.scrollTop : 0
+    const isNavScrolled = scrollTop > 12
+    if (this.data.isNavScrolled !== isNavScrolled) {
+      this.setData({ isNavScrolled })
+    }
+  },
+
   onPullDownRefresh() {
     Promise.resolve(this.loadFacets()).finally(() => {
       loadMessageUnread(this)
@@ -90,6 +144,7 @@ Page({
   },
 
   onShow() {
+    this.initNavBar()
     this.applyCurrentTheme()
     this.syncCurrentLocation()
     this.loadFacets()

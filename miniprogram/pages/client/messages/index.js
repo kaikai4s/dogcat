@@ -53,8 +53,38 @@ function withThreadText(thread) {
   }
 }
 
+function getNavBarInfo() {
+  let statusBarHeight = 44
+  let titleBarHeight = 44
+  try {
+    const windowInfo = (typeof wx !== 'undefined' && ((wx.getWindowInfo && wx.getWindowInfo()) || (wx.getSystemInfoSync && wx.getSystemInfoSync()))) || {}
+    if (windowInfo.statusBarHeight) {
+      statusBarHeight = windowInfo.statusBarHeight
+    }
+    const menu = typeof wx !== 'undefined' && wx.getMenuButtonBoundingClientRect ? wx.getMenuButtonBoundingClientRect() : null
+    if (menu && menu.top && menu.height) {
+      titleBarHeight = (menu.top - statusBarHeight) * 2 + menu.height
+    } else {
+      titleBarHeight = 44
+    }
+  } catch (_) {
+    statusBarHeight = 44
+    titleBarHeight = 44
+  }
+  return {
+    statusBarHeight,
+    titleBarHeight,
+    navBarHeight: statusBarHeight + titleBarHeight
+  }
+}
+
 Page({
   data: {
+    statusBarHeight: 44,
+    titleBarHeight: 44,
+    navBarHeight: 88,
+    isNavScrolled: false,
+    ...getNavBarInfo(),
     themeClass: 'theme-day',
     activeTab: 'order', // 'order' | 'system'
     // 订单消息
@@ -88,6 +118,30 @@ Page({
     selectedNotice: null,
     showNoticeModal: false
   },
+  initNavBar() {
+    const navInfo = getNavBarInfo()
+    if (
+      this.data.statusBarHeight !== navInfo.statusBarHeight ||
+      this.data.titleBarHeight !== navInfo.titleBarHeight ||
+      this.data.navBarHeight !== navInfo.navBarHeight
+    ) {
+      this.setData({
+        statusBarHeight: navInfo.statusBarHeight,
+        titleBarHeight: navInfo.titleBarHeight,
+        navBarHeight: navInfo.navBarHeight
+      })
+    }
+  },
+  onLoad(options = {}) {
+    this.initNavBar()
+  },
+  onMessagesScroll(e) {
+    const scrollTop = e && e.detail ? e.detail.scrollTop : 0
+    const isNavScrolled = scrollTop > 12
+    if (this.data.isNavScrolled !== isNavScrolled) {
+      this.setData({ isNavScrolled })
+    }
+  },
   onCustomRefresh() {
     return Promise.resolve(this.onPullDownRefresh()).finally(() => {
       const refreshComp = this.selectComponent('#dovlinRefresh')
@@ -108,6 +162,7 @@ Page({
   },
 
   onShow() {
+    this.initNavBar()
     this.applyCurrentTheme()
     ensureLogin({ content: '登录后可查看消息。' })
       .then(() => {

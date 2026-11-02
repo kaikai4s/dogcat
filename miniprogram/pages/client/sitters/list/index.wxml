@@ -1,16 +1,20 @@
-<dovlin-refresh id="dovlinRefresh" bind:refresh="onCustomRefresh" bind:scrolltolower="onReachBottom">
-<view class="page sitter-page sitter-list-page {{themeClass}} {{fontClass}}">
-  <view class="sitter-hero">
+<!-- 自定义吸顶导航栏：未下滑时与页面背景平滑过渡，下滑后出现半透明毛玻璃与分割线，定位条固定对齐微信胶囊 -->
+<view class="custom-nav-bar {{isNavScrolled ? 'nav-scrolled' : 'nav-at-top'}}" style="height: {{navBarHeight}}px;">
+  <view class="nav-bar-status-bar" style="height: {{statusBarHeight}}px;"></view>
+  <view class="nav-bar-title-row" style="height: {{titleBarHeight}}px;">
     <view class="sitter-hero-actions">
       <view class="sitter-location-bar" bindtap="updateLocation" aria-role="button" aria-label="切换服务位置" hover-class="sitter-location-bar-hover" hover-stay-time="120">
         <text class="remix-icon ri-map-pin-2-fill location-pin"></text>
-        <text class="location-name">{{locationName}}</text>
+        <text class="location-name">{{locationName || '正在获取位置...'}}</text>
         <text class="location-arrow remix-icon ri-arrow-down-s-line"></text>
       </view>
     </view>
-    <view class="sitter-hero-title">寻找身边的安心宠托师</view>
-    <view class="sitter-hero-filter" wx:if="{{staffGenderRequirement !== 'any'}}">当前仅展示{{staffGenderRequirement === 'male' ? '男性' : '女性'}}宠托师</view>
   </view>
+</view>
+
+<dovlin-refresh id="dovlinRefresh" background="#FFE7CB" nav-bar-height="{{navBarHeight || 88}}" bind:refresh="onCustomRefresh" bind:scroll="onSitterScroll" bind:scrolltolower="onReachBottom">
+<view class="page sitter-page sitter-list-page {{themeClass}} {{fontClass}}">
+  <view class="sitter-hero-filter" wx:if="{{staffGenderRequirement !== 'any'}}">当前仅展示{{staffGenderRequirement === 'male' ? '男性' : '女性'}}宠托师</view>
 
   <view class="sitter-search-wrap">
     <view class="search-card">

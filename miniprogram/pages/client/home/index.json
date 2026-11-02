@@ -1,5 +1,9 @@
 {
-  "navigationBarTitleText": "毛孩家庭端",
+  "navigationStyle": "custom",
+  "navigationBarTextStyle": "black",
+  "navigationBarTitleText": "多芙琳 Dovelin",
+  "backgroundColor": "#FFE7CB",
+  "backgroundColorTop": "#FFE7CB",
   "enablePullDownRefresh": false,
   "usingComponents": {
     "dovlin-refresh": "/components/dovlin-refresh/index",

@@ -53,6 +53,16 @@ Component({
     status: {
       type: String,
       value: 'pulling'
+    },
+    // 下拉刷新区域背景颜色，默认贴合白橙暖色 #FFE7CB
+    background: {
+      type: String,
+      value: '#FFE7CB'
+    },
+    // 沉浸式导航栏避让高度 (px)，当页面顶部有 fixed 导航栏时设置此值
+    navBarHeight: {
+      type: Number,
+      value: 0
     }
   },
 
@@ -62,10 +72,22 @@ Component({
     currentTips: '下拉刷新',
     ringDeg: 0,
     orbitStyle: '',
-    pawsList: PAW_POSITIONS
+    pawsList: PAW_POSITIONS,
+    scrollTop: 0,
+    computedScrollStyle: ''
   },
 
   observers: {
+    'navBarHeight': function (navH) {
+      const navVal = Number(navH) || 0;
+      if (navVal > 0) {
+        this.setData({
+          computedScrollStyle: `height: calc(100vh - ${navVal}px); margin-top: ${navVal}px;`
+        });
+      } else {
+        this.setData({ computedScrollStyle: '' });
+      }
+    },
     'refreshing': function (val) {
       if (val && !this.data.isRefreshing) {
         this.setData({ isRefreshing: true });
@@ -153,10 +175,10 @@ Component({
     onRefresherPulling(e) {
       if (this.data.isRefreshing) return;
       const dy = (e && e.detail && e.detail.dy) || 0;
-      let progress = e && e.detail && typeof e.detail.p === 'number' 
+      const baseThresh = Number(this.properties.threshold) || 92;
+      const progress = e && e.detail && typeof e.detail.p === 'number' 
         ? e.detail.p 
-        : dy / this.data.threshold;
-      
+        : dy / baseThresh;
       this.updatePullProgress(progress);
     },
 
@@ -217,6 +239,19 @@ Component({
         this.resetPosition();
         this.triggerEvent('restore');
       }, 500);
+    },
+
+    /**
+     * 平滑滚回顶部
+     */
+    scrollToTop() {
+      if (this.data.scrollTop === 0) {
+        this.setData({ scrollTop: 0.1 }, () => {
+          this.setData({ scrollTop: 0 });
+        });
+      } else {
+        this.setData({ scrollTop: 0 });
+      }
     },
 
     /**

@@ -19,7 +19,7 @@
   box-sizing: border-box;
 }
 
-/* 下拉刷新区域容器 (高度精确匹配 threshold: 92px) */
+/* 下拉刷新区域容器 (92px 紧凑居中视口，紧贴导航栏下沿展开) */
 .dovlin-refresher-container {
   width: 100%;
   height: 92px;
@@ -27,7 +27,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background-color: #FFF9EB;
+  background: #FFE7CB;
   overflow: hidden;
   box-sizing: border-box;
   padding: 4px 0;

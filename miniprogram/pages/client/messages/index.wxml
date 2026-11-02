@@ -1,15 +1,24 @@
-<dovlin-refresh id="dovlinRefresh" bind:refresh="onCustomRefresh" bind:scrolltolower="onReachBottom">
+<!-- 自定义吸顶导航栏：未下滑时与页面背景平滑过渡，下滑后出现半透明毛玻璃与分割线，标题常驻吸顶对齐微信胶囊 -->
+<view class="custom-nav-bar {{isNavScrolled ? 'nav-scrolled' : 'nav-at-top'}}" style="height: {{navBarHeight}}px;">
+  <view class="nav-bar-status-bar" style="height: {{statusBarHeight}}px;"></view>
+  <view class="nav-bar-title-row" style="height: {{titleBarHeight}}px;">
+    <view class="nav-brand-container">
+      <image class="nav-brand-dog-img" src="/images/dovlin/dovlin-logo-dog.png" mode="aspectFit" aria-hidden="true" />
+      <view class="nav-brand-text-box">
+        <text class="nav-brand-cn">消息中心</text>
+        <text class="nav-sparkle-star" aria-hidden="true">✦</text>
+      </view>
+    </view>
+  </view>
+</view>
+
+<dovlin-refresh id="dovlinRefresh" background="#FFE7CB" nav-bar-height="{{navBarHeight || 88}}" bind:refresh="onCustomRefresh" bind:scroll="onMessagesScroll" bind:scrolltolower="onReachBottom">
 <view class="messages-page {{themeClass}} {{fontClass}} page">
   <navigator class="subscription-entry" url="/pages/common/subscriptions/index?role=client">
     <view class="subscription-entry-icon"><text class="remix-icon ri-notification-3-line"></text></view>
     <view class="subscription-entry-copy"><view class="subscription-entry-title">订阅消息通知</view><view class="subscription-entry-desc">接单、出发、服务完成、开门与退款提醒</view></view>
     <view class="subscription-entry-action">去开启 <text class="remix-icon ri-arrow-right-s-line"></text></view>
   </navigator>
-  <view class="messages-hero">
-    <view class="hero-badge"><text class="remix-icon ri-message-3-fill hero-icon"></text><text>消息中心</text></view>
-    <view class="hero-title">{{activeTab === 'order' ? '订单消息' : '系统通知'}}</view>
-    <view class="hero-desc">{{activeTab === 'order' ? '订单支付、接单、服务进度等提醒集中展示在这里。' : '平台公告、升级通知、活动福利与重要提醒。'}}</view>
-  </view>
 
   <!-- 消息分类 Tabs 切换 -->
   <view class="messages-tabs-bar">

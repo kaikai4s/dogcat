@@ -3,7 +3,7 @@
 .profile-settings-page {
   min-height: 100vh;
   padding: 0 0 178rpx;
-  background: linear-gradient(180deg, #fff8ec 0%, #fffaf6 42%, #f7fbfa 100%);
+  background: linear-gradient(180deg, #ffe7cb 0%, #fff0de 200rpx, #fff8ee 420rpx, #fffdfa 700rpx, #f7f9fa 100%);
   color: #2d211a;
   overflow-x: hidden;
 }
@@ -43,14 +43,50 @@
 .settings-hero,
 .profile-hero {
   position: relative;
-  padding: 34rpx 30rpx 42rpx;
+  padding: 24rpx 30rpx 42rpx;
   border-bottom-left-radius: 48rpx;
   border-bottom-right-radius: 48rpx;
   background:
     radial-gradient(circle at 90% 18%, rgba(255, 255, 255, 0.50) 0 64rpx, transparent 65rpx),
     radial-gradient(circle at 12% 74%, rgba(114, 211, 183, 0.16) 0 74rpx, transparent 75rpx),
-    linear-gradient(135deg, #fff0c9 0%, #ffd9c8 54%, #fff5f0 100%);
+    linear-gradient(180deg, #ffe7cb 0%, #fff0de 200rpx, #fff4e8 360rpx, #ffd9c8 80%, #fff5f0 100%);
   box-shadow: 0 18rpx 44rpx rgba(123, 89, 62, 0.08);
+}
+
+.profile-hero-top {
+  padding-top: 18rpx;
+}
+
+.settings-nav-bar {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.settings-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 8rpx 18rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.7);
+  color: #2d211a;
+  font-size: 26rpx;
+  font-weight: 800;
+}
+
+.settings-back-btn .remix-icon {
+  font-size: 32rpx;
+  color: #2d211a;
+}
+
+.settings-hero .settings-kicker {
+  margin-top: 18rpx;
+}
+
+.nav-bar-placeholder {
+  width: 100%;
+  flex-shrink: 0;
 }
 
 .settings-kicker {
@@ -107,7 +143,6 @@
 .quick-card,
 .menu-left,
 .menu-right-wrap,
-.profile-hero,
 .profile-name-row,
 .info-row {
   display: flex;
@@ -190,16 +225,19 @@
 
 .profile-hero {
   display: flex;
-  align-items: center;
-  gap: 22rpx;
+  flex-direction: column;
   width: 100%;
+  box-sizing: border-box;
 }
 
 .profile-hero-top {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 22rpx;
   width: 100%;
+  padding-top: 16rpx;
+  box-sizing: border-box;
 }
 
 .profile-level-tag-row {
@@ -297,7 +335,6 @@
 .profile-name-row {
   gap: 12rpx;
   flex-wrap: wrap;
-  padding-right: 150rpx;
   box-sizing: border-box;
 }
 
@@ -325,12 +362,10 @@
 }
 
 .checkin-pill {
-  position: absolute;
-  right: 30rpx;
-  top: 36rpx;
-  z-index: 2;
   flex-shrink: 0;
-  padding: 12rpx 20rpx;
+  margin-left: auto;
+  align-self: center;
+  padding: 12rpx 24rpx;
   border-radius: 999rpx;
   color: #ffffff;
   background: linear-gradient(135deg, #ffb86c 0%, #ff7a45 100%);

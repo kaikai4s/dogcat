@@ -1,7 +1,25 @@
-<dovlin-refresh id="dovlinRefresh" bind:refresh="onCustomRefresh">
+<!-- 自定义吸顶导航栏：未下滑时与页面背景平滑无缝过渡，下滑后出现半透明毛玻璃与分割线，Logo和特效文字常驻左上角并对齐微信胶囊 -->
+<view class="custom-nav-bar {{isNavScrolled ? 'nav-scrolled' : 'nav-at-top'}}" style="height: {{navBarHeight}}px;">
+  <view class="nav-bar-status-bar" style="height: {{statusBarHeight}}px;"></view>
+  <view class="nav-bar-title-row" style="height: {{titleBarHeight}}px;">
+    <view class="nav-brand-container" bindtap="onNavLogoTap" hover-class="nav-brand-hover" hover-stay-time="150" aria-label="多芙琳首页回顶">
+      <!-- 多芙琳品牌小狗 Logo -->
+      <image class="nav-brand-dog-img" src="/images/dovlin/dovlin-logo-dog.png" mode="aspectFit" aria-hidden="true" />
+      <!-- 品牌名称与流光/立体特效文字 -->
+      <view class="nav-brand-text-box">
+        <text class="nav-brand-cn">多芙琳</text>
+        <text class="nav-brand-en">Dovelin</text>
+        <!-- 闪烁四芒星动效 -->
+        <text class="nav-sparkle-star" aria-hidden="true">✦</text>
+      </view>
+    </view>
+  </view>
+</view>
+
+<dovlin-refresh id="dovlinRefresh" background="#FFE7CB" nav-bar-height="{{navBarHeight || 88}}" bind:refresh="onCustomRefresh" bind:scroll="onHomeScroll">
 <view class="page client-home-page {{themeClass}} {{fontClass}}">
   <!-- 同小区拼单浮动提醒（超通透柔光玻璃卡片堆叠展示，支持手势向上滑动模糊淡出取消与动态顶起下一张） -->
-  <view wx:if="{{showCommunityGroupNotice && ((groupNoticeCards && groupNoticeCards.length) || communityGroupNotice.availableCount || communityGroupNotice.myGroups.length)}}" class="home-group-notice-wrapper">
+  <view wx:if="{{showCommunityGroupNotice && ((groupNoticeCards && groupNoticeCards.length) || communityGroupNotice.availableCount || communityGroupNotice.myGroups.length)}}" class="home-group-notice-wrapper" style="top: calc({{navBarHeight}}px + 16rpx);">
     <view class="home-group-notice-stack">
       <!-- 堆叠底卡 2（当拼单数量 >= 3 时，露出一道微缩轮廓底层） -->
       <view wx:if="{{groupNoticeCards.length > 2}}" class="home-group-notice-card card-stack-layer card-stack-layer-2" aria-hidden="true"></view>
@@ -79,7 +97,9 @@
         </view>
         <view class="remix-icon ri-arrow-down-s-line"></view>
       </view>
-      <view class="home-top-badge">Dovelin 多芙琳</view>
+      <view class="home-top-badge">
+        <text class="badge-paw">🐾</text> 用“温度”融化Ta的孤单
+      </view>
     </view>
 
     <view class="home-notice-ticker" wx:if="{{noticeTicker.enabled && noticeTicker.items.length}}">

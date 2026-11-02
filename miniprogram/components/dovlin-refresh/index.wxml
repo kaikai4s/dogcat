@@ -31,11 +31,14 @@
 <scroll-view 
   wx:if="{{!isSlotMode}}"
   class="dovlin-scroll-view" 
+  style="{{computedScrollStyle}}"
   scroll-y="{{scrollY}}"
+  scroll-top="{{scrollTop}}"
+  scroll-with-animation="{{true}}"
   enable-back-to-top="{{true}}"
   refresher-enabled="{{true}}" 
   refresher-default-style="none" 
-  refresher-background="#FFF9EB"
+  refresher-background="{{background}}"
   refresher-threshold="{{threshold}}"
   refresher-triggered="{{isRefreshing}}" 
   bindrefresherpulling="onRefresherPulling" 
@@ -45,8 +48,8 @@
   bindscrolltolower="onScrollToLower"
   bindscroll="onScroll">
 
-  <!-- 微信官方 refresher 插槽：渲染 Dovlin 品牌动画 -->
-  <view slot="refresher" class="dovlin-refresher-container">
+  <!-- 微信官方 refresher 插槽：渲染 Dovlin 品牌动画（直接在吸顶导航栏下方展开，下拉立现） -->
+  <view slot="refresher" class="dovlin-refresher-container" style="background: {{background}};">
     <template is="dovlin-anim" data="{{statusClass, isSlotMode: false, ringDeg, orbitStyle, pawsList, showTips, currentTips}}" />
   </view>
 
