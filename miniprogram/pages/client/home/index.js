@@ -538,17 +538,26 @@ Page({
   },
 
   handleHomeScroll(scrollTop = 0) {
-    const isNavScrolled = scrollTop > 15
-    const updates = { pageScrollTop: scrollTop }
+    const numericTop = typeof scrollTop === 'number' ? Math.max(0, scrollTop) : 0
+    this._scrollTop = numericTop
+    this.data.pageScrollTop = numericTop
+
+    const isNavScrolled = numericTop > 15
     if (isNavScrolled !== this.data.isNavScrolled) {
-      updates.isNavScrolled = isNavScrolled
+      this.setData({
+        isNavScrolled,
+        pageScrollTop: numericTop
+      })
     }
-    this.setData(updates)
   },
 
   onHomeScroll(e) {
     const scrollTop = (e && e.detail && typeof e.detail.scrollTop === 'number') ? e.detail.scrollTop : 0
     this.handleHomeScroll(scrollTop)
+  },
+
+  onHomeScrollToUpper() {
+    this.handleHomeScroll(0)
   },
 
   onPageScroll(e) {
@@ -557,6 +566,7 @@ Page({
   },
 
   onNavLogoTap() {
+    this.handleHomeScroll(0)
     try {
       const refreshComp = this.selectComponent('#dovlinRefresh')
       if (refreshComp && typeof refreshComp.scrollToTop === 'function') {

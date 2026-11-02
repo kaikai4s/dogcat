@@ -73,7 +73,8 @@ Component({
     ringDeg: 0,
     orbitStyle: '',
     pawsList: PAW_POSITIONS,
-    scrollTop: 0,
+    scrollTopAnchor: '',
+    enableScrollAnimation: false,
     computedScrollStyle: ''
   },
 
@@ -82,7 +83,7 @@ Component({
       const navVal = Number(navH) || 0;
       if (navVal > 0) {
         this.setData({
-          computedScrollStyle: `height: calc(100vh - ${navVal}px); margin-top: ${navVal}px;`
+          computedScrollStyle: `height: calc(100% - ${navVal}px); margin-top: ${navVal}px;`
         });
       } else {
         this.setData({ computedScrollStyle: '' });
@@ -117,10 +118,24 @@ Component({
   lifetimes: {
     attached() {
       this.shufflePaws();
+    },
+    detached() {
+      if (this._scrollResetTimer) {
+        clearTimeout(this._scrollResetTimer);
+        this._scrollResetTimer = null;
+      }
     }
   },
 
   methods: {
+    /**
+     * 向外通知已处于最顶部（scrollTop = 0），确保吸顶导航栏状态与背景色绝对同步
+     */
+    notifyScrollTopZero() {
+      this._lastScrollTop = 0;
+      this.triggerEvent('scroll', { scrollTop: 0, scrollLeft: 0, isUpper: true });
+    },
+
     /**
      * 随机打乱四周爪印激活次序 (四周随机显现)
      */
@@ -183,15 +198,19 @@ Component({
     },
 
     onRefresherRefresh() {
+      this.notifyScrollTopZero();
       this.setData({ isRefreshing: true });
       this.startLoading();
     },
 
     onRefresherAbort() {
+      this.setData({ isRefreshing: false });
+      this.notifyScrollTopZero();
       this.resetPosition();
     },
 
     onRefresherRestore() {
+      this.notifyScrollTopZero();
       this.resetPosition();
     },
 
@@ -231,33 +250,43 @@ Component({
         currentTips: successText
       });
 
-      // 播放小狗开心点头动画 500ms 后收回
+      // 播放小狗开心点头动画 200ms 后收回（极速收回不悬停卡顿）
       setTimeout(() => {
         this.setData({
           isRefreshing: false
         });
         this.resetPosition();
         this.triggerEvent('restore');
-      }, 500);
+      }, 200);
     },
 
     /**
-     * 平滑滚回顶部
+     * 平滑滚回顶部（通过顶部锚点定位，滚完立即清空，不干扰手势）
      */
     scrollToTop() {
-      if (this.data.scrollTop === 0) {
-        this.setData({ scrollTop: 0.1 }, () => {
-          this.setData({ scrollTop: 0 });
-        });
-      } else {
-        this.setData({ scrollTop: 0 });
+      this.notifyScrollTopZero();
+      if (this._scrollResetTimer) {
+        clearTimeout(this._scrollResetTimer);
       }
+      this.setData({
+        scrollTopAnchor: 'dovlinTopAnchor',
+        enableScrollAnimation: true
+      }, () => {
+        this._scrollResetTimer = setTimeout(() => {
+          this._scrollResetTimer = null;
+          this.setData({
+            scrollTopAnchor: '',
+            enableScrollAnimation: false
+          });
+        }, 350);
+      });
     },
 
     /**
      * 回弹复位
      */
     resetPosition() {
+      this.notifyScrollTopZero();
       this.setData({
         ringDeg: 0,
         statusClass: 'state-pulling',

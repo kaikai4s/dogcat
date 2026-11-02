@@ -2,6 +2,7 @@
   "navigationStyle": "custom",
   "navigationBarTextStyle": "black",
   "navigationBarTitleText": "找宠托师",
+  "disableScroll": true,
   "backgroundColor": "#FFE7CB",
   "backgroundColorTop": "#FFE7CB",
   "enablePullDownRefresh": false,

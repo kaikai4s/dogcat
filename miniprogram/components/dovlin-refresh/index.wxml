@@ -33,8 +33,8 @@
   class="dovlin-scroll-view" 
   style="{{computedScrollStyle}}"
   scroll-y="{{scrollY}}"
-  scroll-top="{{scrollTop}}"
-  scroll-with-animation="{{true}}"
+  scroll-into-view="{{scrollTopAnchor}}"
+  scroll-with-animation="{{enableScrollAnimation}}"
   enable-back-to-top="{{true}}"
   refresher-enabled="{{true}}" 
   refresher-default-style="none" 
@@ -55,6 +55,8 @@
 
   <!-- 页面主体内容插槽 -->
   <view class="dovlin-scroll-content">
+    <!-- 回顶锚点（仅供点击Logo回顶时定位，不占高度） -->
+    <view id="dovlinTopAnchor" style="width: 100%; height: 0;"></view>
     <slot></slot>
   </view>
 </scroll-view>

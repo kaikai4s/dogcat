@@ -4,11 +4,12 @@
   display: block;
   width: 100%;
   height: 100%;
+  overflow: hidden;
 }
 
 .dovlin-scroll-view {
   width: 100%;
-  height: 100vh;
+  height: 100%;
   box-sizing: border-box;
   -webkit-overflow-scrolling: touch;
 }

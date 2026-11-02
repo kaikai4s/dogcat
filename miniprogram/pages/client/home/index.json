@@ -2,6 +2,7 @@
   "navigationStyle": "custom",
   "navigationBarTextStyle": "black",
   "navigationBarTitleText": "多芙琳 Dovelin",
+  "disableScroll": true,
   "backgroundColor": "#FFE7CB",
   "backgroundColorTop": "#FFE7CB",
   "enablePullDownRefresh": false,

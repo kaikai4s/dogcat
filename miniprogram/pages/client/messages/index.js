@@ -141,8 +141,8 @@ Page({
     this.initNavBar()
   },
   onMessagesScroll(e) {
-    const scrollTop = e && e.detail ? e.detail.scrollTop : 0
-    const isNavScrolled = scrollTop > 12
+    const scrollTop = e && e.detail && typeof e.detail.scrollTop === 'number' ? e.detail.scrollTop : 0
+    const isNavScrolled = scrollTop > 15
     if (this.data.isNavScrolled !== isNavScrolled) {
       this.setData({ isNavScrolled })
     }

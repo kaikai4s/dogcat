@@ -2194,6 +2194,7 @@ button.ghost:active {
 }
 
 .custom-nav-bar.nav-at-top {
+  background-color: #ffe7cb;
   background: linear-gradient(180deg, #ffe7cb 0%, #fff0de 100%);
   border-bottom: 1rpx solid transparent;
   box-shadow: none;
