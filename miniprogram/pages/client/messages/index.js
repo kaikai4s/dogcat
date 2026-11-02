@@ -7,7 +7,8 @@ const setCachedUnread = clientNav.setCachedUnread || (() => {})
 const applyUnreadState = clientNav.applyUnreadState || (() => {})
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const cloudAssets = require('../../../utils/cloud-assets')
-const getDovlinLogoUrl = (cloudAssets && cloudAssets.getDovlinLogoUrl) || (() => '')
+const getDovlinLogoUrl = (cloudAssets && (cloudAssets.getDovlinLogoSrc || cloudAssets.getDovlinLogoUrl)) || (() => '')
+const applyDovlinLogo = (cloudAssets && cloudAssets.applyDovlinLogo) || (() => {})
 
 function pageList(result) {
   return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result || { list: [], hasMore: false, page: 1, total: 0 })
@@ -136,6 +137,7 @@ Page({
     }
   },
   onLoad(options = {}) {
+    applyDovlinLogo(this)
     this.initNavBar()
   },
   onMessagesScroll(e) {

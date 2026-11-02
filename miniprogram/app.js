@@ -150,6 +150,11 @@ App({
       env,
       traceUser: true
     })
+
+    // 预取导航栏品牌 Logo 到本地持久化缓存，后续页面直接读本地文件，避免切页闪烁
+    try {
+      require('./utils/cloud-assets').prefetchDovlinLogo()
+    } catch (_) {}
   },
 
   onShow(options = {}) {

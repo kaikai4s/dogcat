@@ -4,7 +4,7 @@
   <view class="nav-bar-title-row" style="height: {{titleBarHeight}}px;">
     <view class="nav-brand-container" bindtap="onNavLogoTap" hover-class="nav-brand-hover" hover-stay-time="150" aria-label="多芙琳首页回顶">
       <!-- 多芙琳品牌小狗 Logo -->
-      <image class="nav-brand-dog-img" src="{{dovlinLogoDogUrl || '/images/dovlin/dovlin-logo-dog.png'}}" mode="aspectFit" aria-hidden="true" />
+      <image class="nav-brand-dog-img" src="{{dovlinLogoDogUrl}}" mode="aspectFit" aria-hidden="true" />
       <!-- 品牌名称与流光/立体特效文字 -->
       <view class="nav-brand-text-box">
         <text class="nav-brand-cn">多芙琳</text>

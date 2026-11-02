@@ -4,7 +4,8 @@ const { loadMessageUnread } = require('../../../../utils/client-nav')
 const { withOrderText } = require('../../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 const cloudAssets = require('../../../../utils/cloud-assets')
-const getDovlinLogoUrl = (cloudAssets && cloudAssets.getDovlinLogoUrl) || (() => '')
+const getDovlinLogoUrl = (cloudAssets && (cloudAssets.getDovlinLogoSrc || cloudAssets.getDovlinLogoUrl)) || (() => '')
+const applyDovlinLogo = (cloudAssets && cloudAssets.applyDovlinLogo) || (() => {})
 
 const tabs = [
   { label: '全部', value: 'all' },
@@ -85,6 +86,7 @@ Page({
     }
   },
   onLoad(options = {}) {
+    applyDovlinLogo(this)
     this.initNavBar()
   },
   onShow() {

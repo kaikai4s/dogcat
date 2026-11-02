@@ -5,7 +5,8 @@ const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { safeNavigateTo } = require('../../../utils/nav')
 const { formatDateTime } = require('../../../utils/format')
 const cloudAssets = require('../../../utils/cloud-assets')
-const getDovlinLogoUrl = (cloudAssets && cloudAssets.getDovlinLogoUrl) || (() => '')
+const getDovlinLogoUrl = (cloudAssets && (cloudAssets.getDovlinLogoSrc || cloudAssets.getDovlinLogoUrl)) || (() => '')
+const applyDovlinLogo = (cloudAssets && cloudAssets.applyDovlinLogo) || (() => {})
 
 const VISIT_FEE_SERVICE_KEY = 'visit_fee'
 const RETIRED_SERVICE_KEYS = ['extra_pet']
@@ -281,6 +282,7 @@ Page({
   },
 
   onLoad(query) {
+    applyDovlinLogo(this)
     this.initNavBar()
   },
 

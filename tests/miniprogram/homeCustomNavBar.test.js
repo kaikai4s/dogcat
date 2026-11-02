@@ -20,7 +20,7 @@ test('首页自定义导航栏 WXML 与 WXSS: 包含品牌小狗Logo、白橙色
   // 1. WXML 结构
   assert.match(wxml, /class="[^"]*custom-nav-bar/)
   assert.match(wxml, /nav-brand-dog-img/)
-  assert.match(wxml, /dovlin-logo-dog\.png/)
+  assert.match(wxml, /src="\{\{dovlinLogoDogUrl\}\}"/)
   assert.match(wxml, /多芙琳/)
   assert.match(wxml, /Dovelin/)
   assert.match(wxml, /nav-sparkle-star/)

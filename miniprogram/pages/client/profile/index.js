@@ -6,7 +6,8 @@ const { fontOptions, applyFont, saveFont, getFontState } = require('../../../uti
 // Unread data here is fetched under this page's identity/request guards, not the shared role-only cache.
 const { copyText } = require('../../../utils/clipboard')
 const cloudAssets = require('../../../utils/cloud-assets')
-const getDovlinLogoUrl = (cloudAssets && cloudAssets.getDovlinLogoUrl) || (() => '')
+const getDovlinLogoUrl = (cloudAssets && (cloudAssets.getDovlinLogoSrc || cloudAssets.getDovlinLogoUrl)) || (() => '')
+const applyDovlinLogo = (cloudAssets && cloudAssets.applyDovlinLogo) || (() => {})
 
 const staffEntryMap = {
   none: { title: '申请成为宠护师', tip: '提交资料后等待平台审核' },
@@ -173,6 +174,7 @@ Page({
   },
 
   onLoad(query = {}) {
+    applyDovlinLogo(this)
     this.initNavBar()
     this._visible = true
     this._unloaded = false

@@ -55,6 +55,111 @@ function getDovlinLogoUrl() {
   return getCloudAssetUrl(CLOUD_ASSETS.DOVLIN_LOGO_DOG)
 }
 
+/**
+ * 品牌 Logo 本地持久化缓存：
+ * 云存储 cloud:// 图片每次进入新页面都要重新换取临时链接并下载，导致导航栏 Logo 闪烁。
+ * 这里在首次下载后将其保存到 USER_DATA_PATH，并在内存中缓存路径，后续页面直接使用本地文件，零网络、无闪烁。
+ */
+const LOGO_CACHE_KEY = 'dovlin_logo_local_cache_v1'
+let logoMemoryPath = ''
+let logoMemoryFileId = ''
+let logoPrefetchPromise = null
+
+function hasWx() {
+  return typeof wx !== 'undefined' && wx
+}
+
+function localFileExists(filePath) {
+  if (!filePath || !hasWx() || typeof wx.getFileSystemManager !== 'function') return false
+  try {
+    wx.getFileSystemManager().accessSync(filePath)
+    return true
+  } catch (_) {
+    return false
+  }
+}
+
+function getCachedDovlinLogoPath() {
+  const fileId = getDovlinLogoUrl()
+  if (logoMemoryPath && logoMemoryFileId === fileId) return logoMemoryPath
+  if (!hasWx() || typeof wx.getStorageSync !== 'function') return ''
+  try {
+    const cached = wx.getStorageSync(LOGO_CACHE_KEY)
+    if (cached && cached.fileId === fileId && localFileExists(cached.path)) {
+      logoMemoryPath = cached.path
+      logoMemoryFileId = fileId
+      return logoMemoryPath
+    }
+  } catch (_) {}
+  return ''
+}
+
+/**
+ * 页面渲染用的 Logo 地址：优先本地持久化文件，否则回退云存储 FileID
+ */
+function getDovlinLogoSrc() {
+  return getCachedDovlinLogoPath() || getDovlinLogoUrl()
+}
+
+/**
+ * 后台预取云端 Logo 并持久化到本地（幂等，同一时刻只发起一次下载）
+ * @returns {Promise<string>} 本地路径（失败时为空字符串）
+ */
+function prefetchDovlinLogo() {
+  const existing = getCachedDovlinLogoPath()
+  if (existing) return Promise.resolve(existing)
+  if (logoPrefetchPromise) return logoPrefetchPromise
+  if (!hasWx() || !wx.cloud || typeof wx.cloud.downloadFile !== 'function') return Promise.resolve('')
+
+  const fileId = getDovlinLogoUrl()
+  logoPrefetchPromise = new Promise((resolve) => {
+    wx.cloud.downloadFile({
+      fileID: fileId,
+      success: (res) => {
+        const tempFilePath = res && res.tempFilePath
+        if (!tempFilePath || (res.statusCode && res.statusCode !== 200)) return resolve('')
+        const remember = (finalPath, persist) => {
+          logoMemoryPath = finalPath
+          logoMemoryFileId = fileId
+          if (persist) {
+            try { wx.setStorageSync(LOGO_CACHE_KEY, { fileId, path: finalPath }) } catch (_) {}
+          }
+          resolve(finalPath)
+        }
+        const fs = typeof wx.getFileSystemManager === 'function' ? wx.getFileSystemManager() : null
+        const userDataPath = wx.env && wx.env.USER_DATA_PATH
+        if (!fs || !userDataPath) return remember(tempFilePath, false)
+        const targetPath = `${userDataPath}/dovlin-logo-dog.png`
+        try { fs.unlinkSync(targetPath) } catch (_) {}
+        fs.saveFile({
+          tempFilePath,
+          filePath: targetPath,
+          success: (saved) => remember((saved && saved.savedFilePath) || targetPath, true),
+          // 持久化失败时本次会话仍使用临时文件，避免后续页面再次走网络
+          fail: () => remember(tempFilePath, false)
+        })
+      },
+      fail: () => resolve('')
+    })
+  }).then((result) => {
+    logoPrefetchPromise = null
+    return result
+  })
+  return logoPrefetchPromise
+}
+
+/**
+ * 在页面 onLoad（首帧渲染前）调用，若已有本地缓存则切换为本地路径
+ */
+function applyDovlinLogo(page) {
+  if (!page || typeof page.setData !== 'function') return
+  const src = getDovlinLogoSrc()
+  if (page.data && page.data.dovlinLogoDogUrl !== src) {
+    page.setData({ dovlinLogoDogUrl: src })
+  }
+  if (!getCachedDovlinLogoPath()) prefetchDovlinLogo()
+}
+
 function getLoadingCatUrl() {
   return getCloudAssetUrl(CLOUD_ASSETS.LOADING_CAT)
 }
@@ -64,6 +169,9 @@ module.exports = {
   getCloudStorageRoot,
   getCloudAssetUrl,
   getDovlinLogoUrl,
+  getDovlinLogoSrc,
+  prefetchDovlinLogo,
+  applyDovlinLogo,
   getLoadingCatUrl,
   CLOUD_ASSETS
 }
