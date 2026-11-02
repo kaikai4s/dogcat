@@ -73,6 +73,8 @@
           <text>奖励规则说明</text>
         </view>
       </view>
+    </view>
+  </view>
 
   <!-- 顶部轻量规则提示条 (若上传了海报时，在此呈现常驻奖金与规则快捷条) -->
   <view class="contest-quick-bar" wx:if="{{contestConfig.enabled !== false && contestConfig.firstPrizeAmount > 0 && (contestConfig.posterUrl || contestConfig.posterFileId)}}" bindtap="openRulesModal">
