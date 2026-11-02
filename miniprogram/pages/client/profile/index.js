@@ -136,6 +136,11 @@ function getInitialProfileData() {
       const scope = typeof displayCache?.scopeKey === 'function'
         ? displayCache.scopeKey(env, user)
         : (user._id || user.openid ? JSON.stringify([String(env), String(user._id || user.openid)]) : '')
+      if (scope && user.avatarUrl && typeof displayCache?.getAvatar === 'function') {
+        // 本地已持久化的头像文件优先，首帧直接渲染本地图，避免先加载云图再切换造成闪烁
+        const localAvatar = displayCache.getAvatar(scope, user.avatarUrl)
+        if (localAvatar) base.avatarUrl = localAvatar
+      }
       if (scope && typeof displayCache?.readDisplay === 'function') {
         const cached = displayCache.readDisplay(scope)
         if (cached && cached.summary) {
@@ -326,6 +331,7 @@ Page({
     this._scope = ''
     this._hasSummary = false
     this._avatarSource = undefined
+    this._avatarShownSource = undefined
     clearTimeout(this._staffUnreadTimer)
     this.setData({
       isGuest: true,
@@ -376,8 +382,10 @@ Page({
       userMeta: phone ? `已绑定手机 ${phone}` : '欢迎回来，Dovelin 多芙琳陪你安心照护',
       hidePublicCheckinPhotos: user.hidePublicCheckinPhotos === true || (user.privacySettings && user.privacySettings.hidePublicCheckinPhotos === true)
     }
-    if (user.avatarUrl && this.data.avatarUrl !== user.avatarUrl) {
-      patch.avatarUrl = user.avatarUrl
+    if (user.avatarUrl) {
+      const shownAvatar = this.avatarDisplayFor(scope, user.avatarUrl)
+      if (shownAvatar !== this.data.avatarUrl) patch.avatarUrl = shownAvatar
+      this._avatarShownSource = user.avatarUrl
     }
     if (!this._hasSummary) {
       const partial = typeof displayCache?.pickSummary === 'function' ? displayCache.pickSummary(user) : {}
@@ -387,6 +395,14 @@ Page({
     }
     this.setData(patch)
     if (this._visible !== false && user.avatarUrl) this.prepareAvatar(user.avatarUrl)
+  },
+
+  // 当前头像应展示的地址：本地缓存文件 > 已在展示的同源图片 > 原始地址；同源时绝不来回切换 src
+  avatarDisplayFor(scope, source) {
+    const cached = typeof displayCache?.getAvatar === 'function' ? displayCache.getAvatar(scope, source) : ''
+    if (cached) return cached
+    if (this._avatarShownSource === source && this.data.avatarUrl) return this.data.avatarUrl
+    return source
   },
 
   prepareAvatar(source, retry = false) {
@@ -403,8 +419,10 @@ Page({
       const token = `${ticket.life}-${ticket.identity}-${ticket.seq}`
       const nextImages = [...this.data.avatarImages.filter(item => item.loaded), { token, path, source, loaded: true }]
       const updateData = { avatarImages: nextImages }
-      if (path && path !== this.data.avatarUrl) {
+      // 同一头像已在展示时不替换 src（避免重新解码闪一下），本地文件已持久化，下次进入页面直接使用
+      if (path && path !== this.data.avatarUrl && (this._avatarShownSource !== source || !this.data.avatarUrl)) {
         updateData.avatarUrl = path
+        this._avatarShownSource = source
       }
       this.setData(updateData)
     }
@@ -424,10 +442,15 @@ Page({
   },
 
   onMainAvatarError() {
-    if (this._avatarSource && this._avatarSource.startsWith('cloud://')) {
-      if (typeof displayCache?.invalidateAvatar === 'function') {
-        displayCache.invalidateAvatar(this._scope, this._avatarSource)
-      }
+    // 当前展示的图片加载失败，允许重试结果替换 src
+    this._avatarShownSource = undefined
+    if (this._avatarSource && typeof displayCache?.invalidateAvatar === 'function') {
+      // 本地持久化文件可能已被系统清理，失效后重新拉取
+      displayCache.invalidateAvatar(this._scope, this._avatarSource)
+    }
+    const failedLocalCopy = !!this._avatarSource && !!this.data.avatarUrl && this.data.avatarUrl !== this._avatarSource
+    this._mainAvatarErrors = (this._mainAvatarErrors || 0) + 1
+    if (this._avatarSource && this._mainAvatarErrors <= 2 && (this._avatarSource.startsWith('cloud://') || failedLocalCopy)) {
       this.prepareAvatar(this._avatarSource, true)
     } else {
       this.setData({ avatarUrl: '' })
