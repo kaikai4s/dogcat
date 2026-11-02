@@ -480,7 +480,7 @@ Page({
                     hideLoading()
                     wx.showToast({ title: '已取消参赛资格', icon: 'success' })
                     this.closePreviewModal()
-                    this.loadContest()
+                    this.loadHome()
                   })
                   .catch((err) => {
                     hideLoading()

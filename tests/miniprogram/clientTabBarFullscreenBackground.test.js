@@ -78,3 +78,15 @@ test('全屏沉浸页面的下拉刷新 dovlin-refresh 必须绑定 nav-bar-heig
   assert.match(refreshJs, /navBarHeight:\s*\{/)
   assert.match(refreshJs, /computedScrollStyle/)
 })
+
+test('沉浸式全屏滚动的 5个 TabBar 页面必须显式配置 page { height: 100%; overflow: hidden; } 保证 scroll-view 在开发者工具与真机内正常滚动', () => {
+  const allFullscreenPages = [
+    { name: '首页', dir: 'pages/client/home' },
+    ...pages
+  ]
+  for (const page of allFullscreenPages) {
+    const wxss = fs.readFileSync(path.join(root, page.dir, 'index.wxss'), 'utf8')
+    assert.match(wxss, /page\s*\{[^}]*height:\s*100%/s, `${page.name} WXSS 必须包含 page { height: 100% }`)
+    assert.match(wxss, /page\s*\{[^}]*overflow:\s*hidden/s, `${page.name} WXSS 必须包含 page { overflow: hidden }`)
+  }
+})

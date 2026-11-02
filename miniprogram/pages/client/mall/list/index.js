@@ -21,14 +21,14 @@ Page({
     shopConfigError: false,
     shopSupported: true,
     shopPreviewMode: false,
-    shopConfig: { enabled: false, appid: '' },
+    shopConfig: { enabled: false, appid: '', hideLegacyMall: false },
     mallMode: 'local',
     preferredMallMode: 'shop'
   },
 
   onLoad() {
     this.loadShopConfig(true).then(() => {
-      if (this.data.mallMode === 'local') return this.loadLocalMall()
+      if (this.data.mallMode === 'local' && !this.data.shopConfig.hideLegacyMall) return this.loadLocalMall()
     })
   },
 
@@ -48,15 +48,28 @@ Page({
       .then((shopConfig) => {
         if (requestId !== this._shopConfigRequestId) return
         const enabled = shopConfig.enabled === true && !!shopConfig.appid
-        const mode = enabled && shopSupported && this.data.preferredMallMode === 'shop' ? 'shop' : 'local'
+        const hideLegacyMall = enabled && shopConfig.hideLegacyMall === true
+        let mode = 'local'
+        if (enabled && shopSupported) {
+          if (hideLegacyMall || this.data.preferredMallMode === 'shop') {
+            mode = 'shop'
+          }
+        }
         const fellBack = this.data.mallMode === 'shop' && mode === 'local'
-        this.setData({ shopConfig: { enabled, appid: shopConfig.appid || '' }, shopSupported, shopPreviewMode, mallMode: mode, configLoaded: true, shopConfigError: false })
-        if (fellBack && !this.data.localLoaded) return this.loadLocalMall()
+        this.setData({
+          shopConfig: { enabled, appid: shopConfig.appid || '', hideLegacyMall },
+          shopSupported,
+          shopPreviewMode,
+          mallMode: mode,
+          configLoaded: true,
+          shopConfigError: false
+        })
+        if (!hideLegacyMall && fellBack && !this.data.localLoaded) return this.loadLocalMall()
       })
       .catch(() => {
         if (requestId !== this._shopConfigRequestId) return
         this.setData({ shopConfigError: true, configLoaded: true })
-        if (!initial && this.data.mallMode === 'local' && !this.data.localLoaded) return this.loadLocalMall()
+        if (!initial && this.data.mallMode === 'local' && !this.data.shopConfig.hideLegacyMall && !this.data.localLoaded) return this.loadLocalMall()
       })
   },
 
@@ -67,6 +80,7 @@ Page({
   },
 
   switchMallMode(e) {
+    if (this.data.shopConfig.hideLegacyMall) return
     const mode = e.currentTarget.dataset.mode
     if (!['local', 'shop'].includes(mode) || mode === this.data.mallMode || (mode === 'shop' && (!this.data.shopConfig.enabled || !this.data.shopSupported))) return
     this.setData({ mallMode: mode, preferredMallMode: mode })
@@ -83,14 +97,14 @@ Page({
   },
 
   onPullDownRefresh() {
-    const request = this.data.mallMode === 'shop'
+    const request = this.data.mallMode === 'shop' || this.data.shopConfig.hideLegacyMall
       ? this.loadShopConfig(false)
       : Promise.all([this.loadShopConfig(false), this.loadLocalMall()])
     return Promise.resolve(request).finally(() => wx.stopPullDownRefresh())
   },
 
   onReachBottom() {
-    if (this.data.mallMode === 'local') this.loadMore()
+    if (this.data.mallMode === 'local' && !this.data.shopConfig.hideLegacyMall) this.loadMore()
   },
 
   loadCategories() {

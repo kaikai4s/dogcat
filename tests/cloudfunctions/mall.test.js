@@ -37,21 +37,26 @@ test('WeChat shop config is admin-only, opt-in and separate from local mall inve
   const client = loadCloudFunction('api', db, 'openid_client')
   const guest = loadCloudFunction('api', db, 'guest')
   const request = (api, module, action, data = {}) => api.main({ module, action, data })
-  assert.deepEqual((await request(guest, 'mall', 'getShopConfig')).data, { enabled: false, appid: '' })
+  assert.deepEqual((await request(guest, 'mall', 'getShopConfig')).data, { enabled: false, appid: '', hideLegacyMall: false })
   assert.equal((await request(client, 'adminMall', 'getShopConfig')).ok, false)
   assert.equal((await request(admin, 'adminMall', 'saveShopConfig', { enabled: true })).ok, false)
   assert.equal((await request(admin, 'adminMall', 'saveShopConfig', { enabled: true, appid: 'bad' })).ok, false)
 
   const appid = 'wx' + '1'.repeat(16)
   assert.equal((await request(admin, 'adminMall', 'saveShopConfig', { enabled: true, appid })).ok, true)
-  assert.deepEqual((await request(guest, 'mall', 'getShopConfig')).data, { enabled: true, appid })
-  assert.deepEqual((await request(admin, 'adminMall', 'getShopConfig')).data, { enabled: true, appid })
+  assert.deepEqual((await request(guest, 'mall', 'getShopConfig')).data, { enabled: true, appid, hideLegacyMall: false })
+  assert.deepEqual((await request(admin, 'adminMall', 'getShopConfig')).data, { enabled: true, appid, hideLegacyMall: false })
   const local = await request(client, 'mall', 'listProducts')
   assert.equal(local.data.list[0]._id, 'local_1')
   assert.equal(db.state.mall_orders.length, 0)
 
-  assert.equal((await request(admin, 'adminMall', 'saveShopConfig', { enabled: false, appid })).ok, true)
-  assert.deepEqual((await request(guest, 'mall', 'getShopConfig')).data, { enabled: false, appid: '' })
+  assert.equal((await request(admin, 'adminMall', 'saveShopConfig', { enabled: true, appid, hideLegacyMall: true })).ok, true)
+  assert.deepEqual((await request(guest, 'mall', 'getShopConfig')).data, { enabled: true, appid, hideLegacyMall: true })
+  assert.deepEqual((await request(admin, 'adminMall', 'getShopConfig')).data, { enabled: true, appid, hideLegacyMall: true })
+
+  assert.equal((await request(admin, 'adminMall', 'saveShopConfig', { enabled: false, appid, hideLegacyMall: true })).ok, true)
+  assert.deepEqual((await request(guest, 'mall', 'getShopConfig')).data, { enabled: false, appid: '', hideLegacyMall: false })
+  assert.deepEqual((await request(admin, 'adminMall', 'getShopConfig')).data, { enabled: false, appid, hideLegacyMall: false })
   assert.equal(db.state.platform_configs.filter(row => row.key === 'wechat_shop').length, 1)
 })
 
@@ -85,7 +90,7 @@ test('saving WeChat shop config replaces legacy duplicate records', async () => 
   const saved = await admin.main({ module: 'adminMall', action: 'saveShopConfig', data: { enabled: true, appid } })
   assert.equal(saved.ok, true, saved.message)
   assert.deepEqual(db.state.platform_configs.filter(row => row.key === 'wechat_shop').map(row => row._id), ['wechat_shop'])
-  assert.deepEqual((await guest.main({ module: 'mall', action: 'getShopConfig' })).data, { enabled: true, appid })
+  assert.deepEqual((await guest.main({ module: 'mall', action: 'getShopConfig' })).data, { enabled: true, appid, hideLegacyMall: false })
 })
 
 test('mall supports product, cart, order, payment, shipping and receipt flow', async () => {

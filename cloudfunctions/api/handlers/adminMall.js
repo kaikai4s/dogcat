@@ -52,21 +52,26 @@ module.exports = function createHandler(context) {
     const admin = await requireAdmin(openid)
     if (action === 'getShopConfig') {
       const config = await readWechatShopConfig(db)
-      return { enabled: config.enabled === true, appid: safeText(config.appid).trim() }
+      return {
+        enabled: config.enabled === true,
+        appid: safeText(config.appid).trim(),
+        hideLegacyMall: config.enabled === true && config.hideLegacyMall === true
+      }
     }
     if (action === 'saveShopConfig') {
       const appid = safeText(data.appid).trim()
       const enabled = data.enabled === true
+      const hideLegacyMall = enabled && data.hideLegacyMall === true
       if (appid && !/^wx[a-zA-Z0-9]{16}$/.test(appid)) throw new Error('请输入有效的微信小店 ID')
       if (enabled && !appid) throw new Error('启用微信小店前请填写小店 ID')
-      const payload = { key: 'wechat_shop', appid, enabled, updatedAt: now() }
+      const payload = { key: 'wechat_shop', appid, enabled, hideLegacyMall, updatedAt: now() }
       await db.collection('platform_configs').doc(SHOP_CONFIG_ID).set({ data: payload })
       const legacy = await readAll('platform_configs', { key: 'wechat_shop' })
       for (const row of legacy) {
         if (row._id !== SHOP_CONFIG_ID) await db.collection('platform_configs').doc(row._id).remove()
       }
-      await logAdmin(admin, 'wechat_shop', appid, 'saveShopConfig', { appid, enabled })
-      return { appid, enabled }
+      await logAdmin(admin, 'wechat_shop', appid, 'saveShopConfig', { appid, enabled, hideLegacyMall })
+      return { appid, enabled, hideLegacyMall }
     }
     if (action === 'listCategories') {
       const res = await db.collection('mall_categories').get()

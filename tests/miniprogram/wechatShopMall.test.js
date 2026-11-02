@@ -8,17 +8,18 @@ const root = path.join(__dirname, '../../miniprogram/pages/client/mall/list')
 const appid = 'wx' + '1'.repeat(16)
 const flush = () => new Promise(resolve => setImmediate(resolve))
 
-function setup({ enabled = true, supported = true, platform = 'ios', failed = false } = {}) {
+function setup({ enabled = true, supported = true, platform = 'ios', failed = false, hideLegacyMall = false } = {}) {
   const calls = []
   let shopEnabled = enabled
   let shopFailed = failed
+  let shopHideLegacy = hideLegacyMall
   const wx = { canIUse: () => supported, getDeviceInfo: () => ({ platform }), stopPullDownRefresh: () => {} }
   const deps = {
     callFunction(module, action) {
       calls.push(`${module}.${action}`)
       if (action === 'getShopConfig') return shopFailed
         ? Promise.reject(new Error('网络错误'))
-        : Promise.resolve({ enabled: shopEnabled, appid: shopEnabled ? appid : '' })
+        : Promise.resolve({ enabled: shopEnabled, appid: shopEnabled ? appid : '', hideLegacyMall: shopHideLegacy })
       if (action === 'listCategories') return Promise.resolve([])
       if (action === 'listProducts') return Promise.resolve({ list: [], page: 1, hasMore: false, total: 0 })
       return Promise.resolve({})
@@ -34,7 +35,13 @@ function setup({ enabled = true, supported = true, platform = 'ios', failed = fa
     for (const [key, value] of Object.entries(data)) this.data[key] = value
     if (callback) callback.call(this)
   }
-  return { page, calls, setShopEnabled: value => { shopEnabled = value }, setShopFailed: value => { shopFailed = value } }
+  return {
+    page,
+    calls,
+    setShopEnabled: value => { shopEnabled = value },
+    setShopFailed: value => { shopFailed = value },
+    setHideLegacyMall: value => { shopHideLegacy = value }
+  }
 }
 
 test('enabled shop opens first without loading local inventory or checkout', async () => {
@@ -124,4 +131,23 @@ test('native shop component and local cart are rendered in mutually exclusive br
   assert.match(markup, /wx:if="\{\{shopPreviewMode\}\}"/)
   const styles = fs.readFileSync(path.join(root, 'index.wxss'), 'utf8')
   assert.doesNotMatch(styles, /\.wechat-shop-home\{[^}]*min-height/)
+  assert.match(markup, /wx:if="\{\{!shopConfig\.hideLegacyMall\}\}"/)
+  assert.match(markup, /shopConfig\.hideLegacyMall && !shopSupported/)
+})
+
+test('when hideLegacyMall is enabled, local mall is completely hidden and cannot be switched to', async () => {
+  const { page, calls } = setup({ enabled: true, hideLegacyMall: true })
+  page.onLoad()
+  await flush()
+  assert.equal(page.data.mallMode, 'shop')
+  assert.equal(page.data.shopConfig.hideLegacyMall, true)
+  assert.equal(calls.includes('mall.listProducts'), false)
+
+  page.switchMallMode({ currentTarget: { dataset: { mode: 'local' } } })
+  await flush()
+  assert.equal(page.data.mallMode, 'shop')
+  assert.equal(calls.includes('mall.listProducts'), false)
+
+  await page.onPullDownRefresh()
+  assert.equal(calls.includes('mall.listProducts'), false)
 })

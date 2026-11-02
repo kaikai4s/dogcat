@@ -57,8 +57,8 @@ module.exports = function createHandler(context) {
     if (action === 'getShopConfig') {
       const config = await readWechatShopConfig(db)
       return config.enabled === true && config.appid
-        ? { enabled: true, appid: config.appid }
-        : { enabled: false, appid: '' }
+        ? { enabled: true, appid: config.appid, hideLegacyMall: config.hideLegacyMall === true }
+        : { enabled: false, appid: '', hideLegacyMall: false }
     }
     if (action === 'listCategories') {
       const res = await db.collection('mall_categories').where({ enabled: true }).get()

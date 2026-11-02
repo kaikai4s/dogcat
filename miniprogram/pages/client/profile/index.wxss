@@ -1,3 +1,8 @@
+page {
+  height: 100%;
+  overflow: hidden;
+}
+
 /* Client profile: identity, assets, grouped menus and settings architecture */
 .profile-page,
 .profile-settings-page {

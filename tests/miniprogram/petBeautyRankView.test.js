@@ -17,7 +17,9 @@ function createPage({ storage = '', storageFails = false, respond = () => ({}) }
     getStorageSync() { if (storageFails) throw new Error('storage'); return storage },
     setStorageSync(key, value) { if (storageFails) throw new Error('storage'); storage = value },
     previewImage(options) { previews.push(options) },
-    showToast() {}
+    showToast() {},
+    showActionSheet(options) { options.success({ tapIndex: 0 }) },
+    showModal(options) { options.success({ confirm: true }) }
   }
   vm.runInNewContext(source, {
     Page(config) { page = config },
@@ -96,6 +98,29 @@ test('history search keeps actual ranks and snapshot photos; returning to curren
   await flush()
   assert.equal(page.data.locked, false)
   assert.equal(page.data.isHistory, false)
+})
+
+test('admin disqualification closes preview and refreshes candidates and rankings without errors', async () => {
+  const { page, calls, errors } = createPage({ storage: 'list', respond(action) {
+    if (action === 'getActivityHome') return { monthKey: '2026-11', candidates: [pet(2)], ranking: [pet(2)] }
+    if (action === 'listRanking') return { list: [pet(2)] }
+    return {}
+  } })
+  page.onLoad()
+  page.setData({ ranking: [pet(1), pet(2)], candidates: [pet(1), pet(2)], showPreviewModal: true, previewModalPet: pet(1) })
+  page.handleAdminDisqualify({ currentTarget: { dataset: { id: 'pet-1', name: '宠物1' } } })
+  await flush()
+  assert.deepEqual(JSON.parse(JSON.stringify(calls[0])), {
+    action: 'disqualifyPetBeautyCandidate',
+    data: { petId: 'pet-1', reason: 'AI 生成图片，非真实自养宠物' }
+  })
+  assert.deepEqual(calls.map((call) => call.action), ['disqualifyPetBeautyCandidate', 'getActivityHome', 'listRanking'])
+  assert.equal(page.data.showPreviewModal, false)
+  assert.equal(page.data.previewModalPet, null)
+  assert.deepEqual(Array.from(page.data.candidates, (item) => item.petId), ['pet-2'])
+  assert.deepEqual(Array.from(page.data.ranking, (item) => item.petId), ['pet-2'])
+  assert.equal(page.data.rankView, 'list')
+  assert.equal(errors.length, 0)
 })
 
 test('vote updates both views and refreshes server order without changing view preference', async () => {

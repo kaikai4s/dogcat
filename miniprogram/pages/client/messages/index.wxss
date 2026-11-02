@@ -2,9 +2,9 @@
 /* Client messages - Cute Pet Style UI redesign with custom immersive nav */
 page {
   width: 100%;
-  min-height: 100vh;
+  height: 100%;
+  overflow: hidden;
   background: linear-gradient(180deg, #ffe7cb 0%, #fff0de 260rpx, #fff5ea 520rpx, #fffaf4 800rpx, #f7f9fa 1100rpx, #f7f9fa 100%);
-  overflow-x: hidden;
 }
 
 .messages-page {

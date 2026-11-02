@@ -26,6 +26,14 @@
       <input value="{{shopConfig.appid}}" placeholder="wx 开头的微信小店 ID" bindinput="inputShopId" disabled="{{!(adminSuper || adminPermissions.adminMall_saveShopConfig)}}" />
       <view class="muted">在微信小店后台「店铺管理 → 基础信息 → 账号信息」查看。启用后商城优先展示小店。</view>
     </view>
+    <view class="shop-config-toggle">
+      <view class="shop-toggle-info">
+        <view class="form-label">关闭旧商城显示（只显示微信小店）</view>
+        <view class="muted">开启后隐藏平台自营旧商城与切换入口，用品商城仅展示微信小店。</view>
+      </view>
+      <switch wx:if="{{adminSuper || adminPermissions.adminMall_saveShopConfig}}" checked="{{shopConfig.hideLegacyMall}}" bindchange="switchHideLegacyMall" color="#207e6f" disabled="{{!shopConfig.enabled}}" />
+      <text wx:else class="muted">{{shopConfig.hideLegacyMall ? '已关闭旧商城' : '未关闭'}}</text>
+    </view>
     <button wx:if="{{adminSuper || adminPermissions.adminMall_saveShopConfig}}" class="shop-config-save" bindtap="saveShopConfig" loading="{{shopSaving}}" disabled="{{shopSaving}}">保存小店配置</button>
   </view>
 

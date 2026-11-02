@@ -1537,6 +1537,31 @@ button {
   font-size: 26rpx;
 }
 
+.shop-config-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+  margin-top: 24rpx;
+  padding-top: 20rpx;
+  border-top: 1rpx dashed #d6c9bf;
+}
+
+.shop-toggle-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.shop-toggle-info .form-label {
+  margin-bottom: 6rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+.shop-config-toggle switch {
+  flex-shrink: 0;
+}
+
 .shop-config-save {
   margin: 22rpx 0 0;
   padding: 0 28rpx;

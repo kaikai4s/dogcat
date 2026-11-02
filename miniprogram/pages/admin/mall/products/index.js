@@ -169,7 +169,7 @@ Page({
     pageSize: 10,
     hasMore: true,
     loading: false,
-    shopConfig: { enabled: false, appid: '' },
+    shopConfig: { enabled: false, appid: '', hideLegacyMall: false },
     shopSaving: false,
     uploadingImage: false,
     editingProduct: false,
@@ -205,7 +205,15 @@ Page({
       .catch(showError)
   },
   inputShopId(e) { this.setData({ 'shopConfig.appid': e.detail.value }) },
-  switchShop(e) { this.setData({ 'shopConfig.enabled': e.detail.value }) },
+  switchShop(e) {
+    const enabled = e.detail.value === true
+    const updates = { 'shopConfig.enabled': enabled }
+    if (!enabled) updates['shopConfig.hideLegacyMall'] = false
+    this.setData(updates)
+  },
+  switchHideLegacyMall(e) {
+    this.setData({ 'shopConfig.hideLegacyMall': e.detail.value === true })
+  },
   saveShopConfig() {
     if (this.data.shopSaving || !(this.data.adminSuper || (this.data.adminPermissions && this.data.adminPermissions.adminMall_saveShopConfig))) return
     this.setData({ shopSaving: true })

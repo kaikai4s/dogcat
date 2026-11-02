@@ -1,3 +1,8 @@
+page {
+  height: 100%;
+  overflow: hidden;
+}
+
 /* Sitters list cute pet redesign styles */
 .sitter-page {
   padding-top: 0;

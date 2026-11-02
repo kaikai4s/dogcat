@@ -1,3 +1,8 @@
+page {
+  height: 100%;
+  overflow: hidden;
+}
+
 /* Client order list: rebuilt status-driven order center */
 .order-list-page {
   width: 100%;
