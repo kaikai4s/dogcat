@@ -1,5 +1,5 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
-const { formatDateTime } = require('../../../../utils/format')
+const { formatDateTime, formatPromotionStatus } = require('../../../../utils/format')
 
 const tabs = [
   { label: '待审核', value: 'pending' },
@@ -12,6 +12,7 @@ function withDisplay(item) {
   return {
     ...item,
     createdAtText: formatDateTime(item.createdAt),
+    statusText: formatPromotionStatus(item.status),
     realName: profile.realName || '宠托师',
     phone: profile.phone || '',
     accountPhone: profile.accountPhone || profile.phone || '',

@@ -13,8 +13,8 @@ Page({
     try {
       const access = this.data.adminAccess
       this.names = {}
-      for (const branch of access?.tree || []) for (const leaf of branch.children) this.names[leaf.id] = `${branch.label} / ${leaf.label}`
-      if (access?.superAdmin || access?.permissions.includes('admin.listOperationActors')) {
+      for (const branch of access?.tree || []) for (const leaf of branch.children || []) this.names[leaf.id] = `${branch.label} / ${leaf.label}`
+      if (access?.superAdmin || access?.permissions?.includes('admin.listOperationActors')) {
         let cursor = '', actors = [{ label: '全部人员', openid: '' }]
         do {
           const result = await optionalAdminRead(this, 'admin', 'listOperationActors', { cursor }, { list: [], hasMore: false })
@@ -37,8 +37,10 @@ Page({
     this.setData({ loading: true })
     try {
       const result = await callFunction('admin', 'listOperationLogs', { page, actorOpenid: this.data.actorOpenid.trim(), status: this.data.status, action: this.data.action.trim() })
-      const rows = result.list.map(row => ({ ...row, timeText: formatDateTime(row.createdAt), resultText: statuses[row.status] || row.status,
-        actionText: this.names[row.permission] || `${row.module}.${row.action}`, targetText: Object.values(row.target || {}).join(' · ') }))
+      const rows = result.list.map(row => ({ ...row, timeText: formatDateTime(row.createdAt), resultText: statuses[row.status] || '操作结果未知',
+        actionText: (this.names || {})[row.permission || `${row.module}.${row.action}`] || '其他后台操作',
+        errorText: row.errorCode ? (row.errorCode === 'ADMIN_FORBIDDEN' ? '无权执行此操作' : '操作未完成，请核查处理结果') : '',
+        targetText: Object.values(row.target || {}).join(' · ') }))
       this.setData({ rows: reset ? rows : this.data.rows.concat(rows), page, hasMore: result.hasMore })
     } catch (error) { showError(error) } finally { this.setData({ loading: false }) }
   },

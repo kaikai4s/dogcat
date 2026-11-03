@@ -19,7 +19,7 @@ Page({
     } catch(error) {if(!this.closed&&token===this.loadToken)this.setData({error:error.message||'申请加载失败'})}
     finally {if(!this.closed&&token===this.loadToken)this.setData({loading:false})}
   },
-  decorate(rows=[]) {return rows.map((row)=>({...row,statusText:STATUS_TEXT[row.status]||row.status,timeText:formatDateTime(row.createdAt),canCancel:['draft','pending','processing'].includes(row.status)}))},
+  decorate(rows=[]) {return rows.map((row)=>({...row,statusText:STATUS_TEXT[row.status]||'申请状态待确认',timeText:formatDateTime(row.createdAt),canCancel:['draft','pending','processing'].includes(row.status)}))},
   async loadMore() {
     if(this.data.loading||!this.data.hasMore)return
     const token=this.loadToken

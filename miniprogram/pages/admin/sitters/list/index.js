@@ -12,6 +12,14 @@ const statusTabs = [
   { label: '零保证金·可移除', value: 'can_revoke' }
 ]
 
+function withdrawalHistoryStatus(history) {
+  const status = String(history.status || '').trim().toLowerCase()
+  if (history.payoutChannel === 'manual' && status === 'approved') return '待人工付款'
+  if (history.source === 'admin_manual_tail_settlement' && status === 'paid') return '已人工结清'
+  const labels = { pending: '审核中', approved: '待提交转账', transferring: '打款中', transfer_failed: '打款失败', rejected: '已驳回', paid: '已到账' }
+  return Object.prototype.hasOwnProperty.call(labels, status) ? labels[status] : '提现状态待核实'
+}
+
 function withDisplay(profile, selectedIds = []) {
   const reviewCount = Number(profile.reviewCount || 0)
   const depositBalance = profile.depositBalance != null ? Number(profile.depositBalance) : 0
@@ -31,9 +39,7 @@ function withDisplay(profile, selectedIds = []) {
     withdrawHistory: (profile.withdrawHistory || []).map((history) => ({
       ...history,
       amountText: `¥${Number(history.amount || 0).toFixed(2)}`,
-      statusText: history.payoutChannel === 'manual' && history.status === 'approved' ? '待人工付款'
-        : history.source === 'admin_manual_tail_settlement' && history.status === 'paid' ? '已人工结清'
-          : ({ pending: '审核中', approved: '已通过', transferring: '打款中', transfer_failed: '打款失败', rejected: '已驳回', paid: '已到账' })[history.status] || history.status || '处理中'
+      statusText: withdrawalHistoryStatus(history)
     })),
     featuredActionText: profile.isFeatured ? '取消精选' : '设为精选',
     commissionPercentText: profile.commissionRateOverride == null ? '沿用平台统一比例' : `个人提成 ${Math.round(Number(profile.commissionRateOverride) * 10000) / 100}%`,
@@ -608,7 +614,7 @@ Page({
         this.setData({ settlementProgress: `正在发起第 ${operation.batchIndex + 1} 笔转账，请勿关闭页面` })
         const result = await callFunction('admin', 'settleStaffEarningsByWechat', { ...operation, staffProfileId, confirmed: true })
         if (result.needsHandling) throw new Error(result.lastTransferError
-          ? `${result.lastTransferError}${result.lastTransferErrorCode ? `（${result.lastTransferErrorCode}）` : ''}`
+          ? result.lastTransferError
           : '该笔转账需要处理，请到财务管理查看或重试原单；不会重复创建转账')
         hasMore = result.hasMore
         operation.batchIndex += 1

@@ -340,7 +340,8 @@ test('a refused batch displays its actual error and stops before the next transf
   assert.equal(batches.length, 1)
   assert.equal(h.storage.size, 1)
   assert.equal([...h.storage.values()][0].batchIndex, 0)
-  assert.match(h.errors[0].message, /超过单笔转账上下限.*INVALID_REQUEST/)
+  assert.equal(h.errors[0].message, '超过单笔转账上下限')
+  assert.doesNotMatch(h.errors[0].message, /INVALID_REQUEST/)
   assert.ok(!h.modals.some(modal => modal.title === '结清转账已发起'))
 })
 

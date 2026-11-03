@@ -192,8 +192,8 @@
         <view class="timeline-item" wx:for="{{detail.timeline}}" wx:key="_id">
           <view class="timeline-dot"></view>
           <view class="timeline-content">
-            <view class="between"><view class="strong">{{item.title || item.type}}</view><view class="soft-badge">{{item.actorRoleText}}</view></view>
-            <view class="muted" wx:if="{{item.detail}}">{{item.detail}}</view>
+            <view class="between"><view class="strong">{{item.titleText}}</view><view class="soft-badge">{{item.actorRoleText}}</view></view>
+            <view class="muted" wx:if="{{item.detailText}}">{{item.detailText}}</view>
             <view class="muted small">{{beijingTime.format(item.createdAt)}}</view>
           </view>
         </view>

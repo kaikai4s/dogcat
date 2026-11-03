@@ -92,7 +92,7 @@ function buildPromotionOrder(item, index) {
     photoCount: checkins.filter(c => c.eventType === r.eventType && c.photoUrl).length
   }))
   const pets = (order.petSnapshots && order.petSnapshots.length ? order.petSnapshots : [order.petSnapshot].filter(Boolean))
-    .map(p => ({ ...p, detailText: [({ cat: '猫', dog: '犬' })[p.species] || p.species, p.breed, ({ male: '公', female: '母' })[p.gender] || p.gender, p.weight ? `${p.weight} kg` : ''].filter(Boolean).join(' · ') }))
+    .map(p => ({ ...p, detailText: [({ cat: '猫', dog: '犬' })[p.species] || (p.species ? '其他宠物' : ''), p.breed, ({ male: '公', female: '母', unknown: '性别未知' })[p.gender] || (p.gender ? '性别未知' : ''), p.weight ? `${p.weight} kg` : ''].filter(Boolean).join(' · ') }))
   const sessions = (order.serviceSessions || []).map((s, i) => {
     const start = timeValue(s.startedAt), finish = timeValue(s.finishedAt)
     return { ...s, index: s.index || i + 1, statusText: formatOrderStatus(s.status), actualDurationText: start && finish >= start ? `${Math.round((finish - start) / 60000)} 分钟` : '未完整记录' }

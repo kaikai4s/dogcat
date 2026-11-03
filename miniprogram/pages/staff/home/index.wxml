@@ -280,7 +280,7 @@
           <view class="bundle-suborder-row" wx:for="{{item.subOrders}}" wx:for-item="sub" wx:key="orderId">
             <text class="bundle-sub-tag">住户{{sub.householdIndex}}</text>
             <text class="bundle-sub-pet">{{sub.petName}}</text>
-            <text class="bundle-sub-service">{{sub.serviceSummary || sub.serviceType}}</text>
+            <text class="bundle-sub-service">{{sub.serviceSummary || '上门宠护'}}</text>
             <text class="bundle-sub-earning">{{sub.staffEarningText}}</text>
           </view>
         </view>

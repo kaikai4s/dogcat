@@ -4,6 +4,11 @@ const { placedBuildings, isPublicBuilding } = require('../utils/plot-buildings')
 const { SceneSync } = require('../utils/scene-sync')
 const lifePage = require('../utils/life-page')
 const { decorateListing } = require('../utils/community-group-buy')
+const { formatServiceTypes } = require('../../utils/format')
+
+function withServiceText(service) {
+  return service ? { ...service, serviceTypeText: service.serviceSummary || formatServiceTypes(service.serviceType) } : null
+}
 
 Page({
   ...lifePage,
@@ -235,7 +240,7 @@ Page({
           .then((overview) => {
             if (!this.visible || version !== this.version) return
             this.setData({
-              activeService: overview.activeService || null,
+              activeService: withServiceText(overview.activeService),
               hasCommunity: Boolean(overview.hasCommunity),
               communityName:
                 (overview.userCommunity && overview.userCommunity.name) || '',
@@ -1673,9 +1678,10 @@ Page({
     this.setData({ serviceDiaryLoading: true })
     try {
       const res = await callFunction('playground', 'getServiceTwinInfo')
+      const activeOrder = withServiceText(res && res.activeOrder)
       this.setData({
-        serviceDiary: res || null,
-        activeService: (res && res.activeOrder) || this.data.activeService || null,
+        serviceDiary: res ? { ...res, activeOrder } : null,
+        activeService: activeOrder || this.data.activeService || null,
         hasServiceDiary: Boolean(res && res.latestCheckins && res.latestCheckins.length > 0)
       })
       if (res && res.bowlAutoRefilled && this.world && !this.world.destroyed) {

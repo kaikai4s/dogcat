@@ -292,7 +292,8 @@ module.exports = function createHandler(context) {
           activeOrder = {
             id: order._id,
             orderNo: order.orderNo,
-            serviceType: order.serviceSummary || order.serviceType || '上门照料',
+            serviceType: order.serviceType || '',
+            serviceSummary: order.serviceSummary || '',
             staffName: (order.staffSnapshot && (order.staffSnapshot.name || order.staffSnapshot.nickname)) || '认证宠托师',
             staffAvatar: (order.staffSnapshot && order.staffSnapshot.avatarUrl) || '',
             staffPhone: (order.staffSnapshot && order.staffSnapshot.phone) || '',
@@ -547,7 +548,8 @@ module.exports = function createHandler(context) {
         activeService = {
           orderId: aOrder._id,
           orderNo: aOrder.orderNo,
-          serviceType: aOrder.serviceSummary || aOrder.serviceType || '上门照料',
+          serviceType: aOrder.serviceType || '',
+          serviceSummary: aOrder.serviceSummary || '',
           staffName: (aOrder.staffSnapshot && (aOrder.staffSnapshot.name || aOrder.staffSnapshot.nickname)) || '认证宠托师'
         }
       }

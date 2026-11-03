@@ -43,6 +43,7 @@ Page({
     statusOptions,
     roleOptions: decorateRoleOptions(roleOptions, ['client']),
     statusIndex: 0,
+    statusText: '正常',
     statsRows: []
   },
 
@@ -74,6 +75,7 @@ Page({
             roles
           },
           statusIndex,
+          statusText: ({ active: '正常', disabled: '已禁用', deleted: '已删除' })[user.status] || '账号状态未知',
           roleOptions: decorateRoleOptions(roleOptions, roles),
           statsRows: this.buildStatsRows(user.stats || {}),
           loading: false
@@ -110,7 +112,7 @@ Page({
   changeStatus(e) {
     const index = Number(e.detail.value || 0)
     const option = statusOptions[index] || statusOptions[0]
-    this.setData({ statusIndex: index, 'form.status': option.value })
+    this.setData({ statusIndex: index, statusText: option.label, 'form.status': option.value })
   },
 
   changeRoles(e) {

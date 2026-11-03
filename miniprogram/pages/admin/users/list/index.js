@@ -10,6 +10,8 @@ const roleTabs = [
 function withDisplay(user) {
   return {
     ...user,
+    statusText: ({ active: '正常', disabled: '已禁用', deleted: '已删除' })[user.status] || '账号状态未知',
+    roleTexts: (user.roles || []).map(role => ({ client: '用户', staff: '宠托师', admin: '管理员' })[role] || '未知角色'),
     avatarText: (user.nickname || '用').slice(0, 1)
   }
 }

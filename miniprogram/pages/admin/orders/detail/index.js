@@ -1,7 +1,7 @@
 const { optionalAdminRead } = require('../../utils/admin-page-read')
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
-const { withOrderText } = require('../../../../utils/format')
+const { withOrderText, formatCheckinEvent } = require('../../../../utils/format')
 const { copyText } = require('../../../../utils/clipboard')
 
 const SERVICE_ORDER_STATUS_OPTIONS = [
@@ -67,6 +67,28 @@ const ACTOR_ROLE_LABELS = {
   system: '系统'
 }
 
+const TIMELINE_TYPE_LABELS = {
+  created: '订单已创建', paid: '订单已支付', assigned: '订单已接单/派单',
+  on_the_way: '宠托师已出发', started: '服务已开始', completed: '服务已完成',
+  day_completed: '当天服务已完成', cancelled: '订单已取消', expired: '订单已过期',
+  checkin: '服务打卡', coupon_locked: '已使用优惠券', reviewed: '宠物主已评价',
+  early_start_requested: '申请提前开始服务', early_start_approved: '已同意提前开始', early_start_rejected: '已拒绝提前开始',
+  radar_approaching: '宠托师临近到家提醒', status_changed: '管理员修改订单状态',
+  admin_manual_completed: '管理员核实完成服务', system_auto_completed: '系统自动完成服务', system_auto_day_completed: '系统自动完成当天服务',
+  refund: '管理员发起退款', refund_processing: '退款处理中', refunded: '退款已完成',
+  incident_open: '发起异常工单', incident_resolution: '平台提出处理方案',
+  republished_open: '指定单转公开派单', urgent_republished: '订单重新发布加急抢单',
+  overdue_unstarted_warning: '服务超时未开始催促', overdue_unstarted_alert: '服务严重超时异常预警',
+  finish_overdue_incident: '服务严重超时未结束告警', overdue_finish_reminder: '服务超时未结束催促',
+  upcoming_service_reminder: '即将开始服务提醒'
+}
+
+const UNLOCK_ACTION_LABELS = {
+  view: '查看门锁密码', view_code: '查看门锁密码', copy: '复制门锁密码', copy_code: '复制门锁密码',
+  unlock: '使用门锁密码', remote_unlock_requested: '请求远程开门',
+  destroyed: '门锁密码已销毁', rate_limited: '门锁密码访问受限', success: '已查看门锁密码', denied: '门锁密码访问被拒绝', forbidden: '无权查看门锁密码'
+}
+
 function normalizeList(list) {
   return Array.isArray(list) ? list : []
 }
@@ -74,7 +96,9 @@ function normalizeList(list) {
 function decorateTimeline(list, order = {}) {
   const rows = normalizeList(list).map((item) => ({
     ...item,
-    actorRoleText: ACTOR_ROLE_LABELS[item.actorRole] || item.actorRole || '系统'
+    titleText: (item.title && item.title !== item.type ? item.title : '') || TIMELINE_TYPE_LABELS[item.type] || '订单动态',
+    detailText: item.type === 'checkin' && /^[a-z][a-z0-9_]*$/.test(item.detail || '') ? formatCheckinEvent(item.detail) : item.detail,
+    actorRoleText: ACTOR_ROLE_LABELS[item.actorRole] || (item.actorRole ? '未知角色' : '系统')
   }))
   const existingTypes = rows.reduce((set, item) => {
     if (item.type) set[item.type] = true
@@ -82,7 +106,7 @@ function decorateTimeline(list, order = {}) {
   }, {})
   const addFallback = (type, title, time, detail, actorRole = 'system') => {
     if (!time || existingTypes[type]) return
-    rows.push({ _id: `fallback_${type}`, type, title, detail: detail || '', actorRole, actorRoleText: ACTOR_ROLE_LABELS[actorRole] || actorRole, createdAt: time })
+    rows.push({ _id: `fallback_${type}`, type, title, titleText: title, detail: detail || '', detailText: detail || '', actorRole, actorRoleText: ACTOR_ROLE_LABELS[actorRole] || '未知角色', createdAt: time })
   }
   addFallback('created', '订单已创建', order.createdAt, order.serviceSummary, 'client')
   addFallback('paid', '订单已支付', order.paidAt, order.paymentNo ? `支付单号：${order.paymentNo}` : '', 'client')
@@ -104,7 +128,7 @@ function decorateCheckins(list) {
       .filter((url, index, arr) => url && arr.indexOf(url) === index)
     return {
       ...item,
-      eventTypeText: item.eventTypeName || CHECKIN_EVENT_LABELS[item.eventType] || item.eventType || '服务打卡',
+      eventTypeText: (item.eventTypeName && item.eventTypeName !== item.eventType ? item.eventTypeName : '') || CHECKIN_EVENT_LABELS[item.eventType] || formatCheckinEvent(item.eventType) || '服务打卡',
       mediaUrls,
       locationText: (Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude))) ? `${Number(item.latitude).toFixed(6)}, ${Number(item.longitude).toFixed(6)}` : '',
       distanceText: item.distanceKm !== null && item.distanceKm !== undefined ? `${item.distanceKm}km` : ''
@@ -125,8 +149,8 @@ function decorateTracks(list) {
 function decorateUnlockLogs(list) {
   return normalizeList(list).map((item) => ({
     ...item,
-    actorRoleText: ACTOR_ROLE_LABELS[item.actorRole] || item.actorRole || '访问记录',
-    actionText: item.actionText || item.action || item.eventType || '查看/使用门锁密码'
+    actorRoleText: ACTOR_ROLE_LABELS[item.actorRole || item.actor] || (item.actorRole || item.actor ? '未知角色' : '访问记录'),
+    actionText: (item.actionText && item.actionText !== item.action && item.actionText !== item.eventType ? item.actionText : '') || UNLOCK_ACTION_LABELS[item.action || item.eventType || item.result] || '门锁密码访问记录'
   }))
 }
 

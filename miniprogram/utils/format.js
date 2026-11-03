@@ -81,6 +81,24 @@ const incidentStatusText = {
   closed: '已关闭'
 }
 
+const pointSourceText = {
+  playground_report: '环境反馈',
+  playground_resolve: '纠纷处理',
+  playground_weekly: '每周处理奖励',
+  playground_wash: '洗车服务',
+  playground_care: '每日关爱照料',
+  order_complete: '完成订单',
+  order_review: '评价订单',
+  admin_grant: '管理员操作',
+  checkin_daily: '每日签到',
+  reward_mail: '奖励邮箱',
+  lottery_reward: '抽奖奖励',
+  pet_title_duplicate: '重复头衔补偿'
+}
+
+const actorRoleText = { admin: '后台', staff: '宠托师', client: '宠物主', system: '系统' }
+const incidentResolutionTypeText = { refund: '部分退款', coupon: '优惠补偿', explain: '解释说明', reject: '驳回诉求' }
+
 const checkinEventText = {
   sanitization: '隔离病菌/消毒打卡',
   enter_door: '入户打卡',
@@ -201,6 +219,21 @@ function formatPromotionStatus(status) {
 function formatIncidentStatus(status) {
   const normalized = String(status || '').toLowerCase().trim()
   return incidentStatusText[normalized] || (normalized ? '处理中' : '')
+}
+
+function formatPointSource(sourceType) {
+  const normalized = String(sourceType || '').toLowerCase().trim()
+  return Object.prototype.hasOwnProperty.call(pointSourceText, normalized) ? pointSourceText[normalized] : '其他积分变动'
+}
+
+function formatActorRole(role) {
+  const normalized = String(role || '').toLowerCase().trim()
+  return Object.prototype.hasOwnProperty.call(actorRoleText, normalized) ? actorRoleText[normalized] : '其他人员'
+}
+
+function formatIncidentResolutionType(type) {
+  const normalized = String(type || '').toLowerCase().trim()
+  return Object.prototype.hasOwnProperty.call(incidentResolutionTypeText, normalized) ? incidentResolutionTypeText[normalized] : '处理结果'
 }
 
 function formatCheckinEvent(eventType) {
@@ -396,7 +429,7 @@ function withIncidentActionText(item) {
   if (detail.couponTemplateId) detailParts.push('优惠券补偿')
   if (detail.closeRemark) detailParts.push(detail.closeRemark)
   if (detail.remark) detailParts.push(detail.remark)
-  return { ...item, actionText: formatIncidentAction(item.action), actorRoleText: ({ admin: '后台', staff: '宠托师', client: '宠物主', system: '系统' })[item.actorRole] || item.actorRole || '', detailText: detailParts.join(' · ') }
+  return { ...item, actionText: formatIncidentAction(item.action), actorRoleText: formatActorRole(item.actorRole), detailText: detailParts.join(' · ') }
 }
 
 function withCheckinText(item) {
@@ -415,6 +448,12 @@ const HIGH_RISK_TAGS = ['护食', '需短牵', '爆冲', '怕噪音', '需喂药
 function normalizeServiceTypes(serviceTypes) {
   if (Array.isArray(serviceTypes)) return serviceTypes.map((item) => String(item || '').trim()).filter(Boolean)
   return String(serviceTypes || '').split(',').map((item) => item.trim()).filter(Boolean)
+}
+
+function formatServiceTypes(serviceTypes) {
+  const labels = { walk: '遛狗服务', feed: '喂养服务', litter: '清理宠物厕所', play: '陪伴玩耍', medicine: '喂药协助', clean: '简单清洁' }
+  const types = normalizeServiceTypes(serviceTypes)
+  return types.map(type => Object.prototype.hasOwnProperty.call(labels, type) ? labels[type] : '其他服务').join('、') || '上门宠护'
 }
 
 function hasWalkService(serviceTypes) {
@@ -511,6 +550,10 @@ module.exports = {
   formatVideoAuditStatus,
   formatPromotionStatus,
   formatIncidentStatus,
+  formatPointSource,
+  formatActorRole,
+  formatIncidentResolutionType,
+  formatServiceTypes,
   formatCheckinEvent,
   formatAssignmentSource,
   formatIncidentType,

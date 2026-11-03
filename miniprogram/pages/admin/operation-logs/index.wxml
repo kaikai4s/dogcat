@@ -8,7 +8,7 @@
     <view class="row"><text class="strong">{{item.actorName || '未设置昵称'}}</text><text class="result {{item.status}}">{{item.resultText}}</text></view>
     <view class="muted">{{item.actorOpenid}}</view><view>{{item.actionText}}</view>
     <view class="muted" wx:if="{{item.targetText}}">对象：{{item.targetText}}</view>
-    <view class="muted">{{item.timeText}}</view><view class="muted" wx:if="{{item.errorCode}}">{{item.errorCode}}</view>
+    <view class="muted">{{item.timeText}}</view><view class="muted" wx:if="{{item.errorText}}">{{item.errorText}}</view>
   </view>
   <view class="empty">{{loading ? '加载中' : (!rows.length ? '暂无操作记录' : (hasMore ? '上滑加载更多' : '已显示全部'))}}</view>
 </view>

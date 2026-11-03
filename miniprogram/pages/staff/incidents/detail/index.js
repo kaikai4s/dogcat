@@ -1,7 +1,7 @@
 const { uploadImage } = require('../../../../utils/image-upload')
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
-const { withIncidentText } = require('../../../../utils/format')
+const { withIncidentText, formatIncidentResolutionType, formatActorRole } = require('../../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
 function uploadEvidence(filePath) {
@@ -20,8 +20,8 @@ function decorate(detail = {}) {
   const incident = detail.incident || {}
   return {
     ...detail,
-    incident: withIncidentText({ ...incident, mediaFileIds: Array.isArray(incident.mediaFileIds) ? incident.mediaFileIds : [] }),
-    comments: (detail.comments || []).map((item) => ({ ...item, mediaFileIds: Array.isArray(item.mediaFileIds) ? item.mediaFileIds : [] }))
+    incident: withIncidentText({ ...incident, resolutionTypeText: formatIncidentResolutionType(incident.resolution && incident.resolution.type), mediaFileIds: Array.isArray(incident.mediaFileIds) ? incident.mediaFileIds : [] }),
+    comments: (detail.comments || []).map((item) => ({ ...item, actorRoleText: formatActorRole(item.actorRole), mediaFileIds: Array.isArray(item.mediaFileIds) ? item.mediaFileIds : [] }))
   }
 }
 

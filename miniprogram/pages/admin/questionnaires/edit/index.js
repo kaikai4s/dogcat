@@ -54,7 +54,7 @@ function toForm(item) {
     couponTemplateId: reward.couponTemplateId || '',
     questions: (item.questions || []).map(q => ({
       ...q,
-      typeName: TYPE_MAP[q.type] || q.type || '单选',
+      typeName: TYPE_MAP[q.type] || '未知题型',
       optionsText: (q.options || []).join('\n')
     }))
   }
@@ -160,7 +160,7 @@ Page({
     const type = this.data.typeValues[Number(e.detail.value || 0)]
     this.setData({
       [`form.questions[${index}].type`]: type,
-      [`form.questions[${index}].typeName`]: TYPE_MAP[type] || type
+      [`form.questions[${index}].typeName`]: TYPE_MAP[type] || '未知题型'
     })
   },
 
@@ -169,7 +169,7 @@ Page({
     const type = e.currentTarget.dataset.type
     this.setData({
       [`form.questions[${index}].type`]: type,
-      [`form.questions[${index}].typeName`]: TYPE_MAP[type] || type
+      [`form.questions[${index}].typeName`]: TYPE_MAP[type] || '未知题型'
     })
   },
 

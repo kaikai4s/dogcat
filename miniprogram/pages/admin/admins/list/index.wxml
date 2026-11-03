@@ -38,7 +38,7 @@
             <text class="{{item.nameEffect && item.nameEffect !== 'none' ? 'name-effect-' + item.nameEffect : ''}}" style="{{item.nameColor ? 'color: ' + item.nameColor + ';' : ''}}">{{item.nickname}}</text>
             <text class="member-badge badge-{{item.badgeStyle || 'gold'}}" wx:if="{{item.badgeTag || item.memberLevelName}}">{{item.badgeTag || item.memberLevelName}}</text>
           </view>
-          <view class="badge">{{item.status}}</view>
+          <view class="badge">{{item.statusText}}</view>
         </view>
         <view class="muted openid-text">{{item.openid}}</view>
         <view class="muted">{{item.phone || '未填写手机号'}}</view>

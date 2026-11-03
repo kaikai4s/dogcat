@@ -68,12 +68,12 @@
 
   <view class="admin-card" wx:if="{{detail.incident.resolution}}">
     <view class="card-subtitle"><text class="remix-icon ri-lightbulb-flash-line sub-icon"></text><text>当前方案</text></view>
-    <view class="strong">{{detail.incident.resolution.type}}</view><view class="muted">{{detail.incident.resolution.content}}</view><view class="price" wx:if="{{detail.incident.resolution.refundAmount}}">¥{{detail.incident.resolution.refundAmount}}</view><view class="muted" wx:if="{{detail.incident.resolution.couponId}}">补偿券：{{detail.incident.resolution.couponId}}</view>
+    <view class="strong">{{detail.incident.resolutionTypeText}}</view><view class="muted">{{detail.incident.resolution.content}}</view><view class="price" wx:if="{{detail.incident.resolution.refundAmount}}">¥{{detail.incident.resolution.refundAmount}}</view><view class="muted" wx:if="{{detail.incident.resolution.couponId}}">补偿券：{{detail.incident.resolution.couponId}}</view>
   </view>
 
   <view class="admin-card" wx:if="{{detail.comments.length}}">
     <view class="card-subtitle"><text class="remix-icon ri-chat-3-line sub-icon"></text><text>沟通记录</text></view>
-    <view class="timeline"><view class="timeline-item" wx:for="{{detail.comments}}" wx:key="_id"><view class="strong">{{item.actorRole}}</view><view class="muted">{{item.content}}</view><view class="evidence-grid" wx:if="{{item.mediaFileIds.length}}"><image class="evidence-image" wx:for="{{item.mediaFileIds}}" wx:key="*this" src="{{item}}" mode="aspectFill" /></view><view class="muted">{{beijingTime.format(item.createdAt)}}</view></view></view>
+    <view class="timeline"><view class="timeline-item" wx:for="{{detail.comments}}" wx:key="_id"><view class="strong">{{item.actorRoleText}}</view><view class="muted">{{item.content}}</view><view class="evidence-grid" wx:if="{{item.mediaFileIds.length}}"><image class="evidence-image" wx:for="{{item.mediaFileIds}}" wx:key="*this" src="{{item}}" mode="aspectFill" /></view><view class="muted">{{beijingTime.format(item.createdAt)}}</view></view></view>
   </view>
 
   <view class="admin-card" wx:if="{{detail.actions.length}}">

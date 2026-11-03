@@ -1,7 +1,7 @@
 const { optionalAdminRead } = require('../../utils/admin-page-read')
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
-const { withIncidentText, withIncidentActionText } = require('../../../../utils/format')
+const { withIncidentText, withIncidentActionText, formatIncidentResolutionType, formatActorRole } = require('../../../../utils/format')
 
 const statusOptions = [
   { label: '待处理', value: 'open' },
@@ -35,10 +35,11 @@ function decorate(detail = {}) {
     ...detail,
     incident: withIncidentText({
       ...incident,
+      resolutionTypeText: formatIncidentResolutionType(incident.resolution && incident.resolution.type),
       mediaFileIds: Array.isArray(incident.mediaFileIds) ? incident.mediaFileIds : [],
       frozenEarningIds: Array.isArray(incident.frozenEarningIds) ? incident.frozenEarningIds : []
     }),
-    comments: (detail.comments || []).map((item) => ({ ...item, mediaFileIds: Array.isArray(item.mediaFileIds) ? item.mediaFileIds : [] })),
+    comments: (detail.comments || []).map((item) => ({ ...item, actorRoleText: formatActorRole(item.actorRole), mediaFileIds: Array.isArray(item.mediaFileIds) ? item.mediaFileIds : [] })),
     actions: (detail.actions || []).map(withIncidentActionText)
   }
 }

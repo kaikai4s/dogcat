@@ -3,7 +3,7 @@ const { optionalAdminRead } = require('../utils/admin-page-read')
 const { uploadImage } = require('../../../utils/image-upload')
 const { callFunction, showError } = require('../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../utils/nav')
-const { toBeijingDate } = require('../../../utils/format')
+const { toBeijingDate, formatPaymentStatus, formatRefundStatus } = require('../../../utils/format')
 
 function money(value) {
   return Number(value || 0).toFixed(2)
@@ -38,13 +38,71 @@ const wechatTransferStateText = {
   TRANSFERING: '微信转账中', SUCCESS: '已到账', FAIL: '微信转账失败', CANCELING: '微信撤销中', CANCELLED: '微信已撤销'
 }
 
+const earningStatusText = {
+  pending: '待结算', available: '可提现', withdrawing: '提现中', withdrawn: '已提现',
+  frozen: '已冻结', deducted: '已扣减', refunded_void: '退款已作废', mock_settled: '模拟收益（不可提现）'
+}
+const depositStatusText = {
+  unpaid: '待支付', paid: '已缴纳', partially_refunded: '部分已退还', refund_requested: '退款审核中',
+  refund_pending: '退款审核中', refund_approved: '审核通过，待实际退款', refunding: '原路退款处理中',
+  refunded: '已退还', forfeited: '已全额没收', superseded: '已失效', supplement_required: '待补缴'
+}
+const supplyStatusText = { pending: '待审核', approved: '审核通过，等待打款', rejected: '审核驳回', paid: '已人工确认打款' }
+const financeActionText = {
+  order_paid: '订单支付', mall_order_paid: '商城订单支付', refund_success: '退款成功',
+  withdraw_requested: '申请提现', withdraw_approved: '提现审核通过', withdraw_rejected: '提现已驳回',
+  withdraw_paid: '提现已到账', withdraw_transfer_failed: '提现转账失败', withdraw_released: '提现已退回余额',
+  withdraw_rejected_for_refund: '订单退款撤销提现', admin_staff_settlement: '管理员结清宠托师收益',
+  user_withdraw_approved: '用户提现审核通过', user_withdraw_rejected: '用户提现已驳回',
+  user_withdraw_paid: '用户提现已到账', user_withdraw_released: '用户提现已退回余额',
+  staff_earning_created: '生成宠托师收益', staff_earning_mock_created: '生成模拟收益',
+  staff_earning_frozen: '冻结宠托师收益', staff_earning_release: '解除收益冻结',
+  staff_earning_deduct: '扣减宠托师收益', staff_earning_keep_frozen: '继续冻结收益',
+  staff_earning_voided: '退款作废收益', staff_earning_partially_refunded: '退款扣减部分收益',
+  staff_earning_withdrawn_debt: '退款记录已提现收益欠款', deposit_paid: '保证金已缴纳',
+  deposit_forfeited: '没收保证金', deposit_refunded: '保证金已退还',
+  staff_supply_fee: '结算首次用品费用', supply_reimbursement_paid: '用品报销已打款'
+}
+const financeTargetText = {
+  order: '服务订单', mall_order: '商城订单', refund: '退款单', withdraw_request: '提现申请',
+  user_asset_withdrawal: '用户收益提现', staff_earning: '宠托师收益', staff_profile: '宠托师资料',
+  incident: '订单纠纷', staff_deposit: '宠托师保证金', staff_supply_reimbursement: '用品报销'
+}
+const normalizeCode = value => String(value || '').trim().toLowerCase()
+function enumText(labels, value, fallback) {
+  const code = normalizeCode(value)
+  return Object.prototype.hasOwnProperty.call(labels, code) ? labels[code] : fallback
+}
+
+function withdrawalStatus(item) {
+  const status = normalizeCode(item.status)
+  if (item.payoutChannel !== 'wechat_wallet' && status === 'approved') return '待人工付款'
+  if (item.source === 'admin_manual_tail_settlement' && status === 'paid') return '已人工结清'
+  return enumText(withdrawStatusText, status, '提现状态待核实')
+}
+
+function decorateFinanceRecord(item, field) {
+  if (field === 'requests') return decorate(item)
+  if (field === 'logs') return {
+    ...item,
+    actionText: enumText(financeActionText, item.action, '财务操作待核实'),
+    targetTypeText: enumText(financeTargetText, item.targetType, '财务对象待核实')
+  }
+  const status = normalizeCode(item.status)
+  const statusText = field === 'payments'
+    ? formatPaymentStatus(({ success: 'paid', pending: 'unpaid', superseded: 'closed' })[status] || status) || '支付状态待核实'
+    : field === 'refunds' ? formatRefundStatus(status) || '退款状态待核实'
+      : enumText(earningStatusText, status, '收益状态待核实')
+  return { ...item, amountText: money(item.amount), statusText,
+    channelText: enumText({ wechat: '微信支付', mock: '模拟支付' }, item.channel, '支付渠道待核实') }
+}
+
 function decorate(item) {
-  const status = String(item.status || '').toLowerCase()
-  const transferStatus = String(item.transferStatus || '').toLowerCase()
+  const status = normalizeCode(item.status)
+  const transferStatus = normalizeCode(item.transferStatus)
   const isWechatWallet = item.payoutChannel === 'wechat_wallet'
   const wechatState = String(item.wechatTransferState || '').toUpperCase()
   const belowWechatMinimum = isWechatWallet && Number(item.amount) > 0 && Number(item.amount) < 0.10
-  const manualTail = item.source === 'admin_manual_tail_settlement'
   // Older withdrawal records may not have recipientOpenid persisted yet. The
   // staff/user owner fields are the same verified openid used for the transfer.
   const recipientOpenid = item.recipientOpenid || item.staffOpenid || item.userOpenid || item.openid || ''
@@ -52,11 +110,11 @@ function decorate(item) {
     ...item,
     recipientOpenid,
     amountText: money(item.amount),
-    statusText: !isWechatWallet && status === 'approved' ? '待人工付款'
-      : manualTail && status === 'paid' ? '已人工结清' : withdrawStatusText[status] || item.status,
+    statusText: withdrawalStatus(item),
     transferStatusText: status === 'rejected' && transferStatus === 'released' ? '已退回余额'
       : transferStatus === 'unknown' ? '待查询确认'
-        : wechatTransferStateText[wechatState] || (transferStatus === 'not_started' ? '未开始' : transferStatus === 'submitting' ? '提交中' : transferStatus === 'processing' ? '处理中' : transferStatus === 'success' ? '成功' : transferStatus === 'failed' ? '失败' : transferStatus),
+        : wechatState ? (Object.prototype.hasOwnProperty.call(wechatTransferStateText, wechatState) ? wechatTransferStateText[wechatState] : '微信转账状态待核实')
+          : enumText({ not_started: '未开始', submitting: '提交中', processing: '处理中', success: '成功', failed: '失败', released: '已释放' }, transferStatus, '转账状态待核实'),
     belowWechatMinimum,
     canReturnSmallTransfer: belowWechatMinimum && ['approved', 'transferring', 'transfer_failed'].includes(status),
     canRecoverTransfer: isWechatWallet && !belowWechatMinimum && status === 'transferring' && (transferStatus === 'unknown' || ['NOT_FOUND', 'RESOURCE_NOT_EXISTS'].includes(item.lastTransferErrorCode)),
@@ -65,9 +123,7 @@ function decorate(item) {
     withdrawHistory: (item.withdrawHistory || []).map((history) => ({
       ...history,
       amountText: money(history.amount),
-      statusText: history.payoutChannel === 'manual' && history.status === 'approved' ? '待人工付款'
-        : history.source === 'admin_manual_tail_settlement' && history.status === 'paid' ? '已人工结清'
-          : withdrawStatusText[String(history.status || '').toLowerCase()] || history.status || '处理中'
+      statusText: withdrawalStatus(history)
     })),
     isWechatWallet,
     actionLoading: false
@@ -100,8 +156,19 @@ function parseAmount(value) {
   return amount
 }
 
-function decorateStaffFinance(item) {
-  const result = { ...item, id: item._id || item.id }
+function decorateStaffFinance(item, domain = 'deposits') {
+  const status = normalizeCode(item.status)
+  let statusText = enumText(domain === 'supplies' ? supplyStatusText : depositStatusText, status,
+    domain === 'supplies' ? '报销状态待核实' : '保证金状态待核实')
+  if (domain === 'supplies' && item.benefitType === 'supply_fee_waiver' && status === 'approved') statusText = '用品费用减免已通过'
+  if (domain === 'deposits') {
+    if (status === 'refund_approved' && item.refundChannel === 'manual') statusText = '审核通过，待人工退款'
+    if (['paid', 'partially_refunded'].includes(status)) {
+      if (item.refundStatus === 'rejected') statusText = '退款已驳回'
+      else if (Number(item.forfeitedAmount) > 0) statusText = `部分没收（余¥${money(item.availableRefundAmount)}）`
+    }
+  }
+  const result = { ...item, id: item._id || item.id, statusText }
   result.refundAcceptanceUnconfirmed = !!item.refundNo && item.refundStatus !== 'success' && !item.wechatRefundId
   if (result.refundAcceptanceUnconfirmed) result.statusText = '退款受理待核实'
   ;['amount', 'paidAmount', 'refundedAmount', 'forfeitedAmount', 'supplyFeeAmount', 'supplyFeeDeductedAmount', 'availableRefundAmount', 'approvedRefundAmount', 'approvedAmount'].forEach((key) => {
@@ -261,7 +328,7 @@ Page({
         if (field === 'dashboard') this.setData({ dashboard: result, metricCards: result ? metricCards(result.metrics) : [] })
         else {
           const appliedKeyword = this.data.appliedKeyword
-          const rawList = field === 'logs' ? (result || []) : (result || []).map(decorate)
+          const rawList = (result || []).map(item => decorateFinanceRecord(item, field))
           const filtered = appliedKeyword ? rawList.filter((item) => matchClientKeyword(item, appliedKeyword)) : rawList
           this.setData({ [field]: filtered })
         }
@@ -318,7 +385,7 @@ Page({
     callFunction('admin', action, { id, approved, auditRemark: approved ? '审核通过' : '审核驳回' })
       .then((result) => {
         if (typeof wx.hideLoading === 'function') wx.hideLoading()
-        if (approved && result?.lastTransferError) wx.showModal({ title: '审核已通过，转账待处理', content: `${result.lastTransferError}${result.lastTransferErrorCode ? `（${result.lastTransferErrorCode}）` : ''}`, showCancel: false })
+        if (approved && result?.lastTransferError) wx.showModal({ title: '审核已通过，转账待处理', content: result.lastTransferError, showCancel: false })
         else wx.showToast({ title: approved ? '已通过' : '已驳回' })
         this.load()
       })
@@ -377,7 +444,7 @@ Page({
         wx.hideLoading()
         if (result?.status === 'paid') wx.showToast({ title: '已到账', icon: 'none' })
         else if (result?.transferStatus === 'released') wx.showToast({ title: '已退回可提现余额', icon: 'none' })
-        else if (result?.lastTransferError) wx.showModal({ title: '转账尚未完成', content: `${result.lastTransferError}${result.lastTransferErrorCode ? `（${result.lastTransferErrorCode}）` : ''}`, showCancel: false })
+        else if (result?.lastTransferError) wx.showModal({ title: '转账尚未完成', content: result.lastTransferError, showCancel: false })
         else if (result?.wechatTransferState === 'WAIT_USER_CONFIRM') wx.showModal({ title: '待收款人确认收款', content: '请宠托师本人进入“我的收益 → 提现记录”，点击该笔记录的“确认收款”。确认后系统会继续同步微信到账结果。', showCancel: false })
         else wx.showToast({ title: wechatTransferStateText[result?.wechatTransferState] || (result?.status === 'transferring' ? '转账结果待查询' : '已处理'), icon: 'none' })
         this.load()
@@ -411,8 +478,8 @@ Page({
       .then(([deposits, supplies]) => {
         if (this._staffFinanceVersion !== version) return
         const appliedKeyword = this.data.appliedKeyword
-        const rawDeposits = (deposits || []).map(decorateStaffFinance)
-        const rawSupplies = (supplies || []).map(decorateStaffFinance)
+        const rawDeposits = (deposits || []).map(item => decorateStaffFinance(item, 'deposits'))
+        const rawSupplies = (supplies || []).map(item => decorateStaffFinance(item, 'supplies'))
         const filteredDeposits = appliedKeyword ? rawDeposits.filter((item) => matchClientKeyword(item, appliedKeyword)) : rawDeposits
         const filteredSupplies = appliedKeyword ? rawSupplies.filter((item) => matchClientKeyword(item, appliedKeyword)) : rawSupplies
 

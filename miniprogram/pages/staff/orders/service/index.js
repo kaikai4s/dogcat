@@ -6,7 +6,7 @@ const { flushServiceOfflineTasks } = require('../../../../utils/serviceOfflineSy
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { createClientRequestId, enqueueOfflineTask, getOfflineTaskCount, retryOfflineTasks } = require('../../../../utils/offlineQueue')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
-const { formatDateTime, buildOrderCareCards } = require('../../../../utils/format')
+const { formatDateTime, buildOrderCareCards, formatCheckinEvent } = require('../../../../utils/format')
 const { copyText } = require('../../../../utils/clipboard')
 function toTimeValue(value) {
   if (!value) return 0
@@ -888,7 +888,7 @@ Page({
     const requirements = (this.data.order && this.data.order.checkinRequirements) || []
     const missing = requirements.filter((item) => item.required && !item.completed)
     if (!missing.length) return ''
-    return `还缺少必打卡：${missing.map((item) => item.label || item.eventType).join('、')}`
+    return `还缺少必打卡：${missing.map((item) => item.label || formatCheckinEvent(item.eventType) || '照护打卡').join('、')}`
   },
 
   finish() {

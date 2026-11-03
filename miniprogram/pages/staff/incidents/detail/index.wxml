@@ -37,7 +37,7 @@
 
   <view class="card resolution-card" wx:if="{{detail.incident.resolution}}">
     <view class="card-subtitle"><text class="remix-icon ri-scales-3-line sub-icon"></text><text>处理方案</text></view>
-    <view class="resolution-title">{{detail.incident.resolution.type || '处理结果'}}</view>
+    <view class="resolution-title">{{detail.incident.resolutionTypeText}}</view>
     <view class="desc-text">{{detail.incident.resolution.content}}</view>
     <view class="price-text" wx:if="{{detail.incident.resolution.refundAmount}}">¥{{detail.incident.resolution.refundAmount}}</view>
     <view class="desc-text" wx:if="{{detail.incident.resolution.couponId}}">平台已发放补偿优惠券</view>
@@ -48,7 +48,7 @@
     <view class="timeline">
       <view class="timeline-item" wx:for="{{detail.comments}}" wx:key="_id">
         <view class="timeline-dot"></view>
-        <view class="timeline-role">{{item.actorRole}}</view>
+        <view class="timeline-role">{{item.actorRoleText}}</view>
         <view class="desc-text">{{item.content}}</view>
         <view class="evidence-grid" wx:if="{{item.mediaFileIds.length}}">
           <image class="evidence-image" wx:for="{{item.mediaFileIds}}" wx:key="*this" src="{{item}}" mode="aspectFill" />

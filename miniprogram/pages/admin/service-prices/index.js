@@ -1,5 +1,10 @@
 const { optionalAdminRead } = require('../utils/admin-page-read')
 const { callFunction, showError } = require('../../../utils/cloud')
+const { formatCheckinEvent } = require('../../../utils/format')
+
+function serviceTypeText(value) {
+  return ({ visit_fee: '上门费', walk: '遛狗服务', feed: '喂养服务', litter: '清理宠物厕所', play: '陪伴玩耍', medicine: '喂药协助', clean: '简单清洁' })[value] || '其他服务'
+}
 
 const eventOptions = [
   { eventType: 'enter_door', label: '到达入户' },
@@ -22,7 +27,7 @@ const extraPetRuleOptions = [
 
 function extraPetRuleText(value) {
   const item = extraPetRuleOptions.find((option) => option.value === value)
-  return item ? item.label : extraPetRuleOptions[0].label
+  return item ? item.label : (value ? '加宠计价规则未知' : extraPetRuleOptions[0].label)
 }
 
 const CUSTOM_SERVICE_COVERS_KEY = 'custom_service_covers'
@@ -78,14 +83,14 @@ function decoratePrice(item = {}) {
 function groupRules(rules, prices = []) {
   const groups = prices
     .filter((price) => price.key && price.key !== 'visit_fee')
-    .map((price) => ({ serviceType: price.key, title: price.label || price.key, rules: [], expanded: false }))
+    .map((price) => ({ serviceType: price.key, title: price.label || serviceTypeText(price.key), rules: [], expanded: false }))
   ;(rules || []).forEach((rule) => {
     let group = groups.find((item) => item.serviceType === rule.serviceType)
     if (!group) {
-      group = { serviceType: rule.serviceType, title: rule.serviceType, rules: [] }
+      group = { serviceType: rule.serviceType, title: serviceTypeText(rule.serviceType), rules: [] }
       groups.push(group)
     }
-    group.rules.push(rule)
+    group.rules.push({ ...rule, eventTypeText: formatCheckinEvent(rule.eventType) || '其他打卡环节' })
   })
   return groups
 }
@@ -176,7 +181,7 @@ Page({
     const groupIndex = Number(e.currentTarget.dataset.groupIndex)
     const group = this.data.ruleGroups[groupIndex]
     const first = this.data.eventOptions[0]
-    const rules = group.rules.concat({ serviceType: group.serviceType, eventType: first.eventType, label: first.label, required: true, enabled: true, sortOrder: (group.rules.length + 1) * 10, description: '' })
+    const rules = group.rules.concat({ serviceType: group.serviceType, eventType: first.eventType, eventTypeText: formatCheckinEvent(first.eventType), label: first.label, required: true, enabled: true, sortOrder: (group.rules.length + 1) * 10, description: '' })
     this.setData({ [`ruleGroups[${groupIndex}].rules`]: rules })
   },
 
@@ -186,6 +191,7 @@ Page({
     const option = this.data.eventOptions[Number(e.detail.value)] || this.data.eventOptions[0]
     this.setData({
       [`ruleGroups[${groupIndex}].rules[${ruleIndex}].eventType`]: option.eventType,
+      [`ruleGroups[${groupIndex}].rules[${ruleIndex}].eventTypeText`]: formatCheckinEvent(option.eventType),
       [`ruleGroups[${groupIndex}].rules[${ruleIndex}].label`]: option.label
     })
   },
@@ -198,7 +204,7 @@ Page({
   },
 
   saveRules() {
-    const rules = this.data.ruleGroups.reduce((list, group) => list.concat(group.rules), [])
+    const rules = this.data.ruleGroups.reduce((list, group) => list.concat(group.rules.map(({ eventTypeText, ...rule }) => rule)), [])
     callFunction('admin', 'saveServiceCheckinRules', { rules })
       .then((saved) => {
         this.setData({ ruleGroups: groupRules(saved, this.data.prices) })

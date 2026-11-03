@@ -127,13 +127,13 @@ test('historical approved deposits can synchronize and start their original refu
   assert.equal(harness.page.data.actionBusy, false)
 })
 
-test('retry shows the gateway refusal and code instead of a generic pending result', async () => {
+test('retry shows the gateway refusal without exposing its internal code', async () => {
   const harness = pageWith(async () => ({ status: 'transferring', transferStatus: 'unknown',
     lastTransferError: '超过单笔转账上下限，核实产品设置是否准确', lastTransferErrorCode: 'INVALID_REQUEST' }))
   harness.page.runWithdrawTransferAction('w', 'retryWithdrawTransfer', '正在重试...')
   await tick()
   assert.match(harness.modal().content, /超过单笔转账上下限/)
-  assert.match(harness.modal().content, /INVALID_REQUEST/)
+  assert.doesNotMatch(harness.modal().content, /INVALID_REQUEST/)
   assert.equal(harness.toasts.length, 0)
   assert.equal(harness.page.data.actionBusy, false)
 })

@@ -44,6 +44,7 @@ test('方案1：getServiceTwinInfo 返回实时在途订单与打卡日记，打
         _id: 'order_active_01',
         clientOpenid: 'test_owner',
         status: 'in_service',
+        serviceType: 'feed',
         serviceSummary: '专业上门照料(1小时)',
         orderNo: 'ORD20261020001',
         staffSnapshot: { name: '金牌宠托师小李', avatarUrl: 'cloud://staff/avatar.jpg' },
@@ -83,6 +84,10 @@ test('方案1：getServiceTwinInfo 返回实时在途订单与打卡日记，打
   const overview = await handler(openid, 'getOverview', {})
   assert.ok(overview.activeService)
   assert.equal(overview.activeService.staffName, '金牌宠托师小李')
+  for (const order of [twinInfo.activeOrder, overview.activeService]) {
+    assert.equal(order.serviceType, 'feed')
+    assert.equal(order.serviceSummary, '专业上门照料(1小时)')
+  }
 })
 
 test('方案2：添粮打卡赠送关爱积分，getMallSupplies 返回在售商品与抵扣额', async () => {

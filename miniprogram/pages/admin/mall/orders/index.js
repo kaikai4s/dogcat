@@ -1,5 +1,6 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { copyText } = require('../../../../utils/clipboard')
+const { formatPaymentStatus, formatRefundStatus } = require('../../../../utils/format')
 
 const tabs = [
   { label: '全部', value: '' },
@@ -25,7 +26,12 @@ const MALL_STATUS_TEXT_MAP = {
   shipped: '已发货',
   completed: '已完成',
   cancelled: '已取消',
-  refunded: '已退款'
+  refunded: '已退款',
+  refund_applied: '售后申请中',
+  refunding: '退款中',
+  partial_refunded: '部分退款',
+  closed: '已关闭',
+  timeout_closed: '超时关闭'
 }
 
 function pageList(result) {
@@ -33,7 +39,7 @@ function pageList(result) {
 }
 
 function paymentStatusText(status) {
-  return ({ unpaid: '未支付', paying: '支付中', paid: '已支付', refunding: '退款中', refunded: '已退款' })[status] || '未支付'
+  return formatPaymentStatus(status) || '未支付'
 }
 
 function refundStatusText(status) {
@@ -44,7 +50,7 @@ function refundStatusText(status) {
     rejected: '已拒绝',
     return_pending_ship: '待买家寄回',
     return_shipped: '已寄回待验货'
-  })[status] || '无售后'
+  })[status] || formatRefundStatus(status) || '无售后'
 }
 
 function decorateOrder(order = {}) {
@@ -59,7 +65,7 @@ function decorateOrder(order = {}) {
     ...order,
     goodsCount,
     goodsSummary: firstGoods ? `${firstGoods.name}${goodsCount > Number(firstGoods.quantity || 0) ? ` 等${goodsCount}件` : ` × ${firstGoods.quantity || 1}`}` : '商城订单',
-    statusText: order.statusText || MALL_STATUS_TEXT_MAP[order.status] || order.status || '未知状态',
+    statusText: MALL_STATUS_TEXT_MAP[order.status] || '订单状态未知',
     paymentStatusText: paymentStatusText(order.paymentStatus),
     refundStatusText: refundStatusText(order.refundStatus),
     statusClass: order.status === 'pending_ship' ? 'warning' : (order.status === 'refunded' ? 'muted-badge' : (order.status === 'refund_applied' ? 'danger-badge' : 'success')),

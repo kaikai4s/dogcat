@@ -1,5 +1,6 @@
 const { optionalAdminRead } = require('../utils/admin-page-read')
 const { callFunction, showError } = require('../../../utils/cloud')
+const { formatPointSource } = require('../../../utils/format')
 
 function buildRetroMailMemberLevels(levels, selectedIds) {
   const selectedSet = new Set(selectedIds || [])
@@ -53,7 +54,10 @@ Page({
     })
       .then((res) => {
         const isArr = Array.isArray(res)
-        const incomingList = isArr ? res : ((res && res.list) || [])
+        const incomingList = (isArr ? res : ((res && res.list) || [])).map((log) => ({
+          ...log,
+          sourceLabel: formatPointSource(log.sourceType)
+        }))
         const total = isArr ? incomingList.length : ((res && res.total) || 0)
         const hasMore = isArr ? false : Boolean(res && res.hasMore)
         const logs = reset || isArr ? incomingList : this.data.logs.concat(incomingList)

@@ -49,6 +49,19 @@ test('user chooses a particular same-name pet; upload freezes that target and su
   assert.equal(calls.find((c)=>c.action==='submit').data.photos[0],cloudID('photo'))
   assert.equal(f.page.data.photos.length,0);assert.equal(f.page.data.busy,false)
 })
+test('customization history uses Chinese unknown labels without changing statuses, notes or cancellation rules',()=>{
+  const {page}=loadPage('packagePlayground/pages/customize.js')
+  const rows=page.decorate([
+    {_id:'request-1',status:'pending',remark:'keep_raw_note'},
+    {_id:'request-2',status:'future_internal_state',remark:'保留说明'},
+    {_id:'request-3',status:'completed'}
+  ])
+  assert.equal(rows[0].statusText,'等待处理');assert.equal(rows[0].canCancel,true)
+  assert.equal(rows[0].remark,'keep_raw_note');assert.equal(rows[0]._id,'request-1')
+  assert.equal(rows[1].statusText,'申请状态待确认');assert.equal(rows[1].status,'future_internal_state')
+  assert.equal(rows[1].remark,'保留说明');assert.equal(rows[1].canCancel,false)
+  assert.equal(rows[2].statusText,'已生效');assert.equal(rows[2].canCancel,false)
+})
 test('photo validation and failed uploads preserve the form and do not submit an incomplete request',async()=>{
   const calls=[]
   const f=loadPage('packagePlayground/pages/customize.js',{call:async(m,a)=>{calls.push(a);return {_id:'r',photoPrefix:'private/'}},upload:async()=>{throw new Error('网络中断')}})

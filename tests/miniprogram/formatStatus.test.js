@@ -8,8 +8,55 @@ const {
   formatAuditStatus,
   formatStaffLevel,
   formatOnboardingStatus,
+  formatPointSource,
+  formatActorRole,
+  formatIncidentResolutionType,
+  formatServiceTypes,
+  withIncidentActionText,
   withOrderText
 } = require('../../miniprogram/utils/format')
+
+test('point sources cover every current award and never return internal codes', () => {
+  const sources = {
+    order_complete: '完成订单', order_review: '评价订单', admin_grant: '管理员操作',
+    checkin_daily: '每日签到', reward_mail: '奖励邮箱', lottery_reward: '抽奖奖励',
+    pet_title_duplicate: '重复头衔补偿', playground_care: '每日关爱照料',
+    playground_report: '环境反馈', playground_resolve: '纠纷处理', playground_weekly: '每周处理奖励', playground_wash: '洗车服务'
+  }
+  for (const [source, label] of Object.entries(sources)) {
+    assert.equal(formatPointSource(source), label)
+    assert.equal(formatPointSource(` ${source.toUpperCase()} `), label)
+  }
+  for (const source of ['new_reward_type', '', null, undefined, '__proto__', 'constructor']) {
+    assert.equal(formatPointSource(source), '其他积分变动')
+  }
+})
+
+test('service type summaries localize single, multiple and unknown types', () => {
+  assert.equal(formatServiceTypes('walk'), '遛狗服务')
+  assert.equal(formatServiceTypes(['feed', 'litter']), '喂养服务、清理宠物厕所')
+  assert.equal(formatServiceTypes('play,medicine,clean'), '陪伴玩耍、喂药协助、简单清洁')
+  assert.equal(formatServiceTypes('future_service'), '其他服务')
+  assert.equal(formatServiceTypes('constructor'), '其他服务')
+  assert.equal(formatServiceTypes(null), '上门宠护')
+})
+
+test('incident roles and resolution types use Chinese fallbacks without changing free text', () => {
+  assert.equal(formatActorRole('staff'), '宠托师')
+  assert.equal(formatActorRole(' ADMIN '), '后台')
+  assert.equal(formatIncidentResolutionType('refund'), '部分退款')
+  assert.equal(formatIncidentResolutionType('coupon'), '优惠补偿')
+  assert.equal(formatIncidentResolutionType('explain'), '解释说明')
+  assert.equal(formatIncidentResolutionType('reject'), '驳回诉求')
+  for (const unknown of ['new_type', '', null, '__proto__']) {
+    assert.equal(formatActorRole(unknown), '其他人员')
+    assert.equal(formatIncidentResolutionType(unknown), '处理结果')
+  }
+  const action = withIncidentActionText({ action: 'commented', actorRole: 'internal_role', detail: { remark: '用户备注 ABC_123' } })
+  assert.equal(action.actorRole, 'internal_role')
+  assert.equal(action.actorRoleText, '其他人员')
+  assert.equal(action.detailText, '用户备注 ABC_123')
+})
 
 test('formatOrderStatus: maps all known statuses to Chinese and never leaks English', () => {
   assert.equal(formatOrderStatus('pending_pay'), '待支付')

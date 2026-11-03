@@ -36,8 +36,25 @@ function setupPage() {
   }
 
   vm.runInNewContext(earningsJs, mockContext)
-  return { pageDef, earningsWxml }
+  return { pageDef, earningsWxml, withWithdraw: mockContext.withWithdraw }
 }
+
+test('withdrawal transfer labels never leak unknown codes or imply pending money has arrived', () => {
+  const { withWithdraw } = setupPage()
+  for (const state of ['ACCEPTED', 'WAIT_USER_CONFIRM', 'TRANSFERING', 'PROCESSING', 'FUTURE_TRANSFER_STATE']) {
+    const row = withWithdraw({ _id: 'withdraw-1', status: 'transferring', wechatTransferState: state, payoutChannel: 'wechat_wallet', amount: 12 })
+    assert.match(row.wechatTransferStateText, /[\u4e00-\u9fff]/)
+    assert.notEqual(row.wechatTransferStateText, state)
+    assert.doesNotMatch(row.wechatTransferStateText, /已到账|成功/)
+    assert.equal(row.status, 'transferring')
+    assert.equal(row.wechatTransferState, state)
+    assert.equal(row.canConfirmTransfer, state === 'WAIT_USER_CONFIRM')
+    assert.equal(row._id, 'withdraw-1')
+  }
+  assert.equal(withWithdraw({ wechatTransferState: 'SUCCESS' }).wechatTransferStateText, '已到账')
+  assert.equal(withWithdraw({}).wechatTransferStateText, '')
+  assert.equal(withWithdraw({ source: 'admin_manual_tail_settlement', status: 'approved' }).statusText, '待人工付款')
+})
 
 test('staff earnings display: no gross order price shown, displays expected and actual earnings with deduction explanations', async () => {
   const { pageDef, earningsWxml } = setupPage()

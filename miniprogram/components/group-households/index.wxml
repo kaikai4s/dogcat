@@ -10,7 +10,7 @@
   </scroll-view>
   <view class="household-detail" wx:if="{{selected}}">
     <view class="household-owner"><image wx:if="{{selected.clientAvatar}}" src="{{selected.clientAvatar}}" mode="aspectFill"/><text>{{selected.householdLabel}} · {{selected.clientName}}</text><text wx:if="{{selected.isCompleted}}" class="done">已完成</text><text wx:if="{{selected.refundStatusText}}" class="refund-status {{selected.refundState}}">{{selected.refundStatusText}}</text></view>
-    <view class="household-service">{{selected.serviceSummary || selected.serviceType}}</view>
+    <view class="household-service">{{selected.serviceSummary || selected.serviceTypeText}}</view>
     <view class="household-pet" wx:for="{{selected.petSnapshots}}" wx:for-item="pet" wx:key="name">
       <image wx:if="{{pet.avatarFileId}}" class="pet-avatar" src="{{pet.avatarFileId}}" mode="aspectFill" data-url="{{pet.avatarFileId}}" bindtap="preview"/>
       <view wx:else class="pet-placeholder">🐾</view>

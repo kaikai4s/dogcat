@@ -23,7 +23,7 @@ function loadServicePage({ status = 'on_the_way', preflight = () => Promise.reso
   }
   vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/staff/orders/service/index.js'), 'utf8'), {
     Page(config) { page = config },
-    require: () => dependencies,
+    require: name => name.endsWith('/format') ? require('../../miniprogram/utils/format') : dependencies,
     wx: {
       navigateTo(options) {
         navigations.push(options)
@@ -41,6 +41,19 @@ function loadServicePage({ status = 'on_the_way', preflight = () => Promise.reso
 }
 
 const tap = (type = 'sanitization') => ({ currentTarget: { dataset: { type } } })
+
+test('missing checkin hints format event codes while preserving custom requirement labels', () => {
+  const { page } = loadServicePage()
+  const requirements = [
+    { eventType: 'feed', required: true },
+    { eventType: 'future_checkin', required: true },
+    { eventType: 'clean', label: '清理 Bella 的猫砂盆', required: true },
+    { eventType: 'water', required: true, completed: true }
+  ]
+  page.data.order.checkinRequirements = requirements
+  assert.equal(page.validateRequiredCheckins(), '还缺少必打卡：喂食、照护打卡、清理 Bella 的猫砂盆')
+  assert.equal(requirements[1].eventType, 'future_checkin')
+})
 
 test('pre-service sanitization opens for every eligible order status, including on_the_way', async () => {
   for (const status of ['on_the_way', 'assigned', 'day_completed']) {

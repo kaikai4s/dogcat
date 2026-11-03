@@ -183,7 +183,7 @@
         </view>
         <view class="info-row" wx:if="{{item.wechatTransferState}}">
           <view class="label">微信处理状态</view>
-          <view class="value {{item.wechatTransferState === 'WAIT_USER_CONFIRM' ? 'price-highlight' : ''}}">{{item.wechatTransferStateText || item.wechatTransferState}}</view>
+          <view class="value {{item.wechatTransferState === 'WAIT_USER_CONFIRM' ? 'price-highlight' : ''}}">{{item.wechatTransferStateText || '微信处理状态待查询'}}</view>
         </view>
         <view class="info-row" wx:if="{{item.auditRemark}}">
           <view class="label">审核备注</view>

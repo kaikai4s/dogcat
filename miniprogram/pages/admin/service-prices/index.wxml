@@ -64,7 +64,7 @@
     <view class="collapse-body" wx:if="{{group.expanded}}">
       <view class="notice compact-rule-item" wx:for="{{group.rules}}" wx:for-item="rule" wx:for-index="ruleIndex" wx:key="eventType">
         <picker range="{{eventOptions}}" range-key="label" data-group-index="{{groupIndex}}" data-rule-index="{{ruleIndex}}" bindchange="chooseRuleEvent">
-          <view class="field picker-field">{{rule.label || rule.eventType}}</view>
+          <view class="field picker-field">{{rule.label || rule.eventTypeText}}</view>
         </picker>
         <view class="compact-switch-row">
           <view class="strong">必打卡</view>

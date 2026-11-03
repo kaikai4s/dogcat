@@ -1,7 +1,7 @@
 const { uploadImage } = require('../../../../utils/image-upload')
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
-const { withIncidentText } = require('../../../../utils/format')
+const { withIncidentText, formatIncidentResolutionType, formatActorRole } = require('../../../../utils/format')
 
 function uploadEvidence(filePath) {
   const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
@@ -19,8 +19,8 @@ function decorate(detail = {}) {
   const incident = detail.incident || {}
   return {
     ...detail,
-    incident: withIncidentText({ ...incident, mediaFileIds: Array.isArray(incident.mediaFileIds) ? incident.mediaFileIds : [] }),
-    comments: (detail.comments || []).map((item) => ({ ...item, mediaFileIds: Array.isArray(item.mediaFileIds) ? item.mediaFileIds : [] })),
+    incident: withIncidentText({ ...incident, resolutionTypeText: formatIncidentResolutionType(incident.resolution && incident.resolution.type), mediaFileIds: Array.isArray(incident.mediaFileIds) ? incident.mediaFileIds : [] }),
+    comments: (detail.comments || []).map((item) => ({ ...item, actorRoleText: formatActorRole(item.actorRole), mediaFileIds: Array.isArray(item.mediaFileIds) ? item.mediaFileIds : [] })),
     actions: detail.actions || []
   }
 }

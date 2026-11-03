@@ -136,7 +136,7 @@ function withCategoryName(product, categories = []) {
   return {
     ...product,
     categoryName: category ? category.name : '未分类',
-    statusText: status === 'on_sale' ? '上架中' : '已下架',
+    statusText: ({ on_sale: '上架中', off_sale: '已下架' })[product.status || 'on_sale'] || '商品状态未知',
     statusClass: status === 'on_sale' ? 'success' : 'muted-badge',
     stockText: soldOut ? '售罄' : (lowStock ? '低库存' : '库存充足'),
     stockClass: soldOut ? 'danger-badge' : (lowStock ? 'warning' : 'success'),

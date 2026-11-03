@@ -3,6 +3,7 @@ const { callFunction, showError } = require('../../../../utils/cloud')
 function withDisplay(user) {
   return {
     ...user,
+    statusText: ({ active: '正常', disabled: '已禁用', deleted: '已删除' })[user.status] || '账号状态未知',
     avatarText: (user.nickname || '管').slice(0, 1)
   }
 }

@@ -70,7 +70,7 @@ function withWithdraw(item) {
     amountText: money(item.amount),
     statusText: item.source === 'admin_manual_tail_settlement' && status === 'approved' ? '待人工付款'
       : item.source === 'admin_manual_tail_settlement' && status === 'paid' ? '已人工结清' : withdrawStatusText[status] || '处理中',
-    wechatTransferStateText: wechatTransferStateText[transferState] || transferState,
+    wechatTransferStateText: wechatTransferStateText[transferState] || (transferState ? '转账状态待确认' : ''),
     isAccepted,
     canConfirmTransfer: item.payoutChannel === 'wechat_wallet' && ['approved', 'transferring'].includes(status) && transferState === 'WAIT_USER_CONFIRM'
   }

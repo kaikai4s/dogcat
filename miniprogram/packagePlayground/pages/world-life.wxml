@@ -18,7 +18,7 @@
   </view>
   <view class="active-service-banner" wx:if="{{activeService}}" bindtap="openServiceDiary">
     <view class="service-pulse-dot"></view>
-    <text class="service-banner-text">【上门服务中】{{activeService.staffName}} 正在进行{{activeService.serviceType}}</text>
+    <text class="service-banner-text">【上门服务中】{{activeService.staffName}} 正在进行{{activeService.serviceTypeText}}</text>
     <text class="service-banner-link">查看打卡日记 ›</text>
   </view>
   <view class="pet-alert-banner" wx:if="{{petAlerts.length}}" bindtap="viewPetAlert"><text>♡ {{petAlerts[0].name}}：{{petAlerts[0].message}}</text><text wx:if="{{petAlerts.length > 1}}">还有 {{petAlerts.length - 1}} 项需要照料 ›</text></view>
@@ -232,7 +232,7 @@
       <view class="diary-active-info">
         <view class="diary-active-head">
           <text class="active-pulse-badge">实时服务中</text>
-          <text class="active-service-type">{{serviceDiary.activeOrder.serviceType}}</text>
+          <text class="active-service-type">{{serviceDiary.activeOrder.serviceTypeText}}</text>
         </view>
         <text class="active-staff-name">宠托师：{{serviceDiary.activeOrder.staffName}}</text>
       </view>

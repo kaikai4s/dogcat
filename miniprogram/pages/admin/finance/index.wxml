@@ -68,7 +68,7 @@
 
     <view class="deposit-filter-bar" wx:if="{{targetStaffOpenid}}"><text>当前查看指定宠托师的全部日期转账记录</text><button class="mini-btn" bindtap="clearStaffFilter">查看全部</button></view>
     <view class="card record-card" wx:for="{{requests}}" wx:key="_id">
-      <view class="record-head"><view class="record-title">{{item.source === 'admin_manual_tail_settlement' ? '小额尾款人工结清' : (item.assetType === 'user' ? '用户邀请收益提现' : '宠托师提现申请')}}</view><view class="badge {{item.status === 'paid' ? 'green' : (item.status === 'rejected' ? 'gray' : 'pink')}}">{{item.statusText || item.status}}</view></view>
+      <view class="record-head"><view class="record-title">{{item.source === 'admin_manual_tail_settlement' ? '小额尾款人工结清' : (item.assetType === 'user' ? '用户邀请收益提现' : '宠托师提现申请')}}</view><view class="badge {{item.status === 'paid' ? 'green' : (item.status === 'rejected' ? 'gray' : 'pink')}}">{{item.statusText}}</view></view>
       <view class="info-row"><view class="label">申请人</view><view class="value">{{item.assetType === 'user' ? (item.userNickname || item.userOpenid) : (item.staffRealName || item.staffNickname || item.staffOpenid)}}</view></view>
       <view class="info-row" wx:if="{{item.staffPhone || item.accountPhone}}"><view class="label">绑定手机号</view><view class="value">{{item.accountPhone || item.staffPhone}}</view></view>
       <view class="info-row" wx:if="{{item.certifiedPhone}}"><view class="label">实名认证手机号</view><view class="value">{{item.certifiedPhone}}</view></view>
@@ -83,7 +83,6 @@
       <view class="info-row" wx:if="{{item.outBillNo}}"><view class="label">商户转账单号</view><view class="value">{{item.outBillNo}}</view></view>
       <view class="info-row" wx:if="{{item.wechatTransferBillNo}}"><view class="label">微信转账单号</view><view class="value">{{item.wechatTransferBillNo}}</view></view>
       <view class="info-row" wx:if="{{item.lastTransferError}}"><view class="label">失败/待确认原因</view><view class="value danger">{{item.lastTransferError}}</view></view>
-      <view class="info-row" wx:if="{{item.lastTransferErrorCode}}"><view class="label">微信错误码</view><view class="value">{{item.lastTransferErrorCode}}</view></view>
       <view class="info-row"><view class="label">申请时间</view><view class="value">{{beijingTime.format(item.createdAt)}}</view></view>
       <view class="info-row" wx:if="{{item.auditRemark}}"><view class="label">审核备注</view><view class="value">{{item.auditRemark}}</view></view>
       <view class="info-row" wx:if="{{item.auditedByOpenid}}"><view class="label">审核人</view><view class="value">{{item.auditedByOpenid}}</view></view>
@@ -141,7 +140,7 @@
     <view class="card record-card {{item.staffOpenid === targetStaffOpenid ? 'target-highlight' : ''}}" wx:for="{{deposits}}" wx:key="_id" wx:if="{{!targetStaffOpenid || item.staffOpenid === targetStaffOpenid}}">
       <view class="record-head">
         <view class="record-title">宠托师保证金</view>
-        <view class="badge {{item.status === 'paid' ? 'green' : 'pink'}}">{{item.statusText || item.status}}</view>
+        <view class="badge {{item.status === 'paid' ? 'green' : 'pink'}}">{{item.statusText}}</view>
       </view>
       <view class="info-row"><view class="label">宠托师</view><view class="value">{{item.staffRealName || item.staffNickname || item.staffOpenid}}</view></view>
       <view class="info-row"><view class="label">绑定手机号</view><view class="value">{{item.accountPhone || item.staffPhone || '未填写'}}</view></view>
@@ -195,7 +194,7 @@
     <view class="card record-card" wx:for="{{supplies}}" wx:key="_id">
       <view class="record-head">
       <view class="record-title">{{item.benefitType === 'supply_fee_waiver' ? '首次用品费用减免' : '首次用品报销'}}</view>
-        <view class="badge {{item.status === 'paid' ? 'green' : (item.status === 'approved' ? 'pink' : 'gray')}}">{{item.statusText || item.status}}</view>
+        <view class="badge {{item.status === 'paid' ? 'green' : (item.status === 'approved' ? 'pink' : 'gray')}}">{{item.statusText}}</view>
       </view>
       <view class="info-row"><view class="label">申请人</view><view class="value">{{item.staffRealName || item.staffNickname || item.staffOpenid}}</view></view>
       <view class="info-row"><view class="label">绑定手机号</view><view class="value">{{item.accountPhone || item.staffPhone || '未填写'}}</view></view>
@@ -226,13 +225,13 @@
 
   <block wx:if="{{financeTabs.payments && activeTab === 'payments'}}">
     <view class="card record-card" wx:for="{{payments}}" wx:key="_id">
-      <view class="record-head"><view class="record-title">支付单号</view><view class="badge green">{{item.status}}</view></view>
+      <view class="record-head"><view class="record-title">支付单号</view><view class="badge {{item.status === 'success' || item.status === 'paid' ? 'green' : 'gray'}}">{{item.statusText}}</view></view>
       <view class="info-row"><view class="label">单号</view><view class="value">{{item.paymentNo || item._id}}</view></view>
       <view class="info-row"><view class="label">订单</view><view class="value">{{item.orderId}}</view></view>
       <view class="info-row" wx:if="{{item.contactPhone}}"><view class="label">客户手机号</view><view class="value">{{item.contactPhone}}</view></view>
       <view class="info-row" wx:if="{{item.orderNo && item.orderNo !== item.orderId}}"><view class="label">订单编号</view><view class="value">{{item.orderNo}}</view></view>
       <view class="info-row"><view class="label">金额</view><view class="price">¥{{item.amountText}}</view></view>
-      <view class="info-row"><view class="label">渠道</view><view class="value">{{item.channel || 'mock'}}</view></view>
+      <view class="info-row"><view class="label">渠道</view><view class="value">{{item.channelText}}</view></view>
       <view class="info-row"><view class="label">时间</view><view class="value">{{beijingTime.format(item.paidAt || item.createdAt)}}</view></view>
     </view>
     <view class="empty-state" wx:if="{{!payments.length}}">{{appliedKeyword ? '暂无与“' + appliedKeyword + '”匹配的支付流水。' : '暂无支付流水。'}}</view>
@@ -240,7 +239,7 @@
 
   <block wx:if="{{financeTabs.refunds && activeTab === 'refunds'}}">
     <view class="card record-card" wx:for="{{refunds}}" wx:key="_id">
-      <view class="record-head"><view class="record-title">退款单号</view><view class="badge pink">{{item.status}}</view></view>
+      <view class="record-head"><view class="record-title">退款单号</view><view class="badge pink">{{item.statusText}}</view></view>
       <view class="info-row"><view class="label">单号</view><view class="value">{{item.refundNo || item._id}}</view></view>
       <view class="info-row"><view class="label">订单</view><view class="value">{{item.orderId}}</view></view>
       <view class="info-row" wx:if="{{item.contactPhone}}"><view class="label">客户手机号</view><view class="value">{{item.contactPhone}}</view></view>
@@ -254,7 +253,7 @@
 
   <block wx:if="{{financeTabs.earnings && activeTab === 'earnings'}}">
     <view class="card record-card" wx:for="{{earnings}}" wx:key="_id">
-      <view class="record-head"><view class="record-title">宠托师收益</view><view class="badge pink">{{item.status}}</view></view>
+      <view class="record-head"><view class="record-title">宠托师收益</view><view class="badge pink">{{item.statusText}}</view></view>
       <view class="info-row"><view class="label">宠托师</view><view class="value">{{item.staffRealName || item.staffNickname || item.staffOpenid}}</view></view>
       <view class="info-row" wx:if="{{item.accountPhone || item.staffPhone}}"><view class="label">宠托师手机号</view><view class="value">{{item.accountPhone || item.staffPhone}}</view></view>
       <view class="info-row"><view class="label">订单</view><view class="value">{{item.orderId}}</view></view>
@@ -266,8 +265,8 @@
 
   <block wx:if="{{financeTabs.logs && activeTab === 'logs'}}">
     <view class="card record-card" wx:for="{{logs}}" wx:key="_id">
-      <view class="record-head"><view class="record-title">{{item.action}}</view><view class="badge gray">流水</view></view>
-      <view class="info-row"><view class="label">对象</view><view class="value">{{item.targetType}} / {{item.targetId}}</view></view>
+      <view class="record-head"><view class="record-title">{{item.actionText}}</view><view class="badge gray">流水</view></view>
+      <view class="info-row"><view class="label">对象</view><view class="value">{{item.targetTypeText}} / {{item.targetId}}</view></view>
       <view class="info-row"><view class="label">金额变动</view><view class="price">¥{{item.amountDelta || 0}}</view></view>
       <view class="info-row"><view class="label">时间</view><view class="value">{{beijingTime.format(item.createdAt)}}</view></view>
     </view>

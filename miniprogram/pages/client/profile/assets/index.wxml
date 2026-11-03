@@ -123,7 +123,7 @@
       <view wx:else class="record-list">
         <view wx:for="{{summary.earnings}}" wx:key="_id" class="record-row">
           <view class="record-main">
-            <view class="record-title">{{item.sourceType === 'invite_binding' ? '邀请活动佣金' : item.sourceType}}</view>
+            <view class="record-title">{{item.sourceLabel}}</view>
             <view class="record-time">{{beijingTime.format(item.createdAt)}}</view>
           </view>
           <text class="income-amount">+¥{{item.amount}}</text>
@@ -188,7 +188,7 @@
             </view>
             <view class="detail-row" wx:if="{{item.wechatTransferState}}">
               <text class="detail-label">微信处理状态</text>
-              <text class="detail-value {{item.wechatTransferState === 'WAIT_USER_CONFIRM' ? 'text-highlight' : ''}}">{{item.wechatTransferStateText || item.wechatTransferState}}</text>
+              <text class="detail-value {{item.wechatTransferState === 'WAIT_USER_CONFIRM' ? 'text-highlight' : ''}}">{{item.wechatTransferStateText || '微信处理状态待查询'}}</text>
             </view>
             <view class="detail-row" wx:if="{{item.auditRemark}}">
               <text class="detail-label">审核备注</text>

@@ -17,6 +17,7 @@ const wechatTransferStateText = {
   PROCESSING: '微信转账处理中',
   SUCCESS: '已到账',
   FAIL: '转账失败',
+  CANCELING: '撤销处理中',
   CANCELLED: '已撤销'
 }
 
@@ -25,7 +26,7 @@ function withWithdraw(item) {
   const transferState = String(item.wechatTransferState || '').toUpperCase()
   const isAccepted = transferState === 'ACCEPTED'
   const canConfirmTransfer = item.payoutChannel === 'wechat_wallet' && transferState === 'WAIT_USER_CONFIRM'
-  let statusText = withdrawStatusText[status] || item.statusText || '处理中'
+  let statusText = Object.prototype.hasOwnProperty.call(withdrawStatusText, status) ? withdrawStatusText[status] : '处理中'
   if (canConfirmTransfer) {
     statusText = '待确认收款'
   }
@@ -33,7 +34,7 @@ function withWithdraw(item) {
     ...item,
     amountText: Number(item.amount || 0).toFixed(2),
     statusText,
-    wechatTransferStateText: wechatTransferStateText[transferState] || item.wechatTransferStateText || transferState,
+    wechatTransferStateText: Object.prototype.hasOwnProperty.call(wechatTransferStateText, transferState) ? wechatTransferStateText[transferState] : '微信处理状态待查询',
     isAccepted,
     canConfirmTransfer
   }
@@ -109,6 +110,7 @@ Page({
       this.setData({
         summary: {
           ...summary,
+          earnings: (summary.earnings || []).map(item => ({ ...item, sourceLabel: item.sourceType === 'invite_binding' ? '邀请活动佣金' : '其他收益' })),
           withdraws
         },
         hasPendingWithdrawConfirm,
@@ -156,6 +158,7 @@ Page({
       this.setData({
         summary: {
           ...summary,
+          earnings: (summary.earnings || []).map(item => ({ ...item, sourceLabel: item.sourceType === 'invite_binding' ? '邀请活动佣金' : '其他收益' })),
           withdraws
         },
         hasPendingWithdrawConfirm,

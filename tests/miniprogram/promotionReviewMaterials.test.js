@@ -42,6 +42,16 @@ function setup(callFunction = async () => ({ application: { status: 'pending' },
   return { page, previews, locations, routes, errors }
 }
 const event = (dataset = {}) => ({ currentTarget: { dataset } })
+test('promotion pet summaries translate unknown species and gender without leaking enums or changing breed text', () => {
+  const pet = { species: 'future_species', gender: 'future_gender', breed: 'free_breed' }
+  const result = buildPromotionOrder({ order: { petSnapshots: [pet] } }, 0).pets[0]
+  assert.equal(result.species, 'future_species')
+  assert.equal(result.gender, 'future_gender')
+  assert.equal(result.breed, 'free_breed')
+  assert.equal(result.detailText, '其他宠物 · free_breed · 性别未知')
+  assert.equal(buildPromotionOrder({ order: { petSnapshots: [{ species: 'cat', gender: 'female' }] } }, 0).pets[0].detailText, '猫 · 母')
+})
+
 const routePoint = (seconds, extra = {}) => ({ latitude: 31.2 + seconds / 100000, longitude: 121.5, accuracy: 10, coordinateType: 'gcj02', locationSource: 'gps', recordedAt: Date.UTC(2026, 8, 21, 14) + seconds * 1000, ...extra })
 
 test('review map plots the whole route beyond the first page and labels endpoints', () => {

@@ -50,7 +50,7 @@
         <view class="muted">余额 {{item.balance}} · {{item.reason}}</view>
         <view class="muted">{{item.openid}}</view>
       </view>
-      <view class="muted">{{item.sourceType}}</view>
+      <view class="muted">{{item.sourceLabel}}</view>
     </view>
   </view>
 

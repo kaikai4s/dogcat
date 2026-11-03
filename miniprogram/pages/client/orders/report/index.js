@@ -1,7 +1,7 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { ensureLogin } = require('../../../../utils/cloud')
-const { withOrderText, withCheckinText } = require('../../../../utils/format')
+const { withOrderText, withCheckinText, formatCheckinEvent } = require('../../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 const { copyText } = require('../../../../utils/clipboard')
 
@@ -9,7 +9,7 @@ function groupCheckinPhotos(checkins = []) {
   const map = {}
   checkins.filter((item) => item.mediaFileId).forEach((item) => {
     const eventType = item.eventType || ''
-    if (!map[eventType]) map[eventType] = { eventType, eventTypeText: item.eventTypeText || eventType, count: 0, photos: [], remarks: [], remarkText: '' }
+    if (!map[eventType]) map[eventType] = { eventType, eventTypeText: formatCheckinEvent(eventType) || '照护打卡', count: 0, photos: [], remarks: [], remarkText: '' }
     map[eventType].count += 1
     map[eventType].photos.push(item)
     if (item.remark && !map[eventType].remarks.includes(item.remark)) map[eventType].remarks.push(item.remark)
