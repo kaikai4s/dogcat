@@ -5,7 +5,7 @@ const path = require('node:path')
 const vm = require('node:vm')
 const access = require('../../miniprogram/utils/adminAccess')
 function setup(permissions, respond = async () => []) {
-  const calls = [], errors = []
+  const calls = [], errors = [], loadingEvents = []
   const cloud = { callFunction: async (module, action, data) => { calls.push({ module, action, data }); return respond(action, data) }, showError: error => errors.push(error.message) }
   const helper = { exports: {} }
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/admin/utils/admin-page-read.js'), 'utf8'), {
@@ -13,7 +13,12 @@ function setup(permissions, respond = async () => []) {
   })
   let page
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/admin/finance/index.js'), 'utf8'), {
-    Page: value => { page = value }, wx: { showToast() {} }, require(name) {
+    Page: value => { page = value }, wx: {
+      showLoading() { loadingEvents.push('show') },
+      hideLoading() { loadingEvents.push('hide') },
+      showToast() { loadingEvents.push('toast') },
+      showModal() { loadingEvents.push('modal') }
+    }, require(name) {
       if (name.endsWith('/adminAccess')) return access
       if (name.endsWith('/admin-page-read')) return helper.exports
       if (name.endsWith('/cloud')) return cloud
@@ -24,7 +29,7 @@ function setup(permissions, respond = async () => []) {
   })
   page.setData = (patch, callback) => { Object.assign(page.data, patch); if (callback) callback.call(page) }
   page.setData({ adminAccess: { superAdmin: false, permissions } })
-  return { page, calls, errors }
+  return { page, calls, errors, loadingEvents }
 }
 test('user-asset-only financial administrator can enter finance and fetch no staff or other financial data', async () => {
   const grants = ['admin.listUserAssetWithdrawals']
@@ -146,6 +151,24 @@ for (const action of ['refund', 'settlement']) {
     page.onLoad({ tab: 'deposits', staffOpenid: 'staff', action })
     assert.equal(page.data.targetStaffOpenid, 'staff')
     assert.equal(page._autoForfeitParams, undefined)
+  })
+}
+
+for (const outcome of ['approved', 'rejected', 'transfer_error', 'request_error']) {
+  test(`withdrawal audit dismisses loading before feedback: ${outcome}`, async () => {
+    const { page, loadingEvents, errors } = setup(['admin.auditUserAssetWithdrawal'], async () => {
+      if (outcome === 'request_error') throw new Error('审核失败')
+      return outcome === 'transfer_error' ? { lastTransferError: '转账待处理' } : {}
+    })
+    page.setData({ requests: [{ _id: 'w', assetType: 'user' }] })
+    page.load = () => {}
+    page.audit({ currentTarget: { dataset: { id: 'w', approved: outcome !== 'rejected' } } })
+    assert.deepEqual(loadingEvents, ['show'])
+    await new Promise(resolve => setImmediate(resolve))
+    assert.deepEqual(loadingEvents, outcome === 'request_error'
+      ? ['show', 'hide']
+      : ['show', 'hide', outcome === 'transfer_error' ? 'modal' : 'toast'])
+    assert.deepEqual(errors, outcome === 'request_error' ? ['审核失败'] : [])
   })
 }
 

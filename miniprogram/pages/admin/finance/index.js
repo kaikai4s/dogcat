@@ -317,6 +317,7 @@ Page({
     if (typeof wx.showLoading === 'function') wx.showLoading({ title: approved ? '正在审核并打款...' : '正在处理...', mask: true })
     callFunction('admin', action, { id, approved, auditRemark: approved ? '审核通过' : '审核驳回' })
       .then((result) => {
+        if (typeof wx.hideLoading === 'function') wx.hideLoading()
         if (approved && result?.lastTransferError) wx.showModal({ title: '审核已通过，转账待处理', content: `${result.lastTransferError}${result.lastTransferErrorCode ? `（${result.lastTransferErrorCode}）` : ''}`, showCancel: false })
         else wx.showToast({ title: approved ? '已通过' : '已驳回' })
         this.load()
