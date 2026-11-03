@@ -106,8 +106,10 @@ function decorate(item) {
   // Older withdrawal records may not have recipientOpenid persisted yet. The
   // staff/user owner fields are the same verified openid used for the transfer.
   const recipientOpenid = item.recipientOpenid || item.staffOpenid || item.userOpenid || item.openid || ''
+  const applicantOpenid = item.applicantOpenid || (item.assetType === 'user' ? (item.userOpenid || item.openid || '') : (item.staffOpenid || item.openid || '')) || recipientOpenid
   return {
     ...item,
+    applicantOpenid,
     recipientOpenid,
     amountText: money(item.amount),
     statusText: withdrawalStatus(item),
@@ -135,6 +137,7 @@ function matchClientKeyword(item, kw) {
   const k = String(kw).trim().toLowerCase()
   if (!k) return true
   const checks = [
+    item.applicantOpenid, item.userOpenid, item.staffOpenid, item.openid, item.recipientOpenid,
     item.staffPhone, item.accountPhone, item.certifiedPhone, item.phone, item.userPhone, item.contactPhone,
     item._id, item.id, item.orderId, item.orderNo, item.paymentNo, item.refundNo, item.outBillNo,
     item.outTradeNo, item.transactionId, item.wechatTransferBillNo, item.paymentReference, item.targetId,
@@ -365,6 +368,15 @@ Page({
 
   filter(e) {
     this.setData({ status: e.currentTarget.dataset.status || '' }, this.load)
+  },
+
+  copyText(e) {
+    const text = e.currentTarget.dataset.text
+    if (!text) return
+    wx.setClipboardData({
+      data: String(text),
+      success: () => wx.showToast({ title: '已复制微信ID', icon: 'none' })
+    })
   },
 
   toggleWithdrawHistory(e) {

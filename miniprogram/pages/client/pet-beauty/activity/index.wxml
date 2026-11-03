@@ -191,6 +191,28 @@
 
     <view class="rank-waterfall" wx:if="{{ranking.length && rankView === 'waterfall'}}">
       <view class="rank-column" wx:for="{{rankColumns}}" wx:for-item="column" wx:key="id" id="rank-col-{{column.id}}">
+        <!-- 右列顶部氛围动效挂件：填补错列留白，营造热烈打榜氛围，自然实现交错错列 -->
+        <view class="waterfall-stagger-banner" wx:if="{{column.id === 'right'}}">
+          <view class="banner-sparkle sparkle-top">✨</view>
+          <view class="banner-sparkle sparkle-bottom">✨</view>
+          <view class="banner-inner">
+            <view class="banner-badge-box">
+              <text class="remix-icon ri-trophy-fill trophy-anim"></text>
+            </view>
+            <view class="banner-text-col">
+              <view class="banner-main-title">
+                <text class="fire-emoji">🔥</text>
+                <text>萌力冲榜中</text>
+              </view>
+              <view class="banner-sub-tip">为心仪爱宠打Call投票</view>
+            </view>
+            <view class="banner-paw-track">
+              <text class="paw-print paw-left">🐾</text>
+              <text class="paw-print paw-right">🐾</text>
+            </view>
+          </view>
+        </view>
+
         <view class="gallery-card" wx:for="{{column.pets}}" wx:key="petId" id="gallery-card-{{item.petId}}" bindlongpress="onPetCardLongPress" data-id="{{item.petId}}" data-name="{{item.name}}">
           <!-- 封面卡片堆叠区域 -->
           <view class="gallery-cover {{item.hasMultiplePhotos ? 'has-stack' : ''}}" 
@@ -270,7 +292,19 @@
               <text>ID · {{item.exclusiveId}}</text>
               <button wx:if="{{isAdmin && contestConfig.enableFrontendDisqualify !== false}}" class="admin-inline-disqualify-btn" size="mini" catchtap="handleAdminDisqualify" data-id="{{item.petId}}" data-name="{{item.name}}">下架</button>
             </view>
-            <view class="gallery-title" wx:if="{{item.beautyTitle && item.beautyTitle.title}}"><text class="remix-icon ri-medal-line"></text><text>{{item.beautyTitle.title}}</text></view>
+
+            <!-- 专属荣誉头衔 / 空白处活力冲榜动效 (高度恒定统一，杜绝撑高卡片，空白处灵动生动) -->
+            <view class="gallery-title-box">
+              <view class="gallery-title-pill has-title" wx:if="{{item.beautyTitle && item.beautyTitle.title}}">
+                <text class="remix-icon ri-vip-crown-2-fill crown-glow-icon"></text>
+                <text class="badge-text">{{item.beautyTitle.title}}</text>
+              </view>
+              <view class="gallery-status-pill pulse-twinkle" wx:else>
+                <text class="remix-icon ri-sparkling-fill sparkle-twinkle-icon"></text>
+                <text class="badge-text">萌力冲榜中 · 期待登顶</text>
+              </view>
+            </view>
+
             <view class="gallery-footer {{animatingPetId === item.petId ? 'is-voting-anim' : ''}}">
               <view class="gallery-votes {{animatingPetId === item.petId ? 'is-receiving-heart' : ''}}">
                 <text class="remix-icon ri-heart-3-fill heart-target-icon {{animatingPetId === item.petId ? 'droplet-absorbed' : ''}}"></text>
@@ -345,6 +379,7 @@
     <!-- 页面初始加载时的骨骼预加载骨架屏 -->
     <view class="beauty-skeleton-waterfall" wx:elif="{{loading && !ranking.length}}">
       <view class="skeleton-column" wx:for="{{[1, 2]}}" wx:key="*this">
+        <view class="skeleton-stagger-banner skeleton-shimmer" wx:if="{{item === 2}}"></view>
         <view class="skeleton-card" wx:for="{{[1, 2]}}" wx:key="*this">
           <view class="skeleton-cover skeleton-shimmer"></view>
           <view class="skeleton-body">

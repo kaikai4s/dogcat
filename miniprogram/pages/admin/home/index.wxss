@@ -319,6 +319,96 @@
   box-shadow: 0 10rpx 20rpx rgba(244, 63, 107, 0.16);
 }
 
+.platform-finance-card {
+  overflow: hidden;
+  background: linear-gradient(145deg, #ffffff 0%, #f0f7ff 50%, #fff7ed 100%);
+  margin-top: 24rpx;
+}
+
+.finance-head {
+  align-items: flex-start;
+  gap: 20rpx;
+}
+
+.finance-link-badge {
+  flex-shrink: 0;
+  min-height: 48rpx;
+  padding: 0 20rpx;
+  border-radius: 999rpx;
+  display: flex;
+  align-items: center;
+  color: #2563eb;
+  background: #eff6ff;
+  font-size: 22rpx;
+  font-weight: 700;
+  border: 1rpx solid rgba(37, 99, 235, 0.15);
+}
+
+.platform-finance-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14rpx;
+  margin-top: 22rpx;
+}
+
+.finance-stat-card {
+  min-height: 140rpx;
+  padding: 20rpx 14rpx;
+  border-radius: 22rpx;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 8rpx 20rpx rgba(70, 90, 120, 0.05);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.finance-stat-card.highlight-orange {
+  border: 1rpx solid rgba(249, 115, 22, 0.22);
+  background: linear-gradient(145deg, #ffffff 0%, #fff7ed 100%);
+}
+
+.finance-stat-card.highlight-orange .finance-stat-val {
+  color: #ea580c;
+}
+
+.finance-stat-card.highlight-blue {
+  border: 1rpx solid rgba(14, 165, 233, 0.22);
+  background: linear-gradient(145deg, #ffffff 0%, #f0f9ff 100%);
+}
+
+.finance-stat-card.highlight-blue .finance-stat-val {
+  color: #0284c7;
+}
+
+.finance-stat-card.highlight-gray {
+  border: 1rpx solid rgba(148, 163, 184, 0.25);
+  background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.finance-stat-card.highlight-gray .finance-stat-val {
+  color: #64748b;
+}
+
+.finance-stat-val {
+  font-size: 30rpx;
+  font-weight: 950;
+  line-height: 1.2;
+}
+
+.finance-stat-lbl {
+  margin-top: 10rpx;
+  color: #334155;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.finance-stat-tip {
+  margin-top: 4rpx;
+  color: #94a3b8;
+  font-size: 18rpx;
+}
+
 .admin-section {
   position: relative;
   z-index: 1;

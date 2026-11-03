@@ -355,8 +355,11 @@ module.exports = function createHandler(context) {
     }
 
     const recordOpenids = [
-      record.staffOpenid, record.userOpenid, record.openid, record.recipientOpenid
+      record.applicantOpenid, record.staffOpenid, record.userOpenid, record.openid, record.recipientOpenid
     ].filter(Boolean)
+    for (const v of recordOpenids) {
+      if (v && String(v).toLowerCase().includes(kw)) return true
+    }
     if (openids.length && recordOpenids.some((id) => openids.includes(id))) return true
 
     if (orderIds.length) {
@@ -729,11 +732,33 @@ module.exports = function createHandler(context) {
       const monthStartDate = parseDateValue(monthStartText) || new Date(`${todayParts.monthKey}-01T00:00:00.000Z`)
       const orderProjection = { _id: true, createdAt: true, paidAt: true, paymentStatus: true, status: true, payAmount: true }
       const userProjection = { _id: true, createdAt: true }
-      const [orders, users] = await Promise.all([
+      const [orders, users, availableCommissionRows, expiredCommissionRows, availableStaffEarningsRows] = await Promise.all([
         readMonthlyEntities('orders', monthStartDate, monthStartText, orderProjection),
-        readMonthlyEntities('users', monthStartDate, monthStartText, userProjection)
+        readMonthlyEntities('users', monthStartDate, monthStartText, userProjection),
+        readAll('user_asset_earnings', { status: 'available' }, 5000).catch(() => []),
+        readAll('user_asset_earnings', { status: 'expired' }, 5000).catch(() => []),
+        readAll('staff_earnings', { status: 'available' }, 5000).catch(() => [])
       ])
-      return { orders: counts, staffPending, incidentsOpen, pendingReviews, monthly: buildMonthlyDashboard(orders, users) }
+      const pendingCommission = Math.round(availableCommissionRows.reduce((sum, r) => sum + Number(r.amount || 0), 0) * 100) / 100
+      const expiredCommission = Math.round(expiredCommissionRows.reduce((sum, r) => sum + Number(r.amount || 0), 0) * 100) / 100
+      const pendingStaffEarnings = Math.round(availableStaffEarningsRows
+        .filter((r) => !r.isMock && r.paymentChannel !== 'mock')
+        .reduce((sum, r) => sum + Number(r.amount || 0), 0) * 100) / 100
+      return {
+        orders: counts,
+        staffPending,
+        incidentsOpen,
+        pendingReviews,
+        pendingCommission,
+        pendingStaffEarnings,
+        expiredCommission,
+        platformFinance: {
+          pendingCommission,
+          pendingStaffEarnings,
+          expiredCommission
+        },
+        monthly: buildMonthlyDashboard(orders, users)
+      }
     }
     if (action === 'financeDashboard') {
       await refreshStaffEarnings()
@@ -908,6 +933,7 @@ module.exports = function createHandler(context) {
           const asset = userAssetMap[item.userOpenid] || { available: 0, withdrawn: 0, withdrawHistory: [], withdrawCount: 0 }
           return {
             ...item,
+            applicantOpenid: item.userOpenid || item.openid || '',
             staffNickname: user.nickname || '',
             userNickname: user.nickname || '',
             userPhone: user.phone || '',
@@ -925,6 +951,7 @@ module.exports = function createHandler(context) {
         const phoneFields = staffPhoneFields(user, profile)
         return {
           ...item,
+          applicantOpenid: item.staffOpenid || item.openid || '',
           staffRealName: profile.realName || item.accountName || '',
           staffPhone: phoneFields.phone,
           accountPhone: phoneFields.accountPhone,
@@ -1136,7 +1163,267 @@ module.exports = function createHandler(context) {
       else if (targetUserId) target = (await db.collection('users').doc(targetUserId).get().catch(() => ({ data: null }))).data
       if (!target) throw new Error('用户不存在')
       const stats = await getUserManageStats(target)
-      return { ...safeUserSummary(target, { isSelf: target.openid === openid }), inviteCode: target.inviteCode || '', retroCardCount: Number(target.retroCardCount || 0), completedOrderCount: Number(target.completedOrderCount || 0), stats }
+      let commissionSummary = { available: 0, withdrawn: 0, expired: 0, total: 0 }
+      const [earningsRows, withdrawRows] = await Promise.all([
+        readAll('user_asset_earnings', { userOpenid: target.openid }, 2000).catch(() => []),
+        readAll('withdraw_requests', { assetType: 'user', userOpenid: target.openid }, 500).catch(() => [])
+      ])
+      const currentTime = new Date().toISOString()
+      let commAvailable = 0
+      let commExpired = 0
+      earningsRows.forEach((r) => {
+        const amt = Number(r.amount || 0)
+        let status = r.status || 'available'
+        if (status === 'available' && r.expiresAt && String(r.expiresAt) < currentTime) {
+          status = 'expired'
+        }
+        if (status === 'available') commAvailable += amt
+        else if (status === 'expired') commExpired += amt
+      })
+      const paidWithdrawTotal = withdrawRows
+        .filter((w) => w.status === 'paid')
+        .reduce((sum, w) => sum + Number(w.amount || 0), 0)
+      const earningsWithdrawnTotal = earningsRows
+        .filter((r) => r.status === 'withdrawn')
+        .reduce((sum, r) => sum + Number(r.amount || 0), 0)
+      const commWithdrawn = paidWithdrawTotal > 0 ? paidWithdrawTotal : earningsWithdrawnTotal
+      commissionSummary = {
+        available: Math.round(commAvailable * 100) / 100,
+        withdrawn: Math.round(commWithdrawn * 100) / 100,
+        expired: Math.round(commExpired * 100) / 100,
+        total: Math.round((commAvailable + commWithdrawn + commExpired) * 100) / 100
+      }
+      return {
+        ...safeUserSummary(target, { isSelf: target.openid === openid }),
+        inviteCode: target.inviteCode || '',
+        retroCardCount: Number(target.retroCardCount || 0),
+        completedOrderCount: Number(target.completedOrderCount || 0),
+        stats,
+        commission: commissionSummary
+      }
+    }
+    if (action === 'getUserRelatedDetails') {
+      const targetOpenid = safeText(data.openid).trim()
+      const targetUserId = safeText(data.userId || data._id).trim()
+      const type = safeText(data.type).trim() || 'all'
+      let target = null
+      if (targetOpenid) target = (await db.collection('users').where({ openid: targetOpenid }).limit(1).get().catch(() => ({ data: [] }))).data[0]
+      else if (targetUserId) target = (await db.collection('users').doc(targetUserId).get().catch(() => ({ data: null }))).data
+      if (!target) throw new Error('用户不存在')
+      const targetUserOpenid = target.openid
+
+      const result = { openid: targetUserOpenid }
+
+      // 1. 优惠券明细
+      if (['all', 'coupons'].includes(type)) {
+        const rawCoupons = await readAll('user_coupons', { openid: targetUserOpenid }, 500).catch(() => [])
+        const sourceMap = {
+          register_grant: '新用户注册赠送',
+          admin_manual_grant: '管理员手动发放',
+          lottery_reward: '幸运抽奖奖品',
+          order_refund: '售后退款补偿',
+          activity: '营销活动发放',
+          invite_reward: '邀请好友奖励'
+        }
+        const currentTime = new Date().toISOString()
+        result.coupons = rawCoupons
+          .map((item) => {
+            const snap = item.templateSnapshot || {}
+            let status = item.status || 'available'
+            if (status === 'available' && item.validTo && String(item.validTo) < currentTime) {
+              status = 'expired'
+            }
+            const statusMap = { available: '可使用', used: '已使用', expired: '已过期', locked: '已锁定', void: '已作废' }
+            return {
+              _id: item._id,
+              name: snap.name || item.name || '优惠券',
+              discountAmount: snap.discountAmount !== undefined ? snap.discountAmount : (item.discountAmount || 0),
+              minOrderAmount: snap.minOrderAmount !== undefined ? snap.minOrderAmount : (item.minOrderAmount || 0),
+              usageScopeText: snap.usageScopeText || item.usageScopeText || '全场通用',
+              sourceType: item.sourceType || '',
+              sourceText: sourceMap[item.sourceType] || item.source || item.reason || (item.issuedByAdminOpenid ? '后台管理员发放' : '系统发放'),
+              issuedAt: item.issuedAt || item.createdAt || '',
+              validFrom: item.validFrom || '',
+              validTo: item.validTo || '',
+              status,
+              statusText: statusMap[status] || status,
+              usedAt: item.usedAt || '',
+              usedOrderId: item.usedOrderId || ''
+            }
+          })
+          .sort((a, b) => String(b.issuedAt || '').localeCompare(String(a.issuedAt || '')))
+      }
+
+      // 2. 积分详细流水
+      if (['all', 'pointLogs'].includes(type)) {
+        const rawLogs = await readAll('point_logs', { openid: targetUserOpenid }, 1000).catch(() => [])
+        result.pointLogs = rawLogs
+          .map((item) => ({
+            _id: item._id,
+            delta: Number(item.delta || 0),
+            balance: item.balance !== undefined ? Number(item.balance) : null,
+            reason: item.reason || item.description || '积分变动',
+            sourceType: item.sourceType || '',
+            createdAt: item.createdAt || ''
+          }))
+          .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+      }
+
+      // 3. 地址资料
+      if (['all', 'addresses'].includes(type)) {
+        const rawAddresses = await readAll('user_addresses', { openid: targetUserOpenid }, 100).catch(() => [])
+        result.addresses = rawAddresses
+          .map((item) => ({
+            _id: item._id,
+            contactName: item.contactName || '',
+            contactPhone: item.contactPhone || '',
+            serviceAddress: item.serviceAddress || '',
+            addressDetail: item.addressDetail || '',
+            doorplate: item.doorplate || '',
+            fullAddress: `${item.serviceAddress || ''}${item.addressDetail ? ' ' + item.addressDetail : ''}${item.doorplate ? ' ' + item.doorplate : ''}`.trim(),
+            label: item.label || '',
+            isDefault: !!item.isDefault,
+            createdAt: item.createdAt || ''
+          }))
+          .sort((a, b) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0) || String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+      }
+
+      // 4. 宠物资料
+      if (['all', 'pets'].includes(type)) {
+        const rawPets = await readAll('pets', { openid: targetUserOpenid }, 100).catch(() => [])
+        result.pets = rawPets
+          .map((item) => ({
+            _id: item._id,
+            name: item.name || '',
+            species: item.species === 'cat' ? '猫咪' : item.species === 'dog' ? '狗狗' : (item.species || '爱宠'),
+            breed: item.breed || '',
+            age: item.age || item.ageText || '',
+            gender: item.gender === 'male' ? '公' : item.gender === 'female' ? '母' : (item.gender || '未知'),
+            weight: item.weight ? `${item.weight}kg` : '',
+            sterilized: item.sterilized ? '已绝育' : (item.sterilized === false ? '未绝育' : '未知'),
+            avatarUrl: item.avatarUrl || '',
+            createdAt: item.createdAt || ''
+          }))
+          .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+      }
+
+      // 5. 佣金全流程数据（获得明细、提现记录、过期记录）
+      if (['all', 'commission', 'commission_earnings', 'commission_withdraws', 'commission_expired'].includes(type)) {
+        const [earningsRows, withdrawRows] = await Promise.all([
+          readAll('user_asset_earnings', { userOpenid: targetUserOpenid }, 2000).catch(() => []),
+          readAll('withdraw_requests', { assetType: 'user', userOpenid: targetUserOpenid }, 500).catch(() => [])
+        ])
+
+        const currentTime = new Date().toISOString()
+        let available = 0
+        let expired = 0
+        let withdrawing = 0
+
+        earningsRows.forEach((row) => {
+          const amt = Number(row.amount || 0)
+          let status = row.status || 'available'
+          if (status === 'available' && row.expiresAt && String(row.expiresAt) < currentTime) {
+            status = 'expired'
+          }
+          if (status === 'available') available += amt
+          else if (status === 'expired') expired += amt
+          else if (status === 'withdrawing') withdrawing += amt
+        })
+
+        const paidWithdrawTotal = withdrawRows
+          .filter((w) => w.status === 'paid')
+          .reduce((sum, w) => sum + Number(w.amount || 0), 0)
+        const earningsWithdrawnTotal = earningsRows
+          .filter((r) => r.status === 'withdrawn')
+          .reduce((sum, r) => sum + Number(r.amount || 0), 0)
+        const withdrawn = paidWithdrawTotal > 0 ? paidWithdrawTotal : earningsWithdrawnTotal
+
+        const earningSourceMap = {
+          invite_binding: '好友邀请奖励',
+          order_commission: '订单分销佣金',
+          beauty_prize: '美宠大赛奖金',
+          admin_manual_grant: '管理员手动补贴'
+        }
+
+        const earnings = earningsRows
+          .map((item) => {
+            let status = item.status || 'available'
+            if (status === 'available' && item.expiresAt && String(item.expiresAt) < currentTime) {
+              status = 'expired'
+            }
+            return {
+              _id: item._id,
+              amount: Number(item.amount || 0),
+              amountText: Number(item.amount || 0).toFixed(2),
+              sourceType: item.sourceType || '',
+              sourceTypeText: earningSourceMap[item.sourceType] || item.sourceType || '推广佣金',
+              status,
+              statusText: ({ available: '可提现', withdrawn: '已提现', withdrawing: '提现中', expired: '已过期' })[status] || status,
+              invitedOpenid: item.invitedOpenid || '',
+              sourceId: item.sourceId || '',
+              orderId: item.orderId || '',
+              createdAt: item.createdAt || '',
+              expiresAt: item.expiresAt || ''
+            }
+          })
+          .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+
+        const withdraws = withdrawRows
+          .map((item) => ({
+            _id: item._id,
+            amount: Number(item.amount || 0),
+            amountText: Number(item.amount || 0).toFixed(2),
+            status: item.status || 'pending',
+            statusText: ({ pending: '待审核', approved: '待打款', transferring: '转账中', paid: '已到账', rejected: '已驳回', transfer_failed: '转账失败' })[item.status] || item.status,
+            payoutChannel: item.payoutChannel === 'wechat_wallet' ? '微信零钱' : '人工打款',
+            paymentReference: item.paymentReference || item.outBillNo || '',
+            auditRemark: item.auditRemark || '',
+            createdAt: item.createdAt || '',
+            paidAt: item.paidAt || ''
+          }))
+          .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+
+        const expiredRecords = earnings.filter((item) => item.status === 'expired')
+
+        result.commission = {
+          available: Math.round(available * 100) / 100,
+          withdrawn: Math.round(withdrawn * 100) / 100,
+          withdrawing: Math.round(withdrawing * 100) / 100,
+          expired: Math.round(expired * 100) / 100,
+          total: Math.round((available + withdrawn + withdrawing + expired) * 100) / 100,
+          availableText: (Math.round(available * 100) / 100).toFixed(2),
+          withdrawnText: (Math.round(withdrawn * 100) / 100).toFixed(2),
+          expiredText: (Math.round(expired * 100) / 100).toFixed(2),
+          totalText: (Math.round((available + withdrawn + withdrawing + expired) * 100) / 100).toFixed(2),
+          earnings,
+          withdraws,
+          expiredRecords
+        }
+      }
+
+      // 6. 居家安全资料
+      if (['all', 'homeSecurity'].includes(type)) {
+        result.homeSecurity = await readAll('home_security', { openid: targetUserOpenid }, 50).catch(() => [])
+      }
+
+      // 7. 签到记录
+      if (['all', 'checkins'].includes(type)) {
+        const checkins = await readAll('user_checkins', { openid: targetUserOpenid }, 100).catch(() => [])
+        result.checkins = checkins.sort((a, b) => String(b.date || b.createdAt || '').localeCompare(String(a.date || a.createdAt || '')))
+      }
+
+      // 8. 奖励邮件
+      if (['all', 'rewardMails'].includes(type)) {
+        const mails = await readAll('reward_mails', { openid: targetUserOpenid }, 100).catch(() => [])
+        result.rewardMails = mails.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+      }
+
+      // 9. 关注宠托师
+      if (['all', 'favorites'].includes(type)) {
+        result.favorites = await readAll('sitter_favorites', { openid: targetUserOpenid }, 100).catch(() => [])
+      }
+
+      return result
     }
     if (action === 'updateUserProfile') {
       const targetOpenid = safeText(data.openid).trim()

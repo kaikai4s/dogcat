@@ -127,3 +127,370 @@ checkbox .wx-checkbox-input.wx-checkbox-input-checked::before {
   color: #a59aa0;
   font-size: 24rpx;
 }
+
+/* 佣金资产卡片 */
+.commission-card {
+  background: linear-gradient(145deg, #ffffff 0%, #fffbf6 60%, #fff7f2 100%);
+  border: 1rpx solid rgba(249, 115, 22, 0.15);
+}
+
+.commission-badge {
+  font-size: 20rpx;
+  color: #ea580c;
+  background: #ffedd5;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+  font-weight: 700;
+}
+
+.commission-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16rpx;
+  margin: 20rpx 0;
+}
+
+.commission-stat-box {
+  padding: 18rpx 12rpx;
+  background: #ffffff;
+  border-radius: 18rpx;
+  box-shadow: 0 4rpx 12rpx rgba(180, 100, 60, 0.05);
+  border: 1rpx solid rgba(249, 115, 22, 0.1);
+  text-align: center;
+}
+
+.commission-stat-box.highlight {
+  background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
+  border-color: rgba(234, 88, 12, 0.25);
+}
+
+.commission-stat-box.highlight .stat-amt {
+  color: #ea580c;
+}
+
+.commission-stat-box .stat-amt {
+  font-size: 30rpx;
+  font-weight: 900;
+  color: #2b2528;
+}
+
+.commission-stat-box .stat-lbl {
+  margin-top: 8rpx;
+  font-size: 20rpx;
+  color: #8c7f84;
+}
+
+.commission-actions-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12rpx;
+}
+
+.comm-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6rpx;
+  padding: 14rpx 8rpx;
+  border-radius: 14rpx;
+  background: #ffffff;
+  border: 1rpx solid rgba(234, 88, 12, 0.2);
+  color: #ea580c;
+  font-size: 22rpx;
+  font-weight: 600;
+}
+
+/* 交互统计行 */
+.tip-note {
+  font-size: 22rpx;
+  color: #2563eb;
+}
+
+.interactive-info-row {
+  cursor: pointer;
+  padding: 16rpx 0;
+  transition: opacity 0.2s;
+}
+
+.interactive-info-row:active {
+  opacity: 0.65;
+}
+
+.value-with-arrow {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.stats-badge {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #4b5563;
+  background: #f3f4f6;
+  padding: 4rpx 16rpx;
+  border-radius: 999rpx;
+}
+
+.row-arrow {
+  color: #9ca3af;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+/* 详情抽屉遮罩与面板 */
+.detail-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  animation: fadeIn 0.25s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.detail-drawer {
+  background: #f8fafc;
+  border-radius: 36rpx 36rpx 0 0;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 -10rpx 40rpx rgba(0, 0, 0, 0.15);
+  animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 30rpx 32rpx 20rpx;
+  border-bottom: 1rpx solid #e2e8f0;
+  background: #ffffff;
+  border-radius: 36rpx 36rpx 0 0;
+}
+
+.drawer-title-box {
+  display: flex;
+  flex-direction: column;
+}
+
+.drawer-title {
+  font-size: 32rpx;
+  font-weight: 800;
+  color: #1e293b;
+}
+
+.drawer-subtitle {
+  font-size: 22rpx;
+  color: #64748b;
+  margin-top: 6rpx;
+}
+
+.drawer-close-btn {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 50%;
+  background: #f1f5f9;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+.drawer-body {
+  padding: 24rpx 32rpx;
+  max-height: calc(80vh - 240rpx);
+  box-sizing: border-box;
+}
+
+.drawer-loading {
+  padding: 80rpx 0;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 26rpx;
+}
+
+.drawer-empty {
+  padding: 100rpx 0;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 26rpx;
+}
+
+/* 明细卡片通用 */
+.detail-card {
+  background: #ffffff;
+  border-radius: 20rpx;
+  padding: 24rpx;
+  margin-bottom: 20rpx;
+  border: 1rpx solid #e2e8f0;
+  box-shadow: 0 4rpx 16rpx rgba(100, 116, 139, 0.05);
+}
+
+.item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16rpx;
+}
+
+.item-title {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.badge {
+  font-size: 20rpx;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+  font-weight: 600;
+}
+
+.badge.green {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.badge.gray {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.badge.pink {
+  background: #ffe4e6;
+  color: #e11d48;
+}
+
+.item-amount-row {
+  display: flex;
+  align-items: baseline;
+  gap: 16rpx;
+  margin-bottom: 14rpx;
+}
+
+.item-amount-row .amt {
+  font-size: 36rpx;
+  font-weight: 900;
+  color: #ea580c;
+}
+
+.rule-tip {
+  font-size: 22rpx;
+  color: #64748b;
+}
+
+.item-desc-row {
+  display: flex;
+  align-items: flex-start;
+  font-size: 22rpx;
+  line-height: 1.5;
+  margin-top: 8rpx;
+}
+
+.item-desc-row .lbl {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.item-desc-row .val {
+  color: #1e293b;
+  word-break: break-all;
+}
+
+.highlight-source {
+  color: #ea580c !important;
+  font-weight: 600;
+}
+
+.point-delta {
+  font-size: 28rpx;
+  font-weight: 800;
+}
+
+.point-delta.plus {
+  color: #16a34a;
+}
+
+.point-delta.minus {
+  color: #dc2626;
+}
+
+.font-bold {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.phone {
+  color: #64748b;
+  font-size: 24rpx;
+  font-weight: normal;
+  margin-left: 8rpx;
+}
+
+.font-address {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.pet-species {
+  color: #64748b;
+  font-size: 24rpx;
+  font-weight: normal;
+}
+
+.earning-amount, .withdraw-amount, .expired-amount {
+  font-size: 36rpx;
+  font-weight: 900;
+  margin-bottom: 12rpx;
+}
+
+.earning-amount {
+  color: #16a34a;
+}
+
+.withdraw-amount {
+  color: #2563eb;
+}
+
+.expired-amount {
+  color: #94a3b8;
+}
+
+.font-code {
+  font-family: monospace;
+  font-size: 22rpx;
+}
+
+.expired-text {
+  color: #e11d48 !important;
+}
+
+.drawer-footer {
+  padding: 20rpx 32rpx calc(24rpx + env(safe-area-inset-bottom));
+  background: #ffffff;
+  border-top: 1rpx solid #e2e8f0;
+}
+
+.drawer-close-full-btn {
+  width: 100%;
+  height: 80rpx;
+  line-height: 80rpx;
+  font-size: 28rpx;
+  border-radius: 999rpx;
+}

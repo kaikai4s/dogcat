@@ -586,9 +586,113 @@ button.rank-view-option.is-active { color: #b85b2c; background: #fff; font-weigh
 .gallery-name { color: #30271f; font-size: 30rpx; font-weight: 900; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gallery-meta { margin-top: 8rpx; color: #8e8580; font-size: 23rpx; line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gallery-id { margin-top: 6rpx; color: #a3978c; font-size: 20rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gallery-title { display: flex; align-items: center; gap: 6rpx; width: fit-content; max-width: 100%; margin-top: 14rpx; padding: 6rpx 12rpx; border-radius: 10rpx; background: #fff6e5; color: #a57529; font-size: 20rpx; }
-.gallery-title .remix-icon { flex-shrink: 0; }
-.gallery-title text:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 专属荣誉头衔 / 空白处活力冲榜动效 (固定高度与边距，杜绝撑高卡片，动效灵动精致) */
+.gallery-title-box {
+  display: flex;
+  align-items: center;
+  height: 46rpx;
+  min-height: 46rpx;
+  max-height: 46rpx;
+  margin-top: 12rpx;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.gallery-title-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
+  max-width: 100%;
+  height: 42rpx;
+  padding: 0 14rpx;
+  border-radius: 999rpx;
+  background: linear-gradient(135deg, #fff8ec 0%, #fff1d6 100%);
+  border: 1rpx solid rgba(230, 162, 60, 0.35);
+  box-shadow: 0 2rpx 8rpx rgba(230, 162, 60, 0.15);
+  box-sizing: border-box;
+}
+
+.gallery-title-pill .crown-glow-icon {
+  font-size: 24rpx;
+  color: #e6a23c;
+  flex-shrink: 0;
+  animation: crown-glow-pulse 2s ease-in-out infinite;
+}
+
+.gallery-title-pill .badge-text {
+  color: #935d10;
+  font-size: 20rpx;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 未佩戴头衔宠物的活力萌宠冲榜呼吸动效 (填补空白，提升灵动萌宠社区感) */
+.gallery-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
+  max-width: 100%;
+  height: 42rpx;
+  padding: 0 14rpx;
+  border-radius: 999rpx;
+  background: linear-gradient(135deg, #fdf4f4 0%, #fef0f0 100%);
+  border: 1rpx solid rgba(255, 141, 141, 0.3);
+  box-shadow: 0 2rpx 8rpx rgba(255, 117, 117, 0.1);
+  box-sizing: border-box;
+  animation: status-pill-breathe 2.4s ease-in-out infinite;
+}
+
+.gallery-status-pill .sparkle-twinkle-icon {
+  font-size: 22rpx;
+  color: #ff5b77;
+  flex-shrink: 0;
+  animation: sparkle-twinkle-anim 1.8s ease-in-out infinite;
+}
+
+.gallery-status-pill .badge-text {
+  color: #d15668;
+  font-size: 20rpx;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes crown-glow-pulse {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 2rpx rgba(230, 162, 60, 0.3));
+  }
+  50% {
+    transform: scale(1.15) rotate(4deg);
+    filter: drop-shadow(0 0 6rpx rgba(230, 162, 60, 0.7));
+  }
+}
+
+@keyframes sparkle-twinkle-anim {
+  0%, 100% {
+    transform: scale(0.9) rotate(0deg);
+    opacity: 0.75;
+  }
+  50% {
+    transform: scale(1.2) rotate(18deg);
+    opacity: 1;
+  }
+}
+
+@keyframes status-pill-breathe {
+  0%, 100% {
+    box-shadow: 0 2rpx 6rpx rgba(255, 117, 117, 0.08);
+    border-color: rgba(255, 141, 141, 0.25);
+  }
+  50% {
+    box-shadow: 0 4rpx 14rpx rgba(255, 117, 117, 0.22);
+    border-color: rgba(255, 141, 141, 0.55);
+  }
+}
 .gallery-footer {
   display: flex;
   align-items: center;
@@ -2335,6 +2439,150 @@ button.gallery-vote-btn[disabled] { color: #a89b90; background: #f4f1ed; opacity
   display: inline-flex !important;
   align-items: center;
   gap: 8rpx;
+}
+
+/* 右列顶部错列氛围动效挂件 (优雅填补第二名上方空白，形成自然错落，动效热烈灵动) */
+.waterfall-stagger-banner {
+  position: relative;
+  margin-top: 14rpx;
+  margin-bottom: 24rpx;
+  padding: 22rpx 20rpx;
+  border-radius: 28rpx;
+  background: linear-gradient(135deg, #fff7f2 0%, #fff1f4 45%, #fef3f7 100%);
+  border: 1rpx solid rgba(255, 140, 160, 0.28);
+  box-shadow: 0 8rpx 22rpx rgba(244, 63, 107, 0.08);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.banner-inner {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  position: relative;
+  z-index: 2;
+}
+
+.banner-badge-box {
+  width: 68rpx;
+  height: 68rpx;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ffd36e 0%, #ff9f43 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4rpx 12rpx rgba(255, 159, 67, 0.35);
+  flex-shrink: 0;
+}
+
+.trophy-anim {
+  font-size: 38rpx;
+  color: #ffffff;
+  animation: trophy-bounce 2.2s ease-in-out infinite;
+}
+
+.banner-text-col {
+  flex: 1;
+  min-width: 0;
+}
+
+.banner-main-title {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  color: #3d2a23;
+  font-size: 26rpx;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.banner-main-title .fire-emoji {
+  font-size: 24rpx;
+  animation: fire-pulse 1.6s ease-in-out infinite;
+}
+
+.banner-sub-tip {
+  margin-top: 6rpx;
+  color: #9e8a83;
+  font-size: 20rpx;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.banner-paw-track {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+  flex-shrink: 0;
+  margin-left: 4rpx;
+}
+
+.banner-paw-track .paw-print {
+  font-size: 22rpx;
+  display: inline-block;
+}
+
+.paw-left {
+  animation: paw-step-left 1.8s ease-in-out infinite;
+}
+
+.paw-right {
+  animation: paw-step-right 1.8s ease-in-out infinite;
+}
+
+.banner-sparkle {
+  position: absolute;
+  font-size: 22rpx;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.sparkle-top {
+  top: 8rpx;
+  right: 60rpx;
+  animation: sparkle-float 2s ease-in-out infinite;
+}
+
+.sparkle-bottom {
+  bottom: 8rpx;
+  left: 20rpx;
+  animation: sparkle-float 2.4s ease-in-out infinite reverse;
+}
+
+.skeleton-stagger-banner {
+  width: 100%;
+  height: 124rpx;
+  border-radius: 28rpx;
+  margin-top: 14rpx;
+  margin-bottom: 24rpx;
+  background: #f7f3ee;
+}
+
+@keyframes trophy-bounce {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50% { transform: translateY(-8rpx) rotate(4deg) scale(1.1); }
+}
+
+@keyframes fire-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.25); }
+}
+
+@keyframes paw-step-left {
+  0%, 100% { opacity: 0.35; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.2) rotate(-8deg); }
+}
+
+@keyframes paw-step-right {
+  0%, 100% { opacity: 1; transform: scale(1.2) rotate(8deg); }
+  50% { opacity: 0.35; transform: scale(0.9); }
+}
+
+@keyframes sparkle-float {
+  0%, 100% { opacity: 0.3; transform: scale(0.8) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1.2) rotate(24deg); }
 }
 
 button.admin-inline-disqualify-btn {

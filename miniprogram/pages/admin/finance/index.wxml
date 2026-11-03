@@ -70,6 +70,7 @@
     <view class="card record-card" wx:for="{{requests}}" wx:key="_id">
       <view class="record-head"><view class="record-title">{{item.source === 'admin_manual_tail_settlement' ? '小额尾款人工结清' : (item.assetType === 'user' ? '用户邀请收益提现' : '宠托师提现申请')}}</view><view class="badge {{item.status === 'paid' ? 'green' : (item.status === 'rejected' ? 'gray' : 'pink')}}">{{item.statusText}}</view></view>
       <view class="info-row"><view class="label">申请人</view><view class="value">{{item.assetType === 'user' ? (item.userNickname || item.userOpenid) : (item.staffRealName || item.staffNickname || item.staffOpenid)}}</view></view>
+      <view class="info-row"><view class="label">申请人微信ID</view><view class="value copyable-val" data-text="{{item.applicantOpenid || item.userOpenid || item.staffOpenid || item.openid}}" bindtap="copyText"><text class="code-text">{{item.applicantOpenid || item.userOpenid || item.staffOpenid || item.openid || '无'}}</text><text class="copy-tag" wx:if="{{item.applicantOpenid || item.userOpenid || item.staffOpenid || item.openid}}">复制</text></view></view>
       <view class="info-row" wx:if="{{item.staffPhone || item.accountPhone}}"><view class="label">绑定手机号</view><view class="value">{{item.accountPhone || item.staffPhone}}</view></view>
       <view class="info-row" wx:if="{{item.certifiedPhone}}"><view class="label">实名认证手机号</view><view class="value">{{item.certifiedPhone}}</view></view>
       <view class="info-row"><view class="label">金额</view><view class="price">¥{{item.amountText}}</view></view>

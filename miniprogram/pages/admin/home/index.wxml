@@ -90,6 +90,23 @@
         </view>
       </view>
     </view>
+
+    <!-- 平台佣金与收益概览骨架屏 -->
+    <view class="card platform-finance-card skeleton-panel-card">
+      <view class="between finance-head">
+        <view>
+          <view class="skeleton-shimmer skeleton-title-line"></view>
+          <view class="skeleton-shimmer skeleton-sub-line" style="margin-top: 10rpx; width: 220rpx;"></view>
+        </view>
+        <view class="skeleton-shimmer skeleton-month-pill" style="width: 140rpx;"></view>
+      </view>
+      <view class="platform-finance-grid">
+        <view class="finance-stat-card skeleton-revenue-stat" wx:for="{{[1, 2, 3]}}" wx:key="*this">
+          <view class="skeleton-shimmer skeleton-revenue-num"></view>
+          <view class="skeleton-shimmer skeleton-revenue-lbl"></view>
+        </view>
+      </view>
+    </view>
   </block>
 
   <view class="stats-grid admin-stats-grid" wx:if="{{dashboard}}">
@@ -160,6 +177,26 @@
         </view>
       </view>
     </scroll-view>
+  </view>
+
+  <!-- 平台待提现佣金、待提现收益与过期佣金数据卡片 -->
+  <view class="card platform-finance-card" wx:if="{{dashboard}}">
+    <view class="between finance-head">
+      <view>
+        <view class="strong">佣金与收益概览</view>
+        <view class="muted">平台待提现佣金、待提现收益及过期佣金统计</view>
+      </view>
+      <navigator class="finance-link-badge" url="/pages/admin/finance/index">
+        <text>财务管理 ›</text>
+      </navigator>
+    </view>
+    <view class="platform-finance-grid">
+      <view class="finance-stat-card {{index === 0 ? 'highlight-orange' : (index === 1 ? 'highlight-blue' : 'highlight-gray')}}" wx:for="{{platformFinanceStats}}" wx:key="label">
+        <view class="finance-stat-val">{{item.value}}</view>
+        <view class="finance-stat-lbl">{{item.label}}</view>
+        <view class="finance-stat-tip">{{item.tip}}</view>
+      </view>
+    </view>
   </view>
 
   <view class="admin-section" wx:for="{{adminSections}}" wx:key="title">

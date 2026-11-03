@@ -44,7 +44,26 @@ Page({
     roleOptions: decorateRoleOptions(roleOptions, ['client']),
     statusIndex: 0,
     statusText: '正常',
-    statsRows: []
+    statsRows: [],
+    userCommission: {
+      available: 0,
+      withdrawn: 0,
+      expired: 0,
+      total: 0,
+      availableText: '0.00',
+      withdrawnText: '0.00',
+      expiredText: '0.00',
+      totalText: '0.00',
+      earningsCount: 0,
+      withdrawsCount: 0,
+      expiredCount: 0
+    },
+    activeDetailType: '',
+    activeDetailTitle: '',
+    activeDetailSubtitle: '',
+    detailLoading: false,
+    currentDetailList: [],
+    relatedCache: {}
   },
 
   onLoad(query = {}) {
@@ -61,6 +80,20 @@ Page({
         const status = user.status === 'disabled' ? 'disabled' : (user.status === 'deleted' ? 'deleted' : 'active')
         const statusIndex = Math.max(statusOptions.findIndex((item) => item.value === status), 0)
         const roles = Array.isArray(user.roles) && user.roles.length ? user.roles : ['client']
+        const comm = user.commission || {}
+        const userCommission = {
+          available: Number(comm.available || 0),
+          withdrawn: Number(comm.withdrawn || 0),
+          expired: Number(comm.expired || 0),
+          total: Number(comm.total || 0),
+          availableText: Number(comm.available || 0).toFixed(2),
+          withdrawnText: Number(comm.withdrawn || 0).toFixed(2),
+          expiredText: Number(comm.expired || 0).toFixed(2),
+          totalText: Number(comm.total || 0).toFixed(2),
+          earningsCount: comm.earningsCount || 0,
+          withdrawsCount: comm.withdrawsCount || 0,
+          expiredCount: comm.expiredCount || 0
+        }
         this.setData({
           user,
           form: {
@@ -78,6 +111,7 @@ Page({
           statusText: ({ active: '正常', disabled: '已禁用', deleted: '已删除' })[user.status] || '账号状态未知',
           roleOptions: decorateRoleOptions(roleOptions, roles),
           statsRows: this.buildStatsRows(user.stats || {}),
+          userCommission,
           loading: false
         })
       })
@@ -89,19 +123,113 @@ Page({
 
   buildStatsRows(stats) {
     return [
-      { label: '宠物资料', value: stats.pets || 0 },
-      { label: '地址资料', value: stats.addresses || 0 },
-      { label: '居家安全资料', value: stats.homeSecurity || 0 },
-      { label: '优惠券', value: stats.coupons || 0 },
-      { label: '签到记录', value: stats.checkins || 0 },
-      { label: '积分流水', value: stats.pointLogs || 0 },
-      { label: '奖励邮件', value: stats.rewardMails || 0 },
-      { label: '关注宠托师', value: stats.favorites || 0 },
-      { label: '客户订单', value: stats.clientOrders || 0 },
-      { label: '宠托师订单', value: stats.staffOrders || 0 },
-      { label: '宠托师资料', value: stats.staffProfiles || 0 }
+      { key: 'pets', label: '宠物资料', value: stats.pets || 0 },
+      { key: 'addresses', label: '地址资料', value: stats.addresses || 0 },
+      { key: 'homeSecurity', label: '居家安全资料', value: stats.homeSecurity || 0 },
+      { key: 'coupons', label: '优惠券', value: stats.coupons || 0 },
+      { key: 'checkins', label: '签到记录', value: stats.checkins || 0 },
+      { key: 'pointLogs', label: '积分流水', value: stats.pointLogs || 0 },
+      { key: 'rewardMails', label: '奖励邮件', value: stats.rewardMails || 0 },
+      { key: 'favorites', label: '关注宠托师', value: stats.favorites || 0 },
+      { key: 'clientOrders', label: '客户订单', value: stats.clientOrders || 0, isOrder: true },
+      { key: 'staffOrders', label: '宠托师订单', value: stats.staffOrders || 0, isOrder: true },
+      { key: 'staffProfiles', label: '宠托师资料', value: stats.staffProfiles || 0, isStaff: true }
     ]
   },
+
+  tapStatsRow(e) {
+    const key = e.currentTarget.dataset.key
+    if (!key) return
+    if (key === 'clientOrders' || key === 'staffOrders') {
+      wx.navigateTo({ url: `/pages/admin/orders/list/index?keyword=${encodeURIComponent(this.data.openid)}` })
+      return
+    }
+    if (key === 'staffProfiles') {
+      wx.navigateTo({ url: `/pages/admin/sitters/list/index?keyword=${encodeURIComponent(this.data.openid)}` })
+      return
+    }
+    this.openDetailModalByType(key)
+  },
+
+  openDetailModal(e) {
+    const type = e.currentTarget.dataset.type
+    if (!type) return
+    this.openDetailModalByType(type)
+  },
+
+  openDetailModalByType(type) {
+    const titles = {
+      coupons: '优惠券明细',
+      pointLogs: '积分详细流水',
+      addresses: '收货地址资料',
+      pets: '宠物资料明细',
+      commission_earnings: '佣金获得明细',
+      commission_withdraws: '佣金提现记录',
+      commission_expired: '过期佣金明细',
+      homeSecurity: '居家安全资料',
+      checkins: '签到记录明细',
+      rewardMails: '奖励邮件明细',
+      favorites: '关注宠托师明细'
+    }
+    const title = titles[type] || '详细资料'
+    this.setData({
+      activeDetailType: type,
+      activeDetailTitle: title,
+      activeDetailSubtitle: '',
+      detailLoading: true,
+      currentDetailList: []
+    })
+
+    if (this.data.relatedCache[type]) {
+      const list = this.data.relatedCache[type]
+      this.setData({
+        currentDetailList: list,
+        activeDetailSubtitle: `共 ${list.length} 条记录`,
+        detailLoading: false
+      })
+      return
+    }
+
+    callFunction('admin', 'getUserRelatedDetails', { openid: this.data.openid, type })
+      .then((data) => {
+        let list = []
+        if (type === 'coupons') list = data.coupons || []
+        else if (type === 'pointLogs') list = data.pointLogs || []
+        else if (type === 'addresses') list = data.addresses || []
+        else if (type === 'pets') list = data.pets || []
+        else if (type === 'commission_earnings') list = (data.commission && data.commission.earnings) || []
+        else if (type === 'commission_withdraws') list = (data.commission && data.commission.withdraws) || []
+        else if (type === 'commission_expired') list = (data.commission && data.commission.expiredRecords) || []
+        else if (type === 'homeSecurity') list = data.homeSecurity || []
+        else if (type === 'checkins') list = data.checkins || []
+        else if (type === 'rewardMails') list = data.rewardMails || []
+        else if (type === 'favorites') list = data.favorites || []
+        else list = data[type] || []
+
+        const cacheUpdate = { [`relatedCache.${type}`]: list }
+        if (data.commission) {
+          cacheUpdate['userCommission.earningsCount'] = (data.commission.earnings || []).length
+          cacheUpdate['userCommission.withdrawsCount'] = (data.commission.withdraws || []).length
+          cacheUpdate['userCommission.expiredCount'] = (data.commission.expiredRecords || []).length
+        }
+        this.setData({
+          ...cacheUpdate,
+          currentDetailList: list,
+          activeDetailSubtitle: `共 ${list.length} 条记录`,
+          detailLoading: false
+        })
+      })
+      .catch((err) => {
+        this.setData({ detailLoading: false })
+        showError(err)
+      })
+  },
+
+  closeDetailModal() {
+    this.setData({ activeDetailType: '', currentDetailList: [] })
+  },
+
+  stopBubble() {},
 
   viewPets() {
     if (!this.data.openid) return

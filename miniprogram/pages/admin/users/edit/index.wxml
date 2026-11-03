@@ -1,3 +1,4 @@
+<wxs module="beijingTime" src="../../../../utils/beijing-time.wxs" />
 <view class="{{themeClass}} {{fontClass}} page admin-user-edit-page">
   <view class="dashboard-header">
     <view class="badge">用户管理</view>
@@ -76,13 +77,196 @@
     <button class="danger-btn" wx:if="{{(user.status === 'deleted') && (adminSuper || adminPermissions.admin_hardDeleteUser)}}" bindtap="hardDeleteUser">彻底删除</button>
   </view>
 
+  <!-- 用户佣金资产卡片 -->
+  <view wx:if="{{user && !loading}}" class="card commission-card">
+    <view class="card-head-row">
+      <view class="strong">用户佣金资产</view>
+      <view class="commission-badge">推广邀请收益</view>
+    </view>
+    <view class="commission-summary-grid">
+      <view class="commission-stat-box highlight">
+        <view class="stat-amt">¥{{userCommission.availableText || '0.00'}}</view>
+        <view class="stat-lbl">当前可提现</view>
+      </view>
+      <view class="commission-stat-box">
+        <view class="stat-amt">¥{{userCommission.withdrawnText || '0.00'}}</view>
+        <view class="stat-lbl">历史已提现</view>
+      </view>
+      <view class="commission-stat-box">
+        <view class="stat-amt">¥{{userCommission.expiredText || '0.00'}}</view>
+        <view class="stat-lbl">累计已过期</view>
+      </view>
+    </view>
+    <view class="commission-actions-row">
+      <view class="comm-btn" data-type="commission_earnings" bindtap="openDetailModal">
+        <text class="remix-icon ri-coins-line"></text>
+        <text>获得记录</text>
+      </view>
+      <view class="comm-btn" data-type="commission_withdraws" bindtap="openDetailModal">
+        <text class="remix-icon ri-wallet-3-line"></text>
+        <text>提现记录</text>
+      </view>
+      <view class="comm-btn" data-type="commission_expired" bindtap="openDetailModal">
+        <text class="remix-icon ri-time-line"></text>
+        <text>过期明细</text>
+      </view>
+    </view>
+  </view>
+
   <view wx:if="{{user && !loading}}" class="card">
-    <view class="strong">关联数据统计</view>
+    <view class="card-head-row">
+      <view class="strong">关联数据统计</view>
+      <view class="tip-note">点击条目查看详细资料</view>
+    </view>
     <view class="tip-text">删除用户会清理个人资料数据，订单记录会保留。</view>
     <view class="info-list">
-      <view class="info-row" wx:for="{{statsRows}}" wx:key="label">
+      <view class="info-row interactive-info-row" wx:for="{{statsRows}}" wx:key="key" data-key="{{item.key}}" bindtap="tapStatsRow">
         <view class="label">{{item.label}}</view>
-        <view class="value">{{item.value}}</view>
+        <view class="value-with-arrow">
+          <text class="stats-badge">{{item.value}}</text>
+          <text class="row-arrow">›</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 明细详情弹窗 -->
+  <view class="detail-mask" wx:if="{{activeDetailType}}" bindtap="closeDetailModal">
+    <view class="detail-drawer" catchtap="stopBubble">
+      <view class="drawer-header">
+        <view class="drawer-title-box">
+          <text class="drawer-title">{{activeDetailTitle}}</text>
+          <text class="drawer-subtitle" wx:if="{{activeDetailSubtitle}}">{{activeDetailSubtitle}}</text>
+        </view>
+        <view class="drawer-close-btn" bindtap="closeDetailModal">✕</view>
+      </view>
+
+      <scroll-view scroll-y class="drawer-body">
+        <view class="drawer-loading" wx:if="{{detailLoading}}">
+          <text>正在加载详细明细...</text>
+        </view>
+
+        <block wx:elif="{{currentDetailList.length}}">
+          <!-- 优惠券明细 -->
+          <block wx:if="{{activeDetailType === 'coupons'}}">
+            <view class="detail-card coupon-item" wx:for="{{currentDetailList}}" wx:key="_id">
+              <view class="item-head">
+                <view class="item-title">{{item.name}}</view>
+                <view class="badge {{item.status === 'available' ? 'green' : (item.status === 'used' ? 'gray' : 'pink')}}">{{item.statusText}}</view>
+              </view>
+              <view class="item-amount-row">
+                <text class="amt">¥{{item.discountAmount}}</text>
+                <text class="rule-tip">{{item.minOrderAmount > 0 ? '满 ¥' + item.minOrderAmount + ' 可用' : '无门槛使用'}}</text>
+              </view>
+              <view class="item-desc-row"><text class="lbl">适用范围：</text><text class="val">{{item.usageScopeText}}</text></view>
+              <view class="item-desc-row"><text class="lbl">获取方式：</text><text class="val highlight-source">{{item.sourceText}}</text></view>
+              <view class="item-desc-row"><text class="lbl">获得时间：</text><text class="val">{{beijingTime.format(item.issuedAt || item.createdAt)}}</text></view>
+              <view class="item-desc-row"><text class="lbl">有效期至：</text><text class="val">{{item.validTo ? beijingTime.format(item.validTo) : '长期有效'}}</text></view>
+              <view class="item-desc-row" wx:if="{{item.usedOrderId}}"><text class="lbl">使用订单：</text><text class="val">{{item.usedOrderId}}</text></view>
+            </view>
+          </block>
+
+          <!-- 积分详细流水 -->
+          <block wx:elif="{{activeDetailType === 'pointLogs'}}">
+            <view class="detail-card log-item" wx:for="{{currentDetailList}}" wx:key="_id">
+              <view class="item-head">
+                <view class="item-title">{{item.reason}}</view>
+                <view class="point-delta {{item.delta >= 0 ? 'plus' : 'minus'}}">{{item.delta >= 0 ? '+' + item.delta : item.delta}} 积分</view>
+              </view>
+              <view class="item-desc-row" wx:if="{{item.balance !== null}}"><text class="lbl">变动后余额：</text><text class="val font-bold">{{item.balance}} 积分</text></view>
+              <view class="item-desc-row"><text class="lbl">流水时间：</text><text class="val">{{beijingTime.format(item.createdAt)}}</text></view>
+            </view>
+          </block>
+
+          <!-- 地址资料 -->
+          <block wx:elif="{{activeDetailType === 'addresses'}}">
+            <view class="detail-card address-item" wx:for="{{currentDetailList}}" wx:key="_id">
+              <view class="item-head">
+                <view class="item-title">{{item.contactName}} <text class="phone">{{item.contactPhone}}</text></view>
+                <view class="badge green" wx:if="{{item.isDefault}}">默认地址</view>
+              </view>
+              <view class="item-desc-row"><text class="lbl">详细地址：</text><text class="val font-address">{{item.fullAddress}}</text></view>
+              <view class="item-desc-row" wx:if="{{item.label}}"><text class="lbl">地址标签：</text><text class="val">{{item.label}}</text></view>
+              <view class="item-desc-row"><text class="lbl">添加时间：</text><text class="val">{{beijingTime.format(item.createdAt)}}</text></view>
+            </view>
+          </block>
+
+          <!-- 宠物资料 -->
+          <block wx:elif="{{activeDetailType === 'pets'}}">
+            <view class="detail-card pet-item" wx:for="{{currentDetailList}}" wx:key="_id">
+              <view class="item-head">
+                <view class="item-title">{{item.name}} <text class="pet-species">({{item.species}} · {{item.breed || '未知品种'}})</text></view>
+                <view class="badge gray">{{item.gender}}</view>
+              </view>
+              <view class="item-desc-row"><text class="lbl">年龄：</text><text class="val">{{item.age || '未知'}}</text></view>
+              <view class="item-desc-row" wx:if="{{item.weight}}"><text class="lbl">体重：</text><text class="val">{{item.weight}}</text></view>
+              <view class="item-desc-row"><text class="lbl">绝育状态：</text><text class="val">{{item.sterilized}}</text></view>
+              <view class="item-desc-row"><text class="lbl">登记时间：</text><text class="val">{{beijingTime.format(item.createdAt)}}</text></view>
+            </view>
+          </block>
+
+          <!-- 佣金获得历史记录 -->
+          <block wx:elif="{{activeDetailType === 'commission_earnings'}}">
+            <view class="detail-card earning-item" wx:for="{{currentDetailList}}" wx:key="_id">
+              <view class="item-head">
+                <view class="item-title">{{item.sourceTypeText}}</view>
+                <view class="badge {{item.status === 'available' ? 'green' : (item.status === 'expired' ? 'pink' : 'gray')}}">{{item.statusText}}</view>
+              </view>
+              <view class="earning-amount">¥{{item.amountText}}</view>
+              <view class="item-desc-row" wx:if="{{item.invitedOpenid}}"><text class="lbl">被邀请人：</text><text class="val font-code">{{item.invitedOpenid}}</text></view>
+              <view class="item-desc-row" wx:if="{{item.orderId}}"><text class="lbl">关联订单：</text><text class="val font-code">{{item.orderId}}</text></view>
+              <view class="item-desc-row"><text class="lbl">获得时间：</text><text class="val">{{beijingTime.format(item.createdAt)}}</text></view>
+              <view class="item-desc-row" wx:if="{{item.expiresAt}}"><text class="lbl">过期时间：</text><text class="val {{item.status === 'expired' ? 'expired-text' : ''}}">{{beijingTime.format(item.expiresAt)}}</text></view>
+            </view>
+          </block>
+
+          <!-- 佣金提现记录 -->
+          <block wx:elif="{{activeDetailType === 'commission_withdraws'}}">
+            <view class="detail-card withdraw-item" wx:for="{{currentDetailList}}" wx:key="_id">
+              <view class="item-head">
+                <view class="item-title">推广佣金提现申请</view>
+                <view class="badge {{item.status === 'paid' ? 'green' : (item.status === 'rejected' ? 'gray' : 'pink')}}">{{item.statusText}}</view>
+              </view>
+              <view class="withdraw-amount">¥{{item.amountText}}</view>
+              <view class="item-desc-row"><text class="lbl">打款方式：</text><text class="val">{{item.payoutChannel}}</text></view>
+              <view class="item-desc-row" wx:if="{{item.paymentReference}}"><text class="lbl">转账单号/凭证：</text><text class="val font-code">{{item.paymentReference}}</text></view>
+              <view class="item-desc-row"><text class="lbl">申请时间：</text><text class="val">{{beijingTime.format(item.createdAt)}}</text></view>
+              <view class="item-desc-row" wx:if="{{item.paidAt}}"><text class="lbl">到账时间：</text><text class="val">{{beijingTime.format(item.paidAt)}}</text></view>
+              <view class="item-desc-row" wx:if="{{item.auditRemark}}"><text class="lbl">审核备注：</text><text class="val">{{item.auditRemark}}</text></view>
+            </view>
+          </block>
+
+          <!-- 佣金过期记录 -->
+          <block wx:elif="{{activeDetailType === 'commission_expired'}}">
+            <view class="detail-card expired-item" wx:for="{{currentDetailList}}" wx:key="_id">
+              <view class="item-head">
+                <view class="item-title">{{item.sourceTypeText}}（已过期）</view>
+                <view class="badge pink">已失效</view>
+              </view>
+              <view class="expired-amount">¥{{item.amountText}}</view>
+              <view class="item-desc-row"><text class="lbl">原获得时间：</text><text class="val">{{beijingTime.format(item.createdAt)}}</text></view>
+              <view class="item-desc-row"><text class="lbl">失效过期时间：</text><text class="val expired-text">{{beijingTime.format(item.expiresAt)}}</text></view>
+            </view>
+          </block>
+
+          <!-- 其他记录通用列表 -->
+          <block wx:else>
+            <view class="detail-card generic-item" wx:for="{{currentDetailList}}" wx:key="_id">
+              <view class="item-head"><view class="item-title">{{item.title || item.name || ('明细 ' + (index + 1))}}</view></view>
+              <view class="item-desc-row" wx:if="{{item.desc || item.content}}"><text class="val">{{item.desc || item.content}}</text></view>
+              <view class="item-desc-row" wx:if="{{item.createdAt || item.date}}"><text class="lbl">时间：</text><text class="val">{{beijingTime.format(item.createdAt || item.date)}}</text></view>
+            </view>
+          </block>
+        </block>
+
+        <!-- 空状态 -->
+        <view class="drawer-empty" wx:else>
+          <text class="empty-tip">暂无相关明细记录</text>
+        </view>
+      </scroll-view>
+
+      <view class="drawer-footer">
+        <button class="primary drawer-close-full-btn" bindtap="closeDetailModal">关闭</button>
       </view>
     </view>
   </view>

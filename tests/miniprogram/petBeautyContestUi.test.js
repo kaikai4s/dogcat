@@ -151,3 +151,36 @@ test('最美宠物大赛: 顶部标题动态显示为**月宠物最美大赛，�
   assert.ok(wxss.includes('.photo-skeleton-shimmer'), '需具备宠物美照骨架样式')
   assert.ok(wxss.includes('.beauty-skeleton-waterfall'), '需具备瀑布流骨架样式')
 })
+
+test('最美宠物大赛: 大图瀑布流支持双列交错错列排布，且宠物头衔与空白处活力动效采用统一恒定高度杜绝撑高卡片', () => {
+  const wxmlPath = path.resolve(__dirname, '../../miniprogram/pages/client/pet-beauty/activity/index.wxml')
+  const wxssPath = path.resolve(__dirname, '../../miniprogram/pages/client/pet-beauty/activity/index.wxss')
+  const wxml = fs.readFileSync(wxmlPath, 'utf8')
+  const wxss = fs.readFileSync(wxssPath, 'utf8')
+
+  // 1. 双列错列排布校验（右列第二名上方通过错位氛围动效卡片自然形成交错，彻底杜绝空白）
+  assert.ok(wxml.includes('waterfall-stagger-banner'), 'WXML 需包含右列顶部错列氛围挂件 waterfall-stagger-banner，消除第二名上方空白')
+  assert.ok(wxml.includes('skeleton-stagger-banner'), 'WXML 骨架屏也需具备对应的占位挂件')
+  assert.ok(wxss.includes('.waterfall-stagger-banner'), 'WXSS 需包含错列氛围挂件样式')
+  assert.ok(wxss.includes('@keyframes trophy-bounce'), '需具备奖杯轻快浮空动画')
+  assert.ok(wxss.includes('@keyframes paw-step-left'), '需具备小萌爪踩踏动画')
+
+  // 2. 专属荣誉头衔与空白处冲榜动效容器高度恒定统一，彻底杜绝撑高卡片
+  assert.ok(wxml.includes('gallery-title-box'), 'WXML 需包含恒定高度的 gallery-title-box 容器')
+  assert.ok(wxml.includes('gallery-title-pill'), 'WXML 需包含有头衔时的 gallery-title-pill 节点')
+  assert.ok(wxml.includes('gallery-status-pill'), 'WXML 需包含无头衔空白处的 gallery-status-pill 动效节点')
+  assert.ok(wxml.includes('萌力冲榜中 · 期待登顶'), '无头衔卡片空白处需展示萌力冲榜微动效文案')
+
+  assert.match(wxss, /\.gallery-title-box\s*\{[^}]*height:\s*46rpx/, '头衔与动效容器需固定高度 46rpx')
+  assert.match(wxss, /\.gallery-title-box\s*\{[^}]*overflow:\s*hidden/, '头衔容器需 overflow: hidden 防止内容溢出撑高卡片')
+
+  // 3. 校验动效关键帧具备皇冠微光与小星星闪烁呼吸
+  assert.ok(wxss.includes('@keyframes crown-glow-pulse'), '需具备皇冠光晕呼吸动画')
+  assert.ok(wxss.includes('@keyframes sparkle-twinkle-anim'), '需具备小星星闪烁旋转动画')
+  assert.ok(wxss.includes('@keyframes status-pill-breathe'), '需具备胶囊轻柔呼吸脉冲动画')
+
+  // 4. 头衔不在封面图内，避免点击大图返回后被 3D 复合层压住消失，且不会被多图卡片遮挡
+  const galleryCoverSegment = wxml.match(/<view class="gallery-cover[\s\S]*?<\/view>\s*<!-- 卡片信息区域 -->/)?.[0] || ''
+  assert.ok(!galleryCoverSegment.includes('class="gallery-title-badge"'), '封面大图内部不得放置头衔勋章，彻底避免被多图卡片遮挡或全屏返回后消失')
+})
+

@@ -24,7 +24,7 @@
     </view>
   </view>
 
-  <scroll-view scroll-x class="status-tabs">
+  <scroll-view scroll-x enable-flex class="status-tabs">
     <view class="status-tab {{activeStatus === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-status="{{item.value}}" bindtap="chooseStatus">
       <text class="remix-icon ri-sparkling-fill tab-icon" wx:if="{{item.value === 'auto_completed'}}"></text>
       <text class="remix-icon ri-alarm-warning-line tab-icon" wx:if="{{item.value === 'overdue'}}"></text>

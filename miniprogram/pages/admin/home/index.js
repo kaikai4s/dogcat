@@ -93,6 +93,18 @@ function buildRevenueStats(dashboard = {}) {
   ]
 }
 
+function buildFinanceOverviewStats(dashboard = {}) {
+  const finance = dashboard.platformFinance || {}
+  const pendingCommission = Number(dashboard.pendingCommission !== undefined ? dashboard.pendingCommission : (finance.pendingCommission || 0))
+  const pendingStaffEarnings = Number(dashboard.pendingStaffEarnings !== undefined ? dashboard.pendingStaffEarnings : (finance.pendingStaffEarnings || 0))
+  const expiredCommission = Number(dashboard.expiredCommission !== undefined ? dashboard.expiredCommission : (finance.expiredCommission || 0))
+  return [
+    { label: '待提现佣金', value: moneyText(pendingCommission), tip: '用户推广佣金' },
+    { label: '待提现收益', value: moneyText(pendingStaffEarnings), tip: '宠托师待结算收益' },
+    { label: '过期佣金总额', value: moneyText(expiredCommission), tip: '已失效推广佣金' }
+  ]
+}
+
 function pendingCountForUrl(url, pending = {}) {
   const map = {
     '/pages/admin/staff-audit/list/index': pending.staffAudit,
@@ -130,6 +142,7 @@ Page({
     dashboardLoading: true,
     overviewStats: [],
     revenueStats: [],
+    platformFinanceStats: [],
     adminSections: [],
     urgentNotice: null,
     unreadNotificationCount: 0,
@@ -166,6 +179,7 @@ Page({
       adminSections: buildAdminSections(access, null, null, null),
       dashboard: null,
       dashboardLoading: true,
+      platformFinanceStats: [],
       mallPendingCount: null,
       communityPendingCount: null,
       urgentNotice: null,
@@ -212,6 +226,7 @@ Page({
           dashboardLoading: false,
           overviewStats: buildOverviewStats(dashboard),
           revenueStats: buildRevenueStats(dashboard),
+          platformFinanceStats: buildFinanceOverviewStats(dashboard),
           adminSections: buildAdminSections(this.data.adminAccess, dashboard, this.data.mallPendingCount, this.data.communityPendingCount),
           staffAuditTodo: staffPending > 0 && canVisit(this.data.adminAccess, staffAuditUrl)
             ? { count: staffPending, url: staffAuditUrl }
