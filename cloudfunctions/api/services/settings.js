@@ -275,6 +275,7 @@ module.exports = function createService({
         rewardAmount: Math.round(Math.max(Number((value.invitation || value.userAssets || {}).rewardAmount || 0), 0) * 100) / 100,
         maxRewardPerUser: Math.round(Math.max(Number((value.invitation || value.userAssets || {}).maxRewardPerUser || 0), 0) * 100) / 100,
         userMinWithdrawAmount: Math.round(Math.max(Number((value.invitation || value.userAssets || {}).userMinWithdrawAmount ?? (value.invitation || value.userAssets || {}).minWithdrawAmount ?? 10), 0) * 100) / 100,
+        commissionValidityDays: Math.max(Math.floor(Number((value.invitation || value.userAssets || {}).commissionValidityDays || 0)), 0),
         reimbursementMode: ['order_count', 'invite_count'].includes((value.invitation || value.userAssets || {}).reimbursementMode) ? (value.invitation || value.userAssets || {}).reimbursementMode : 'order_count',
         reimbursementOrderCount: Math.max(Math.round(Number((value.invitation || value.userAssets || {}).reimbursementOrderCount || 0)), 0),
         reimbursementInviteCount: Math.max(Math.round(Number((value.invitation || value.userAssets || {}).reimbursementInviteCount || 0)), 0),
@@ -433,6 +434,12 @@ module.exports = function createService({
     const invitationAmounts = [invitation.rewardAmount, invitation.maxRewardPerUser, invitation.userMinWithdrawAmount]
     if (invitationAmounts.some((value) => value !== undefined && (!Number.isFinite(Number(value)) || Number(value) < 0 || !Number.isSafeInteger(Math.round(Number(value) * 100)) || Math.abs(Number(value) * 100 - Math.round(Number(value) * 100)) > 1e-7))) {
       throw new Error('【邀请活动设置】收益、个人累计上限和最低提现金额必须是最多两位小数的非负金额')
+    }
+    if (invitation.commissionValidityDays !== undefined && invitation.commissionValidityDays !== null && invitation.commissionValidityDays !== '') {
+      const days = Number(invitation.commissionValidityDays)
+      if (!Number.isFinite(days) || days < 0 || !Number.isInteger(days)) {
+        throw new Error('【邀请活动设置】佣金有效期天数必须为非负整数')
+      }
     }
     if (settings.staffZhima && settings.staffZhima.enabled) {
       const minScore = Number(settings.staffZhima.minScore)

@@ -99,6 +99,26 @@
   letter-spacing: -2rpx;
 }
 
+.asset-sub-stats {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  margin: 6rpx 0 16rpx;
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #786153;
+}
+
+.stat-dot {
+  color: #c4b5ac;
+}
+
+.stat-expired {
+  color: #dc2626;
+}
+
 .hero-tip,
 .quota-tip {
   position: relative;
@@ -414,15 +434,50 @@
   font-weight: 950;
 }
 
+.record-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
 .record-title {
   color: #2d211a;
   font-size: 27rpx;
   font-weight: 850;
 }
 
-.record-time {
+.record-time-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
   margin-top: 8rpx;
+}
+
+.record-time {
   font-size: 22rpx;
+  color: #8c7667;
+}
+
+.record-expiry {
+  font-size: 21rpx;
+  font-weight: 700;
+}
+
+.validity-text {
+  color: #ea580c;
+}
+
+.expired-text {
+  color: #dc2626;
+}
+
+.record-expired {
+  opacity: 0.72;
+}
+
+.amount-expired {
+  color: #9ca3af !important;
+  text-decoration: line-through;
 }
 
 .income-amount,

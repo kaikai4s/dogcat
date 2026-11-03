@@ -278,3 +278,110 @@ test('user asset withdrawal splits earnings and settles after transfer starts', 
   const confirmation = await client.main({ module: 'finance', action: 'getMyWithdrawTransferConfirmation', data: { id: second.data._id } })
   assert.equal(confirmation.ok, true)
 })
+
+test('admin invitation settings persist commissionValidityDays and reject negative or non-integer', async () => {
+  const db = createCollectionStore({ platform_configs: [] })
+  const service = createContext({ db, cloud: {} })
+  await service.saveSystemSettings({ invitation: { enabled: true, rewardAmount: 5, commissionValidityDays: 30 } })
+  const saved = await service.getSystemSettings()
+  assert.equal(saved.invitation.commissionValidityDays, 30)
+
+  // 0 表示永不过期，允许保存
+  await service.saveSystemSettings({ invitation: { enabled: true, rewardAmount: 5, commissionValidityDays: 0 } })
+  assert.equal((await service.getSystemSettings()).invitation.commissionValidityDays, 0)
+
+  // 负数与非整数拒绝
+  for (const invalid of [-5, 12.5, -0.1, 'abc']) {
+    await assert.rejects(() => service.saveSystemSettings({ invitation: { commissionValidityDays: invalid } }), /佣金有效期天数必须为非负整数/)
+  }
+})
+
+test('unwithdrawn invitation commission expires after validity period, reduces available balance and prevents withdrawal', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'u_inviter', openid: 'inviter', roles: ['client'], status: 'active' },
+      { _id: 'u_friend', openid: 'friend', roles: ['client'], status: 'active' }
+    ],
+    platform_configs: [
+      {
+        _id: 'settings',
+        key: 'system_settings',
+        value: {
+          invitation: {
+            enabled: true,
+            rewardAmount: 10,
+            userMinWithdrawAmount: 5,
+            commissionValidityDays: 30
+          }
+        }
+      }
+    ],
+    user_invites: [],
+    user_asset_earnings: [],
+    withdraw_requests: [],
+    retro_card_logs: [],
+    finance_logs: []
+  })
+
+  const inviter = loadCloudFunction('api', db, 'inviter')
+  const friend = loadCloudFunction('api', db, 'friend')
+
+  const inviterLogin = await inviter.main({ module: 'auth', action: 'login', data: {} })
+  assert.equal(inviterLogin.ok, true)
+
+  // 1. 好友使用邀请码登录并建档，触发生成带有 30 天有效期的佣金
+  const friendLogin = await friend.main({ module: 'auth', action: 'login', data: { inviteCode: inviterLogin.data.inviteCode } })
+  assert.equal(friendLogin.ok, true)
+  const petRes = await friend.main({ module: 'pet', action: 'createPet', data: { name: '布偶猫', avatarFileId: 'cloud://cat.jpg' } })
+  assert.equal(petRes.ok, true)
+
+  assert.equal(db.state.user_asset_earnings.length, 1)
+  const earning = db.state.user_asset_earnings[0]
+  assert.equal(earning.amount, 10)
+  assert.equal(earning.status, 'available')
+  assert.equal(earning.validityDays, 30)
+  assert.ok(earning.expiresAt)
+
+  // 2. 在有效期内查询，状态为正常可提现
+  const summary1 = await inviter.main({ module: 'finance', action: 'getUserAssetSummary' })
+  assert.equal(summary1.data.availableAmount, 10)
+  assert.equal(summary1.data.expiredAmount, 0)
+  assert.equal(summary1.data.commissionValidityDays, 30)
+  assert.match(summary1.data.withdrawalRules.settlementText, /30天内有效/)
+  assert.equal(summary1.data.earnings[0].statusText, '可提现')
+  assert.match(summary1.data.earnings[0].expiresAtText, /到期/)
+
+  // 3. 模拟佣金过期（将 expiresAt 调整为过去的时间，如 31 天前）
+  const pastTime = '2026-01-01 10:00:00'
+  earning.expiresAt = pastTime
+  earning.createdAt = '2025-12-01 10:00:00'
+
+  // 再次查询资产：自动流转为已过期，可提现余额归零，已失效金额变为 10
+  const summary2 = await inviter.main({ module: 'finance', action: 'getUserAssetSummary' })
+  assert.equal(summary2.data.availableAmount, 0)
+  assert.equal(summary2.data.expiredAmount, 10)
+  assert.equal(summary2.data.earnings[0].status, 'expired')
+  assert.equal(summary2.data.earnings[0].statusText, '已过期')
+  assert.match(summary2.data.earnings[0].expiresAtText, /已于 2026-01-01 过期/)
+
+  // 4. 尝试提现：因为余额已过期，提现应被拒绝
+  const withdrawAttempt = await inviter.main({ module: 'finance', action: 'createUserAssetWithdraw', data: { amount: 10 } })
+  assert.equal(withdrawAttempt.ok, false)
+  assert.match(withdrawAttempt.message, /可提现余额不足/)
+
+  // 5. 测试定时任务兜底流转：新增一笔未流转但已过期的记录
+  db.state.user_asset_earnings.push({
+    _id: 'earning_due_test',
+    userOpenid: 'inviter',
+    sourceType: 'invite_binding',
+    amount: 15,
+    status: 'available',
+    expiresAt: '2026-01-02 00:00:00',
+    createdAt: '2025-12-02 00:00:00'
+  })
+  const scheduledHandler = require('../../cloudfunctions/api/scheduled')(createContext({ db, cloud: {} }))
+  await scheduledHandler()
+  const dueEarning = db.state.user_asset_earnings.find(e => e._id === 'earning_due_test')
+  assert.equal(dueEarning.status, 'expired')
+  assert.ok(dueEarning.expiredAt)
+})

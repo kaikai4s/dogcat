@@ -12,6 +12,11 @@
       <text class="currency">¥</text>
       <text class="amount">{{summary.availableAmount || '0.00'}}</text>
     </view>
+    <view class="asset-sub-stats" wx:if="{{summary && (summary.withdrawnAmount > 0 || summary.expiredAmount > 0)}}">
+      <text wx:if="{{summary.withdrawnAmount > 0}}">已提现 ¥{{summary.withdrawnAmount}}</text>
+      <text wx:if="{{summary.withdrawnAmount > 0 && summary.expiredAmount > 0}}" class="stat-dot">·</text>
+      <text wx:if="{{summary.expiredAmount > 0}}" class="stat-expired">已失效 ¥{{summary.expiredAmount}}</text>
+    </view>
     <view class="hero-tip">最低提现 ¥{{summary.minWithdrawAmount || 0}}，提现申请提交后由平台审核处理</view>
     <view wx:if="{{summary && summary.wechatTransferQuota}}" class="quota-tip">今日平台剩余额度：{{summary.wechatTransferQuota.platformDailyRemainingAmount === null ? '不限' : '¥' + summary.wechatTransferQuota.platformDailyRemainingAmount}}</view>
     <view class="withdraw-rules-card" wx:if="{{summary && summary.withdrawalRules}}">
@@ -48,6 +53,7 @@
       <button class="copy-code-btn" bindtap="copyInviteCode" disabled="{{!inviteCode}}">复制邀请码</button>
     </view>
     <view class="invitation-rule-tip" wx:if="{{summary && summary.invitationMaxRewardPerUser > 0}}">每人累计邀请佣金最多 ¥{{summary.invitationMaxRewardPerUser}}（已提现佣金也计入）</view>
+    <view class="invitation-rule-tip" wx:if="{{summary && summary.commissionValidityDays > 0}}">邀请佣金自到账之日起 {{summary.commissionValidityDays}} 天内有效，逾期未申请提现将自动失效</view>
     <view wx:if="{{!invitationMaintenance && !maintenanceLoading && (!summary || !summary.inviterOpenid)}}" class="bind-row">
       <input class="bind-input" placeholder="输入他人邀请码" value="{{bindCode}}" bindinput="inputBindCode" />
       <button class="bind-btn" bindtap="bindInvite">绑定</button>
@@ -121,12 +127,18 @@
         <view class="empty-text">暂无收益记录</view>
       </view>
       <view wx:else class="record-list">
-        <view wx:for="{{summary.earnings}}" wx:key="_id" class="record-row">
+        <view wx:for="{{summary.earnings}}" wx:key="_id" class="record-row {{item.isExpired ? 'record-expired' : ''}}">
           <view class="record-main">
-            <view class="record-title">{{item.sourceLabel}}</view>
-            <view class="record-time">{{beijingTime.format(item.createdAt)}}</view>
+            <view class="record-title-row">
+              <text class="record-title">{{item.sourceLabel}}</text>
+              <text class="status-pill {{item.status === 'expired' ? 'danger' : 'pending'}}" wx:if="{{item.status === 'expired' || item.status === 'withdrawing'}}">{{item.statusText}}</text>
+            </view>
+            <view class="record-time-row">
+              <text class="record-time">{{beijingTime.format(item.createdAt)}}</text>
+              <text class="record-expiry {{item.isExpired ? 'expired-text' : 'validity-text'}}" wx:if="{{item.expiresAtText}}">{{item.expiresAtText}}</text>
+            </view>
           </view>
-          <text class="income-amount">+¥{{item.amount}}</text>
+          <text class="income-amount {{item.isExpired ? 'amount-expired' : ''}}">+¥{{item.amount}}</text>
         </view>
       </view>
     </block>

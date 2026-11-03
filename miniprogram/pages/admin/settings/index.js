@@ -157,6 +157,7 @@ function normalizeInvitationConfig(invitation = {}) {
     rewardAmount: validAmount(invitation.rewardAmount, true) ? Number(invitation.rewardAmount) : 0,
     maxRewardPerUser: validAmount(invitation.maxRewardPerUser, true) ? Number(invitation.maxRewardPerUser) : 0,
     userMinWithdrawAmount: validAmount(invitation.userMinWithdrawAmount, true) ? Number(invitation.userMinWithdrawAmount) : 10,
+    commissionValidityDays: Math.max(0, Math.floor(Number(invitation.commissionValidityDays || 0))),
     reimbursementMode: invitation.reimbursementMode === 'invite_count' ? 'invite_count' : 'order_count',
     reimbursementOrderCount: Math.max(0, Number(invitation.reimbursementOrderCount || 0)),
     reimbursementInviteCount: Math.max(0, Number(invitation.reimbursementInviteCount || 0)),
@@ -2163,6 +2164,10 @@ Page({
       if (!validReimbursementCount(this.data.settings.staffSupplies[field])) return showError(new Error(`${label}须为有效的非负整数，不设门槛请填写 0`))
     }
     if (!validAmount(this.data.settings.invitation.rewardAmount, true) || !validAmount(this.data.settings.invitation.maxRewardPerUser, true) || !validAmount(this.data.settings.invitation.userMinWithdrawAmount, true)) return showError(new Error('邀请收益、个人累计上限和用户最低提现金额须为有效金额'))
+    const validityDaysVal = this.data.settings.invitation.commissionValidityDays
+    if (validityDaysVal !== undefined && validityDaysVal !== '' && (!Number.isFinite(Number(validityDaysVal)) || Number(validityDaysVal) < 0 || !Number.isInteger(Number(validityDaysVal)))) {
+      return showError(new Error('邀请佣金有效期须为非负整数，0 表示永不过期'))
+    }
 
     const activeTab = this.data.activeTransferTab || 'commission'
     const allSceneTexts = {
@@ -2278,6 +2283,7 @@ Page({
       customerService: this.data.settings.customerService,
       invitation: {
         ...invitation,
+        commissionValidityDays: Math.max(0, Math.floor(Number(invitation.commissionValidityDays || 0))),
         shareImageUrl: invitation.shareImageUrl || '',
         shareImageTempUrl: ''
       },

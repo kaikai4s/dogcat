@@ -5,7 +5,7 @@ function amount(value, fallback = 0) {
   return Number.isFinite(number) ? Math.max(0, Math.round(number * 100) / 100) : fallback
 }
 
-function buildWithdrawalRules({ minAmount = 10, quota = {}, settlementDelayDays = 0, source = 'staff' } = {}) {
+function buildWithdrawalRules({ minAmount = 10, quota = {}, settlementDelayDays = 0, source = 'staff', commissionValidityDays = 0 } = {}) {
   const min = Math.max(0.1, amount(minAmount, 10))
   const singleMax = quota.singleMaxAmount == null ? WECHAT_MAX_TRANSFER_CENTS / 100 : amount(quota.singleMaxAmount)
   const dailyAmountParts = []
@@ -13,7 +13,9 @@ function buildWithdrawalRules({ minAmount = 10, quota = {}, settlementDelayDays 
   if (quota.platformDailyMaxAmount != null) dailyAmountParts.push(`平台每日总额度¥${amount(quota.platformDailyMaxAmount).toFixed(2)}`)
   const settlementText = source === 'staff'
     ? (Number(settlementDelayDays) > 0 ? `订单完成后需经过${Number(settlementDelayDays)}天结算保护期，且无未决售后纠纷后进入可提现余额` : '订单完成且无未决售后纠纷后进入可提现余额')
-    : '邀请佣金达到最低提现金额且状态为可提现后可申请'
+    : (Number(commissionValidityDays) > 0
+        ? `邀请佣金自到账起${Number(commissionValidityDays)}天内有效（逾期未申请提现将自动失效），达到最低提现金额可申请`
+        : '邀请佣金达到最低提现金额且状态为可提现后可申请')
   return {
     minAmount: min,
     minAmountText: `¥${min.toFixed(2)}`,

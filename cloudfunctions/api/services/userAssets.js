@@ -62,8 +62,79 @@ module.exports = function createService({
     return settings.invitation || settings.userAssets || {
       enabled: false,
       rewardAmount: 0,
-      userMinWithdrawAmount: 10
+      userMinWithdrawAmount: 10,
+      commissionValidityDays: 0
     }
+  }
+
+  function isEarningExpired(earning, currentTime = now(), validityDays = 0) {
+    if (!earning) return false
+    if (earning.status === 'expired') return true
+    if (earning.status !== 'available') return false
+    if (earning.sourceType !== 'invite_binding' && !earning.expiresAt) return false
+    const nowMs = (currentTime instanceof Date ? currentTime : new Date(currentTime)).getTime()
+    if (earning.expiresAt) {
+      const expireMs = new Date(earning.expiresAt).getTime()
+      return Number.isFinite(expireMs) && expireMs <= nowMs
+    }
+    const days = Number(earning.validityDays || validityDays)
+    if (days > 0 && earning.createdAt) {
+      const createMs = new Date(earning.createdAt).getTime()
+      return Number.isFinite(createMs) && createMs + days * 86400000 <= nowMs
+    }
+    return false
+  }
+
+  async function expireUserAssetEarnings(openid, options = {}) {
+    const settings = await getInviteSettings()
+    const validityDays = Math.max(0, Math.floor(Number(settings.commissionValidityDays || 0)))
+    const reader = options.tx || db
+    const time = now()
+    const rows = await readDocuments(reader, db.command, 'user_asset_earnings', {
+      userOpenid: openid,
+      status: 'available'
+    })
+    const expiredRows = rows.filter((r) => isEarningExpired(r, time, validityDays))
+    if (!expiredRows.length) return { expiredCount: 0, expiredFen: 0 }
+
+    let expiredFen = 0
+    for (const r of expiredRows) {
+      const rowFen = cents(r.amount, true)
+      expiredFen += rowFen
+      const patch = {
+        status: 'expired',
+        expiredAt: time,
+        updatedAt: time
+      }
+      if (options.tx) {
+        await options.tx.collection('user_asset_earnings').doc(r._id).update({ data: patch })
+      } else {
+        await db.collection('user_asset_earnings').doc(r._id).update({ data: patch }).catch(() => {})
+      }
+    }
+    return { expiredCount: expiredRows.length, expiredFen }
+  }
+
+  async function expireDueUserAssetEarnings() {
+    const settings = await getInviteSettings()
+    const validityDays = Math.max(0, Math.floor(Number(settings.commissionValidityDays || 0)))
+    const time = now()
+    const available = await readDocuments(db, db.command, 'user_asset_earnings', {
+      status: 'available'
+    }, 1000)
+    const due = available.filter((r) => isEarningExpired(r, time, validityDays))
+    let totalExpiredFen = 0
+    for (const r of due) {
+      totalExpiredFen += cents(r.amount, true)
+      await db.collection('user_asset_earnings').doc(r._id).update({
+        data: {
+          status: 'expired',
+          expiredAt: time,
+          updatedAt: time
+        }
+      }).catch(() => {})
+    }
+    return { count: due.length, totalAmount: totalExpiredFen / 100 }
   }
 
   async function grantInviteReward(invite, options = {}) {
@@ -130,6 +201,13 @@ module.exports = function createService({
         } })
       }
       const grantedAmount = awardFen / 100
+      const validityDays = Math.max(0, Math.floor(Number(settings.commissionValidityDays || 0)))
+      let expiresAt = ''
+      if (validityDays > 0) {
+        const createDate = new Date(time)
+        const expireDate = new Date(createDate.getTime() + validityDays * 24 * 60 * 60 * 1000)
+        expiresAt = expireDate.toISOString().replace('T', ' ').slice(0, 19)
+      }
       const earning = {
         _id: earningId,
         userOpenid: invite.inviterOpenid,
@@ -139,6 +217,8 @@ module.exports = function createService({
         amount: grantedAmount,
         status: 'available',
         activityEnabled: true,
+        expiresAt,
+        validityDays,
         createdAt: time,
         availableAt: time,
         updatedAt: time
@@ -162,14 +242,16 @@ module.exports = function createService({
   }
 
   async function summarizeUserAssets(openid) {
+    await expireUserAssetEarnings(openid)
     const rows = await readDocuments(db, db.command, 'user_asset_earnings', { userOpenid: openid })
-    const totals = { available: 0, withdrawing: 0, withdrawn: 0, pending: 0, total: 0 }
+    const totals = { available: 0, withdrawing: 0, withdrawn: 0, expired: 0, pending: 0, total: 0 }
     rows.forEach((row) => {
       const amount = cents(row.amount)
       totals.total += amount
       if (row.status === 'available') totals.available += amount
       else if (row.status === 'withdrawing') totals.withdrawing += amount
       else if (row.status === 'withdrawn') totals.withdrawn += amount
+      else if (row.status === 'expired') totals.expired += amount
       else totals.pending += amount
     })
     Object.keys(totals).forEach((key) => {
@@ -280,6 +362,30 @@ module.exports = function createService({
     const wechatTransferQuota = typeof getWechatTransferQuotaSnapshot === 'function'
       ? await getWechatTransferQuotaSnapshot(openid, Math.round(summary.available * 100)).catch(() => null)
       : null
+    const validityDays = Math.max(0, Math.floor(Number(settings.commissionValidityDays || 0)))
+    const decoratedEarnings = summary.rows.map((row) => {
+      let statusText = '可提现'
+      if (row.status === 'withdrawing') statusText = '提现中'
+      else if (row.status === 'withdrawn') statusText = '已到账'
+      else if (row.status === 'expired') statusText = '已过期'
+
+      let expiresAtText = ''
+      if (row.expiresAt) {
+        expiresAtText = row.status === 'expired'
+          ? `已于 ${String(row.expiresAt).slice(0, 10)} 过期`
+          : `${String(row.expiresAt).slice(0, 10)} 到期`
+      } else if (validityDays > 0 && row.createdAt) {
+        const d = new Date(new Date(row.createdAt).getTime() + validityDays * 86400000)
+        const dateStr = d.toISOString().replace('T', ' ').slice(0, 10)
+        expiresAtText = row.status === 'expired' ? `已于 ${dateStr} 过期` : `${dateStr} 到期`
+      }
+      return {
+        ...row,
+        statusText,
+        expiresAtText,
+        isExpired: row.status === 'expired'
+      }
+    })
     return {
       userOpenid: openid,
       inviteCode: user.inviteCode || '',
@@ -289,16 +395,23 @@ module.exports = function createService({
       availableAmount: summary.available,
       withdrawingAmount: summary.withdrawing,
       withdrawnAmount: summary.withdrawn,
+      expiredAmount: summary.expired,
       totalAmount: summary.total,
       minWithdrawAmount: Math.max(0.10, Number(settings.userMinWithdrawAmount ?? settings.minWithdrawAmount ?? 10)),
+      commissionValidityDays: validityDays,
       invitationEnabled: settings.enabled === true,
       invitationRewardAmount,
       invitationMaxRewardPerUser: Number(settings.maxRewardPerUser || 0),
       invitationShareImageUrl: safeText(settings.shareImageUrl).trim(),
       wechatTransferQuota,
-      withdrawalRules: buildWithdrawalRules({ minAmount: Math.max(0.10, Number(settings.userMinWithdrawAmount ?? settings.minWithdrawAmount ?? 10)), quota: wechatTransferQuota || {}, source: 'user' }),
+      withdrawalRules: buildWithdrawalRules({
+        minAmount: Math.max(0.10, Number(settings.userMinWithdrawAmount ?? settings.minWithdrawAmount ?? 10)),
+        quota: wechatTransferQuota || {},
+        source: 'user',
+        commissionValidityDays: validityDays
+      }),
       hasPendingWithdrawConfirm: decoratedWithdraws.some(w => w.canConfirmTransfer),
-      earnings: summary.rows,
+      earnings: decoratedEarnings,
       invites: decoratedInvites.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)),
       withdraws: decoratedWithdraws.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
     }
@@ -347,7 +460,9 @@ module.exports = function createService({
   async function createUserAssetWithdraw(openid, data = {}) {
     const user = await getUser(openid)
     if (user.status && user.status !== 'active') throw new Error('账号已被停用，无法申请提现')
+    await expireUserAssetEarnings(openid)
     const settings = await getInviteSettings()
+    const validityDays = Math.max(0, Math.floor(Number(settings.commissionValidityDays || 0)))
     const minAmount = Number(settings.userMinWithdrawAmount ?? settings.minWithdrawAmount ?? 10)
     const requested = cents(data.amount, true)
     if (requested < WECHAT_MIN_TRANSFER_CENTS) throw new Error('微信零钱单笔最低 ¥0.10，请合并收益后提现')
@@ -360,7 +475,8 @@ module.exports = function createService({
       return request
     }
     if (existing) return replay(existing)
-    const available = await readDocuments(db, db.command, 'user_asset_earnings', { userOpenid: openid, status: 'available' }, MAX_EARNINGS_PER_WITHDRAW + 1)
+    const allAvailable = await readDocuments(db, db.command, 'user_asset_earnings', { userOpenid: openid, status: 'available' }, MAX_EARNINGS_PER_WITHDRAW + 1)
+    const available = allAvailable.filter((row) => !isEarningExpired(row, now(), validityDays))
     const selected = []
     let total = 0
     for (const row of available) {
@@ -381,7 +497,7 @@ module.exports = function createService({
         const row = selection.row
         const currentEarning = (await tx.collection('user_asset_earnings').doc(row._id).get()).data
         const currentAmount = currentEarning && cents(currentEarning.amount, true)
-        if (!currentEarning || currentEarning.userOpenid !== openid || currentEarning.status !== 'available' || selection.amountFen > currentAmount) throw new Error('收益状态已变化，请刷新后重试')
+        if (!currentEarning || currentEarning.userOpenid !== openid || currentEarning.status !== 'available' || selection.amountFen > currentAmount || isEarningExpired(currentEarning, time, validityDays)) throw new Error('收益状态已变化或已过期，请刷新后重试')
         if (selection.amountFen === currentAmount) {
           await tx.collection('user_asset_earnings').doc(row._id).update({ data: { status: 'withdrawing', withdrawRequestId: requestId, updatedAt: time } })
           earningIds.push(row._id)
@@ -395,6 +511,8 @@ module.exports = function createService({
           status: 'withdrawing',
           withdrawRequestId: requestId,
           splitFromEarningId: row._id,
+          expiresAt: currentEarning.expiresAt || '',
+          validityDays: currentEarning.validityDays || 0,
           createdAt: currentEarning.createdAt || time,
           updatedAt: time
         }
@@ -525,5 +643,5 @@ module.exports = function createService({
     return { earningIds, total }
   }
 
-  return { getInviteSettings, grantInviteReward, summarizeUserAssets, getUserAssetSummary, bindInviteCode, createUserAssetWithdraw, settleUserAssetWithdrawal, markUserAssetPaid, markUserAssetFailed, releaseUserAssetWithdrawal }
+  return { getInviteSettings, grantInviteReward, summarizeUserAssets, getUserAssetSummary, bindInviteCode, createUserAssetWithdraw, settleUserAssetWithdrawal, markUserAssetPaid, markUserAssetFailed, releaseUserAssetWithdrawal, expireUserAssetEarnings, expireDueUserAssetEarnings, isEarningExpired }
 }

@@ -171,7 +171,7 @@
       <view class="setting-summary-line">配置宠托师订单收益分成、完单后可提现等待时间和最低提现金额。</view>
     </view>
     <view class="admin-compact-card setting-overview-card" data-panel="invitation" bindtap="openSettingModal">
-      <view class="admin-summary-row"><view class="admin-summary-main"><view class="admin-summary-title">邀请活动与用户资产</view><view class="admin-summary-sub">{{settings.invitation.enabled ? '活动已开启' : '活动已关闭'}} · 好友建档后发佣金{{settings.invitation.maxRewardPerUser ? ' · 每人上限 ¥' + settings.invitation.maxRewardPerUser : ''}}</view></view><view class="meta-chip {{settings.invitation.enabled ? 'success' : 'warning'}}">{{settings.invitation.enabled ? '开启' : '关闭'}}</view></view>
+      <view class="admin-summary-row"><view class="admin-summary-main"><view class="admin-summary-title">邀请活动与用户资产</view><view class="admin-summary-sub">{{settings.invitation.enabled ? '活动已开启' : '活动已关闭'}} · 好友建档后发佣金{{settings.invitation.maxRewardPerUser ? ' · 每人上限 ¥' + settings.invitation.maxRewardPerUser : ''}}{{settings.invitation.commissionValidityDays ? ' · 有效期 ' + settings.invitation.commissionValidityDays + ' 天' : ''}}</view></view><view class="meta-chip {{settings.invitation.enabled ? 'success' : 'warning'}}">{{settings.invitation.enabled ? '开启' : '关闭'}}</view></view>
       <view class="setting-summary-line">配置邀请绑定收益、用户最低提现金额和活动开关。</view>
     </view>
 
@@ -447,6 +447,8 @@
           <view class="field-item"><text class="label">每位邀请人累计佣金上限（元）</text><input class="input" type="digit" value="{{settings.invitation.maxRewardPerUser}}" data-field="invitation.maxRewardPerUser" bindinput="staffPolicyInput" /></view>
           <view class="muted">0 表示不设上限；已到账和已提现的邀请佣金都计入。达到上限时不再发放，剩余额度不足时按剩余额度发放。</view>
           <view class="field-item"><text class="label">用户最低提现金额（元）</text><input class="input" type="digit" value="{{settings.invitation.userMinWithdrawAmount}}" data-field="invitation.userMinWithdrawAmount" bindinput="staffPolicyInput" /></view>
+          <view class="field-item"><text class="label">邀请佣金未提现有效期（天）</text><input class="input" type="number" value="{{settings.invitation.commissionValidityDays}}" data-field="invitation.commissionValidityDays" bindinput="staffPolicyInput" placeholder="0 表示永不过期" /></view>
+          <view class="muted">佣金自入账之日起计算有效期；0 表示永不过期。超过有效期未申请提现的收益将自动失效，不可再提现。</view>
           <view class="field-item">
             <text class="label">邀请分享封面</text>
             <view class="checkin-share-upload" bindtap="chooseInvitationShareImage">

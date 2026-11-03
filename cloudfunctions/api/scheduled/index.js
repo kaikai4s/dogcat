@@ -8,6 +8,7 @@ module.exports = function createHandler(context) {
     reconcileWechatTransfers,
     reconcileStaffDepositRefunds,
     expireDueUnacceptedOrders,
+    expireDueUserAssetEarnings,
     autoAcceptDueDirectOrders,
     autoCompleteDeliveredMallOrders,
     processOverdueUnfinishedOrders,
@@ -43,6 +44,11 @@ module.exports = function createHandler(context) {
 
     try { await expireDueUnacceptedOrders() }
     catch (error) { console.error('[scheduled-error] expireDueUnacceptedOrders:', error.message) }
+
+    if (typeof expireDueUserAssetEarnings === 'function') {
+      try { await expireDueUserAssetEarnings() }
+      catch (error) { console.error('[scheduled-error] expireDueUserAssetEarnings:', error.message) }
+    }
 
     if (typeof autoAcceptDueDirectOrders === 'function') {
       try { await autoAcceptDueDirectOrders() }
