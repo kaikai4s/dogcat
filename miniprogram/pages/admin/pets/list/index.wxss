@@ -1,0 +1,522 @@
+.admin-pets-page {
+  padding-bottom: 160rpx;
+}
+
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.search-row input {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.search-row .mini-btn {
+  flex-shrink: 0;
+  margin: 0;
+}
+
+.filter-group {
+  margin-top: 20rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.filter-tabs {
+  margin-top: 0;
+  padding-bottom: 0;
+}
+
+.pet-card {
+  overflow: visible;
+  margin-bottom: 24rpx;
+  background: #ffffff;
+  border-radius: 20rpx;
+  padding: 24rpx;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.04);
+}
+
+.pet-head {
+  display: flex;
+  gap: 20rpx;
+  align-items: flex-start;
+}
+
+.avatar-wrap {
+  position: relative;
+  width: 110rpx;
+  height: 110rpx;
+  flex-shrink: 0;
+}
+
+.pet-avatar {
+  width: 110rpx;
+  height: 110rpx;
+  border-radius: 18rpx;
+  background: #fff0f5;
+  border: 2rpx solid #ffe4ed;
+}
+
+.avatar-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #f43f6b;
+  font-size: 40rpx;
+  font-weight: 900;
+}
+
+.species-badge {
+  position: absolute;
+  bottom: -8rpx;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #5c6b73;
+  color: #ffffff;
+  font-size: 18rpx;
+  padding: 2rpx 10rpx;
+  border-radius: 12rpx;
+  white-space: nowrap;
+}
+
+.species-badge.species-dog {
+  background: #ff7d00;
+}
+
+.species-badge.species-cat {
+  background: #2ec4b6;
+}
+
+.species-badge.species-other {
+  background: #8338ec;
+}
+
+.pet-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.pet-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+}
+
+.pet-name {
+  font-size: 32rpx;
+  color: #1f2937;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta-row {
+  display: flex;
+  gap: 10rpx;
+  margin-top: 10rpx;
+  flex-wrap: wrap;
+}
+
+.tag-badge {
+  background: #f3f4f6;
+  color: #4b5563;
+  font-size: 22rpx;
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+}
+
+.code-row {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  margin-top: 12rpx;
+  font-size: 22rpx;
+}
+
+.code-label {
+  color: #9ca3af;
+}
+
+.code-value {
+  color: #2563eb;
+  font-family: monospace;
+  font-weight: 600;
+}
+
+.copy-tag {
+  background: #eef2ff;
+  color: #4f46e5;
+  font-size: 20rpx;
+  padding: 2rpx 10rpx;
+  border-radius: 6rpx;
+  cursor: pointer;
+}
+
+.pet-info-grid {
+  margin-top: 20rpx;
+  background: #fafafa;
+  border-radius: 12rpx;
+  padding: 14rpx 18rpx;
+}
+
+.highlight-time {
+  color: #111827;
+  font-weight: 600;
+}
+
+/* 主人归属卡片 */
+.owner-box {
+  margin-top: 20rpx;
+  background: #fdfaf6;
+  border: 1rpx solid #faebd7;
+  border-radius: 14rpx;
+  padding: 16rpx 18rpx;
+}
+
+.owner-head {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.owner-avatar {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  background: #fef08a;
+  flex-shrink: 0;
+}
+
+.owner-avatar-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #b45309;
+  font-size: 26rpx;
+  font-weight: bold;
+}
+
+.owner-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.owner-name-row {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.owner-nickname {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #374151;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owner-level {
+  font-size: 20rpx;
+  background: #fef3c7;
+  color: #b45309;
+  padding: 2rpx 8rpx;
+  border-radius: 6rpx;
+}
+
+.owner-contact-row {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: #6b7280;
+}
+
+.owner-btn {
+  margin: 0;
+  background: #ffffff;
+  border: 1rpx solid #d1d5db;
+  color: #374151;
+  font-size: 22rpx;
+  padding: 6rpx 16rpx;
+}
+
+.owner-openid-row {
+  margin-top: 12rpx;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  font-size: 20rpx;
+  padding-top: 8rpx;
+  border-top: 1rpx dashed #f3ede2;
+}
+
+.muted-label {
+  color: #9ca3af;
+}
+
+.muted-openid {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #6b7280;
+  font-family: monospace;
+}
+
+/* 最美大赛状态与操作 */
+.contest-action-box {
+  margin-top: 20rpx;
+  border-radius: 14rpx;
+  padding: 16rpx 18rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.contest-action-box.is-qualified {
+  background: #f0fdf4;
+  border: 1rpx solid #bbf7d0;
+}
+
+.contest-action-box.is-disqualified {
+  background: #fef2f2;
+  border: 1rpx solid #fecaca;
+}
+
+.contest-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.contest-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.contest-status-title {
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.contest-photos-count {
+  font-size: 22rpx;
+  color: #16a34a;
+}
+
+.disqualified-detail {
+  margin-top: 6rpx;
+  font-size: 22rpx;
+}
+
+.reason-row {
+  color: #dc2626;
+  line-height: 1.4;
+}
+
+.disqualified-time {
+  color: #9ca3af;
+  font-size: 20rpx;
+  margin-top: 4rpx;
+}
+
+.contest-btn-wrap {
+  flex-shrink: 0;
+}
+
+.contest-btn-wrap .mini-btn {
+  margin: 0;
+  font-size: 22rpx;
+}
+
+.danger-btn {
+  background: #fee2e2;
+  color: #dc2626;
+  border: 1rpx solid #fca5a5;
+}
+
+.success-btn {
+  background: #dcfce7;
+  color: #16a34a;
+  border: 1rpx solid #86efac;
+}
+
+/* 展开触发器 */
+.expand-trigger {
+  margin-top: 18rpx;
+  text-align: center;
+  font-size: 24rpx;
+  color: #6366f1;
+  padding: 12rpx 0;
+  cursor: pointer;
+  background: #f5f7ff;
+  border-radius: 8rpx;
+}
+
+/* 展开后的护理与健康档案 */
+.expanded-section {
+  margin-top: 16rpx;
+  padding: 16rpx;
+  background: #fbfbfe;
+  border-radius: 12rpx;
+  border: 1rpx solid #e0e7ff;
+}
+
+.photo-gallery {
+  margin-bottom: 20rpx;
+}
+
+.sub-title {
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #4b5563;
+  margin-bottom: 12rpx;
+}
+
+.gallery-scroll {
+  display: flex;
+  gap: 12rpx;
+  overflow-x: auto;
+  padding-bottom: 8rpx;
+}
+
+.gallery-thumb {
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: 10rpx;
+  flex-shrink: 0;
+  background: #e5e7eb;
+}
+
+.care-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.care-row {
+  display: flex;
+  align-items: flex-start;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
+.care-label {
+  width: 140rpx;
+  flex-shrink: 0;
+  color: #6b7280;
+}
+
+.care-value {
+  flex: 1;
+  color: #1f2937;
+  word-break: break-all;
+}
+
+.care-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx;
+}
+
+.tag-chip {
+  background: #f3e8ff;
+  color: #7e22ce;
+  font-size: 20rpx;
+  padding: 2rpx 10rpx;
+  border-radius: 6rpx;
+}
+
+.highlight-warn {
+  color: #d97706;
+  font-weight: 500;
+}
+
+/* 下架弹窗 */
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 40rpx;
+}
+
+.modal-dialog {
+  width: 100%;
+  max-width: 600rpx;
+  background: #ffffff;
+  border-radius: 20rpx;
+  padding: 32rpx;
+  box-shadow: 0 10rpx 30rpx rgba(0, 0, 0, 0.15);
+}
+
+.modal-header {
+  margin-bottom: 20rpx;
+}
+
+.modal-title {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #dc2626;
+}
+
+.modal-subtitle {
+  font-size: 24rpx;
+  color: #6b7280;
+  margin-top: 6rpx;
+}
+
+.modal-body {
+  margin-bottom: 28rpx;
+}
+
+.modal-label {
+  font-size: 24rpx;
+  color: #374151;
+  margin-bottom: 12rpx;
+}
+
+.modal-textarea {
+  width: 100%;
+  height: 160rpx;
+  background: #f9fafb;
+  border: 1rpx solid #d1d5db;
+  border-radius: 10rpx;
+  padding: 14rpx;
+  font-size: 26rpx;
+  box-sizing: border-box;
+}
+
+.modal-footer {
+  display: flex;
+  gap: 16rpx;
+}
+
+.modal-btn {
+  flex: 1;
+  font-size: 28rpx;
+  padding: 16rpx 0;
+  border-radius: 12rpx;
+  margin: 0;
+}
+
+.modal-btn.cancel {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.modal-btn.confirm.danger {
+  background: #dc2626;
+  color: #ffffff;
+}

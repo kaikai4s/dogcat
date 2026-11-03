@@ -8,8 +8,21 @@
   <view wx:if="{{loading}}" class="empty">加载中...</view>
 
   <view wx:if="{{user && !loading}}" class="card form-card">
-    <view class="strong">基础信息</view>
-    <view class="muted openid-text">{{openid}}</view>
+    <view class="card-head-row">
+      <view class="strong">账号档案与时间线</view>
+      <button class="mini-btn view-pets-btn" bindtap="viewPets">查看TA的宠物 ({{user.stats.pets || 0}})</button>
+    </view>
+    <view class="info-list" style="margin-bottom: 24rpx;">
+      <view class="info-row"><view class="label">OpenID</view><view class="value">{{openid}} <text class="copy-tag" data-text="{{openid}}" bindtap="copyText">复制</text></view></view>
+      <view class="info-row highlight-time-row"><view class="label">注册时间</view><view class="value font-time">{{user.createdAt || '未知'}}</view></view>
+      <view class="info-row"><view class="label">最后更新</view><view class="value">{{user.updatedAt || '未知'}}</view></view>
+      <view class="info-row"><view class="label">专属邀请码</view><view class="value">{{user.inviteCode || '未生成'}} <text wx:if="{{user.inviteCode}}" class="copy-tag" data-text="{{user.inviteCode}}" bindtap="copyText">复制</text></view></view>
+      <view class="info-row"><view class="label">绑定邀请人</view><view class="value">{{user.inviterOpenid || '无'}} <text wx:if="{{user.inviterOpenid}}" class="copy-tag" data-text="{{user.inviterOpenid}}" bindtap="copyText">复制</text></view></view>
+      <view class="info-row"><view class="label">协议签署时间</view><view class="value">{{user.agreementSignedAt || '未记录'}}</view></view>
+      <view class="info-row"><view class="label">累计完成订单</view><view class="value">{{user.completedOrderCount || 0}} 单</view></view>
+    </view>
+
+    <view class="strong">基础信息修改</view>
 
     <view class="field">
       <view class="label">昵称</view>

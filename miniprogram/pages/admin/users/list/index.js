@@ -12,7 +12,11 @@ function withDisplay(user) {
     ...user,
     statusText: ({ active: '正常', disabled: '已禁用', deleted: '已删除' })[user.status] || '账号状态未知',
     roleTexts: (user.roles || []).map(role => ({ client: '用户', staff: '宠托师', admin: '管理员' })[role] || '未知角色'),
-    avatarText: (user.nickname || '用').slice(0, 1)
+    avatarText: (user.nickname || '用').slice(0, 1),
+    createdAtText: user.createdAt || '未知',
+    updatedAtText: user.updatedAt || '未知',
+    completedOrderCount: Number(user.completedOrderCount || 0),
+    retroCardCount: Number(user.retroCardCount || 0)
   }
 }
 
@@ -31,6 +35,16 @@ Page({
     hasMore: true,
     total: 0,
     loading: false
+  },
+
+  onLoad(query = {}) {
+    if (query && query.keyword) {
+      try {
+        this.setData({ keyword: decodeURIComponent(query.keyword) })
+      } catch (_) {
+        this.setData({ keyword: query.keyword })
+      }
+    }
   },
 
     onPullDownRefresh() {
@@ -84,6 +98,21 @@ Page({
   switchRole(e) {
     this.setData({ role: e.currentTarget.dataset.value || '' })
     this.load({ reset: true })
+  },
+
+  viewUserPets(e) {
+    const openid = e.currentTarget.dataset.openid
+    if (!openid) return
+    wx.navigateTo({ url: `/pages/admin/pets/list/index?keyword=${encodeURIComponent(openid)}` })
+  },
+
+  copyText(e) {
+    const text = e.currentTarget.dataset.text
+    if (!text) return
+    wx.setClipboardData({
+      data: String(text),
+      success: () => wx.showToast({ title: '已复制', icon: 'none' })
+    })
   },
 
   editUser(e) {
@@ -167,7 +196,7 @@ Page({
     const current = pages[pages.length - 1]
     const currentRoute = current && current.route ? '/' + current.route : ''
     if (currentRoute === url) return
-    const mainNavUrls = ['/pages/admin/home/index', '/pages/admin/orders/list/index', '/pages/admin/staff-audit/list/index', '/pages/admin/incidents/list/index', '/pages/admin/checkin-config/index', '/pages/admin/points/index', '/pages/admin/settings/index']
+    const mainNavUrls = ['/pages/admin/home/index', '/pages/admin/orders/list/index', '/pages/admin/staff-audit/list/index', '/pages/admin/incidents/list/index', '/pages/admin/checkin-config/index', '/pages/admin/points/index', '/pages/admin/settings/index', '/pages/admin/pets/list/index']
     const method = mainNavUrls.includes(url) ? 'redirectTo' : 'navigateTo'
     wx[method]({ url })
   }

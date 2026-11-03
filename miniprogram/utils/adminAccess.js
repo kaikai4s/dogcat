@@ -4,7 +4,7 @@ const routes = {
   'playground-buildings/index':['playgroundBuilding.list'],
   'playground-crops/index': ['playgroundFarm.list'],
   'playground-customizations/index': ['playgroundAppearance.listAdmin'],
-  'users/list/index': ['admin.listUsers'], 'users/edit/index': ['admin.getUserDetail'],
+  'users/list/index': ['admin.listUsers'], 'users/edit/index': ['admin.getUserDetail'], 'pets/list/index': ['admin.listPets', 'admin.listUsers'],
   'sitters/list/index': ['admin.listStaffProfiles'], 'admins/list/index': ['owner'],
   'permissions/index': ['owner'], 'operation-logs/index': ['admin.listOperationLogs'],
   'orders/list/index': ['admin.listOrders'], 'orders/detail/index': ['admin.getOrderDetail'],

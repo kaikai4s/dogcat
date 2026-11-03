@@ -5,7 +5,7 @@ const definitions = [
   ['playground', '乐园形象定制', 'playgroundAppearance', 'listAdmin:申请列表 detailAdmin:查看照片 prepareUpload:上传图集 publish:发布专属形象 reject:退回申请 disableAppearance:作废专属形象 enableAppearance:重新启用专属形象'],
   ['overview', '控制台与通知', 'admin', 'dashboard:查看统计 listAdminNotifications:查看通知 getAdminNotificationBadge:通知角标 markAdminNotificationRead:标记已读 sendSystemNotification:发送系统通知 listSystemNotifications:系统通知列表 revokeSystemNotification:撤回系统通知'],
   ['orders', '服务订单', 'admin', 'listOrders:订单列表 getOrderDetail:订单详情 getEvidence:服务证据 listOrderSessionMessages:查看服务会话记录 assignOrder:派单 updateOrderStatus:修改状态 manualCompleteOrder:人工完单 refundOrder:退款 batchDeleteOrders:删除订单 republishOrderAsUrgent:加急重发 addOrderDepositPenaltyEvidence:录入扣罚证据 listOrderDepositPenaltyEvidences:查看扣罚证据'],
-  ['users', '用户资料', 'admin', 'listUsers:用户列表 getUserDetail:用户详情 updateUserProfile:编辑用户 deleteUser:删除用户 hardDeleteUser:彻底删除用户'],
+  ['users', '用户与宠物资料', 'admin', 'listUsers:用户列表 getUserDetail:用户详情 updateUserProfile:编辑用户 deleteUser:删除用户 hardDeleteUser:彻底删除用户 listPets:宠物列表'],
   ['staff', '宠托师', 'admin', 'listStaffProfiles:宠托师列表 setSitterFeatured:推荐设置 setStaffCommissionRate:设置个人提成 listStaffAudits:资质列表 auditStaff:审核资质 completeStaffGender:核实补录性别 revokeStaff:撤销资格 listTrainingAudits:培训列表 auditTrainingVideo:培训审核 updateVideoAuditGuide:审核指引 listPromotionApplications:转正列表 getPromotionApplicationDetail:转正详情 auditPromotionApplication:转正审核'],
   ['finance', '财务', 'admin', 'financeDashboard:财务看板 listFinanceLogs:资金流水 listPayments:支付单 listRefunds:退款单 listStaffEarnings:收益明细 listWithdrawRequests:提现列表 listUserAssetWithdrawals:用户资产提现列表 getStaffSettlementPreview:结清收益预览 settleStaffEarningsByWechat:结清收益微信转账 createStaffManualTailSettlement:发起人工尾款结清 auditWithdrawRequest:审核提现 auditUserAssetWithdrawal:审核用户资产提现 queryWithdrawTransfer:查询微信提现 retryWithdrawTransfer:重试微信提现 releaseFailedWithdraw:释放失败提现 markWithdrawPaid:确认提现付款 listStaffDeposits:保证金列表 getStaffDepositDetail:保证金详情 getStaffDepositRefundPreview:退款结算预览 shipStaffSupplies:寄送首次用品 batchRequireDepositRepay:要求补缴 requestStaffDepositRefund:发起保证金退还 auditDepositRefund:审核保证金退款 confirmDepositRefund:确认保证金退款 autoRefundStaffDeposit:自动退还保证金 syncDepositRefund:同步保证金原路退款 forfeitStaffDeposit:没收保证金 listSupplyReimbursements:报销列表 auditSupplyReimbursement:审核报销 paySupplyReimbursement:确认报销付款'],
   ['prices', '服务配置', 'admin', 'listServicePrices:查看价格 saveServicePrice:编辑价格 deleteServicePrice:删除价格 resetDefaultServicePrices:重置价格 listServiceCheckinRules:打卡规则 saveServiceCheckinRules:编辑打卡规则 resetDefaultServiceCheckinRules:重置打卡规则'],
@@ -26,7 +26,7 @@ const descriptions = {
   timeouts: '手动触发未开始、未结束订单的超时检测与处置，当前通过接口调用。', reminders: '手动触发临近服务的宠托师订阅提醒，受模板授权限制，当前通过接口调用。',
   buildings: '建筑素材、上架状态、土地会员解锁及积分规则。', farm: '植物素材、生长阶段、会员解锁与上下架。',
   playground: '用户上传的宠物照片、形象定制申请与专属图集发布。', overview: '平台经营统计、待办数量与后台告警。',
-  orders: '服务订单、派单、证据、会话与订单处置。', users: '用户档案、联系方式及账号状态。普通管理员不能修改管理员账号或变更角色。',
+  orders: '服务订单、派单、证据、会话与订单处置。', users: '用户档案、宠物档案及联系方式。普通管理员不能修改管理员账号或变更角色。',
   staff: '宠托师资料、推荐、资格和培训、转正审核。', finance: '平台经营金额、支付退款、宠托师收益与资金流水。',
   withdrawals: '提现申请、审核、微信零钱转账与失败处理。查看综合提现列表会包含用户邀请收益提现。',
   deposits: '宠托师保证金记录、退款、补缴和违规扣罚。', supplies: '用品报销凭证、审核及实际付款确认。',
@@ -66,6 +66,7 @@ const details = {
   'playgroundAppearance.publish': '上传并发布专属图集，将形象绑定给申请对象；现有页面需同时授予“上传图集”。',
   'admin.getEvidence': '查看服务照片、视频、定位和打卡凭证。',
   'admin.updateUserProfile': '编辑普通用户资料及账号状态；变更积分类余额还需“调整积分”，不能变更角色或编辑管理员账号。',
+  'admin.listPets': '查看用户宠物档案、归属主人、健康性格资料以及最美大赛参赛资格。',
   'admin.hardDeleteUser': '彻底清理用户及相关业务数据，属于不可轻易恢复的操作。',
   'admin.listWithdrawRequests': '查看综合提现申请，包含宠托师及用户邀请收益提现、收款方式和历史记录。',
   'admin.listUserAssetWithdrawals': '仅查看用户可提现资产申请，不授予宠托师综合提现数据访问。',
@@ -106,6 +107,7 @@ depend('admin.listOrderSessionMessages admin.updateOrderStatus admin.manualCompl
 depend('admin.addOrderDepositPenaltyEvidence', 'admin.listOrders admin.getOrderDetail admin.getStaffDepositDetail')
 depend('admin.assignOrder', 'admin.listOrders admin.listStaffAudits')
 depend('admin.getUserDetail', 'admin.listUsers')
+depend('admin.listPets', 'admin.listUsers')
 depend('admin.updateUserProfile', 'admin.listUsers admin.getUserDetail')
 depend('admin.auditStaff admin.completeStaffGender', 'admin.listStaffAudits')
 depend('admin.auditTrainingVideo admin.updateVideoAuditGuide', 'admin.listTrainingAudits')

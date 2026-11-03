@@ -40,6 +40,9 @@ module.exports = function createService({
       totalPoints: Number(user.totalPoints || 0),
       retroCardCount: Number(user.retroCardCount || 0),
       completedOrderCount: Number(user.completedOrderCount || 0),
+      inviteCode: user.inviteCode || '',
+      inviterOpenid: user.inviterOpenid || '',
+      agreementSignedAt: user.agreementSignedAt || '',
       createdAt: user.createdAt || '',
       updatedAt: user.updatedAt || '',
       ...extra

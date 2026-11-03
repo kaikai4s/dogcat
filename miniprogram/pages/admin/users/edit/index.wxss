@@ -86,6 +86,42 @@ checkbox .wx-checkbox-input.wx-checkbox-input-checked::before {
   border: 0;
 }
 
+.card-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20rpx;
+}
+
+.view-pets-btn {
+  margin: 0 !important;
+  background: #eff6ff !important;
+  color: #2563eb !important;
+  border: 1rpx solid #bfdbfe !important;
+  font-size: 22rpx !important;
+}
+
+.copy-tag {
+  background: #eef2ff;
+  color: #4f46e5;
+  font-size: 20rpx;
+  padding: 2rpx 10rpx;
+  border-radius: 6rpx;
+  cursor: pointer;
+  margin-left: 8rpx;
+}
+
+.highlight-time-row {
+  background: #fdfaf6;
+  border-radius: 8rpx;
+  padding: 4rpx 10rpx;
+}
+
+.font-time {
+  color: #d97706;
+  font-weight: 600;
+}
+
 .tip-text {
   margin-top: 10rpx;
   color: #a59aa0;

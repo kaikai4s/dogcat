@@ -18,6 +18,7 @@ const adminSections = [
     desc: '用户、宠托师、后台权限',
     items: [
       { icon: 'ri-user-heart-line', title: '用户管理', desc: '资料与筛选', url: '/pages/admin/users/list/index' },
+      { icon: 'ri-heart-pulse-line', title: '宠物管理', desc: '档案归属与大赛资格', url: '/pages/admin/pets/list/index' },
       { icon: 'ri-user-follow-line', title: '宠托师管理', desc: '资料与状态', url: '/pages/admin/sitters/list/index' },
       { icon: 'ri-shield-check-line', title: '员工审核', desc: '资质与权限', url: '/pages/admin/staff-audit/list/index' },
       { icon: 'ri-graduation-cap-line', title: '培训视频审核', desc: '微信视频审核', url: '/pages/admin/staff-training/list/index' },

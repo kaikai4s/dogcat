@@ -1,0 +1,200 @@
+<view class="{{themeClass}} {{fontClass}} page admin-pets-page">
+  <view class="dashboard-header">
+    <view class="badge">人员管理</view>
+    <view class="title">宠物档案管理</view>
+    <view class="tip">查看用户宠物档案、归属主人、创建时间与健康照护，管理最美大赛参赛资格。<text wx:if="{{total > 0}}">（共 {{total}} 只宠物）</text></view>
+  </view>
+
+  <view class="card compact">
+    <view class="search-row">
+      <input value="{{keyword}}" placeholder="搜索宠物名 / 专属ID / 品种 / 主人手机 / 昵称 / openid" bindinput="inputKeyword" confirm-type="search" bindconfirm="search" />
+      <button class="mini-btn" bindtap="search">搜索</button>
+    </view>
+    <view class="filter-group">
+      <view class="status-tabs filter-tabs">
+        <view wx:for="{{speciesTabs}}" wx:key="value" class="status-tab {{species === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="switchSpecies">{{item.label}}</view>
+      </view>
+      <view class="status-tabs filter-tabs">
+        <view wx:for="{{contestTabs}}" wx:key="value" class="status-tab {{contestStatus === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="switchContestStatus">{{item.label}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{!pets.length && !loading}}" class="empty">暂无符合条件的宠物档案</view>
+
+  <view class="card pet-card" wx:for="{{pets}}" wx:key="_id">
+    <!-- 宠物头部基础信息 -->
+    <view class="pet-head">
+      <view class="avatar-wrap">
+        <image wx:if="{{item.avatarFileId}}" class="pet-avatar" src="{{item.avatarFileId}}" mode="aspectFill" bindtap="previewPetPhotos" data-current="{{item.avatarFileId}}" data-urls="{{item.photoUrls}}" />
+        <view wx:else class="pet-avatar avatar-placeholder">{{item.avatarText}}</view>
+        <view class="species-badge species-{{item.species}}">{{item.speciesText}}</view>
+      </view>
+      <view class="pet-main">
+        <view class="pet-title-row">
+          <view class="strong pet-name">{{item.name}}</view>
+          <view class="badge {{item.beautyContestDisqualified ? 'danger' : 'success'}}">
+            {{item.beautyContestDisqualified ? '大赛已下架' : '大赛正常'}}
+          </view>
+        </view>
+        <view class="meta-row">
+          <text class="tag-badge">{{item.breed}}</text>
+          <text class="tag-badge">{{item.genderText}}</text>
+          <text class="tag-badge">{{item.sterilizedText}}</text>
+        </view>
+        <view class="code-row">
+          <text class="code-label">专属ID：</text>
+          <text class="code-value">{{item.exclusiveId || '未生成'}}</text>
+          <text wx:if="{{item.exclusiveId}}" class="copy-tag" data-text="{{item.exclusiveId}}" bindtap="copyText">复制</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 档案时间与基本指标 -->
+    <view class="info-list pet-info-grid">
+      <view class="info-row"><view class="label">生日/出生</view><view class="value">{{item.birthday || '未设置'}}</view></view>
+      <view class="info-row"><view class="label">体重</view><view class="value">{{item.weight ? item.weight + ' kg' : '未设置'}}</view></view>
+      <view class="info-row"><view class="label">档案创建时间</view><view class="value highlight-time">{{item.createdAt || '未知'}}</view></view>
+      <view class="info-row"><view class="label">最后更新时间</view><view class="value">{{item.updatedAt || '未知'}}</view></view>
+    </view>
+
+    <!-- 主人归属信息卡片 -->
+    <view class="owner-box">
+      <view class="owner-head">
+        <image wx:if="{{item.owner.avatarUrl}}" class="owner-avatar" src="{{item.owner.avatarUrl}}" mode="aspectFill" />
+        <view wx:else class="owner-avatar owner-avatar-placeholder">主</view>
+        <view class="owner-details">
+          <view class="owner-name-row">
+            <text class="owner-nickname">{{item.owner.nickname}}</text>
+            <text class="owner-level">{{item.owner.memberLevelName}}</text>
+          </view>
+          <view class="owner-contact-row">
+            <text class="owner-phone">手机：{{item.owner.phone || '未填写'}}</text>
+            <text wx:if="{{item.owner.phone}}" class="copy-tag" data-text="{{item.owner.phone}}" bindtap="copyText">复制</text>
+          </view>
+        </view>
+        <button class="mini-btn owner-btn" wx:if="{{item.owner.openid}}" data-openid="{{item.owner.openid}}" bindtap="goToOwner">查看主人</button>
+      </view>
+      <view class="owner-openid-row" wx:if="{{item.owner.openid}}">
+        <text class="muted-label">OpenID：</text>
+        <text class="muted-openid">{{item.owner.openid}}</text>
+        <text class="copy-tag" data-text="{{item.owner.openid}}" bindtap="copyText">复制</text>
+      </view>
+    </view>
+
+    <!-- 最美大赛资格与操作栏 -->
+    <view class="contest-action-box {{item.beautyContestDisqualified ? 'is-disqualified' : 'is-qualified'}}">
+      <view class="contest-info">
+        <view class="contest-title-row">
+          <text class="contest-status-title">最美大赛资格：{{item.beautyContestDisqualified ? '已取消（下架）' : '正常参赛'}}</text>
+          <text class="contest-photos-count" wx:if="{{!item.beautyContestDisqualified}}">（参赛照 {{item.beautyPhotoCount}} 张）</text>
+        </view>
+        <view wx:if="{{item.beautyContestDisqualified}}" class="disqualified-detail">
+          <view class="reason-row"><text class="reason-label">下架原因：</text><text class="reason-text">{{item.disqualifiedReason || '违反大赛规则'}}</text></view>
+          <view class="disqualified-time" wx:if="{{item.disqualifiedAt}}">下架时间：{{item.disqualifiedAt}}</view>
+        </view>
+      </view>
+      <view class="contest-btn-wrap">
+        <button wx:if="{{!item.beautyContestDisqualified}}" class="mini-btn danger-btn" data-pet-id="{{item._id}}" data-pet-name="{{item.name}}" data-exclusive-id="{{item.exclusiveId}}" bindtap="openDisqualifyModal">下架大赛资格</button>
+        <button wx:if="{{item.beautyContestDisqualified}}" class="mini-btn success-btn" data-pet-id="{{item._id}}" data-pet-name="{{item.name}}" bindtap="reinstateContest">恢复大赛资格</button>
+      </view>
+    </view>
+
+    <!-- 展开/收起完整档案 -->
+    <view class="expand-trigger" data-id="{{item._id}}" bindtap="toggleExpand">
+      <text>{{expandedMap[item._id] ? '收起完整档案及护理备注 ▲' : '查看完整健康、性格与护理档案 ▼'}}</text>
+    </view>
+
+    <!-- 展开的详细护理和健康档案 -->
+    <view wx:if="{{expandedMap[item._id]}}" class="expanded-section">
+      <!-- 美照图集 -->
+      <view class="photo-gallery" wx:if="{{item.beautyPhotos && item.beautyPhotos.length}}">
+        <view class="sub-title">最美大赛图集 ({{item.beautyPhotos.length}} 张，点击可预览)</view>
+        <view class="gallery-scroll">
+          <image wx:for="{{item.beautyPhotos}}" wx:for-item="photo" wx:key="id" class="gallery-thumb" src="{{photo.fileId || photo.url}}" mode="aspectFill" bindtap="previewPetPhotos" data-current="{{photo.fileId || photo.url}}" data-urls="{{item.photoUrls}}" />
+        </view>
+      </view>
+
+      <view class="care-detail-list">
+        <view class="care-row" wx:if="{{item.careTags && item.careTags.length}}">
+          <view class="care-label">照护标签</view>
+          <view class="care-tags">
+            <text class="chip tag-chip" wx:for="{{item.careTags}}" wx:for-item="tag" wx:key="*this">{{tag}}</text>
+          </view>
+        </view>
+        <view class="care-row" wx:if="{{item.personality}}">
+          <view class="care-label">性格特点</view>
+          <view class="care-value">{{item.personality}}</view>
+        </view>
+        <view class="care-row" wx:if="{{item.favoriteFood}}">
+          <view class="care-label">喜好食物</view>
+          <view class="care-value">{{item.favoriteFood}}</view>
+        </view>
+        <view class="care-row" wx:if="{{item.dislikes}}">
+          <view class="care-label">忌口/害怕</view>
+          <view class="care-value">{{item.dislikes}}</view>
+        </view>
+        <view class="care-row" wx:if="{{item.healthNotes}}">
+          <view class="care-label">健康病史</view>
+          <view class="care-value highlight-warn">{{item.healthNotes}}</view>
+        </view>
+        <view class="care-row" wx:if="{{item.specialNotes}}">
+          <view class="care-label">特别注意</view>
+          <view class="care-value highlight-warn">{{item.specialNotes}}</view>
+        </view>
+        <view class="care-row" wx:if="{{item.feedingNotes}}">
+          <view class="care-label">喂食指引</view>
+          <view class="care-value">{{item.feedingNotes}}</view>
+        </view>
+        <view class="care-row" wx:if="{{item.toiletNotes}}">
+          <view class="care-label">排泄习惯</view>
+          <view class="care-value">{{item.toiletNotes}}</view>
+        </view>
+        <view class="care-row" wx:if="{{item.walkingNotes}}">
+          <view class="care-label">遛狗要求</view>
+          <view class="care-value">{{item.walkingNotes}}</view>
+        </view>
+        <view class="care-row" wx:if="{{item.medicalCareNotes}}">
+          <view class="care-label">用药说明</view>
+          <view class="care-value">{{item.medicalCareNotes}}</view>
+        </view>
+        <view class="care-row" wx:if="{{item.emergencyContactNote}}">
+          <view class="care-label">紧急联系</view>
+          <view class="care-value">{{item.emergencyContactNote}}</view>
+        </view>
+        <view class="care-row" wx:if="{{!item.hasNotes}}">
+          <view class="care-value muted">主人暂未填写额外护理与性格备注。</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <button class="ghost" wx:if="{{hasMore}}" loading="{{loading}}" disabled="{{loading}}" bindtap="loadMore">{{loading ? '加载中...' : '加载更多'}}</button>
+
+  <!-- 下架最美大赛弹窗 -->
+  <view class="modal-mask" wx:if="{{disqualifyModal.visible}}" bindtap="closeDisqualifyModal" catchtouchmove="noop">
+    <view class="modal-dialog" catchtap="noop">
+      <view class="modal-header">
+        <view class="modal-title">下架最美大赛资格</view>
+        <view class="modal-subtitle">宠物：{{disqualifyModal.petName}} ({{disqualifyModal.exclusiveId}})</view>
+      </view>
+      <view class="modal-body">
+        <view class="modal-label">下架原因（将在前后台记录展示）：</view>
+        <textarea class="modal-textarea" value="{{disqualifyModal.reason}}" bindinput="inputDisqualifyReason" placeholder="请输入下架原因，如：违反大赛规则（AI生成或网图）" maxlength="200" />
+      </view>
+      <view class="modal-footer">
+        <button class="modal-btn cancel" bindtap="closeDisqualifyModal">取消</button>
+        <button class="modal-btn confirm danger" bindtap="confirmDisqualify">确认下架</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- 底部快捷导航 -->
+  <view class="bottom-nav">
+    <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon remix-icon ri-dashboard-3-line"></view><view>控制台</view></view>
+    <view class="nav-item" data-url="/pages/admin/users/list/index" bindtap="go"><view class="nav-icon remix-icon ri-user-heart-line"></view><view>用户</view></view>
+    <view class="nav-item active"><view class="nav-icon remix-icon ri-heart-pulse-fill"></view><view>宠物</view></view>
+    <view class="nav-item" data-url="/pages/admin/orders/list/index" bindtap="go"><view class="nav-icon remix-icon ri-file-list-3-line"></view><view>订单</view></view>
+  </view>
+</view>
+<global-loading />

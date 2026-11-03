@@ -103,6 +103,20 @@ Page({
     ]
   },
 
+  viewPets() {
+    if (!this.data.openid) return
+    wx.navigateTo({ url: `/pages/admin/pets/list/index?keyword=${encodeURIComponent(this.data.openid)}` })
+  },
+
+  copyText(e) {
+    const text = e.currentTarget.dataset.text
+    if (!text) return
+    wx.setClipboardData({
+      data: String(text),
+      success: () => wx.showToast({ title: '已复制', icon: 'none' })
+    })
+  },
+
   inputField(e) {
     const key = e.currentTarget.dataset.key
     if (!key) return

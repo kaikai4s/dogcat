@@ -1223,6 +1223,159 @@ module.exports = function createHandler(context) {
       await logAdmin(admin, 'user', targetOpenid, 'hardDeleteUser', { userId: target._id, cleanup })
       return { openid: targetOpenid, userId: target._id, cleanup }
     }
+    if (action === 'listPets') {
+      const keyword = safeText(data.keyword).trim().toLowerCase()
+      const species = safeText(data.species).trim().toLowerCase()
+      const contestStatus = safeText(data.contestStatus || data.status).trim()
+      const page = Math.max(Number(data.page || 1), 1)
+      const pageSize = Math.min(Math.max(Number(data.pageSize || 20), 1), 100)
+
+      const allPets = await readAll('pets', {}, 5000)
+
+      let matchedUserOpenids = null
+      let userMap = {}
+      if (keyword) {
+        const allUsers = await readAll('users', {}, 5000)
+        for (const u of allUsers) {
+          userMap[u.openid] = {
+            openid: u.openid,
+            nickname: u.nickname || '微信用户',
+            phone: u.phone || '',
+            avatarUrl: u.avatarUrl || '',
+            memberLevelName: u.memberLevelName || '普通会员'
+          }
+        }
+        matchedUserOpenids = new Set(
+          allUsers.filter((u) => [u.openid, u.nickname, u.phone].some((v) => safeText(v).toLowerCase().includes(keyword)))
+            .map((u) => u.openid)
+        )
+      }
+
+      const filtered = allPets.filter((pet) => {
+        if (pet.deletedAt) return false
+        const petSpecies = pet.species || 'dog'
+        if (species && ['dog', 'cat', 'other'].includes(species) && petSpecies !== species) {
+          return false
+        }
+        if (contestStatus === 'disqualified' && !pet.beautyContestDisqualified) {
+          return false
+        }
+        if (contestStatus === 'qualified' && pet.beautyContestDisqualified) {
+          return false
+        }
+        if (keyword) {
+          const matchPet = [pet._id, pet.exclusiveId, pet.name, pet.breed, pet.openid].some((v) => safeText(v).toLowerCase().includes(keyword))
+          const matchOwner = matchedUserOpenids && matchedUserOpenids.has(pet.openid)
+          if (!matchPet && !matchOwner) return false
+        }
+        return true
+      })
+
+      filtered.sort((a, b) => {
+        const aTime = (parseDateValue(a.createdAt) && parseDateValue(a.createdAt).getTime()) || 0
+        const bTime = (parseDateValue(b.createdAt) && parseDateValue(b.createdAt).getTime()) || 0
+        if (bTime !== aTime) return bTime - aTime
+        return String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
+      })
+
+      const total = filtered.length
+      const offset = (page - 1) * pageSize
+      const slice = filtered.slice(offset, offset + pageSize)
+
+      const missingOpenids = [...new Set(slice.map((p) => p.openid).filter((id) => id && !userMap[id]))]
+      if (missingOpenids.length > 0) {
+        if (db.command && typeof db.command.in === 'function') {
+          for (let i = 0; i < missingOpenids.length; i += 50) {
+            const chunk = missingOpenids.slice(i, i + 50)
+            const uRes = await db.collection('users').where({ openid: db.command.in(chunk) }).get().catch(() => ({ data: [] }))
+            for (const u of (uRes.data || [])) {
+              userMap[u.openid] = {
+                openid: u.openid,
+                nickname: u.nickname || '微信用户',
+                phone: u.phone || '',
+                avatarUrl: u.avatarUrl || '',
+                memberLevelName: u.memberLevelName || '普通会员'
+              }
+            }
+          }
+        } else {
+          for (const oid of missingOpenids) {
+            const uRes = await db.collection('users').where({ openid: oid }).limit(1).get().catch(() => ({ data: [] }))
+            if (uRes.data && uRes.data[0]) {
+              const u = uRes.data[0]
+              userMap[u.openid] = {
+                openid: u.openid,
+                nickname: u.nickname || '微信用户',
+                phone: u.phone || '',
+                avatarUrl: u.avatarUrl || '',
+                memberLevelName: u.memberLevelName || '普通会员'
+              }
+            }
+          }
+        }
+      }
+
+      const list = slice.map((pet) => {
+        const owner = userMap[pet.openid] || {
+          openid: pet.openid || '',
+          nickname: '未知用户',
+          phone: '',
+          avatarUrl: '',
+          memberLevelName: '普通会员'
+        }
+        const beautyPhotos = Array.isArray(pet.beautyPhotos) ? pet.beautyPhotos : []
+        const avatarFileId = pet.avatarFileId || (beautyPhotos[0] && (beautyPhotos[0].fileId || beautyPhotos[0].url)) || ''
+        const rawWeight = Number(pet.weight)
+        const weight = Number.isFinite(rawWeight) && rawWeight > 0 ? rawWeight : ''
+        const createdAt = pet.createdAt instanceof Date ? pet.createdAt.toISOString().replace('T', ' ').slice(0, 19) : (pet.createdAt || '')
+        const updatedAt = pet.updatedAt instanceof Date ? pet.updatedAt.toISOString().replace('T', ' ').slice(0, 19) : (pet.updatedAt || '')
+        return {
+          _id: pet._id || '',
+          exclusiveId: pet.exclusiveId || '',
+          name: pet.name || '未命名',
+          species: pet.species || 'dog',
+          speciesText: pet.species === 'cat' ? '猫咪' : (pet.species === 'other' ? '异宠' : '狗狗'),
+          breed: pet.breed || '混血/未知',
+          gender: pet.gender || 'unknown',
+          genderText: pet.gender === 'male' ? '弟弟 (公)' : (pet.gender === 'female' ? '妹妹 (母)' : '未知'),
+          sterilized: Boolean(pet.sterilized),
+          sterilizedText: pet.sterilized ? '已绝育' : '未绝育',
+          weight,
+          birthday: pet.birthday || '',
+          avatarFileId,
+          beautyPhotos,
+          beautyPhotoCount: beautyPhotos.length,
+          beautyTitle: pet.beautyTitle || null,
+          personality: pet.personality || '',
+          favoriteFood: pet.favoriteFood || '',
+          dislikes: pet.dislikes || '',
+          healthNotes: pet.healthNotes || '',
+          specialNotes: pet.specialNotes || '',
+          careTags: Array.isArray(pet.careTags) ? pet.careTags : [],
+          feedingNotes: pet.feedingNotes || '',
+          toiletNotes: pet.toiletNotes || '',
+          walkingNotes: pet.walkingNotes || '',
+          medicalCareNotes: pet.medicalCareNotes || '',
+          emergencyContactNote: pet.emergencyContactNote || '',
+          riskLevel: pet.riskLevel || 'normal',
+          beautyContestDisqualified: Boolean(pet.beautyContestDisqualified),
+          disqualifiedReason: pet.disqualifiedReason || '',
+          disqualifiedAt: pet.disqualifiedAt || '',
+          disqualifiedBy: pet.disqualifiedBy || '',
+          createdAt,
+          updatedAt,
+          owner
+        }
+      })
+
+      return {
+        list,
+        total,
+        page,
+        pageSize,
+        hasMore: offset + pageSize < total
+      }
+    }
     if (action === 'listStaffProfiles') {
       await refreshStaffEarnings()
       const defaultCommissionRate = Number((await getSystemSettings()).settlement?.staffCommissionRate ?? 0.7)

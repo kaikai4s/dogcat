@@ -56,7 +56,11 @@ module.exports = function createService({ db, crypto, now }) {
     const key = permission || `${request.module}.${request.action}`
     if (key === 'admin.getMyAdminAccess') return user
     if (current.superAdmin) return user
-    if (ownerActions.has(key) || !current.permissions.includes(key)) throw denied()
+    const hasPermission = current.permissions.includes(key) ||
+      (key === 'admin.listPets' && current.permissions.includes('admin.listUsers')) ||
+      (['petBeauty.disqualifyPetBeautyCandidate', 'petBeauty.reinstatePetBeautyCandidate'].includes(key) &&
+        (current.permissions.includes('admin.listPets') || current.permissions.includes('admin.listUsers')))
+    if (ownerActions.has(key) || !hasPermission) throw denied()
     if (key === 'admin.getSystemSettings' && request.data.includeSecrets === true) throw denied()
     // Editing roles or administrators is never delegated through ordinary user editing.
     if (['admin.updateUserProfile', 'admin.deleteUser', 'admin.hardDeleteUser'].includes(key)) {
