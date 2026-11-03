@@ -221,5 +221,55 @@ test('previewPet and previewPoster skip reload on next onShow lifecycle when ret
   await flush()
   assert.equal(page._skipNextOnShow, false)
   assert.ok(calls.length > callCountBeforeRefresh, '下拉刷新应强制刷新榜单数据')
+
+  // 6. 分享设置 _skipNextOnShow
+  page.onShareAppMessage()
+  assert.equal(page._skipNextOnShow, true)
+  page._skipNextOnShow = false
+  page.onShareTimeline()
+  assert.equal(page._skipNextOnShow, true)
+})
+
+test('multi-page voting retains all loaded items without truncation, and search confirms from keyboard', async () => {
+  const { page, calls } = createPage({ respond(action, data) {
+    if (action === 'vote') return { voteCount: 99, remainingVotesToday: 0 }
+    if (action === 'listRanking') {
+      const count = data.pageSize || 10
+      const list = []
+      for (let i = 1; i <= count; i++) {
+        list.push(pet(i))
+      }
+      return { list, page: data.page, hasMore: true }
+    }
+    return {}
+  } })
+  page.onLoad()
+  page.setData({
+    page: 2,
+    pageSize: 10,
+    ranking: Array.from({ length: 20 }, (_, i) => pet(i + 1)),
+    candidates: [pet(15)],
+    monthOptions: [{ value: '2026-11', isHistory: false }]
+  })
+
+  // 1. 模拟在第 2 页为第 15 只宠物投票
+  page.vote({ currentTarget: { dataset: { id: 'pet-15' } } })
+  await flush()
+
+  // 验证投票后刷新不会将列表截断回 10 条，而是保留 20 条，且查询传参一次性覆盖已加载范围
+  const lastRankingCall = calls.find((c) => c.action === 'listRanking')
+  assert.ok(lastRankingCall, '应发起 listRanking')
+  assert.equal(lastRankingCall.data.page, 1)
+  assert.equal(lastRankingCall.data.pageSize, 20, '翻页到第 2 页后投票，应查询 20 条覆盖已加载条目')
+  assert.equal(page.data.page, 2, '当前页码应维持在 2，不应回退到 1')
+  assert.equal(page.data.ranking.length, 20, '列表条数应完整保持 20 条，不被截断')
+
+  // 2. 软键盘搜索一键确认
+  page.submitSearch({ detail: { value: '布偶猫' } })
+  await flush()
+  assert.equal(page.data.keyword, '布偶猫')
+  const searchCall = calls[calls.length - 1]
+  assert.equal(searchCall.data.keyword, '布偶猫')
+  assert.equal(searchCall.data.page, 1)
 })
 

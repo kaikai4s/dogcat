@@ -369,25 +369,38 @@ Page({
     this.setData({ keyword: e.detail.value })
   },
 
-  submitSearch() {
-    this.loadRanking(true)
+  submitSearch(e) {
+    const rawVal = e && e.detail && typeof e.detail.value === 'string' ? e.detail.value : this.data.keyword
+    const val = String(rawVal || '').trim()
+    if (val !== this.data.keyword) {
+      this.setData({ keyword: val }, () => this.loadRanking(true))
+    } else {
+      this.loadRanking(true)
+    }
   },
 
   clearSearch() {
     this.setData({ keyword: '' }, () => this.loadRanking(true))
   },
 
-  loadRanking(reset = false) {
+  loadRanking(reset = false, options = {}) {
     if (this.data.loading) return
-    const page = reset ? 1 : this.data.page + 1
+    const isVoteRefresh = options.isVoteRefresh === true
+    const currentPage = this.data.page || 1
+    const pageSize = this.data.pageSize || 10
+    const queryPage = (isVoteRefresh && currentPage > 1) ? 1 : (reset ? 1 : currentPage + 1)
+    const queryPageSize = (isVoteRefresh && currentPage > 1) ? Math.min(currentPage * pageSize, 100) : pageSize
     const opt = this.data.monthOptions[this.data.selectedMonthIndex] || {}
     const historyMonthKey = opt.isHistory ? opt.value : ''
     this.setData({ loading: true })
-    callFunction('petBeauty', 'listRanking', { keyword: this.data.keyword, historyMonthKey, page, pageSize: this.data.pageSize })
+    callFunction('petBeauty', 'listRanking', { keyword: this.data.keyword, historyMonthKey, page: queryPage, pageSize: queryPageSize })
       .then((res) => {
+        const nextList = (reset || (isVoteRefresh && currentPage > 1))
+          ? (res.list || [])
+          : this.data.ranking.concat(res.list || [])
         this.setData({
-          ...rankingViewData(reset ? (res.list || []) : this.data.ranking.concat(res.list || [])),
-          page: res.page || page,
+          ...rankingViewData(nextList, this._petActivePhotoIndices || {}),
+          page: isVoteRefresh ? currentPage : (res.page || queryPage),
           hasMore: res.hasMore === true,
           loading: false,
           isHistory: res.isHistory === true,
@@ -571,12 +584,12 @@ Page({
 
           if (isTestEnv) {
             this.setData({ animatingPetId: '', votingPetId: '' })
-            this.loadRanking(true)
+            this.loadRanking(true, { isVoteRefresh: true })
           } else {
             // 动效完整演进（约 1100ms）后清理动画标识，展示已投/剩余票状态
             setTimeout(() => {
               this.setData({ animatingPetId: '', votingPetId: '' })
-              this.loadRanking(true)
+              this.loadRanking(true, { isVoteRefresh: true })
             }, 350)
           }
         }
@@ -607,6 +620,7 @@ Page({
   },
 
   onShareAppMessage() {
+    this._skipNextOnShow = true
     if (this.data.rankingMaintenance) return { title: '宠物排行榜维护中', path: '/pages/client/home/index' }
     const inviteCode = this.data.inviteCode || ''
     const inviterOpenid = this.data.userOpenid || ''
@@ -622,6 +636,7 @@ Page({
   },
 
   onShareTimeline() {
+    this._skipNextOnShow = true
     const inviteCode = this.data.inviteCode || ''
     const inviterOpenid = this.data.userOpenid || ''
     const title = this.data.pageTitle ? `${this.data.pageTitle}大比拼，快来投票！` : '最美宠物月榜大比拼，快来投票！'
