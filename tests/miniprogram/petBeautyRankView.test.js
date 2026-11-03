@@ -19,7 +19,8 @@ function createPage({ storage = '', storageFails = false, respond = () => ({}) }
     previewImage(options) { previews.push(options) },
     showToast() {},
     showActionSheet(options) { options.success({ tapIndex: 0 }) },
-    showModal(options) { options.success({ confirm: true }) }
+    showModal(options) { options.success({ confirm: true }) },
+    stopPullDownRefresh() {}
   }
   vm.runInNewContext(source, {
     Page(config) { page = config },
@@ -142,3 +143,83 @@ test('vote updates both views and refreshes server order without changing view p
   assert.equal(calls.filter((c) => c.action === 'vote').length, 1)
   assert.equal(errors.length, 0)
 })
+
+test('previewPet and previewPoster skip reload on next onShow lifecycle when returning from fullscreen preview', async () => {
+  const { page, calls, previews } = createPage({ respond(action, data) {
+    if (action === 'getActivityHome') return { monthKey: '2026-11', candidates: [pet(1)], ranking: [pet(1)] }
+    if (action === 'listRanking') return { list: [pet(1)] }
+    if (action === 'listHistoryMonths') return { months: [] }
+    return {}
+  } })
+  page.onLoad()
+  page.setData({
+    ranking: [pet(1), pet(2)],
+    candidates: [pet(1)],
+    contestConfig: { posterUrl: 'cloud://poster-test.jpg' },
+    keyword: '保留搜索关键字'
+  })
+
+  // 1. 测试点击宠物大图预览
+  page.previewPet({ currentTarget: { dataset: { id: 'pet-1' } } })
+  assert.equal(previews.length, 1)
+  assert.equal(previews[0].current, 'cloud://photo-1')
+  assert.equal(page._skipNextOnShow, true, 'previewPet 应将 _skipNextOnShow 置为 true')
+
+  // 模拟微信退出全屏图片预览器时触发页面的 onShow
+  const initialCallCount = calls.length
+  page.onShow()
+  assert.equal(page._skipNextOnShow, false, '_skipNextOnShow 消费后应重置为 false')
+  assert.equal(calls.length, initialCallCount, '预览返回触发 onShow 不应重新发起任何网络请求或重新加载榜单')
+  assert.equal(page.data.keyword, '保留搜索关键字', '当前搜索状态与榜单数据应保持原样')
+
+  // 2. 随后的普通 onShow 生命周期应恢复正常加载
+  page.onShow()
+  await flush()
+  assert.ok(calls.length > initialCallCount, '正常的 onShow 应正常加载')
+
+  // 3. 测试点击活动海报预览
+  page.setData({ keyword: '海报测试关键字' })
+  page.previewPoster()
+  assert.equal(previews.length, 2)
+  assert.equal(previews[1].current, 'cloud://poster-test.jpg')
+  assert.equal(page._skipNextOnShow, true, 'previewPoster 应将 _skipNextOnShow 置为 true')
+
+  // 模拟海报预览返回时的 onShow
+  const callCountBeforePosterReturn = calls.length
+  page.onShow()
+  assert.equal(page._skipNextOnShow, false)
+  assert.equal(calls.length, callCountBeforePosterReturn, '海报预览返回不应触发重新加载')
+  assert.equal(page.data.keyword, '海报测试关键字')
+
+  // 4. 测试历史月份下预览返回：标题应保持历史月份（如“8月宠物最美大赛”），不被冲刷成当前月
+  page.setData({
+    monthKey: '2026-11',
+    currentMonthKey: '2026-11',
+    selectedMonthIndex: 1,
+    monthOptions: [
+      { label: '2026-11 (本月)', value: '2026-11', isHistory: false },
+      { label: '2026-08 (往期)', value: '2026-08', isHistory: true }
+    ],
+    candidates: [{ petId: 'pet-avatar-only', name: '仅头像宠物', avatarUrl: 'cloud://avatar-only.jpg' }]
+  })
+  page.updateContestTitle('2026-08')
+  assert.equal(page.data.pageTitle, '8月宠物最美大赛')
+
+  page.previewPet({ currentTarget: { dataset: { id: 'pet-avatar-only' } } })
+  assert.equal(previews.length, 3)
+  assert.equal(previews[2].current, 'cloud://avatar-only.jpg', 'avatarUrl 宠物也应能正常提取并预览大图')
+  assert.equal(page._skipNextOnShow, true)
+
+  page.onShow()
+  assert.equal(page._skipNextOnShow, false)
+  assert.equal(page.data.pageTitle, '8月宠物最美大赛', '大图预览返回后标题不得被错误重置为当月')
+
+  // 5. 下拉刷新应强制重置 _skipNextOnShow 并恢复刷新加载
+  page._skipNextOnShow = true
+  const callCountBeforeRefresh = calls.length
+  page.onPullDownRefresh()
+  await flush()
+  assert.equal(page._skipNextOnShow, false)
+  assert.ok(calls.length > callCountBeforeRefresh, '下拉刷新应强制刷新榜单数据')
+})
+

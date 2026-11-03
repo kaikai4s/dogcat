@@ -159,7 +159,9 @@ Page({
   },
 
   updateContestTitle(monthKey) {
-    const title = formatContestTitle(monthKey || this.data.monthKey || this.data.currentMonthKey)
+    const selectedOpt = Array.isArray(this.data.monthOptions) && this.data.monthOptions[this.data.selectedMonthIndex]
+    const effectiveKey = monthKey || (selectedOpt && selectedOpt.value) || this.data.monthKey || this.data.currentMonthKey
+    const title = formatContestTitle(effectiveKey)
     this.setData({ pageTitle: title })
     if (typeof wx !== 'undefined' && typeof wx.setNavigationBarTitle === 'function') {
       try { wx.setNavigationBarTitle({ title }) } catch (_) {}
@@ -197,6 +199,10 @@ Page({
   },
 
   onShow() {
+    if (this._skipNextOnShow) {
+      this._skipNextOnShow = false
+      return
+    }
     this.updateContestTitle()
     this.applyCurrentTheme()
     try {
@@ -309,7 +315,14 @@ Page({
   previewPoster() {
     const poster = this.data.contestConfig && (this.data.contestConfig.posterUrl || this.data.contestConfig.posterFileId)
     if (poster && typeof wx !== 'undefined' && typeof wx.previewImage === 'function') {
-      wx.previewImage({ current: poster, urls: [poster] })
+      this._skipNextOnShow = true
+      wx.previewImage({
+        current: poster,
+        urls: [poster],
+        fail: () => {
+          this._skipNextOnShow = false
+        }
+      })
     }
   },
 
@@ -393,12 +406,21 @@ Page({
     }
     const petId = (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.id) || (e && e.petId)
     const pet = this.data.ranking.concat(this.data.candidates).find((item) => item.petId === petId)
-    const urls = pet && Array.isArray(pet.photos) && pet.photos.length ? pet.photos : (pet && Array.isArray(pet.beautyPhotos) ? pet.beautyPhotos.map((photo) => photo.fileId).filter(Boolean) : [])
-    if (!urls.length && pet && pet.avatarFileId) urls.push(pet.avatarFileId)
+    let urls = pet && Array.isArray(pet.photos) && pet.photos.length ? pet.photos.slice() : []
+    if (!urls.length && pet) {
+      urls = getPetPhotos(pet)
+    }
     if (urls.length && typeof wx !== 'undefined' && typeof wx.previewImage === 'function') {
       const activeIdx = (this._petActivePhotoIndices && this._petActivePhotoIndices[petId]) || (pet && pet.activePhotoIndex) || 0
       const currentUrl = urls[activeIdx] || urls[0]
-      wx.previewImage({ current: currentUrl, urls })
+      this._skipNextOnShow = true
+      wx.previewImage({
+        current: currentUrl,
+        urls,
+        fail: () => {
+          this._skipNextOnShow = false
+        }
+      })
     }
   },
 
@@ -576,7 +598,12 @@ Page({
   },
 
   onPullDownRefresh() {
-    return Promise.resolve(this.onShow()).finally(() => wx.stopPullDownRefresh())
+    this._skipNextOnShow = false
+    return Promise.resolve(this.onShow()).finally(() => {
+      if (typeof wx !== 'undefined' && typeof wx.stopPullDownRefresh === 'function') {
+        wx.stopPullDownRefresh()
+      }
+    })
   },
 
   onShareAppMessage() {
