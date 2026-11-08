@@ -1,5 +1,6 @@
 module.exports = function createService({
   enabledTrainingVideos,
+  isTrainingVideoWatched,
   normalizeStaffTrainingConfig,
   onboardingStatusText,
   promotionStatusText,
@@ -92,7 +93,7 @@ module.exports = function createService({
     const p = normalizeStaffWorkflow(profile)
     const progress = p.trainingVideoProgress || {}
     const videos = enabledTrainingVideos(training)
-    const allVideosWatched = videos.length === 0 || videos.every((video) => progress[video.key] && progress[video.key].watched === true)
+    const allVideosWatched = videos.length === 0 || videos.every((video) => isTrainingVideoWatched(video, progress))
     return Boolean(p && p.quizPassedAt && allVideosWatched)
   }
 

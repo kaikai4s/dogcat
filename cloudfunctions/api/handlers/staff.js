@@ -57,6 +57,7 @@ module.exports = function createHandler(context) {
     isAdminDeletedOrder,
     isOpenOrder,
     isTrainingComplete,
+    isTrainingVideoWatched,
     makeIdempotencyKey,
     markStaffDepositPaid,
     syncWechatStaffDeposit,
@@ -600,9 +601,16 @@ module.exports = function createHandler(context) {
       const settings = await getSystemSettings()
       const training = settings.staffTraining || normalizeStaffTrainingConfig()
       const completedOrders = await getCompletedStaffOrders(openid, 3)
-      const videos = enabledTrainingVideos(training).map((video) => ({ ...video, watched: Boolean(progress[video.key] && progress[video.key].watched === true), watchedAt: progress[video.key] && progress[video.key].watchedAt || '' }))
+      const videos = enabledTrainingVideos(training).map((video) => ({
+        ...video,
+        watched: isTrainingVideoWatched(video, progress),
+        watchedAt: progress[video.key] && progress[video.key].watchedAt || '',
+        watchedSeconds: progress[video.key] && progress[video.key].watchedSeconds,
+        duration: progress[video.key] && progress[video.key].duration
+      }))
       return {
         profile,
+        videoPassPercent: training.videoPassPercent,
         quiz: { version: trainingQuizVersion(training), unlocked: profile.auditStatus === 'approved' && videos.every(video => video.watched), questions: profile.auditStatus === 'approved' && videos.every(video => video.watched) ? publicTrainingQuiz(training.quiz) : [], passScore: training.passScore, passed: Boolean(profile.quizPassedAt), score: Number(profile.quizScore || 0), passedAt: profile.quizPassedAt || '' },
         videos,
         videoAuditGuide: normalizeVideoAuditGuide(training.videoAuditGuide),
@@ -622,7 +630,7 @@ module.exports = function createHandler(context) {
       if (!profile || profile.auditStatus !== 'approved') throw new Error('资料审核通过后方可参加培训答题')
       const settings = await getSystemSettings()
       const training = settings.staffTraining || normalizeStaffTrainingConfig()
-      if (!enabledTrainingVideos(training).every(video => profile.trainingVideoProgress && profile.trainingVideoProgress[video.key]?.watched === true)) throw new Error('请先完成全部培训视频观看后再答题')
+      if (!enabledTrainingVideos(training).every(video => isTrainingVideoWatched(video, profile.trainingVideoProgress))) throw new Error('请先完成全部培训视频观看后再答题')
       const questions = training.quiz || DEFAULT_STAFF_TRAINING_QUIZ
       if (data.quizVersion && data.quizVersion !== trainingQuizVersion(training)) throw new Error('题目配置已更新，请刷新培训页后重新作答')
       const answers = data.answers || {}
@@ -651,34 +659,49 @@ module.exports = function createHandler(context) {
       const videoKey = safeText(data.videoKey).trim()
       const matchedVideo = videos.find((item) => item.key === videoKey)
       if (!matchedVideo) throw new Error('培训视频不存在')
+      if (data.fileId !== undefined && safeText(data.fileId).trim() !== matchedVideo.fileId) {
+        throw Object.assign(new Error('培训视频已更新，请刷新后重新观看'), { code: 'TRAINING_VIDEO_UPDATED' })
+      }
 
-      // 全程观看防作弊校验：优先使用服务端配置时长，不完全信任前端上报
+      // Newly uploaded files have bound media metadata. Legacy display-derived
+      // durations must yield to the player's actual duration until re-uploaded.
       const watchedSeconds = Number(data.watchedSeconds)
       const clientDuration = Number(data.duration)
       const serverDuration = matchedVideo.durationSeconds || 0
-      const duration = serverDuration > 5 ? serverDuration : (Number.isFinite(clientDuration) ? clientDuration : 0)
-      if (duration > 5) {
-        if (!Number.isFinite(watchedSeconds) || watchedSeconds < duration * 0.9) {
-          throw new Error('培训视频须全程完整观看，当前播放时长未达标')
-        }
+      const hasMediaDuration = matchedVideo.fileId && matchedVideo.durationFileId === matchedVideo.fileId && serverDuration > 0
+      const duration = hasMediaDuration ? serverDuration : (Number.isFinite(clientDuration) && clientDuration > 0 ? clientDuration : serverDuration)
+      const videoPassPercent = training.videoPassPercent
+      if (!Number.isFinite(duration) || duration <= 0) throw Object.assign(new Error('暂未获取到视频实际时长，请重新播放后再试'), { code: 'TRAINING_DURATION_UNAVAILABLE' })
+      if (!Number.isFinite(watchedSeconds) || watchedSeconds < 0 || watchedSeconds + 0.000001 < duration * videoPassPercent / 100) {
+        throw Object.assign(new Error(`当前播放时长未达标，请连续观看视频至少 ${videoPassPercent}%`), { code: 'TRAINING_WATCH_INCOMPLETE' })
       }
 
-      const progress = { ...(profile.trainingVideoProgress || {}) }
-      const time = now()
-      progress[videoKey] = {
-        watched: true,
-        watchedAt: time,
-        watchedSeconds: Number.isFinite(watchedSeconds) ? watchedSeconds : null,
-        duration: Number.isFinite(duration) ? duration : null
-      }
-      const allWatched = videos.every((video) => progress[video.key] && progress[video.key].watched === true)
-      const update = { trainingVideoProgress: progress, updatedAt: time }
-      if (allWatched) {
-        update.trainingVideosCompletedAt = time
-        update.onboardingStatus = profile.quizPassedAt ? 'videos_completed' : profile.onboardingStatus
-      }
-      await db.collection('staff_profiles').doc(profile._id).update({ data: update })
-      return { videoKey, allWatched }
+      return db.runTransaction(async tx => {
+        const result = await tx.collection('staff_profiles').doc(profile._id).get()
+        const latest = normalizeStaffWorkflow(result.data)
+        if (!latest || latest.auditStatus !== 'approved') throw new Error('资料审核通过后方可观看培训视频')
+        const progress = { ...(latest.trainingVideoProgress || {}) }
+        const time = now()
+        if (!isTrainingVideoWatched(matchedVideo, progress)) {
+          progress[videoKey] = {
+            watched: true,
+            watchedAt: time,
+            watchedSeconds: Math.min(watchedSeconds, duration),
+            duration,
+            videoPassPercent,
+            fileId: matchedVideo.fileId
+          }
+        }
+        const allWatched = videos.every(video => isTrainingVideoWatched(video, progress))
+        const update = { trainingVideoProgress: progress, updatedAt: time }
+        if (allWatched) {
+          const previouslyComplete = videos.every(video => isTrainingVideoWatched(video, latest.trainingVideoProgress))
+          update.trainingVideosCompletedAt = previouslyComplete && latest.trainingVideosCompletedAt || time
+          update.onboardingStatus = latest.quizPassedAt ? 'videos_completed' : latest.onboardingStatus
+        }
+        await tx.collection('staff_profiles').doc(profile._id).update({ data: update })
+        return { videoKey, allWatched, videoPassPercent }
+      })
     }
     if (action === 'submitVideoAuditRequest') {
       await getUser(openid)

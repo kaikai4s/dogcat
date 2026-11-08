@@ -3,6 +3,9 @@ const { withStaffWorkflowText, formatDateTime } = require('../../../utils/format
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { copyText } = require('../../../utils/clipboard')
 
+const positiveDuration = value => Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : 0
+const videoPassPercent = value => Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 100 ? Number(value) : 80
+
 const depositStatusText = {
   unpaid: '待缴纳',
   paid: '已缴纳',
@@ -64,6 +67,7 @@ Page({
     quizExpanded: false,
     quizBusy: false,
     watchedVideoCount: 0,
+    videoPassPercent: 80,
     videos: [],
     steps: [],
     videoAuditGuide: null,
@@ -104,6 +108,7 @@ Page({
 
   onShow() {
     this._unloaded = false
+    this._trainingHidden = false
     const theme = applyTheme()
     this.setData(getThemeState(theme.value))
     this.load()
@@ -111,6 +116,7 @@ Page({
   },
 
   onHide() {
+    this._trainingHidden = true
     this.pauseAllVideos()
   },
 
@@ -123,6 +129,11 @@ Page({
 
   pauseAllVideos() {
     (this.data.videos || []).forEach((item) => {
+      const track = this._videoTracking && this._videoTracking[item.key]
+      if (track) {
+        this.clearVideoSyncRetry(track)
+        this.stopVideoPlayback(track)
+      }
       try {
         const videoCtx = wx.createVideoContext(`video-${item.key}`, this)
         videoCtx.pause()
@@ -402,7 +413,7 @@ Page({
     wx.navigateTo({ url: '/pages/staff/supplies/reimbursement/index' })
   },
 
-  load() {
+  load(options = {}) {
     if (this._unloaded) return Promise.resolve()
     const version = this._trainingLoadVersion = (this._trainingLoadVersion || 0) + 1
     this.setData({ loading: true })
@@ -412,20 +423,24 @@ Page({
         const profile = withStaffWorkflowText(res.profile)
         if (!this._videoTracking) this._videoTracking = {}
         const videos = (res.videos || []).map((item) => {
-          if (item.watched) {
-            this._videoTracking[item.key] = {
-              maxTime: item.duration || 999999,
-              completed: true,
-              lastToast: 0,
-              seeking: false
-            }
+          const previous = this.data.videos.find(video => video.key === item.key && video.fileId === item.fileId)
+          const track = this._videoTracking[item.key]
+          if (track && track.fileId !== item.fileId) {
+            this.clearVideoSyncRetry(track)
+            delete this._videoTracking[item.key]
+          } else if (track && item.watched) {
+            track.completed = true
+            this.clearVideoSyncRetry(track)
           }
+          const duration = positiveDuration(item.duration)
+          const progressPercent = duration > 0 ? Math.min(100, Math.floor(Number(item.watchedSeconds || 0) / duration * 100 + 0.000001)) : (item.watched ? 100 : 0)
           return {
             ...item,
             watchedAtText: formatDateTime(item.watchedAt),
-            progressPercent: item.watched ? 100 : 0,
-            tempUrl: '',
-            posterTempUrl: ''
+            progressPercent: item.watched ? progressPercent : (previous && previous.progressPercent || 0),
+            syncError: !item.watched && previous && previous.syncError || false,
+            tempUrl: previous && previous.tempUrl || '',
+            posterTempUrl: previous && previous.posterFileId === item.posterFileId && previous.posterTempUrl || ''
           }
         })
         const supplies = res.supplies || {}
@@ -438,13 +453,17 @@ Page({
           answers: this.data.quiz && this.data.quiz.version === res.quiz?.version ? this.data.answers : {},
           quizExpanded: res.quiz && res.quiz.unlocked === true && this.data.quizExpanded,
           watchedVideoCount: videos.filter(item => item.watched).length,
+          videoPassPercent: videoPassPercent(res.videoPassPercent),
           videos,
           steps: buildSteps(profile, videos),
           videoAuditGuide: res.videoAuditGuide,
           canRequestVideoAudit: res.canRequestVideoAudit,
           supplyItems,
           loading: false
-        }, () => this.resolveVideoUrls(videos, version))
+        }, () => {
+          this.resolveVideoUrls(videos, version, options.preserveVideoUrls === true)
+          this.retryPendingVideoSyncs()
+        })
       })
       .catch((err) => {
         if (this._unloaded || version !== this._trainingLoadVersion) return
@@ -545,11 +564,11 @@ Page({
       .finally(() => { if (!this._unloaded) this.setData({ quizBusy: false }) })
   },
 
-  resolveVideoUrls(videos = [], version = this._trainingLoadVersion) {
+  resolveVideoUrls(videos = [], version = this._trainingLoadVersion, preserveVideoUrls = false) {
     const fileIds = []
     videos.forEach((item) => {
-      if (item.fileId) fileIds.push(item.fileId)
-      if (item.posterFileId) fileIds.push(item.posterFileId)
+      if (item.fileId && (!preserveVideoUrls || !item.tempUrl)) fileIds.push(item.fileId)
+      if (item.posterFileId && (!preserveVideoUrls || !item.posterTempUrl)) fileIds.push(item.posterFileId)
     })
     const uniqueIds = Array.from(new Set(fileIds))
     if (!uniqueIds.length) return
@@ -571,33 +590,69 @@ Page({
     })
   },
 
-  onVideoSeeking(e) {
-    const key = e.currentTarget.dataset.key
+  getVideoTracking(key) {
+    const target = this.data.videos.find(video => video.key === key)
+    if (!target) return null
     if (!this._videoTracking) this._videoTracking = {}
-    if (!this._videoTracking[key]) this._videoTracking[key] = { maxTime: 0, lastToast: 0 }
-    this._videoTracking[key].seeking = true
+    if (!this._videoTracking[key] || this._videoTracking[key].fileId !== target.fileId) {
+      this._videoTracking[key] = { fileId: target.fileId, maxTime: 0, duration: 0, lastToast: 0, seeking: false, completed: target.watched === true }
+    }
+    return this._videoTracking[key]
+  },
+
+  onVideoLoadedMetadata(e) {
+    const track = this.getVideoTracking(e.currentTarget.dataset.key)
+    if (track) track.duration = positiveDuration(e.detail.duration) || track.duration
+  },
+
+  onVideoPlay(e) {
+    const track = this.getVideoTracking(e.currentTarget.dataset.key)
+    if (!track) return
+    if (!track.playing) track.lastSampleAt = Date.now()
+    track.playing = true
+  },
+
+  onVideoPause(e) {
+    const track = this.getVideoTracking(e.currentTarget.dataset.key)
+    if (!track) return
+    this.stopVideoPlayback(track)
+  },
+
+  stopVideoPlayback(track) {
+    const nowMs = Date.now()
+    if (track.playing && track.lastSampleAt != null) {
+      track.tailPlaybackSeconds = (track.tailPlaybackSeconds || 0) + Math.max(0, (nowMs - track.lastSampleAt) / 1000)
+    }
+    track.playing = false
+    track.pausedAt = nowMs
+    track.lastSampleAt = nowMs
+  },
+
+  onVideoSeeking(e) {
+    const track = this.getVideoTracking(e.currentTarget.dataset.key)
+    if (track) {
+      track.seeking = true
+      track.tailPlaybackSeconds = 0
+    }
   },
 
   onVideoSeekComplete(e) {
     const key = e.currentTarget.dataset.key
     if (this._videoTracking && this._videoTracking[key]) {
       this._videoTracking[key].seeking = false
+      this._videoTracking[key].lastSampleAt = Date.now()
     }
   },
 
   onVideoTimeUpdate(e) {
     const key = e.currentTarget.dataset.key
-    const currentTime = Number(e.detail.currentTime || 0)
-    const duration = Number(e.detail.duration || 0)
-    if (!key || duration <= 0) return
-
-    if (!this._videoTracking) this._videoTracking = {}
-    if (!this._videoTracking[key]) {
-      this._videoTracking[key] = { maxTime: 0, lastToast: 0, seeking: false, completed: false, duration }
-    }
-    const track = this._videoTracking[key]
+    const track = this.getVideoTracking(key)
+    if (!track) return
+    const currentTime = Number(e.detail.currentTime)
+    const duration = positiveDuration(e.detail.duration) || track.duration
+    if (!Number.isFinite(currentTime) || currentTime < 0 || duration <= 0) return
     track.duration = duration
-    if (track.completed) return
+    if (track.completed || track.seeking) return
 
     const target = this.data.videos.find((v) => v.key === key)
     if (target && target.watched) {
@@ -605,15 +660,16 @@ Page({
       return
     }
 
-    // 防快进拦截：若当前点跳跃超过已观看到的历史最大点 2.5 秒，判定为快进
-    if (currentTime > track.maxTime + 2.5) {
+    // Delayed native callbacks can cover more than 2.5 seconds of normal playback.
+    const nowMs = Date.now()
+    const elapsedPlayback = (track.tailPlaybackSeconds || 0) + (track.playing && track.lastSampleAt != null ? Math.max(0, (nowMs - track.lastSampleAt) / 1000) : 0)
+    if (currentTime > track.maxTime + Math.max(2.5, elapsedPlayback + 0.5)) {
       const videoCtx = wx.createVideoContext(`video-${key}`, this)
       videoCtx.seek(track.maxTime)
-      const nowMs = Date.now()
       if (nowMs - (track.lastToast || 0) > 3000) {
         track.lastToast = nowMs
         wx.showToast({
-          title: '培训视频须全程看完，不可快进',
+          title: '请连续观看视频，不可快进',
           icon: 'none',
           duration: 2500
         })
@@ -621,11 +677,13 @@ Page({
       return
     }
 
-    // 连续正常播放，推进历史最大观看时间
+    track.lastSampleAt = nowMs
+    track.tailPlaybackSeconds = 0
+    // Preserve fractional seconds so short videos use the same ratio as long ones.
     if (currentTime > track.maxTime) {
-      track.maxTime = currentTime
-      const percent = Math.min(100, Math.round((track.maxTime / duration) * 100))
-      if (target && target.progressPercent !== percent && (percent % 5 === 0 || percent >= 98)) {
+      track.maxTime = Math.min(currentTime, duration)
+      const percent = Math.min(100, Math.floor((track.maxTime / duration) * 100 + 0.000001))
+      if (target && target.progressPercent !== percent) {
         const updatedVideos = this.data.videos.map((item) => {
           if (item.key === key) {
             return { ...item, progressPercent: percent }
@@ -636,9 +694,8 @@ Page({
       }
     }
 
-    // 达到尾部（还剩不到 1.5 秒且已看 90% 以上）
-    if (currentTime >= duration - 1.5 && track.maxTime >= duration * 0.9) {
-      this.handleVideoFinish(key, Math.max(track.maxTime, duration), duration)
+    if (track.maxTime + 0.000001 >= duration * videoPassPercent(this.data.videoPassPercent) / 100) {
+      return this.handleVideoFinish(key, track.maxTime, duration)
     }
   },
 
@@ -649,48 +706,112 @@ Page({
     // 已经标记为已完成的视频，重播结束属于正常温习，直接放行不弹任何报错
     if (target && target.watched) return
 
-    const track = (this._videoTracking && this._videoTracking[key]) || { maxTime: 0, duration: 0 }
-    const duration = track.duration || 0
-    if (duration > 0 && track.maxTime < duration * 0.9) {
+    const track = this.getVideoTracking(key)
+    if (!track) return
+    const duration = track.duration
+    if (!duration) {
+      wx.showToast({ title: '未获取到视频时长，请重新播放', icon: 'none' })
+      return
+    }
+    // ended can arrive after the final timeupdate. Count only the small tail
+    // confirmed by both natural completion and elapsed playback time.
+    const stoppedAt = track.playing ? Date.now() : track.pausedAt
+    const tailElapsed = (track.tailPlaybackSeconds || 0) + (track.lastSampleAt != null && stoppedAt != null ? Math.max(0, (stoppedAt - track.lastSampleAt) / 1000) : 0)
+    const remaining = duration - track.maxTime
+    if (!track.seeking && remaining >= 0 && remaining <= 2.5 && remaining <= tailElapsed + 0.05) track.maxTime = duration
+    this.stopVideoPlayback(track)
+    if (track.seeking || track.maxTime + 0.000001 < duration * videoPassPercent(this.data.videoPassPercent) / 100) {
       wx.showToast({
-        title: '未完整看完视频，请从头完整观看',
+        title: `观看未达到 ${this.data.videoPassPercent}%，请继续观看`,
         icon: 'none'
       })
       const videoCtx = wx.createVideoContext(`video-${key}`, this)
       videoCtx.seek(track.maxTime)
       return
     }
-    this.handleVideoFinish(key, Math.max(track.maxTime, duration), duration)
+    return this.handleVideoFinish(key, track.maxTime, duration)
   },
 
   handleVideoFinish(key, watchedSeconds, duration) {
-    if (!this._videoTracking) this._videoTracking = {}
-    if (!this._videoTracking[key]) this._videoTracking[key] = {}
-    if (this._videoTracking[key].completed) return
-
+    const track = this.getVideoTracking(key)
+    if (this._unloaded || this._trainingHidden || !track || track.completed || track.syncing || Date.now() < (track.retryAfter || 0)) return
+    if (track.retryable && track.retryAttempts > 2) return
+    if (!positiveDuration(duration) || watchedSeconds + 0.000001 < duration * videoPassPercent(this.data.videoPassPercent) / 100) return
     const target = this.data.videos.find((item) => item.key === key)
-    if (!key || (target && target.watched)) {
-      this._videoTracking[key].completed = true
+    if (target && target.watched) {
+      track.completed = true
       return
     }
-
-    this._videoTracking[key].completed = true
+    this.clearVideoSyncRetry(track)
+    track.syncing = true
+    this.setData({ videos: this.data.videos.map(item => item.key === key ? { ...item, syncError: false } : item) })
     wx.showLoading({ title: '记录学习进度...' })
-    callFunction('staff', 'markTrainingVideoWatched', {
+    return callFunction('staff', 'markTrainingVideoWatched', {
       videoKey: key,
-      watchedSeconds: Math.round(Math.max(watchedSeconds || 0, duration ? duration * 0.95 : 0)),
-      duration: Math.round(duration || 0)
+      fileId: track.fileId,
+      watchedSeconds,
+      duration
     })
       .then(() => {
+        track.completed = true
+        track.retryable = false
+        track.retryAttempts = 0
+        this.clearVideoSyncRetry(track)
         wx.hideLoading()
-        wx.showToast({ title: '已全程看完该视频', icon: 'success' })
-        this.load()
+        if (this._unloaded || this._trainingHidden || this._videoTracking[key] !== track) return
+        this.setData({ videos: this.data.videos.map(item => item.key === key ? { ...item, watched: true } : item) })
+        wx.showToast({ title: '该视频观看已达标', icon: 'success' })
+        return this.load({ preserveVideoUrls: true })
       })
       .catch((err) => {
         wx.hideLoading()
-        this._videoTracking[key].completed = false
-        showError(err)
+        if (this._unloaded || this._videoTracking[key] !== track) return
+        track.retryable = !err.module
+        track.retryAttempts = (track.retryAttempts || 0) + 1
+        track.retryAfter = Date.now() + Math.min(3000, track.retryAttempts * 1000)
+        if (track.retryable && track.retryAttempts <= 2) {
+          this.scheduleVideoSyncRetry(key, track)
+        } else {
+          this.setData({ videos: this.data.videos.map(item => item.key === key ? { ...item, syncError: track.retryable } : item) })
+          if (!this._trainingHidden) {
+            showError(err)
+            if (String(err.code || '').startsWith('TRAINING_')) this.load({ preserveVideoUrls: true })
+          }
+        }
       })
+      .finally(() => { track.syncing = false })
+  },
+
+  clearVideoSyncRetry(track) {
+    if (track.retryTimer !== undefined) {
+      clearTimeout(track.retryTimer)
+      delete track.retryTimer
+    }
+  },
+
+  scheduleVideoSyncRetry(key, track) {
+    if (this._unloaded || this._trainingHidden || track.completed || track.retryTimer !== undefined) return
+    track.retryTimer = setTimeout(() => {
+      delete track.retryTimer
+      if (this._videoTracking[key] !== track) return
+      return this.handleVideoFinish(key, track.maxTime, track.duration)
+    }, Math.max(0, (track.retryAfter || 0) - Date.now()))
+  },
+
+  retryPendingVideoSyncs() {
+    this.data.videos.forEach(video => {
+      const track = this._videoTracking && this._videoTracking[video.key]
+      if (track && track.retryable && track.retryAttempts <= 2 && !track.completed) this.scheduleVideoSyncRetry(video.key, track)
+    })
+  },
+
+  retryVideoSync(e) {
+    const key = e.currentTarget.dataset.key
+    const track = this.getVideoTracking(key)
+    if (!track || track.syncing || track.completed) return
+    track.retryAttempts = 0
+    track.retryAfter = 0
+    return this.handleVideoFinish(key, track.maxTime, track.duration)
   },
 
   requestVideoAudit() {

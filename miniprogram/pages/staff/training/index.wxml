@@ -88,6 +88,7 @@
 
   <view class="card">
     <view class="card-title">培训视频</view>
+    <view class="muted">每个视频连续观看达到实际时长的 {{videoPassPercent}}% 即可达标。</view>
     <view class="video-card" wx:for="{{videos}}" wx:key="key">
       <video
         wx:if="{{item.tempUrl}}"
@@ -101,6 +102,9 @@
         object-fit="contain"
         data-key="{{item.key}}"
         bindtimeupdate="onVideoTimeUpdate"
+        bindloadedmetadata="onVideoLoadedMetadata"
+        bindplay="onVideoPlay"
+        bindpause="onVideoPause"
         bindseeking="onVideoSeeking"
         bindseekcomplete="onVideoSeekComplete"
         bindended="onVideoEnded"
@@ -110,16 +114,17 @@
           <view class="video-title">{{item.title}}</view>
           <view class="watch-status-badge {{item.watched ? 'done' : (item.progressPercent > 0 ? 'watching' : 'pending')}}">
             <text class="remix-icon {{item.watched ? 'ri-checkbox-circle-fill' : (item.progressPercent > 0 ? 'ri-play-circle-line' : 'ri-time-line')}}"></text>
-            <text>{{item.watched ? '已看完' : (item.progressPercent > 0 ? '已看 ' + item.progressPercent + '%' : '待观看')}}</text>
+            <text>{{item.watched ? '已达标' : (item.progressPercent > 0 ? '已看 ' + item.progressPercent + '%' : '待观看')}}</text>
           </view>
         </view>
         <view class="muted">{{item.durationText}} · {{item.description}}</view>
-        <view class="done-text" wx:if="{{item.watched}}">✅ 已全程看完 {{item.watchedAtText}}</view>
+        <view class="done-text" wx:if="{{item.watched}}">✅ 观看已达标 {{item.watchedAtText}}</view>
         <view class="progress-tip" wx:elif="{{item.tempUrl}}">
           <text class="remix-icon ri-shield-check-line"></text>
-          <text>防快进保护：须从头至尾完整播放，中途不可跳过或快进。</text>
+          <text>请连续观看至 {{videoPassPercent}}%，中途不可跳过或快进。</text>
         </view>
         <view class="muted" wx:else>视频资源暂不可播放，请联系管理员配置素材。</view>
+        <button wx:if="{{item.syncError && !item.watched}}" class="ghost-btn" data-key="{{item.key}}" bindtap="retryVideoSync">重试保存观看进度</button>
       </view>
     </view>
     <view class="muted" wx:if="{{!videos.length}}">管理员暂未配置培训视频。</view>
@@ -130,7 +135,7 @@
       <view class="quiz-heading"><view class="card-title">培训答题</view><view class="quiz-caption">{{!quiz.unlocked ? '完成视频后解锁' : (quiz.passed ? '已通过 · 可展开回顾' : '点击展开，开始答题')}}</view></view>
       <text class="remix-icon {{!quiz.unlocked ? 'ri-lock-2-line' : 'ri-arrow-down-s-line'}} quiz-chevron {{quizExpanded ? 'expanded' : ''}}"></text>
     </view>
-    <view class="quiz-locked" wx:if="{{!quiz.unlocked}}">已完成 {{watchedVideoCount}} / {{videos.length}} 个培训视频。请先完整观看全部视频，题目将在完成后解锁。</view>
+    <view class="quiz-locked" wx:if="{{!quiz.unlocked}}">已达标 {{watchedVideoCount}} / {{videos.length}} 个培训视频。每个视频观看达到 {{videoPassPercent}}% 后，题目将自动解锁。</view>
     <view class="quiz-content" wx:if="{{quiz.unlocked && quizExpanded}}">
     <view class="muted">{{quiz.passed ? '已通过，得分 ' + quiz.score : '达到 ' + quiz.passScore + ' 分即可通过'}}</view>
     <view class="question" wx:for="{{quiz.questions}}" wx:key="id" wx:for-item="q">

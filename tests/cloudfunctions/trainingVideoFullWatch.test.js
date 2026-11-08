@@ -36,7 +36,7 @@ test('training video full watch enforcement and anti-forward verification', asyn
     }
   })
   assert.equal(rejectRes.ok, false)
-  assert.match(rejectRes.message, /培训视频须全程完整观看/)
+  assert.match(rejectRes.message, /当前播放时长未达标/)
 
   // 此时未记录该视频进度
   const profileAfterReject = db.state.staff_profiles[0]

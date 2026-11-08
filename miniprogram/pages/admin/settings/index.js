@@ -218,6 +218,8 @@ function createEmptyTrainingVideo(index = 0) {
     title: '',
     description: '',
     durationText: '',
+    durationSeconds: 0,
+    durationFileId: '',
     fileId: '',
     posterFileId: '',
     enabled: true,
@@ -375,6 +377,7 @@ function normalizeStaffTrainingConfig(training = {}) {
   return {
     ...training,
     passScore: Math.min(Math.max(Math.round(Number(training.passScore || 80)), 1), 100),
+    videoPassPercent: Number.isInteger(Number(training.videoPassPercent)) && Number(training.videoPassPercent) >= 1 && Number(training.videoPassPercent) <= 100 ? Number(training.videoPassPercent) : 80,
     videoAuditGuide: {
       wechatId: (guide.wechatId || 'pet-service-admin').trim(),
       remarkTemplate: (guide.remarkTemplate || '宠托师审核 + 姓名 + 手机号').trim(),
@@ -558,7 +561,7 @@ function buildSettingSummary(settings = {}) {
     homePage: `${enabledModuleCount}/${homeModuleOptions.length} 个模块启用 · ${homePage.ctaTitle || '未配置标题'}`,
     petBeautyContest: `${petBeautyContest.enabled === false ? '即将开始 · 无现金奖金' : '已开启 · 月度冠军 ¥' + petBeautyContest.firstPrizeAmount} · ${petBeautyContest.enableFrontendDisqualify !== false ? '前台下架开启' : '前台下架关闭'} · ${petBeautyContest.posterUrl ? '已配海报' : '默认海报'}`,
     petProfileLimit: `每位用户上限 ${Number(settings.maxPetsPerUser || 20)} 只`,
-    staffTraining: `及格 ${staffTraining.passScore} 分 · ${quiz.length} 道题 · ${enabledVideoCount}/${videos.length} 视频 · 审核微信: ${(staffTraining.videoAuditGuide && staffTraining.videoAuditGuide.wechatId) || '未配置'}`,
+    staffTraining: `观看达 ${staffTraining.videoPassPercent}% · 及格 ${staffTraining.passScore} 分 · ${quiz.length} 道题 · ${enabledVideoCount}/${videos.length} 视频 · 审核微信: ${(staffTraining.videoAuditGuide && staffTraining.videoAuditGuide.wechatId) || '未配置'}`,
     pricingSurcharges: (settings.pricingSurcharges && settings.pricingSurcharges.enabled !== false)
       ? `${((settings.pricingSurcharges && settings.pricingSurcharges.dateSurcharges) || []).filter((d) => d.enabled !== false).length} 个日期加价 · ${((settings.pricingSurcharges && settings.pricingSurcharges.timeSlotSurcharges) || []).filter((s) => s.enabled !== false).length} 个时段加价`
       : '特殊加价已停用',
@@ -1497,6 +1500,10 @@ Page({
     this.setData({ ['settings.staffTraining.passScore']: passScore })
   },
 
+  trainingVideoPassPercentInput(e) {
+    this.setData({ ['settings.staffTraining.videoPassPercent']: e.detail.value })
+  },
+
   trainingAuditGuideInput(e) {
     const field = e.currentTarget.dataset.field
     const value = e.detail.value
@@ -1601,12 +1608,15 @@ Page({
   chooseTrainingVideoFile(e) {
     if (this.data.uploadingTrainingVideo || this.data.uploadingTrainingPoster) return
     const index = Number(e.currentTarget.dataset.index)
+    const videoKey = this.data.settings.staffTraining.videos[index]?.key
+    if (!videoKey) return
     wx.chooseMedia({
       count: 1,
       mediaType: ['video'],
       maxDuration: 600,
       sourceType: ['album', 'camera'],
-      success: (res) => {
+      success: async (res) => {
+        if (!this.data.settings.staffTraining.videos.some(video => video.key === videoKey)) return
         const file = res.tempFiles && res.tempFiles[0]
         if (!file || !file.tempFilePath) return
         if (file.size && file.size > 200 * 1024 * 1024) {
@@ -1614,10 +1624,15 @@ Page({
           return
         }
         const filePath = file.tempFilePath
-        const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.mp4'
-        const cloudPath = `staff_training/videos/${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`
         this.setData({ uploadingTrainingVideo: true })
         wx.showLoading({ title: '上传视频...' })
+        const metadata = await new Promise((resolve) => {
+          if (!wx.getVideoInfo) return resolve(file)
+          try { wx.getVideoInfo({ src: filePath, success: resolve, fail: () => resolve(file) }) } catch (_) { resolve(file) }
+        })
+        const durationSeconds = Number.isFinite(Number(metadata.duration)) && Number(metadata.duration) > 0 ? Number(metadata.duration) : 0
+        const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.mp4'
+        const cloudPath = `staff_training/videos/${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`
         wx.cloud.uploadFile({
           cloudPath,
           filePath,
@@ -1629,9 +1644,14 @@ Page({
                 wx.hideLoading()
                 const fileInfo = tempRes && tempRes.fileList && tempRes.fileList[0]
                 const url = (fileInfo && fileInfo.tempFileURL) || filePath
-                const current = (this.data.settings.staffTraining.videos || [])[index] || {}
+                const currentIndex = this.data.settings.staffTraining.videos.findIndex(video => video.key === videoKey)
+                if (currentIndex < 0) {
+                  this.setData({ uploadingTrainingVideo: false })
+                  return
+                }
+                const current = this.data.settings.staffTraining.videos[currentIndex]
                 this.setData({
-                  [`settings.staffTraining.videos[${index}]`]: { ...current, fileId, tempUrl: url },
+                  [`settings.staffTraining.videos[${currentIndex}]`]: { ...current, fileId, tempUrl: url, durationSeconds, durationFileId: fileId },
                   uploadingTrainingVideo: false
                 })
                 wx.showToast({ title: '视频上传成功' })
@@ -1656,6 +1676,8 @@ Page({
   chooseTrainingPosterFile(e) {
     if (this.data.uploadingTrainingVideo || this.data.uploadingTrainingPoster) return
     const index = Number(e.currentTarget.dataset.index)
+    const videoKey = this.data.settings.staffTraining.videos[index]?.key
+    if (!videoKey) return
     wx.chooseMedia({
       count: 1,
       mediaType: ['image'],
@@ -1683,9 +1705,14 @@ Page({
                 wx.hideLoading()
                 const fileInfo = tempRes && tempRes.fileList && tempRes.fileList[0]
                 const url = (fileInfo && fileInfo.tempFileURL) || filePath
-                const current = (this.data.settings.staffTraining.videos || [])[index] || {}
+                const currentIndex = this.data.settings.staffTraining.videos.findIndex(video => video.key === videoKey)
+                if (currentIndex < 0) {
+                  this.setData({ uploadingTrainingPoster: false })
+                  return
+                }
+                const current = this.data.settings.staffTraining.videos[currentIndex]
                 this.setData({
-                  [`settings.staffTraining.videos[${index}]`]: { ...current, posterFileId: fileId, posterTempUrl: url },
+                  [`settings.staffTraining.videos[${currentIndex}]`]: { ...current, posterFileId: fileId, posterTempUrl: url },
                   uploadingTrainingPoster: false
                 })
                 wx.showToast({ title: '封面上传成功' })
@@ -2218,6 +2245,10 @@ Page({
         return
       }
     }
+    const videoPassPercent = Number(this.data.settings.staffTraining.videoPassPercent)
+    if (!Number.isInteger(videoPassPercent) || videoPassPercent < 1 || videoPassPercent > 100) {
+      return showError(new Error('培训视频观看通过比例必须为 1 至 100 的整数'))
+    }
     const draftQuiz = this.data.settings.staffTraining.quiz || []
     if (!draftQuiz.length) return showError(new Error('培训答题至少保留1道题'))
     const ids = new Set()
@@ -2307,6 +2338,7 @@ Page({
       staffTraining: {
         ...staffTraining,
         passScore: staffTraining.passScore,
+        videoPassPercent,
         quizBankVersion: 2,
         quiz: staffTraining.quiz || [],
         videos: trainingVideos,

@@ -11,13 +11,16 @@ module.exports = function createService({
 }) {
   function parseDurationSeconds(item = {}) {
     const explicit = Number(item.durationSeconds)
-    if (Number.isFinite(explicit) && explicit > 0) return Math.round(explicit)
-    const text = safeText(item.durationText).trim()
-    const minuteMatch = text.match(/(\d+(?:\.\d+)?)\s*分钟/)
-    if (minuteMatch) return Math.round(Number(minuteMatch[1]) * 60)
-    const secondMatch = text.match(/(\d+(?:\.\d+)?)\s*秒/)
-    if (secondMatch) return Math.round(Number(secondMatch[1]))
-    return 0
+    // Display labels can be approximate; only numeric media metadata is a duration.
+    return Number.isFinite(explicit) && explicit > 0 ? explicit : 0
+  }
+
+  function normalizeVideoPassPercent(value = 80) {
+    const percent = Number(value)
+    if (!['number', 'string'].includes(typeof value) || !Number.isInteger(percent) || percent < 1 || percent > 100) {
+      throw new Error('培训视频观看通过比例必须为 1 至 100 的整数')
+    }
+    return percent
   }
 
   function normalizeTrainingVideos(videos = STAFF_TRAINING_VIDEOS) {
@@ -33,6 +36,7 @@ module.exports = function createService({
         durationSeconds: parseDurationSeconds(item),
         description: safeText(item.description).trim(),
         fileId: safeText(item.fileId).trim(),
+        durationFileId: safeText(item.durationFileId).trim() === safeText(item.fileId).trim() ? safeText(item.durationFileId).trim() : '',
         posterFileId: safeText(item.posterFileId).trim(),
         enabled: item.enabled !== false,
         sort: Number(item.sort) || (index + 1) * 10
@@ -43,6 +47,14 @@ module.exports = function createService({
 
   function enabledTrainingVideos(training = {}) {
     return normalizeTrainingVideos(training.videos).filter((item) => item.enabled !== false)
+  }
+
+  function isTrainingVideoWatched(video, progress = {}) {
+    const record = progress && progress[video.key]
+    if (!record || record.watched !== true) return false
+    if (typeof record.fileId === 'string') return record.fileId === video.fileId
+    // Legacy completions remain valid until the administrator replaces the media.
+    return !video.durationFileId
   }
 
   function normalizeVideoAuditGuide(guide = {}) {
@@ -83,6 +95,7 @@ module.exports = function createService({
     const effectiveQuiz = quiz.length && !legacyDefault ? quiz : DEFAULT_STAFF_TRAINING_QUIZ
     return {
       passScore,
+      videoPassPercent: normalizeVideoPassPercent(training.videoPassPercent),
       quizBankVersion: 2,
       quiz: effectiveQuiz.map(item => ({ ...item, options: item.options.map(option => ({ ...option })) })),
       videos: normalizeTrainingVideos(training.videos),
@@ -261,6 +274,7 @@ module.exports = function createService({
   return {
     normalizeTrainingVideos,
     enabledTrainingVideos,
+    isTrainingVideoWatched,
     normalizeVideoAuditGuide,
     normalizeStaffTrainingConfig,
     publicTrainingQuiz,
