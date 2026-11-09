@@ -327,7 +327,7 @@ Page({
     this.applyCurrentFont(fontKey)
   },
 
-  applyGuest() {
+  applyGuest(resetConsent = false) {
     this._identity = (this._identity || 0) + 1
     this._scope = ''
     this._hasSummary = false
@@ -336,8 +336,8 @@ Page({
     clearTimeout(this._staffUnreadTimer)
     this.setData({
       isGuest: true,
-      loginAgreed: false,
-      showConsentModal: false,
+      loginAgreed: resetConsent ? false : (this.data.loginAgreed || false),
+      showConsentModal: resetConsent ? false : (this.data.showConsentModal || false),
       isAdmin: false,
       staffProfile: null,
       staffEntryReady: true,
@@ -897,7 +897,7 @@ Page({
       success: (res) => {
         if (!res.confirm || !this.active(ticket)) return
         logoutCurrentUser()
-        this.applyGuest()
+        this.applyGuest(true)
         wx.showToast({ title: '已退出登录' })
       }
     })

@@ -179,11 +179,11 @@ test('staff.markTrainingVideoWatched: 观看时长不达标被拒', async () => 
     system_settings: []
   })
   const fn = loadCloudFunction('api', db, 'openid_vid_dur', { security: securityMock })
-  // 伪造很短的客户端视频时长，服务端应按配置的“约 5 分钟”校验
+  // 伪造很短的观看时长（10秒/视频300秒），服务端应校验未达标
   const res = await fn.main({
     module: 'staff',
     action: 'markTrainingVideoWatched',
-    data: { videoKey: 'platform_rules', watchedSeconds: 10, duration: 10 }
+    data: { videoKey: 'platform_rules', watchedSeconds: 10, duration: 300 }
   })
   assert.equal(res.ok, false)
   assert.match(res.error, /全程完整观看|未达标/)

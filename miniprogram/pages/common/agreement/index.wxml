@@ -71,7 +71,7 @@
         <text>暂不同意，返回</text>
       </button>
     </block>
-    <button class="primary-btn continue-btn" wx:else bindtap="cancel">我已了解</button>
+    <button class="primary-btn continue-btn" wx:else bindtap="onUnderstand">我已了解</button>
   </view>
 
   <!-- 保证金说明 Modal 弹窗 -->

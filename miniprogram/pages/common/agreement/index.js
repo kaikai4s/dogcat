@@ -235,5 +235,33 @@ Page({
         wx.redirectTo({ url: '/pages/client/home/index' })
       }
     })
+  },
+
+  onUnderstand() {
+    try {
+      wx.setStorageSync(`agreed_agreement_${this.data.type}`, Date.now())
+      const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+      if (pages.length > 1) {
+        const prevPage = pages[pages.length - 2]
+        if (prevPage && typeof prevPage.setData === 'function') {
+          const updates = {}
+          if (prevPage.data && prevPage.data.showConsentModal !== undefined) {
+            updates.showConsentModal = true
+          }
+          if (prevPage.data && prevPage.data.loginAgreed !== undefined) {
+            updates.loginAgreed = true
+          }
+          if (Object.keys(updates).length > 0) {
+            prevPage.setData(updates)
+          }
+        }
+      }
+    } catch (e) {}
+
+    wx.navigateBack({
+      fail: () => {
+        wx.redirectTo({ url: '/pages/client/home/index' })
+      }
+    })
   }
 })
