@@ -253,6 +253,7 @@ function normalizeSubscriptionConfig(subscription = {}) {
   return {
     enabled: subscription.enabled === true,
     templates: {
+      adminPendingAudit: templates.adminPendingAudit || '',
       adminMallOrderPaid: templates.adminMallOrderPaid || templates.orderPaid || '',
       orderPaid: templates.orderPaid || '',
       orderAssigned: templates.orderAssigned || '',

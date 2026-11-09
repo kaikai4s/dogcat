@@ -88,6 +88,7 @@ module.exports = function createContext({ cloud, db }) {
   Object.assign(context, require('../services/mallCatalog')(context))
   Object.assign(context, require('../services/logistics')(context))
   Object.assign(context, require('../services/adminMallNotifications')(context))
+  Object.assign(context, require('../services/adminAuditNotifications')(context))
   Object.assign(context, require('../services/paymentSettlement')(context))
   Object.assign(context, require('../services/refunds')(context))
   Object.assign(context, require('../services/paymentLifecycle')(context))

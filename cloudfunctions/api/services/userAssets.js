@@ -4,19 +4,20 @@ const { WECHAT_MIN_TRANSFER_CENTS, isAbsentSmallTransfer } = require('../utils/w
 const { buildWithdrawalRules } = require('./withdrawalRules')
 const { withdrawalNotification } = require('./withdrawalNotifications')
 
-module.exports = function createService({
-  commitWechatTransferSuccessQuota,
-  crypto,
-  db,
-  enqueueSubscription,
-  getSystemSettings,
-  getUser,
-  getWechatTransferQuotaSnapshot,
-  now,
-  releaseWechatTransferQuota,
-  reserveWechatApplicationQuota,
-  safeText
-}) {
+module.exports = function createService(context) {
+  const {
+    commitWechatTransferSuccessQuota,
+    crypto,
+    db,
+    enqueueSubscription,
+    getSystemSettings,
+    getUser,
+    getWechatTransferQuotaSnapshot,
+    now,
+    releaseWechatTransferQuota,
+    reserveWechatApplicationQuota,
+    safeText
+  } = context
   const MAX_EARNINGS_PER_WITHDRAW = 50
 
   function cents(value, positive = false) {
@@ -541,6 +542,16 @@ module.exports = function createService({
       await reserveWechatApplicationQuota(tx, request)
       const { _id: ignoredId, ...requestData } = request
       await tx.collection('withdraw_requests').doc(requestId).set({ data: requestData })
+      if (typeof context.enqueueAdminAuditNotification === 'function') {
+        await context.enqueueAdminAuditNotification(tx, {
+          auditType: 'withdraw',
+          targetId: requestId,
+          applicant: user.nickname || user.phone || '客户',
+          type: '提现申请审核',
+          reason: `推广佣金提现 ¥${Number(total / 100).toFixed(2)}`,
+          page: 'pages/admin/finance/index?tab=withdraws'
+        }).catch(() => {})
+      }
       return request
     })
   }

@@ -9,6 +9,8 @@ module.exports = function createHandler(context) {
     checkTextSecurity,
     cloud,
     db,
+    enqueueAdminAuditNotification,
+    notifyAdminAudit,
     decoratePetsWithEquippedTitles,
     decoratePetsWithVaccineStatus,
     ensurePetExclusiveId,
@@ -179,6 +181,16 @@ module.exports = function createHandler(context) {
             latestApplicationId: created._id
           }
           await tx.collection('pets').doc(petId).update({ data: { vaccineCertification: nextCert, updatedAt: time } })
+          if (typeof enqueueAdminAuditNotification === 'function') {
+            await enqueueAdminAuditNotification(tx, {
+              auditType: 'pet_vaccine',
+              targetId: created._id,
+              applicant: (user && user.nickname) || currentPet.name || '宠物主人',
+              type: '疫苗认证审核',
+              reason: `申请宠物疫苗健康认证`,
+              page: 'pages/admin/pet-vaccine/list/index'
+            }).catch(() => {})
+          }
           return { applicationId: created._id, vaccineCertification: nextCert }
         })
       }
@@ -208,6 +220,16 @@ module.exports = function createHandler(context) {
         latestApplicationId: created._id
       }
       await db.collection('pets').doc(petId).update({ data: { vaccineCertification: nextCertification, updatedAt: time } })
+      if (typeof notifyAdminAudit === 'function') {
+        notifyAdminAudit({
+          auditType: 'pet_vaccine',
+          targetId: created._id,
+          applicant: (user && user.nickname) || currentPet.name || '宠物主人',
+          type: '疫苗认证审核',
+          reason: `申请宠物疫苗健康认证`,
+          page: 'pages/admin/pet-vaccine/list/index'
+        }).catch(() => {})
+      }
       return { applicationId: created._id, vaccineCertification: nextCertification }
     }
     if (action === 'getVaccineCertification') {

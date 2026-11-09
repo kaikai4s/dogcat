@@ -127,6 +127,7 @@ module.exports = function createService({ db, crypto, now }) {
   const templateLabels = {
     staffDirectOrder: '宠托师指定单通知',
     staffDeparture: '宠托师出发通知', orderAccepted: '接单成功通知', orderAssigned: '派单通知',
+    adminPendingAudit: '管理员待审核通知',
     adminMallOrderPaid: '管理员商城新订单提醒',
     orderPaid: '支付成功通知', serviceStart: '服务开始通知', serviceProgress: '服务进度通知', serviceFinish: '服务完成通知',
     remoteUnlock: '开锁请求通知', upcomingServiceReminder: '即将服务提醒', refundResult: '退款结果通知',
@@ -136,6 +137,8 @@ module.exports = function createService({ db, crypto, now }) {
   function deliveryReason(row) {
     if (row.isQuotaExhausted || Number(row.code) === 43101 || /43101/.test(row.error || '')) return '用户未同意或订阅次数已用完，请用户重新订阅'
     return ({ subscription_disabled: '后台订阅消息开关未开启', template_not_configured: '尚未配置该通知模板 ID',
+      admin_audit_handled: '待审核申请已处理或已关闭',
+      admin_audit_access_revoked: '管理员权限已变更或账号停用',
       withdrawal_notice_obsolete: '提现状态或收款单已变化，已跳过过期提醒',
       legacy_withdrawal_payload: '历史提现通知缺少可核验记录，已跳过发送',
       legacy_refund_payload: '历史退款通知缺少本次金额和结果时间，已保留记录并跳过发送',

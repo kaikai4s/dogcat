@@ -1,10 +1,11 @@
 const { documentPages } = require('../utils/documentPages')
 const { WECHAT_MIN_TRANSFER_CENTS, WECHAT_MAX_TRANSFER_CENTS } = require('../utils/wechatTransferLimits')
 
-module.exports = function createService({
-  checkTextSecurity, crypto, db, findByClientRequestId, getClientRequestId, getSystemSettings,
-  getUser, now, refreshStaffEarnings, reserveWechatApplicationQuota, safeText
-}) {
+module.exports = function createService(context) {
+  const {
+    checkTextSecurity, crypto, db, findByClientRequestId, getClientRequestId, getSystemSettings,
+    getUser, now, refreshStaffEarnings, reserveWechatApplicationQuota, safeText
+  } = context
   const maxEarnings = 50
 
   async function readRequest(transaction, id) {
@@ -193,6 +194,16 @@ module.exports = function createService({
         orderId: '', staffOpenid: openid, amountDelta: -request.amount,
         detail: { earningIds: request.earningIds }, createdAt: time
       } })
+      if (typeof context.enqueueAdminAuditNotification === 'function') {
+        await context.enqueueAdminAuditNotification(transaction, {
+          auditType: 'withdraw',
+          targetId: id,
+          applicant: accountName || openid,
+          type: '提现申请审核',
+          reason: `申请佣金提现 ¥${Number(totalCents / 100).toFixed(2)}`,
+          page: 'pages/admin/finance/index?tab=withdraws'
+        }).catch(() => {})
+      }
       return { _id: id, ...request }
     })
   }

@@ -1,4 +1,5 @@
 const { buildWithdrawalSubscriptionData, withdrawalNotification } = require('./withdrawalNotifications')
+const { buildAdminPendingAuditData, isAuditTargetHandled } = require('./adminAuditNotifications')
 const { readOptionalDocument } = require('../utils/documentPages')
 
 module.exports = function createService({
@@ -43,6 +44,13 @@ module.exports = function createService({
   }
 
   function buildSubscriptionData(templateKey, order = {}, detail = {}) {
+    if (templateKey === 'adminPendingAudit') {
+      return buildAdminPendingAuditData({
+        applicant: detail.applicant || order.applicant,
+        type: detail.type || order.type,
+        reason: detail.reason || order.reason
+      })
+    }
     if (templateKey === 'withdrawResult') {
       const event = ({ '已打款': 'paid', '已到账': 'paid', '已驳回': 'rejected', '打款失败': 'transfer_failed', '待确认': 'wait_confirm' })[detail.statusText] || 'approved'
       return buildWithdrawalSubscriptionData({ amount: detail.amount }, event)
@@ -367,6 +375,18 @@ module.exports = function createService({
       if (obsolete) return { status: 'skipped', error: 'withdrawal_notice_obsolete', templateKey: message.templateKey }
       const rebuilt = withdrawalNotification({ ...request, _id: withdrawalId }, event)
       message = { ...message, page: rebuilt.page, messageData: rebuilt.messageData }
+    }
+    if (message.templateKey === 'adminPendingAudit') {
+      const user = (await db.collection('users').where({ openid: message.openid }).limit(1).get()).data?.[0]
+      if (!user?.roles?.includes('admin') || ['disabled', 'deleted'].includes(user.status)) {
+        return { status: 'skipped', error: 'admin_audit_access_revoked', templateKey: message.templateKey }
+      }
+      const auditType = message.auditType || (String(message.deliveryKey || '').split(':')[1])
+      const auditTargetId = message.auditTargetId || message.orderId
+      if (auditType && auditTargetId) {
+        const handled = await isAuditTargetHandled(db, auditType, auditTargetId)
+        if (handled) return { status: 'skipped', error: 'admin_audit_handled', templateKey: message.templateKey }
+      }
     }
     if (message.templateKey === 'adminMallOrderPaid') {
       const user = (await db.collection('users').where({ openid: message.openid }).limit(1).get()).data?.[0]

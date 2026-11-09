@@ -259,6 +259,16 @@ module.exports = function createService(context) {
         adminUserId: admin._id, adminOpenid: admin.openid, action: 'requestStaffDepositRefund', targetType: 'staff_deposit', targetId: depositId,
         detail: { staffOpenid: openid, amount: deposit.availableRefundAmount, reason }, createdAt: time
       } })
+      if (typeof context.enqueueAdminAuditNotification === 'function') {
+        await context.enqueueAdminAuditNotification(tx, {
+          auditType: 'deposit_refund',
+          targetId: depositId,
+          applicant: (user && (user.nickname || user.phone)) || profile.realName || profile.name || '宠托师',
+          type: '保证金退还审核',
+          reason: reason || '申请退还服务保证金',
+          page: 'pages/admin/finance/index?tab=deposits'
+        }).catch(() => {})
+      }
       return { success: true, status: 'refund_requested' }
     })
   }
@@ -529,6 +539,16 @@ module.exports = function createService(context) {
       money(record.amount, true)
       await tx.collection('staff_supply_reimbursements').doc(id).set({ data: record })
       await tx.collection('staff_profiles').doc(profile._id).update({ data: { supplyApplicationId: id, supplyReimbursementStatus: 'pending', updatedAt: now() } })
+      if (typeof context.enqueueAdminAuditNotification === 'function') {
+        await context.enqueueAdminAuditNotification(tx, {
+          auditType: 'supply_reimbursement',
+          targetId: id,
+          applicant: profile.realName || profile.name || record.staffOpenid,
+          type: '用品报销审核',
+          reason: `申请首次用品报销 ¥${Number(record.amount).toFixed(2)}`,
+          page: 'pages/admin/finance/index?tab=supplies'
+        }).catch(() => {})
+      }
       return { _id: id, ...record }
     })
   }

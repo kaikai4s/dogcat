@@ -75,6 +75,8 @@ module.exports = function createHandler(context) {
     queryOrderLogistics,
     normalizeVideoAuditGuide,
     normalizeWeeklySchedule,
+    notifyAdminAudit,
+    enqueueAdminAuditNotification,
     notifyAdmins,
     notifyOrderAccepted,
     now,
@@ -704,7 +706,7 @@ module.exports = function createHandler(context) {
       })
     }
     if (action === 'submitVideoAuditRequest') {
-      await getUser(openid)
+      const user = await getUser(openid)
       const profile = await getStaffProfileByOpenid(openid)
       if (!profile || profile.auditStatus !== 'approved') throw new Error('资料审核通过后方可提交视频审核')
       if (profile.videoAuditStatus === 'pending') throw new Error('视频审核正在处理中，请勿重复提交')
@@ -715,6 +717,16 @@ module.exports = function createHandler(context) {
       const time = now()
       const update = { videoAuditStatus: 'pending', videoAuditRequestedAt: time, onboardingStatus: 'video_audit_pending', videoAuditRemark: '', updatedAt: time }
       await db.collection('staff_profiles').doc(profile._id).update({ data: update })
+      if (typeof notifyAdminAudit === 'function') {
+        notifyAdminAudit({
+          auditType: 'staff_video',
+          targetId: profile._id,
+          applicant: profile.realName || profile.name || (user && user.nickname) || '宠托师',
+          type: '实操视频审核',
+          reason: '提交服务实操视频',
+          page: 'pages/admin/staff-training/list/index'
+        }).catch(() => {})
+      }
       return { ...profile, ...update }
     }
     if (action === 'submitPromotionApplication') {
@@ -757,10 +769,30 @@ module.exports = function createHandler(context) {
               updatedAt: time
             }
           })
+          if (typeof enqueueAdminAuditNotification === 'function') {
+            await enqueueAdminAuditNotification(tx, {
+              auditType: 'staff_promotion',
+              targetId: created._id,
+              applicant: profile.realName || profile.name || user.nickname || '宠托师',
+              type: '宠托师晋升审核',
+              reason: '申请晋升考核转正',
+              page: 'pages/admin/staff-promotion/list/index'
+            }).catch(() => {})
+          }
           return { applicationId: created._id, status: 'pending' }
         })
       }
       const created = await db.collection('staff_promotion_applications').add({ data: { staffProfileId: profile._id, staffOpenid: openid, staffUserId: user._id, orderIds: completedOrders.map((order) => order._id), status: 'pending', staffRemark: remark, adminRemark: '', createdAt: time, updatedAt: time } })
+      if (typeof notifyAdminAudit === 'function') {
+        notifyAdminAudit({
+          auditType: 'staff_promotion',
+          targetId: created._id,
+          applicant: profile.realName || profile.name || user.nickname || '宠托师',
+          type: '宠托师晋升审核',
+          reason: '申请晋升考核转正',
+          page: 'pages/admin/staff-promotion/list/index'
+        }).catch(() => {})
+      }
       await db.collection('staff_profiles').doc(profile._id).update({ data: { promotionStatus: 'pending', promotionApplicationId: created._id, promotionAppliedAt: time, updatedAt: time } })
       return { applicationId: created._id, status: 'pending' }
     }
@@ -992,6 +1024,16 @@ module.exports = function createHandler(context) {
           extra: { staffProfileId, openid, realName, phone, auditStatus: 'pending' },
           idempotencyKey: `staff_application_submitted:${staffProfileId}:${time}`
         }).catch(() => {})
+        if (typeof notifyAdminAudit === 'function') {
+          await notifyAdminAudit({
+            auditType: 'staff_audit',
+            targetId: staffProfileId,
+            applicant: realName || user.nickname || '申请人',
+            type: '宠托师入驻审核',
+            reason: isUpdate ? '宠托师重新提交资料' : '申请入驻上门宠托师',
+            page: 'pages/admin/staff-audit/list/index'
+          }).catch(() => {})
+        }
       }
 
       if (existing.data[0]) {
