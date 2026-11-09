@@ -59,7 +59,8 @@
 
     <view class="form-group">
       <text class="input-label">常驻服务城市</text>
-      <input class="input-field" placeholder="如：北京市 / 深圳市" value="{{form.serviceCity}}" data-field="serviceCity" bindinput="input" disabled="{{certificationLocked}}" />
+      <input class="input-field" placeholder="选择服务地址后自动填写，如：成都市" value="{{form.serviceCity}}" data-field="serviceCity" bindinput="input" disabled="{{certificationLocked}}" />
+      <view class="section-sub-tip">请填写地级市，并与下方固定服务地址所在城市保持一致。</view>
     </view>
 
     <view class="form-group">

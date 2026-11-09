@@ -93,7 +93,7 @@ Page({
       })
       .catch(error => {
         const msg = String(error?.errMsg || error?.message || '')
-        const isCancel = /cancel/i.test(msg) || msg === 'chooseLocation:fail'
+        const isCancel = /cancel/i.test(msg) || msg.trim() === 'chooseLocation:fail'
         if (!this._closed && seq === this._locationSeq && !isCancel) showError(error)
       })
   },

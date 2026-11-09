@@ -1963,10 +1963,11 @@ typeof Page === 'function' ? Page({
       })
       .catch(error => {
         const msg = String(error?.errMsg || error?.message || '')
-        const isCancel = /cancel/i.test(msg) || msg === 'chooseLocation:fail'
-        if (!this._closed && !isCancel) showError(error)
+        const isCancel = /cancel/i.test(msg) || msg.trim() === 'chooseLocation:fail'
+        if (!this._closed && !this.data.creating && seq === this._addressSeq && !isCancel) {
+          showError(error)
+        }
       })
-      .catch(error => { if (!this._closed && !this.data.creating && seq === this._addressSeq) showError(error) })
   },
 
   validateRequired() {

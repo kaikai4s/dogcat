@@ -4,6 +4,7 @@ const { withStaffWorkflowText } = require('../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { loadMessageUnread } = require('../../../utils/client-nav')
 const { DEFAULT_CARD_STYLE, isHexColor, normalizeCardStyle, buildCardStyle } = require('../utils/profileCardStyle')
+const { extractLocationCity, sameCity } = require('../../../utils/location-city')
 
 const STAFF_PROFILE_STORAGE = 'staff_profile_display_cache_v1'
 const STAFF_CACHE_TTL = 24 * 60 * 60 * 1000
@@ -343,8 +344,21 @@ Page({
   chooseConfigAddress() {
     chooseSelectedLocation()
       .then((loc) => {
+        // serviceCity is locked after approval; moving cities needs platform review.
+        const locationCity = extractLocationCity(loc.address)
+        const lockedCity = String((this.data.profile && this.data.profile.serviceCity) || '').trim()
+        if (locationCity && lockedCity && lockedCity !== '服务城市待完善' && !sameCity(lockedCity, locationCity)) {
+          wx.showModal({
+            title: '服务城市不一致',
+            content: `所选地址位于「${locationCity}」，与认证服务城市「${lockedCity}」不一致。请在「${lockedCity}」内重新选点；如需更换服务城市，请联系平台审核更正。`,
+            showCancel: false,
+            confirmText: '我知道了'
+          })
+          return
+        }
         this.setData({
           ['configForm.serviceAddress']: loc.name || loc.address || '',
+          ['configForm.serviceLocationAddress']: loc.address || '',
           ['configForm.serviceLatitude']: loc.latitude,
           ['configForm.serviceLongitude']: loc.longitude
         })

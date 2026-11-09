@@ -3,6 +3,7 @@ const { callFunction, showError, chooseSelectedLocation } = require('../../../ut
 const { withAuditText, withStaffWorkflowText } = require('../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { loadMessageUnread } = require('../../../utils/client-nav')
+const { extractLocationCity, sameCity } = require('../../../utils/location-city')
 
 const { createPageNav, navMethods } = require('../../../utils/nav')
 
@@ -64,6 +65,7 @@ Page({
       serviceCity: '',
       serviceAreas: '',
       serviceAddress: '',
+      serviceLocationAddress: '',
       serviceLatitude: 0,
       serviceLongitude: 0,
       serviceRadiusKm: 5,
@@ -161,14 +163,42 @@ Page({
       .then((loc) => {
         this.setData({
           ['form.serviceAddress']: loc.name || loc.address || '',
+          ['form.serviceLocationAddress']: loc.address || '',
           ['form.serviceLatitude']: loc.latitude,
           ['form.serviceLongitude']: loc.longitude
         })
+        const locationCity = extractLocationCity(loc.address)
+        if (!locationCity) return
+        if (!String(this.data.form.serviceCity || '').trim()) {
+          this.setData({ 'form.serviceCity': locationCity })
+          wx.showToast({ title: `已按选点填写：${locationCity}`, icon: 'none' })
+          return
+        }
+        this.confirmServiceCity(locationCity)
       })
       .catch((err) => {
         if (err && err.errMsg && err.errMsg.includes('cancel')) return
         showError(err)
       })
+  },
+
+  // Returns true when the typed city already agrees with the map pick (or cannot be verified).
+  confirmServiceCity(locationCity = extractLocationCity(this.data.form.serviceLocationAddress)) {
+    const serviceCity = String(this.data.form.serviceCity || '').trim()
+    if (!locationCity || sameCity(serviceCity, locationCity)) return true
+    wx.showModal({
+      title: '请确认服务城市',
+      content: serviceCity
+        ? `服务地址位于「${locationCity}」，与填写的常驻服务城市「${serviceCity}」不一致。是否改为「${locationCity}」？`
+        : `服务地址位于「${locationCity}」，是否将常驻服务城市填写为「${locationCity}」？`,
+      confirmText: '改为选点城市',
+      cancelText: '重新选点',
+      success: (res) => {
+        if (res.confirm) this.setData({ 'form.serviceCity': locationCity })
+        else this.chooseAddress()
+      }
+    })
+    return false
   },
 
   selectRadius(e) {
@@ -306,6 +336,7 @@ Page({
       wx.showToast({ title: '请设置固定服务地址及位置', icon: 'none' })
       return
     }
+    if (!this.confirmServiceCity()) return
 
     const zhimaConfig = this.data.zhimaConfig
     const isZhimaRequired = zhimaConfig && zhimaConfig.enabled
