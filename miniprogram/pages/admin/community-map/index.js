@@ -106,11 +106,42 @@ Page({
       if (this._closed || token !== this._formToken) return
       if (!validPoint(point)) throw new Error('请选择有效的小区公共入口')
       const fields = communityLocationFields(point)
-      const city = fields.city || form.city
-      this.setData({ 'form.latitude': fields.latitude, 'form.longitude': fields.longitude,
-        'form.name': form.name || fields.name, 'form.city': city, 'form.district': fields.district || (city === form.city ? form.district : ''),
-        'form.confirmPublic': false })
-    } catch (error) { if (!this._closed && !/cancel/i.test(error?.errMsg || error?.message || '')) showError(error) }
+      const rawName = String(point?.name || '').trim()
+      const isGeneric = ['位置', '当前位置', '我的位置', '地图上的点'].includes(rawName)
+      const chosenName = form.name || fields.name
+      if (isGeneric && !chosenName) {
+        wx.showModal({
+          title: '选择提示',
+          content: '您选中的是地图粗略中心点“位置”，请重新进入并在列表中点击具体的小区或建筑物名称。',
+          showCancel: false
+        })
+        return
+      }
+      const city = fields.city || form.city || this.data.city || '成都市'
+      this.setData({
+        'form.latitude': fields.latitude,
+        'form.longitude': fields.longitude,
+        'form.name': chosenName || (point?.address ? point.address.split(/[市区县街道路]/).pop() : '') || '未命名小区',
+        'form.city': city,
+        'form.district': fields.district || (city === form.city ? form.district : ''),
+        'form.confirmPublic': false
+      })
+    } catch (error) {
+      const msg = String(error?.errMsg || error?.message || '')
+      const isCancel = /cancel/i.test(msg) || msg === 'chooseLocation:fail'
+      if (!this._closed && !isCancel) {
+        if (/auth deny|permission denied/i.test(msg)) {
+          wx.showModal({
+            title: '需要定位权限',
+            content: '在地图中选择公共小区需要使用位置权限，请点击“去设置”开启。',
+            confirmText: '去设置',
+            success: (res) => { if (res.confirm) wx.openSetting() }
+          })
+        } else {
+          showError(error)
+        }
+      }
+    }
     finally { this._choosing = false; if (!this._closed) this.setData({ choosing: false }) }
   },
   async save() {

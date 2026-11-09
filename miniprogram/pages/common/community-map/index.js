@@ -445,7 +445,20 @@ Page({
       this.moveCamera({ latitude: reference.latitude, longitude: reference.longitude, scale: 15 })
       changed = true
     } catch (error) {
-      if (!this._closed && this._locationChoice === choice && !/cancel/i.test(error?.errMsg || error?.message || '')) showError(error)
+      const msg = String(error?.errMsg || error?.message || '')
+      const isCancel = /cancel/i.test(msg) || msg === 'chooseLocation:fail'
+      if (!this._closed && this._locationChoice === choice && !isCancel) {
+        if (/auth deny|permission denied/i.test(msg)) {
+          wx.showModal({
+            title: '需要定位权限',
+            content: '选择位置需要使用地理位置权限，请点击“去设置”开启。',
+            confirmText: '去设置',
+            success: (res) => { if (res.confirm) wx.openSetting() }
+          })
+        } else {
+          showError(error)
+        }
+      }
     } finally {
       if (!this._closed && this._locationChoice === choice) {
         this._choosingReference = false; this._locationChoice = null; this.setData({ choosingReference: false })

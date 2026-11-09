@@ -81,14 +81,21 @@ Page({
     return chooseSelectedLocation(initialCoords)
       .then((loc) => {
         if (this._closed || seq !== this._locationSeq) return
+        const rawName = String(loc.name || '').trim()
+        const isGenericName = !rawName || ['位置', '当前位置', '我的位置', '地图上的点'].includes(rawName)
+        const serviceAddress = isGenericName ? (loc.address || this.data.form.serviceAddress || '') : rawName
         this.setData({
-          ['form.serviceAddress']: loc.name || loc.address || '',
+          ['form.serviceAddress']: serviceAddress,
           ['form.city']: locationCity(loc),
           ['form.latitude']: loc.latitude,
           ['form.longitude']: loc.longitude
         })
       })
-      .catch(error => { if (!this._closed && seq === this._locationSeq) showError(error) })
+      .catch(error => {
+        const msg = String(error?.errMsg || error?.message || '')
+        const isCancel = /cancel/i.test(msg) || msg === 'chooseLocation:fail'
+        if (!this._closed && seq === this._locationSeq && !isCancel) showError(error)
+      })
   },
 
   onUnload() { this._closed = true; this._locationSeq = (this._locationSeq || 0) + 1 },

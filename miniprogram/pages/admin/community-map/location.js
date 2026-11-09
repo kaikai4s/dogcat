@@ -18,7 +18,10 @@ function communityLocationFields(point) {
   const cityAt = city ? address.indexOf(city) : -1
   const rest = cityAt >= 0 ? address.slice(cityAt + city.length) : address
   const district = point?.district || rest.match(/^([^省市]{1,12}?(?:区|县|旗))/)?.[1] || ''
-  const name = String(point?.name || '').trim().replace(/[\s·\-—(（]*(?:(?:东南|西南|东北|西北|东|南|西|北|正|主|侧)(?:[一二三四\d]+)?门(?:口)?|[一二三四五六七八九十\d]+号门|出入口|入口)[)）]*$/, '').trim()
+  let name = String(point?.name || '').trim().replace(/[\s·\-—(（]*(?:(?:东南|西南|东北|西北|东|南|西|北|正|主|侧)(?:[一二三四\d]+)?门(?:口)?|[一二三四五六七八九十\d]+号门|出入口|入口)[)）]*$/, '').trim()
+  if (['位置', '当前位置', '我的位置', '地图上的点'].includes(name)) {
+    name = ''
+  }
   return { name, city, district, latitude: Number(point?.latitude), longitude: Number(point?.longitude) }
 }
 module.exports = { validPoint, locationCity, communityLocationFields }

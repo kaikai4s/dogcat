@@ -1944,11 +1944,14 @@ typeof Page === 'function' ? Page({
     return chooseSelectedLocation(initialCoords)
       .then((location) => {
         if (this._closed || this.data.creating || seq !== this._addressSeq) return
+        const rawName = String(location.name || '').trim()
+        const isGenericName = !rawName || ['位置', '当前位置', '我的位置', '地图上的点'].includes(rawName)
+        const serviceAddress = isGenericName ? (location.address || this.data.form.serviceAddress) : rawName
         this.setData({
-          ['form.serviceAddress']: location.name || location.address || this.data.form.serviceAddress,
+          ['form.serviceAddress']: serviceAddress,
           ['form.addressLatitude']: location.latitude,
           ['form.addressLongitude']: location.longitude,
-          ['form.city']: addressCity(location),
+          ['form.city']: addressCity(location) || this.data.form.city || '',
           locationReady: true,
           locationTip: location.address || '已选择服务位置'
         }, () => {
@@ -1957,6 +1960,11 @@ typeof Page === 'function' ? Page({
           this.triggerAutoQuote()
         })
         this.showBookingNotice({ title: '已更新位置' })
+      })
+      .catch(error => {
+        const msg = String(error?.errMsg || error?.message || '')
+        const isCancel = /cancel/i.test(msg) || msg === 'chooseLocation:fail'
+        if (!this._closed && !isCancel) showError(error)
       })
       .catch(error => { if (!this._closed && !this.data.creating && seq === this._addressSeq) showError(error) })
   },
