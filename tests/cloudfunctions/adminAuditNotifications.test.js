@@ -150,3 +150,80 @@ test('adminPendingAudit: skips sending if the audit target has already been hand
   assert.equal(delivery.status, 'skipped')
   assert.equal(delivery.error, 'admin_audit_handled')
 })
+
+test('adminPendingAudit: covers community application, appearance customization, incident, and mall after-sale', async () => {
+  const admin = { _id: 'a1', openid: 'admin_1', roles: ['admin'], status: 'active' }
+  const db = createCollectionStore({
+    users: [admin],
+    platform_configs: [
+      {
+        _id: 'settings',
+        key: 'system_settings',
+        value: {
+          subscription: {
+            enabled: true,
+            templates: { adminPendingAudit: 'audit-template-id' }
+          }
+        }
+      },
+      {
+        _id: 'comm_app_1',
+        key: 'map_community_application',
+        name: '阳光花园',
+        city: '上海市',
+        status: 'pending'
+      }
+    ],
+    pet_playground_appearance_requests: [
+      {
+        _id: 'app_req_1',
+        targetName: '旺财',
+        targetType: 'pet',
+        status: 'pending'
+      }
+    ],
+    order_incidents: [
+      {
+        _id: 'inc_1',
+        status: 'open'
+      }
+    ],
+    mall_orders: [
+      {
+        _id: 'mo_1',
+        refundStatus: 'applied'
+      }
+    ],
+    subscription_logs: [],
+    admin_notifications: []
+  })
+
+  const context = createContext({
+    db,
+    cloud: { openapi: { subscribeMessage: { send: async () => ({ errCode: 0 }) } } }
+  })
+
+  // 1. 小区申请
+  assert.equal(await context.isAuditTargetHandled('community_application', 'comm_app_1'), false)
+  // 模拟已解决
+  db.state.platform_configs.find(r => r._id === 'comm_app_1').status = 'resolved'
+  assert.equal(await context.isAuditTargetHandled('community_application', 'comm_app_1'), true)
+
+  // 2. 形象定制申请
+  assert.equal(await context.isAuditTargetHandled('appearance_customization', 'app_req_1'), false)
+  // 模拟已完成
+  db.state.pet_playground_appearance_requests.find(r => r._id === 'app_req_1').status = 'completed'
+  assert.equal(await context.isAuditTargetHandled('appearance_customization', 'app_req_1'), true)
+
+  // 3. 异常与客诉
+  assert.equal(await context.isAuditTargetHandled('incident', 'inc_1'), false)
+  // 模拟已关闭
+  db.state.order_incidents.find(r => r._id === 'inc_1').status = 'resolved'
+  assert.equal(await context.isAuditTargetHandled('incident', 'inc_1'), true)
+
+  // 4. 商城售后退款
+  assert.equal(await context.isAuditTargetHandled('mall_after_sale', 'mo_1'), false)
+  // 模拟已审核通过
+  db.state.mall_orders.find(r => r._id === 'mo_1').refundStatus = 'approved'
+  assert.equal(await context.isAuditTargetHandled('mall_after_sale', 'mo_1'), true)
+})

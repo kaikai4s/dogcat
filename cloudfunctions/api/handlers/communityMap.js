@@ -4,7 +4,7 @@ const { nameKey, communityAddress } = require('../utils/communityNames')
 
 module.exports = function createHandler(context) {
   const { db, requireAdmin, getUser, now, checkTextSecurity, checkRateLimit, hasCoordinate,
-    readMapCommunities, publicCommunity, getMapCommunity } = context
+    readMapCommunities, publicCommunity, getMapCommunity, enqueueAdminAuditNotification } = context
   const hash = value => context.crypto.createHash('sha256').update(value).digest('hex')
   const catalogId = cityKey => 'map_community_catalog_' + hash(cityKey).slice(0, 24)
   const districtKey = value => String(value || '').normalize('NFKC').replace(/\s+/g, '').toLowerCase()
@@ -30,7 +30,7 @@ module.exports = function createHandler(context) {
       return context.nearbyOrderCommunities(data)
     }
     if (action === 'applyCommunity') {
-      await getUser(openid)
+      const user = await getUser(openid)
       await checkRateLimit(openid, 'communityMap.applyCommunity', { max: 5, windowMs: 60 * 60 * 1000 })
       const rawName = String(data.name || '').normalize('NFKC').trim()
       const city = String(data.city || '').normalize('NFKC').trim(), rawDistrict = String(data.district || '').normalize('NFKC').trim()
@@ -90,6 +90,16 @@ module.exports = function createHandler(context) {
             await tx.collection('platform_configs').doc(lockId).set({ data: {
               key: 'map_community_catalog', cityKey, version: version + 1, updatedAt: now()
             } })
+            if (typeof enqueueAdminAuditNotification === 'function') {
+              await enqueueAdminAuditNotification(tx, {
+                auditType: 'community_application',
+                targetId: applicationId,
+                applicant: (user && user.nickname) || '用户',
+                type: '小区维护审核',
+                reason: `申请维护${name}（${city}${district || ''}）`,
+                page: 'pages/admin/community-map/index'
+              }).catch(() => {})
+            }
             return { applicationId, status: 'pending', outcome: 'created', message: '申请成功，请等待管理员处理' }
           })
         } catch (error) { if (error.code !== 'COMMUNITY_CATALOG_CHANGED' || attempt === 2) throw error }

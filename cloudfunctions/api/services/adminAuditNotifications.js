@@ -18,7 +18,11 @@ async function isAuditTargetHandled(db, auditType, targetId) {
     pet_vaccine: 'pet_vaccine_certifications',
     withdraw: 'withdraw_requests',
     supply_reimbursement: 'staff_supply_reimbursements',
-    deposit_refund: 'staff_deposits'
+    deposit_refund: 'staff_deposits',
+    community_application: 'platform_configs',
+    appearance_customization: 'pet_playground_appearance_requests',
+    incident: 'order_incidents',
+    mall_after_sale: 'mall_orders'
   }
   const collection = collections[auditType]
   if (!collection) return false
@@ -31,6 +35,10 @@ async function isAuditTargetHandled(db, auditType, targetId) {
   if (auditType === 'withdraw') return doc.status !== 'pending'
   if (auditType === 'supply_reimbursement') return doc.status !== 'pending'
   if (auditType === 'deposit_refund') return doc.refundStatus !== 'requested'
+  if (auditType === 'community_application') return doc.status !== 'pending'
+  if (auditType === 'appearance_customization') return !['pending', 'processing'].includes(doc.status)
+  if (auditType === 'incident') return doc.status !== 'open'
+  if (auditType === 'mall_after_sale') return doc.refundStatus !== 'applied'
   return false
 }
 

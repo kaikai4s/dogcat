@@ -18,6 +18,7 @@ module.exports = function createHandler(context) {
     normalizeIncidentStatus,
     normalizeIncidentType,
     notifyAdmins,
+    notifyAdminAudit,
     now,
     paginateList,
     recordIncidentAction,
@@ -97,6 +98,16 @@ module.exports = function createHandler(context) {
           extra: { incidentId: created._id, staffOpenid: openid, latitude: incident.latitude, longitude: incident.longitude }
         }).catch((err) => console.error('[createSosIncident notifyAdmins error]', err))
       }
+      if (typeof notifyAdminAudit === 'function') {
+        notifyAdminAudit({
+          auditType: 'incident',
+          targetId: created._id,
+          applicant: user.nickname || '宠托师',
+          type: '紧急SOS求助',
+          reason: incident.description || '现场突发紧急情况待处理',
+          page: `pages/admin/incidents/detail/index?id=${created._id}`
+        }).catch(() => {})
+      }
 
       return { _id: created._id, ...incident }
     }
@@ -129,6 +140,16 @@ module.exports = function createHandler(context) {
       const created = await db.collection('order_incidents').add({ data: incident })
       await recordIncidentAction(created._id, 'created_complaint', 'client', openid, { orderId: data.orderId })
       await appendOrderTimeline(data.orderId, 'incident_open', '宠物主发起投诉', incident.title, 'client')
+      if (typeof notifyAdminAudit === 'function') {
+        notifyAdminAudit({
+          auditType: 'incident',
+          targetId: created._id,
+          applicant: user.nickname || '客户',
+          type: '客户投诉处理',
+          reason: title || description || '客户发起订单服务投诉',
+          page: `pages/admin/incidents/detail/index?id=${created._id}`
+        }).catch(() => {})
+      }
       return { _id: created._id, ...incident }
     }
     if (action === 'getIncidentDetail') {

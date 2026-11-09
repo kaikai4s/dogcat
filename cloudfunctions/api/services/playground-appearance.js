@@ -231,6 +231,16 @@ module.exports=function createAppearance(context) {
       await target(tx,openid,current.targetType,current.targetType==='pet'?current.targetId:'')
       const stamp=now()
       await tx.collection(REQUESTS).doc(id).update({data:{photos,remark,status:'pending',submittedAt:stamp,updatedAt:stamp}})
+      if (typeof context.enqueueAdminAuditNotification === 'function') {
+        await context.enqueueAdminAuditNotification(tx, {
+          auditType: 'appearance_customization',
+          targetId: id,
+          applicant: current.targetName || '申请人',
+          type: '形象定制申请',
+          reason: `申请${current.targetType === 'pet' ? '宠物' : '角色'}专属形象定制`,
+          page: 'pages/admin/playground-customizations/index'
+        }).catch(() => {})
+      }
       return view({...current,photos,remark,status:'pending',submittedAt:stamp,updatedAt:stamp})
     })
   }

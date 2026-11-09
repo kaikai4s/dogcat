@@ -25,6 +25,7 @@ module.exports = function createHandler(context) {
     normalizeMallProduct,
     normalizeShippingAddress,
     now,
+    notifyAdminAudit,
     paginateList,
     publicMallProduct,
     queryOrderLogistics,
@@ -245,6 +246,7 @@ module.exports = function createHandler(context) {
       return { orderId: order._id, status: 'completed' }
     }
     if (action === 'applyRefund') {
+      const user = await getUser(openid)
       const order = await getDocOrNull('mall_orders', data.id || data.orderId)
       if (!order || order.clientOpenid !== openid) throw new Error('订单不存在')
       if (!['pending_ship', 'shipped', 'completed'].includes(order.status) || order.paymentStatus !== 'paid') throw new Error('当前订单不可申请售后')
@@ -274,6 +276,17 @@ module.exports = function createHandler(context) {
         }
       })
       if (!res.stats || !res.stats.updated) throw new Error('订单状态已更新，请刷新后重试')
+      if (typeof notifyAdminAudit === 'function') {
+        const typeMap = { return_and_refund: '商城退货退款审核', compensation: '商城售后补偿审核', refund_only: '商城仅退款审核' }
+        notifyAdminAudit({
+          auditType: 'mall_after_sale',
+          targetId: order._id,
+          applicant: (user && user.nickname) || '商城买家',
+          type: typeMap[afterSaleType] || '商城售后审核',
+          reason: `申请退款 ¥${Number(requestedAmount || 0).toFixed(2)}（${reason}）`,
+          page: `pages/admin/mall/orders/detail/index?id=${order._id}`
+        }).catch(() => {})
+      }
       return { orderId: order._id, refundStatus: 'applied', afterSaleType, preRefundStatus: order.status }
     }
     if (action === 'fillReturnLogistics') {
