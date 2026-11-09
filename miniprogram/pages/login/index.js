@@ -1,10 +1,13 @@
 const { uploadImage } = require('../../utils/image-upload')
 const { loginWithWechat, callFunction, showError, setCachedUser } = require('../../utils/cloud')
 const { envList, getActiveEnvId } = require('../../envList')
+const { applyTheme, getThemeState } = require('../../utils/theme')
 
 Page({
   data: {
     loginAgreed: false,
+    showConsentModal: false,
+    themeClass: 'theme-day',
     step: 'login', // 'login' | 'profile'
     loading: false,
     submitting: false,
@@ -21,9 +24,23 @@ Page({
     this.setData({ loginAgreed: e.detail.agreed === true })
   },
 
+  onShow() {
+    const theme = applyTheme()
+    this.setData(getThemeState(theme.value))
+  },
+
+  onConsentConfirm() {
+    this.setData({ loginAgreed: true, showConsentModal: false })
+    this.login()
+  },
+
+  onConsentCancel() {
+    this.setData({ showConsentModal: false })
+  },
+
   login() {
     if (!this.data.loginAgreed) {
-      wx.showToast({ title: '请先阅读并同意用户协议和隐私政策', icon: 'none' })
+      this.setData({ showConsentModal: true })
       return
     }
     if (this.data.loading || this.data.loadingLogin) return

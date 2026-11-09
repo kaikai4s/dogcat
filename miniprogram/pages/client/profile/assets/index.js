@@ -1,4 +1,4 @@
-const { callFunction, showError, showLoading, hideLoading, savePendingInvite, ensureLogin, loadSystemSettings, getCachedSystemSettings } = require('../../../../utils/cloud')
+const { callFunction, showError, showLoading, hideLoading, savePendingInvite, ensureLogin, loadSystemSettings, getCachedSystemSettings, requestSubscribeTemplates } = require('../../../../utils/cloud')
 const { copyText } = require('../../../../utils/clipboard')
 
 const withdrawStatusText = {
@@ -186,6 +186,10 @@ Page({
     this.setData({ activeTab: 'withdraws' })
   },
 
+  openWithdrawalSubscriptions() {
+    wx.navigateTo({ url: '/pages/common/subscriptions/index?role=client' })
+  },
+
   queryWithdrawTransfer(e) {
     const id = e.currentTarget.dataset.id
     if (!id || this.data.transferBusy) return
@@ -248,8 +252,11 @@ Page({
     if (!id || this._confirmingLock || this.data.transferBusy || this.data.confirmingId) return
     this._confirmingLock = true
     this.setData({ transferBusy: true, confirmingId: id, transferNotice: '' })
-    showLoading({ title: '正在调起收款确认...', mask: true })
-    callFunction('finance', 'getMyWithdrawTransferConfirmation', { id })
+    return requestSubscribeTemplates(['withdrawResult'], 'client_withdraw')
+      .then(() => {
+        showLoading({ title: '正在调起收款确认...', mask: true })
+        return callFunction('finance', 'getMyWithdrawTransferConfirmation', { id })
+      })
       .then((result) => {
         hideLoading()
         const status = String(result && result.status || '').toUpperCase()
@@ -313,7 +320,7 @@ Page({
     const summary = this.data.summary || {}
     const quota = summary.wechatTransferQuota || {}
     const amount = Number(this.data.withdrawAmount || 0)
-    if (this.data.withdrawing) return
+    if (this._submittingLock || this.data.withdrawing) return
     if (!amount || amount <= 0) return wx.showToast({ title: '请输入提现金额', icon: 'none' })
     if (amount > Number(summary.availableAmount || 0)) return wx.showToast({ title: '提现金额超出可用余额', icon: 'none' })
     if (amount < 0.10) return wx.showToast({ title: '微信零钱单笔最低 ¥0.10，请合并收益后提现', icon: 'none' })
@@ -321,8 +328,10 @@ Page({
     if (quota.singleMaxAmount !== null && quota.singleMaxAmount !== undefined && amount > Number(quota.singleMaxAmount || 0)) return wx.showToast({ title: '单笔额度不足，请分多次提现', icon: 'none' })
     if (quota.platformDailyRemainingAmount !== null && quota.platformDailyRemainingAmount !== undefined && amount > Number(quota.platformDailyRemainingAmount || 0)) return wx.showModal({ title: '暂不可提现', content: '当日全平台转帐额度受限,请明日再申请', showCancel: false })
     if (quota.recipientDailyRemainingAmount !== null && quota.recipientDailyRemainingAmount !== undefined && amount > Number(quota.recipientDailyRemainingAmount || 0)) return wx.showModal({ title: '暂不可提现', content: quota.message || '当日个人微信转账额度受限,请明日再申请', showCancel: false })
+    this._submittingLock = true
     this.setData({ withdrawing: true })
     try {
+      await requestSubscribeTemplates(['withdrawResult'], 'client_withdraw')
       await callFunction('finance', 'createUserAssetWithdraw', {
         amount,
         clientRequestId: 'asset_' + Date.now() + '_' + Math.random().toString(16).slice(2, 8)
@@ -337,6 +346,7 @@ Page({
         showError(error)
       }
     } finally {
+      this._submittingLock = false
       this.setData({ withdrawing: false })
     }
   },

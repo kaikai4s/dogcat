@@ -2,11 +2,13 @@ const { readDocuments, readOptionalDocument } = require('../utils/documentPages'
 
 const { WECHAT_MIN_TRANSFER_CENTS, isAbsentSmallTransfer } = require('../utils/wechatTransferLimits')
 const { buildWithdrawalRules } = require('./withdrawalRules')
+const { withdrawalNotification } = require('./withdrawalNotifications')
 
 module.exports = function createService({
   commitWechatTransferSuccessQuota,
   crypto,
   db,
+  enqueueSubscription,
   getSystemSettings,
   getUser,
   getWechatTransferQuotaSnapshot,
@@ -577,6 +579,7 @@ module.exports = function createService({
       await tx.collection('withdraw_requests').doc(request._id).update({ data: patch })
       for (const id of earningIds) await tx.collection('user_asset_earnings').doc(id).update({ data: { status: paid ? 'withdrawn' : target === 'rejected' ? 'available' : 'withdrawing', withdrawRequestId: target === 'rejected' ? '' : request._id, updatedAt: time } })
       await tx.collection('finance_logs').doc(`user_withdraw_${request._id}_${target}`).set({ data: { action: `user_withdraw_${target}`, targetType: 'user_asset_withdrawal', targetId: request._id, userOpenid: request.userOpenid, amountDelta: paid ? -total / 100 : 0, createdAt: time, detail: { earningIds, auditRemark: patch.auditRemark || '' } } })
+      await enqueueSubscription(tx, withdrawalNotification({ ...request, ...patch, _id: data.id }, target))
       return { request: { ...request, ...patch }, changed: true }
     })
   }
@@ -599,11 +602,13 @@ module.exports = function createService({
       if (!['approved', 'transferring', 'transfer_failed'].includes(request.status)) throw new Error('当前用户资产提现状态不可失败回退')
       const time = now()
       await releaseWechatTransferQuota(tx, { _id: withdrawId, ...request }, 'transfer_failed')
-      await tx.collection('withdraw_requests').doc(withdrawId).update({ data: { status: 'transfer_failed', transferStatus: 'failed',
+      const patch = { status: 'transfer_failed', transferStatus: 'failed',
         gatewayFailureConfirmed: result.gatewayTerminalConfirmed === true,
         wechatTransferState: safeText(result.state || result.transfer_state || 'FAIL'),
-        failureReason: safeText(result.failReason || result.message).slice(0, 500), updatedAt: time } })
-      return { request: { ...request, status: 'transfer_failed' }, changed: true }
+        failureReason: safeText(result.failReason || result.message).slice(0, 500), updatedAt: time }
+      await tx.collection('withdraw_requests').doc(withdrawId).update({ data: patch })
+      await enqueueSubscription(tx, withdrawalNotification({ ...request, ...patch, _id: withdrawId }, 'transfer_failed'))
+      return { request: { ...request, ...patch }, changed: true }
     })
   }
 

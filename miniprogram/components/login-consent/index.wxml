@@ -1,5 +1,57 @@
-<view class="consent-row">
-  <checkbox-group bindchange="change"><label><checkbox value="agree" checked="{{agreed}}" color="#df7425" /><text>我已阅读并同意</text></label></checkbox-group>
-  <text class="link" data-type="user_service" bindtap="open">《用户服务协议》</text>
-  <text>和</text><text class="link" data-type="privacy" bindtap="open">《隐私政策》</text>
+<view wx:if="{{visible}}" class="consent-modal {{themeClass}}" catchtouchmove="preventTouchMove">
+  <view class="consent-backdrop" bindtap="onCancel"></view>
+  <view class="consent-dialog">
+    <!-- 右上角关闭按钮 -->
+    <view class="consent-close" bindtap="onCancel" hover-class="consent-close-hover" aria-label="关闭">
+      <text class="remix-icon ri-close-line"></text>
+    </view>
+
+    <!-- 顶部品牌图标徽章与标题 -->
+    <view class="consent-header">
+      <view class="consent-badge">
+        <text class="remix-icon ri-shield-check-fill consent-badge-icon"></text>
+      </view>
+      <view class="consent-title">服务协议与隐私政策提示</view>
+      <view class="consent-subtitle">为保障您的合法权益，登录前请仔细阅读并同意</view>
+    </view>
+
+    <!-- 协议说明卡片 -->
+    <view class="consent-card">
+      <view class="consent-card-content">
+        <text class="consent-normal-text">请您审慎阅读</text>
+        <text class="consent-link" data-type="user_service" catchtap="open">《用户服务协议》</text>
+        <text class="consent-normal-text">与</text>
+        <text class="consent-link" data-type="privacy" catchtap="open">《隐私政策》</text>
+        <text class="consent-normal-text">。我们将严格遵循法律法规保护您的个人信息安全，为您提供可信赖的专业上门宠护服务。</text>
+      </view>
+    </view>
+
+    <!-- 勾选确认行 -->
+    <view class="consent-check-wrapper" bindtap="toggleCheck">
+      <view class="consent-checkbox {{agreed ? 'checked' : ''}}">
+        <text class="remix-icon {{agreed ? 'ri-checkbox-circle-fill' : 'ri-checkbox-blank-circle-line'}}"></text>
+      </view>
+      <view class="consent-check-label">
+        <text>我已阅读并完全同意上述协议内容</text>
+      </view>
+    </view>
+
+    <!-- 隐藏原生的 checkbox-group 用于底层与事件兼容 -->
+    <checkbox-group class="consent-hidden-checkbox" bindchange="change">
+      <label>
+        <checkbox value="agree" checked="{{agreed}}" />
+      </label>
+    </checkbox-group>
+
+    <!-- 底部操作按钮 -->
+    <view class="consent-actions">
+      <button class="consent-btn primary-btn" hover-class="btn-hover" bindtap="onConfirm">
+        <text class="remix-icon ri-wechat-fill wechat-icon"></text>
+        <text>同意并继续登录</text>
+      </button>
+      <button class="consent-btn cancel-btn" hover-class="cancel-hover" bindtap="onCancel">
+        <text>暂不登录</text>
+      </button>
+    </view>
+  </view>
 </view>

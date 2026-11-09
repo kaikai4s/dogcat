@@ -1,6 +1,7 @@
 const { WECHAT_MIN_TRANSFER_CENTS, isAbsentSmallTransfer } = require('../utils/wechatTransferLimits')
+const { withdrawalNotification } = require('./withdrawalNotifications')
 
-module.exports = function createService({ db, now, parseDateValue, safeText, enqueueSubscription, buildSubscriptionData, settleUserAssetWithdrawal, markUserAssetPaid, markUserAssetFailed, releaseUserAssetWithdrawal, commitWechatTransferSuccessQuota, releaseWechatTransferQuota }) {
+module.exports = function createService({ db, now, parseDateValue, safeText, enqueueSubscription, settleUserAssetWithdrawal, markUserAssetPaid, markUserAssetFailed, releaseUserAssetWithdrawal, commitWechatTransferSuccessQuota, releaseWechatTransferQuota }) {
   async function optionalDocument(transaction, collectionName, id) {
     try {
       return (await transaction.collection(collectionName).doc(id).get()).data || null
@@ -123,8 +124,7 @@ module.exports = function createService({ db, now, parseDateValue, safeText, enq
         } })
       }
       const action = `withdraw_${target}`
-      await enqueueSubscription(tx, { openid: request.staffOpenid, templateKey: 'withdrawResult', page: 'pages/staff/earnings/index',
-        messageData: buildSubscriptionData('withdrawResult', { orderNo: data.id, startTime: request.createdAt }, { amount: request.amount, statusText: paid ? '已打款' : target === 'approved' ? '已审核' : '已驳回' }), orderId: '', deliveryKey: `withdraw:${data.id}:${target}` })
+      await enqueueSubscription(tx, withdrawalNotification({ ...request, ...patch, _id: data.id }, target))
       await financeLog(tx, `${action}_${data.id}`, action, 'withdraw_request', data.id, time, {
         staffOpenid: request.staffOpenid, amountDelta: paid ? -total / 100 : 0,
         detail: { earningIds, auditRemark: patch.auditRemark || '', payRemark: patch.payRemark || '', paymentReference, paymentProofImage: patch.paymentProofImage || '', isSameAuditorAndPayer }
@@ -184,8 +184,7 @@ module.exports = function createService({ db, now, parseDateValue, safeText, enq
       for (const earning of earnings) {
         await tx.collection('staff_earnings').doc(earning._id).update({ data: { status: 'withdrawn', updatedAt: time } })
       }
-      await enqueueSubscription(tx, { openid: request.staffOpenid, templateKey: 'withdrawResult', page: 'pages/staff/earnings/index',
-        messageData: buildSubscriptionData('withdrawResult', { orderNo: withdrawId, startTime: request.createdAt }, { amount: request.amount, statusText: '已打款' }), orderId: '', deliveryKey: `withdraw:${withdrawId}:paid` })
+      await enqueueSubscription(tx, withdrawalNotification({ ...request, ...patch, _id: withdrawId }, 'paid'))
       await financeLog(tx, `withdraw_paid_${withdrawId}`, 'withdraw_paid', 'withdraw_request', withdrawId, time, {
         staffOpenid: request.staffOpenid, amountDelta: -total / 100,
         detail: { earningIds, paymentChannel: 'WECHAT_WALLET', paymentReference, outBillNo: request.outBillNo }
@@ -217,8 +216,7 @@ module.exports = function createService({ db, now, parseDateValue, safeText, enq
         updatedAt: time
       }
       await tx.collection('withdraw_requests').doc(withdrawId).update({ data: patch })
-      await enqueueSubscription(tx, { openid: request.staffOpenid, templateKey: 'withdrawResult', page: 'pages/staff/earnings/index',
-        messageData: buildSubscriptionData('withdrawResult', { orderNo: withdrawId, startTime: request.createdAt }, { amount: request.amount, statusText: '打款失败' }), orderId: '', deliveryKey: `withdraw:${withdrawId}:transfer_failed` })
+      await enqueueSubscription(tx, withdrawalNotification({ ...request, ...patch, _id: withdrawId }, 'transfer_failed'))
       await financeLog(tx, `withdraw_transfer_failed_${withdrawId}_${Number(request.transferAttemptCount || 0)}`, 'withdraw_transfer_failed', 'withdraw_request', withdrawId, time, {
         staffOpenid: request.staffOpenid,
         detail: { outBillNo: request.outBillNo, error: patch.lastTransferError }

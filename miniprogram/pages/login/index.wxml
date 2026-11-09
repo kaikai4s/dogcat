@@ -17,7 +17,6 @@
       登录失败：{{errorText}}
     </view>
 
-    <login-consent agreed="{{loginAgreed}}" bindchange="onLoginConsentChange" />
     <button class="primary login-btn" disabled="{{!envReady}}" loading="{{loading}}" bindtap="login">
       <text class="remix-icon ri-wechat-fill btn-icon"></text>
       <text>微信一键快捷登录</text>
@@ -74,4 +73,5 @@
     </view>
   </block>
 </view>
+<login-consent visible="{{showConsentModal}}" agreed="{{loginAgreed}}" theme-class="{{themeClass}}" bindchange="onLoginConsentChange" bindconfirm="onConsentConfirm" bindcancel="onConsentCancel" />
 <global-loading />

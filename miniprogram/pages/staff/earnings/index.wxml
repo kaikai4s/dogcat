@@ -75,6 +75,7 @@
       <text class="remix-icon ri-wechat-pay-line"></text>
       <text>提交提现申请</text>
     </button>
+    <button class="ghost-btn full-btn" bindtap="openWithdrawalSubscriptions">订阅提现状态提醒</button>
   </view>
 
   <view class="segmented-tabs">
@@ -223,7 +224,7 @@
         </view>
         <view class="withdraw-hint-box alert" wx:if="{{item.canConfirmTransfer}}">
           <text class="remix-icon ri-alarm-warning-line"></text>
-          <text>请在24小时内点击上方按钮在微信弹窗中完成确认收款，超时微信将自动关闭。</text>
+          <text>24小时未确认将放弃此次提现；最终状态以微信处理结果为准</text>
         </view>
       </view>
     </view>

@@ -87,8 +87,6 @@
     <button class="profile-primary-btn compact-btn" loading="{{loadingLogin}}" bindtap="login">微信登录</button>
   </view>
 
-  <login-consent agreed="{{loginAgreed}}" wx:if="{{isGuest}}" bindchange="onLoginConsentChange" />
-
   <view class="asset-card">
     <view class="asset-head">
       <view>
@@ -304,4 +302,5 @@
   <view class="nav-item" data-url="/pages/client/messages/index" bindtap="goProtected"><view class="nav-icon remix-icon ri-message-3-line"><view class="nav-unread-count" wx:if="{{messageUnreadCount > 0}}">{{messageUnreadCountText}}</view></view><view>消息</view></view>
   <view class="nav-item active"><view class="nav-icon remix-icon ri-user-3-fill"></view><view>我的</view></view>
 </view>
+<login-consent visible="{{showConsentModal}}" agreed="{{loginAgreed}}" theme-class="{{themeClass}}" bindchange="onLoginConsentChange" bindconfirm="onConsentConfirm" bindcancel="onConsentCancel" />
 <global-loading />

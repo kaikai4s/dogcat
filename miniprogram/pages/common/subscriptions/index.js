@@ -15,7 +15,7 @@ const catalog = {
   refundResult: ['退款结果通知', '服务及商城订单退款成功或失败后，接收本次金额和处理结果'],
   disputeUpdate: ['售后进度通知', '暂未开放，请在订单售后详情查看处理进度'],
   upcomingServiceReminder: ['服务订单提醒', '服务前提醒时间段、地点和宠物信息'],
-  withdrawResult: ['提现结果通知', '提现审核或打款后接收结果提醒']
+  withdrawResult: ['提现状态变更提醒', '邀请收益与宠托师佣金提现共用此提醒，接收审核、待确认收款及打款结果等状态变更通知']
 }
 
 Page({

@@ -27,7 +27,7 @@ module.exports = function createHandler(context) {
     countActiveAdmins,
     buildMonthlyDashboard,
     buildOrderProfitSummary,
-    buildSubscriptionData,
+    notifyWithdrawal,
     calculateStaffEarningForOrder,
     resolveStaffCommissionRate,
     cleanupUserPersonalData,
@@ -122,7 +122,6 @@ module.exports = function createHandler(context) {
     settleSupplyReimbursement,
     safeUserSummary,
     saveSystemSettings,
-    sendSubscribeMessage,
     listSubscriptionDeliveries,
     requeueSubscriptionDelivery,
     syncUsersMemberLevelName,
@@ -146,6 +145,11 @@ module.exports = function createHandler(context) {
     try {
       const submit = request.transferSubmittedAt ? retryWechatWithdrawalTransfer : submitWechatWithdrawalTransfer
       const transfer = await submit(id, operator)
+      const current = { ...(transfer.request || transfer), _id: id }
+      const event = current.status === 'paid' ? 'paid'
+        : current.status === 'transfer_failed' ? 'transfer_failed'
+        : current.wechatTransferState === 'WAIT_USER_CONFIRM' && current.transferMode !== 'auto_confirm' ? 'wait_confirm' : 'approved'
+      await notifyWithdrawal(current, event)
       return transferResult(id, transfer)
     } catch (error) {
       // Approval is already committed. Keep that result and explain why the
@@ -1024,6 +1028,7 @@ module.exports = function createHandler(context) {
       if (approved && request.payoutChannel === 'wechat_wallet' && request.status !== 'paid') {
         return startAuditedWechatTransfer(data.id, request, { ...admin, openid })
       }
+      await notifyWithdrawal({ ...request, _id: data.id }, approved ? 'approved' : 'rejected')
       return { id: data.id, status: request.status, transferStatus: request.transferStatus }
     }
     if (action === 'auditUserAssetWithdrawal') {
@@ -1032,6 +1037,7 @@ module.exports = function createHandler(context) {
       if (approved && result.request && result.request.payoutChannel === 'wechat_wallet' && result.request.status !== 'paid') {
         return startAuditedWechatTransfer(data.id, result.request, { ...admin, openid })
       }
+      await notifyWithdrawal({ ...result.request, _id: data.id }, approved ? 'approved' : 'rejected')
       return { id: data.id, status: result.request?.status || (approved ? 'approved' : 'rejected') }
     }
     if (action === 'queryWithdrawTransfer') {
@@ -1069,7 +1075,7 @@ module.exports = function createHandler(context) {
         await checkImageSecurity(openid, paymentProofImage, { scene: 1, label: '付款凭证截图' })
       }
       const { request, changed } = await settleWithdrawal({ ...admin, openid }, { ...data, payRemark, paymentProofImage }, true)
-      if (changed && request.staffOpenid) await sendSubscribeMessage(request.staffOpenid, 'withdrawResult', 'pages/staff/earnings/index', buildSubscriptionData('withdrawResult', { orderNo: data.id, startTime: request.createdAt }, { amount: request.amount, statusText: '已打款' }), '', `withdraw:${data.id}:paid`)
+      if (changed) await notifyWithdrawal({ ...request, _id: data.id }, 'paid')
       if (request.source === 'admin_manual_tail_settlement') {
         try {
           const deposits = (await readAll('staff_deposits', { staffOpenid: request.staffOpenid }))

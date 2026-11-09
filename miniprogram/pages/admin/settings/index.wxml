@@ -544,7 +544,8 @@
           <view class="notice">保存后，两端进入消息页的订阅中心会刷新配置，首页不展示订阅提示。更换模板 ID 后需重新授权；每次自动组合最多 3 个模板，未完成项继续批量申请，仅微信过滤的组合或出错批次拆开处理。指定预约付款不会提前发送接单成功通知，实际接单后才发送。</view>
           <view class="field-item"><text class="label">纠纷更新模板（预留）</text><input class="input" value="{{settings.subscription.templates.disputeUpdate}}" data-field="disputeUpdate" bindinput="subscriptionTemplateInput" /></view>
           <view class="notice">该历史配置尚未接入业务发送，两端订阅中心显示暂未开放，不计入一键订阅。退款结果通知已独立接入，不受影响。</view>
-          <view class="field-item"><text class="label">提现结果模板</text><input class="input" value="{{settings.subscription.templates.withdrawResult}}" data-field="withdrawResult" bindinput="subscriptionTemplateInput" /></view>
+          <view class="field-item"><text class="label">提现状态变更提醒模板</text><input class="input" value="{{settings.subscription.templates.withdrawResult}}" data-field="withdrawResult" bindinput="subscriptionTemplateInput" placeholder="填写完整模板 ID，不能填写模板编号 73593" /></view>
+          <view class="notice">模板 73593：提现金额 amount1、提现状态 phrase2、温馨提示 thing3。邀请收益与宠托师佣金提现共用此模板，用于审核、待确认收款及打款结果等状态变更提醒。请填写微信公众平台中的完整模板 ID，不能填写模板库编号 73593；两端用户需主动订阅。</view>
           <view class="field-item"><text class="label">前往服务提醒模板</text><input class="input" value="{{settings.subscription.templates.upcomingServiceReminder}}" data-field="upcomingServiceReminder" bindinput="subscriptionTemplateInput" placeholder="服务订单提醒模板 ID（19425）" /></view>
           <view class="notice">模板 19425：服务时间段 time3、服务地点 thing4、宠物类型 short_thing6、宠物名字 thing7、备注 thing5。服务前 1 小时提醒宠托师，完整地址和照护要求请进入订单查看。</view>
           <view class="field-item"><text class="label">在线沟通未读提醒模板</text><input class="input" value="{{settings.subscription.templates.orderChat}}" data-field="orderChat" bindinput="subscriptionTemplateInput" placeholder="在线聊天未读提醒模板 ID（43667）" /></view>

@@ -75,7 +75,7 @@ test('estimated counts are shown and repeated taps use distinct consent request 
 test('all authorized client and staff notifications survive page recreation and app restart with empty WeChat settings', async () => {
   for (const role of ['client', 'staff']) {
     const context = await setup({ role, holdConsent: true })
-    for (let batch = 0; batch < (role === 'client' ? 3 : 2); batch++) await context.page.subscribe(tap('all'))
+    for (let batch = 0; batch < (role === 'client' ? 4 : 2); batch++) await context.page.subscribe(tap('all'))
     assert.equal(context.page.data.pendingKeys.length, 0)
     const count = context.requests.length
     const reopened = await context.reopen()
@@ -186,20 +186,23 @@ test('a failed repeat request does not erase a previously saved authorization', 
 
 test('all notifications request at most three templates per tap and continue with the remainder', async () => {
   const { page, requests } = await setup()
-  assert.equal(page.data.availableCount, 9)
+  assert.equal(page.data.availableCount, 10)
   const pending = page.subscribe(tap('all'))
   assert.equal(requests.length, 1, 'native authorization must start synchronously in the tap')
   assert.equal(requests[0].length, 3)
   await pending
-  assert.equal(page.data.pendingKeys.length, 6)
+  assert.equal(page.data.pendingKeys.length, 7)
   assert.equal(requests.length, 1, 'do not automatically invoke another prompt without a gesture')
   await page.subscribe(tap('all'))
   assert.equal(requests[1].length, 3)
-  assert.equal(page.data.pendingKeys.length, 3)
+  assert.equal(page.data.pendingKeys.length, 4)
   await page.subscribe(tap('all'))
   assert.equal(requests[2].length, 3)
+  assert.equal(page.data.pendingKeys.length, 1)
+  await page.subscribe(tap('all'))
+  assert.deepEqual(requests.map(ids => ids.length), [3, 3, 3, 1])
   assert.equal(page.data.pendingKeys.length, 0)
-  assert.equal(new Set(requests.flat()).size, 9)
+  assert.equal(new Set(requests.flat()).size, 10)
 })
 
 test('templates shared by multiple notification types are requested once and update both statuses', async () => {
@@ -410,12 +413,12 @@ test('an invalid template only splits its failed batch, while unrelated notifica
   } })
   await page.subscribe(tap('all'))
   assert.equal(requests.length, 1)
-  assert.equal(page.data.batchRemaining, 9)
+  assert.equal(page.data.batchRemaining, 10)
   assert.match(page.data.feedback, /20001/)
   assert.equal(page.data.nextBatchCount, 3)
-  for (let i = 0; i < 5; i++) await page.subscribe(tap('all'))
-  assert.deepEqual(requests.map(ids => ids.length), [3, 3, 3, 1, 1, 1])
-  assert.equal(page.data.batchAccepted, 8)
+  for (let i = 0; i < 6; i++) await page.subscribe(tap('all'))
+  assert.deepEqual(requests.map(ids => ids.length), [3, 3, 3, 1, 1, 1, 1])
+  assert.equal(page.data.batchAccepted, 9)
   assert.equal(page.data.batchRemaining, 0)
   assert.match(page.data.feedback, /尚有未授权/)
   assert.match(page.data.groups[0].items.find(item => item.key === 'staffDeparture').statusText, /模板不可用/)
@@ -429,13 +432,14 @@ test('network rejection preserves the batch and remembered accepts can finish wi
   } })
   await page.subscribe(tap('all'))
   assert.equal(page.data.nextBatchCount, 3)
-  assert.equal(page.data.batchRemaining, 9)
+  assert.equal(page.data.batchRemaining, 10)
   assert.match(page.data.feedback, /10002/)
   await page.subscribe(tap('all'))
   assert.deepEqual([...requests[0]], [...requests[1]])
   await page.subscribe(tap('all'))
   await page.subscribe(tap('all'))
-  assert.equal(page.data.batchAccepted, 9)
+  await page.subscribe(tap('all'))
+  assert.equal(page.data.batchAccepted, 10)
   assert.match(page.data.feedback, /全部订阅/)
 })
 
@@ -578,10 +582,10 @@ test('all-notification retries do not slow down unattempted batches or lose mult
   assert.equal(all.requests[1].length, 3)
   assert.equal(all.requests[2].length, 3)
   assert.equal(all.page.data.batchAccepted, 7)
-  assert.equal(all.page.data.batchRemaining, 2)
+  assert.equal(all.page.data.batchRemaining, 3)
   await all.page.subscribe(tap('all'))
-  assert.equal(all.requests[3].length, 2)
-  assert.equal(all.page.data.batchAccepted, 9)
+  assert.equal(all.requests[3].length, 3)
+  assert.equal(all.page.data.batchAccepted, 10)
 
   let first = true
   const shared = await setup({ role: 'staff', templates: { upcomingServiceReminder: 'shared', serviceProgress: 'shared', serviceFinish: 'finish' }, subscribe(options) {
@@ -609,7 +613,7 @@ test('ordinary rejections and missing results remain batched for both recipient 
     await page.subscribe(tap('all'))
     assert.equal(requests[1].length, 3)
     for (let i = 0; page.data.pendingKeys.length && i < 4; i++) await page.subscribe(tap('all'))
-    assert.equal(page.data.batchAccepted, role === 'client' ? 9 : 5)
+    assert.equal(page.data.batchAccepted, role === 'client' ? 10 : 5)
     assert.ok(requests.slice(1, -1).every(ids => ids.length === 3))
   }
 })
@@ -631,7 +635,7 @@ test('filtered templates can join a different batch instead of all being forced 
 })
 
 test('valid client and staff templates finish in the minimum number of batches without automatic prompts', async () => {
-  for (const [role, sizes] of [['client', [3, 3, 3]], ['staff', [3, 2]]]) {
+  for (const [role, sizes] of [['client', [3, 3, 3, 1]], ['staff', [3, 2]]]) {
     const { page, requests } = await setup({ role })
     for (let i = 0; i < sizes.length; i++) {
       await page.subscribe(tap('all'))
@@ -693,7 +697,7 @@ test('fixed groups contain at most three template IDs and repeated taps replenis
   for (const role of ['client', 'staff']) {
     const { page, requests, calls } = await setup({ role })
     const batches = page.data.subscriptionBatches
-    assert.deepEqual(Array.from(batches, batch => batch.count), role === 'client' ? [3, 3, 3] : [3, 2])
+    assert.deepEqual(Array.from(batches, batch => batch.count), role === 'client' ? [3, 3, 3, 1] : [3, 2])
     for (const batch of batches) {
       await page.subscribe(tap(batch.id))
       await flush()

@@ -37,6 +37,7 @@
       <input class="withdraw-input" type="digit" value="{{withdrawAmount}}" bindinput="inputWithdrawAmount" placeholder="输入提现金额" />
     </view>
     <button class="withdraw-btn" bindtap="withdraw" loading="{{withdrawing}}" disabled="{{withdrawing || !summary || summary.availableAmount < summary.minWithdrawAmount}}">提现到微信零钱</button>
+    <button class="query-transfer-btn" bindtap="openWithdrawalSubscriptions">订阅提现状态提醒</button>
   </view>
 
   <view class="invite-card card">
@@ -176,6 +177,8 @@
             <text class="remix-icon ri-wechat-pay-line" wx:if="{{confirmingId !== item._id}}"></text>
             <text>{{confirmingId === item._id ? '正在同步到账状态...' : '点击完成微信零钱确认收款'}}</text>
           </button>
+
+          <view class="withdraw-hint-box" wx:if="{{item.canConfirmTransfer}}">24小时未确认将放弃此次提现；最终状态以微信处理结果为准</view>
 
           <!-- 查询微信打款状态按钮 -->
           <button class="query-transfer-btn"

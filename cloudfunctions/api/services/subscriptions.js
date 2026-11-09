@@ -1,3 +1,6 @@
+const { buildWithdrawalSubscriptionData, withdrawalNotification } = require('./withdrawalNotifications')
+const { readOptionalDocument } = require('../utils/documentPages')
+
 module.exports = function createService({
   ORDER_STATUS,
   appendOrderStaffMessage,
@@ -40,6 +43,10 @@ module.exports = function createService({
   }
 
   function buildSubscriptionData(templateKey, order = {}, detail = {}) {
+    if (templateKey === 'withdrawResult') {
+      const event = ({ '已打款': 'paid', '已到账': 'paid', '已驳回': 'rejected', '打款失败': 'transfer_failed', '待确认': 'wait_confirm' })[detail.statusText] || 'approved'
+      return buildWithdrawalSubscriptionData({ amount: detail.amount }, event)
+    }
     const serviceName = isMallOrder(order) ? buildMallOrderTitle(order) : (order.serviceSummary || (order.serviceType === 'walk' ? '上门遛狗' : '上门喂养') || '宠护服务')
     const orderNo = order.orderNo || order._id || ''
     const statusText = safeText(detail.statusText || templateKey)
@@ -339,6 +346,28 @@ module.exports = function createService({
   }
 
   const sendDelivery = async message => {
+    if (message.templateKey === 'withdrawResult') {
+      const parts = String(message.deliveryKey || '').split(':')
+      const withdrawalId = message.withdrawalId || (parts[0] === 'withdraw' ? parts[1] : '')
+      const event = message.withdrawalEvent || parts[2]
+      if (!withdrawalId || !['approved', 'wait_confirm', 'rejected', 'paid', 'transfer_failed'].includes(event)) {
+        return { status: 'skipped', error: 'legacy_withdrawal_payload', templateKey: message.templateKey }
+      }
+      const request = await readOptionalDocument(db, 'withdraw_requests', withdrawalId)
+      const recipient = request && (request.assetType === 'user' ? request.userOpenid : request.staffOpenid)
+      const waiting = request && ['approved', 'transferring'].includes(request.status) &&
+        request.wechatTransferState === 'WAIT_USER_CONFIRM' && request.transferMode !== 'auto_confirm'
+      const billNo = request && (request.outBillNo || request.outDetailNo || '')
+      const obsolete = !request || recipient !== message.openid ||
+        (event === 'wait_confirm' && (!waiting || !billNo || message.withdrawalBillNo !== billNo)) ||
+        (event === 'approved' && (!['approved', 'transferring'].includes(request.status) || waiting)) ||
+        (event === 'rejected' && request.status !== 'rejected') ||
+        (event === 'paid' && request.status !== 'paid') ||
+        (event === 'transfer_failed' && request.status !== 'transfer_failed')
+      if (obsolete) return { status: 'skipped', error: 'withdrawal_notice_obsolete', templateKey: message.templateKey }
+      const rebuilt = withdrawalNotification({ ...request, _id: withdrawalId }, event)
+      message = { ...message, page: rebuilt.page, messageData: rebuilt.messageData }
+    }
     if (message.templateKey === 'adminMallOrderPaid') {
       const user = (await db.collection('users').where({ openid: message.openid }).limit(1).get()).data?.[0]
       if (!user?.roles?.includes('admin') || ['disabled', 'deleted'].includes(user.status) || !(await getAdminPermissionFlags(user, ['adminMall.listOrders']))['adminMall.listOrders']) {
@@ -377,6 +406,11 @@ module.exports = function createService({
     try { return await deliverSubscription({ openid, templateKey, page, messageData, orderId: orderId || '', ...(deliveryKey ? { deliveryKey } : {}) }, sendDelivery) }
     catch (error) { return { status: 'failed', error: String(error.message || error), templateKey } }
   }
+  async function notifyWithdrawal(request, event) {
+    try { return await deliverSubscription(withdrawalNotification(request, event), sendDelivery) }
+    catch (error) { return { status: 'failed', error: String(error.message || error) } }
+  }
+
   async function retryFailedSubscriptions() { return retrySubscriptionDeliveries(sendDelivery) }
 
   function notifyOrder(openid, templateKey, order, detail = {}, role = '', deliveryKey = '') {
@@ -546,6 +580,7 @@ module.exports = function createService({
     buildSubscriptionData,
     recordSubscriptionLog,
     sendSubscribeMessage,
+    notifyWithdrawal,
     retryFailedSubscriptions,
     notifyOrder,
     notifyOrderAccepted,

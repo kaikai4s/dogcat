@@ -123,3 +123,52 @@ test('consent component opens both readable agreements and emits explicit checkb
   for (const type of ['privacy', 'user_service']) page.methods.open.call(page, { currentTarget: { dataset: { type } } })
   assert.deepEqual(urls, ['/pages/common/agreement/index?type=privacy&mode=view', '/pages/common/agreement/index?type=user_service&mode=view'])
 })
+
+test('login click triggers consent modal instead of inline checkboxes and confirms seamlessly', async () => {
+  for (const file of ['pages/login/index.js', 'pages/client/profile/index.js']) {
+    const { page, calls } = load(file)
+    assert.equal(page.data.loginAgreed, false)
+    assert.equal(page.data.showConsentModal, false)
+
+    // 点击登录，未同意协议时不调用微信登录，而是弹出授权确认弹窗
+    page.login()
+    assert.equal(calls.length, 0)
+    assert.equal(page.data.showConsentModal, true)
+
+    // 用户在弹窗中取消
+    page.onConsentCancel()
+    assert.equal(page.data.showConsentModal, false)
+    assert.equal(page.data.loginAgreed, false)
+
+    // 重新点击登录并确认同意
+    page.login()
+    assert.equal(page.data.showConsentModal, true)
+    page.syncUserTheme = page.syncUserFont = () => {}
+    page.applyUser = page.loadStaffProfile = page.loadPoints = page.loadRewardMailUnread = () => {}
+    page.onConsentConfirm()
+    assert.equal(page.data.showConsentModal, false)
+    assert.equal(page.data.loginAgreed, true)
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0][1].agreementVersion, '2026-10-23')
+    await flush()
+  }
+
+  // 组件本身的 toggleCheck、onConfirm、onCancel 交互测试
+  const { page } = load('components/login-consent/index.js')
+  const events = []
+  page.data = { agreed: false }
+  page.triggerEvent = (name, detail) => events.push({ name, detail })
+
+  page.methods.toggleCheck.call(page)
+  assert.equal(page.data.agreed, true)
+  assert.equal(events.at(-1).name, 'change')
+  assert.equal(events.at(-1).detail.agreed, true)
+
+  page.methods.onCancel.call(page)
+  assert.equal(events.at(-1).name, 'cancel')
+
+  page.data.agreed = false
+  page.methods.onConfirm.call(page)
+  assert.equal(page.data.agreed, true)
+  assert.equal(events.at(-1).name, 'confirm')
+})

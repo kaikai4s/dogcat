@@ -1,4 +1,4 @@
-const { callFunction, showError, showLoading, hideLoading } = require('../../../utils/cloud')
+const { callFunction, showError, showLoading, hideLoading, loadSystemSettings, requestSubscribeTemplates } = require('../../../utils/cloud')
 const { navMethods } = require('../../../utils/nav')
 const { createClientRequestId } = require('../../../utils/offlineQueue')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
@@ -122,9 +122,18 @@ Page({
     Promise.resolve(this.load()).finally(() => wx.stopPullDownRefresh())
   },
 
+  onLoad(options = {}) {
+    if (options.tab === 'withdraws') this.setData({ activeTab: 'withdraws' })
+  },
+
   onShow() {
     this.applyCurrentTheme()
+    loadSystemSettings()
     this.load()
+  },
+
+  openWithdrawalSubscriptions() {
+    wx.navigateTo({ url: '/pages/common/subscriptions/index?role=staff' })
   },
 
   applyCurrentTheme() {
@@ -225,12 +234,15 @@ Page({
     }
     this._submittingLock = true
     this.setData({ submitting: true })
-    showLoading({ title: '正在提交提现...', mask: true })
-    callFunction('finance', 'createWithdrawRequest', {
-      amount,
-      payoutChannel: 'wechat_wallet',
-      clientRequestId: createClientRequestId('withdraw')
-    })
+    return requestSubscribeTemplates(['withdrawResult'], 'staff_withdraw')
+      .then(() => {
+        showLoading({ title: '正在提交提现...', mask: true })
+        return callFunction('finance', 'createWithdrawRequest', {
+          amount,
+          payoutChannel: 'wechat_wallet',
+          clientRequestId: createClientRequestId('withdraw')
+        })
+      })
       .then(() => {
         hideLoading()
         this._submittingLock = false
@@ -336,8 +348,11 @@ Page({
     if (!id || this._confirmingLock || this.data.transferBusy || this.data.confirmingId) return
     this._confirmingLock = true
     this.setData({ transferBusy: true, confirmingId: id, transferNotice: '' })
-    showLoading({ title: '正在调起收款确认...', mask: true })
-    callFunction('finance', 'getMyWithdrawTransferConfirmation', { id })
+    return requestSubscribeTemplates(['withdrawResult'], 'staff_withdraw')
+      .then(() => {
+        showLoading({ title: '正在调起收款确认...', mask: true })
+        return callFunction('finance', 'getMyWithdrawTransferConfirmation', { id })
+      })
       .then((result) => {
         hideLoading()
         const status = String(result && result.status || '').toUpperCase()

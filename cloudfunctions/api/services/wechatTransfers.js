@@ -1,4 +1,5 @@
 const { WECHAT_MIN_TRANSFER_CENTS, WECHAT_MAX_TRANSFER_CENTS } = require('../utils/wechatTransferLimits')
+const { withdrawalNotification } = require('./withdrawalNotifications')
 
 module.exports = function createService({
   crypto,
@@ -11,6 +12,7 @@ module.exports = function createService({
   markWechatWithdrawalPaid,
   markWechatWithdrawalFailed,
   prepareWechatSubmissionQuota,
+  enqueueSubscription,
   releaseFailedWithdrawal,
   now,
   safeText
@@ -232,8 +234,12 @@ module.exports = function createService({
         lastTransferCheckedAt: new Date(Math.max(new Date(time).getTime(), (new Date(request.lastTransferCheckedAt || 0).getTime() || 0) + 1)), updatedAt: time, ...patch,
         ...(incrementAttempt ? { transferAttemptCount: Number(request.transferAttemptCount || 0) + 1 } : {})
       }
+      const current = { ...request, ...updated, _id: withdrawId }
+      if (current.wechatTransferState === 'WAIT_USER_CONFIRM' && current.transferMode !== 'auto_confirm') {
+        await enqueueSubscription(tx, withdrawalNotification(current, 'wait_confirm'))
+      }
       await tx.collection('withdraw_requests').doc(withdrawId).update({ data: updated })
-      return { request: { ...request, ...updated }, changed: true }
+      return { request: current, changed: true }
     })
   }
 

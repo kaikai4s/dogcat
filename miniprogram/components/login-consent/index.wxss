@@ -1,4 +1,311 @@
-.consent-row { display:flex; flex-wrap:wrap; align-items:center; gap:6rpx; font-size:23rpx; line-height:1.8; color:#83786e; padding:20rpx 8rpx; }
-label { display:flex; align-items:center; }
-checkbox { transform:scale(.8); }
-.link { color:#b75e21; }
+@import "../../assets/fonts/remixicon.wxss";
+
+/* 模态浮层根容器 */
+.consent-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40rpx;
+  box-sizing: border-box;
+}
+
+/* 高质感暗色毛玻璃遮罩 */
+.consent-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(22, 17, 13, 0.62);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: consentFadeIn 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* 弹窗核心卡片 */
+.consent-dialog {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 620rpx;
+  background: linear-gradient(180deg, #ffffff 0%, #fffdfa 100%);
+  border-radius: 36rpx;
+  padding: 44rpx 36rpx 36rpx;
+  box-shadow: 0 24rpx 64rpx rgba(50, 30, 15, 0.22), 0 4rpx 16rpx rgba(0, 0, 0, 0.04);
+  border: 1rpx solid rgba(255, 140, 55, 0.16);
+  animation: consentPopIn 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.1) forwards;
+  box-sizing: border-box;
+}
+
+/* 右上角关闭按钮 */
+.consent-close {
+  position: absolute;
+  top: 24rpx;
+  right: 24rpx;
+  width: 56rpx;
+  height: 56rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #a39588;
+  font-size: 36rpx;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.consent-close-hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: #55483d;
+}
+
+/* 顶部徽标与标题区 */
+.consent-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 28rpx;
+}
+
+.consent-badge {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #fff2e6 0%, #ffe0cc 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20rpx;
+  box-shadow: 0 8rpx 20rpx rgba(255, 122, 69, 0.2);
+  border: 4rpx solid #ffffff;
+}
+
+.consent-badge-icon {
+  font-size: 52rpx;
+  color: #ff6b35;
+}
+
+.consent-title {
+  font-size: 34rpx;
+  font-weight: 800;
+  color: #2d211a;
+  line-height: 1.35;
+  margin-bottom: 10rpx;
+}
+
+.consent-subtitle {
+  font-size: 24rpx;
+  color: #8c7d71;
+  line-height: 1.5;
+  padding: 0 12rpx;
+}
+
+/* 协议说明卡片 */
+.consent-card {
+  background: #fdf8f3;
+  border: 1rpx solid rgba(255, 140, 55, 0.15);
+  border-radius: 20rpx;
+  padding: 24rpx 22rpx;
+  margin-bottom: 24rpx;
+}
+
+.consent-card-content {
+  font-size: 24rpx;
+  line-height: 1.7;
+  color: #635347;
+  text-align: justify;
+}
+
+.consent-normal-text {
+  color: #635347;
+}
+
+.consent-link {
+  color: #ff6b35;
+  font-weight: 700;
+  display: inline;
+  padding: 2rpx 2rpx;
+  border-radius: 6rpx;
+  transition: opacity 0.15s ease;
+}
+
+.consent-link:active {
+  opacity: 0.7;
+  background: rgba(255, 107, 53, 0.08);
+}
+
+/* 勾选确认行 */
+.consent-check-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  padding: 10rpx 4rpx 20rpx;
+}
+
+.consent-checkbox {
+  font-size: 36rpx;
+  color: #c7bcaf;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.consent-checkbox.checked {
+  color: #ff6b35;
+  transform: scale(1.06);
+}
+
+.consent-check-label {
+  font-size: 25rpx;
+  color: #55483d;
+  font-weight: 600;
+  user-select: none;
+}
+
+/* 隐藏原生 checkbox */
+.consent-hidden-checkbox {
+  display: none !important;
+}
+
+/* 底部操作按钮 */
+.consent-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  margin-top: 8rpx;
+}
+
+.consent-btn {
+  width: 100% !important;
+  height: 88rpx;
+  border-radius: 44rpx;
+  font-size: 30rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
+  border: none;
+  box-sizing: border-box;
+}
+
+.consent-btn::after {
+  border: none;
+}
+
+.primary-btn {
+  background: linear-gradient(135deg, #07c160 0%, #05a04e 100%);
+  color: #ffffff;
+  box-shadow: 0 10rpx 24rpx rgba(7, 193, 96, 0.28);
+  gap: 10rpx;
+}
+
+.btn-hover {
+  opacity: 0.9;
+  transform: translateY(2rpx);
+}
+
+.wechat-icon {
+  font-size: 36rpx;
+}
+
+.cancel-btn {
+  background: transparent;
+  color: #9e9086;
+  font-size: 27rpx;
+  font-weight: 500;
+  height: 68rpx;
+}
+
+.cancel-hover {
+  color: #635347;
+}
+
+/* 夜间模式适配 */
+.consent-modal.theme-night .consent-backdrop {
+  background: rgba(5, 5, 10, 0.78);
+}
+
+.consent-modal.theme-night .consent-dialog {
+  background: linear-gradient(180deg, #252839 0%, #1c1d2c 100%);
+  border-color: rgba(124, 140, 255, 0.22);
+  box-shadow: 0 24rpx 64rpx rgba(0, 0, 0, 0.55);
+}
+
+.consent-modal.theme-night .consent-close {
+  color: #7b7e9b;
+}
+
+.consent-modal.theme-night .consent-badge {
+  background: linear-gradient(135deg, #2e335f 0%, #3a3866 100%);
+  box-shadow: 0 8rpx 20rpx rgba(124, 140, 255, 0.25);
+  border-color: #2e335f;
+}
+
+.consent-modal.theme-night .consent-badge-icon {
+  color: #a78bfa;
+}
+
+.consent-modal.theme-night .consent-title {
+  color: #ffffff;
+}
+
+.consent-modal.theme-night .consent-subtitle {
+  color: #b9b6c8;
+}
+
+.consent-modal.theme-night .consent-card {
+  background: #2b2e46;
+  border-color: rgba(124, 140, 255, 0.2);
+}
+
+.consent-modal.theme-night .consent-card-content,
+.consent-modal.theme-night .consent-normal-text {
+  color: #d1cfe2;
+}
+
+.consent-modal.theme-night .consent-link {
+  color: #a78bfa;
+}
+
+.consent-modal.theme-night .consent-check-label {
+  color: #e5e3f5;
+}
+
+.consent-modal.theme-night .consent-checkbox {
+  color: #5f6280;
+}
+
+.consent-modal.theme-night .consent-checkbox.checked {
+  color: #a78bfa;
+}
+
+.consent-modal.theme-night .cancel-btn {
+  color: #8c8fa8;
+}
+
+/* 动效 */
+@keyframes consentFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes consentPopIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.92) translateY(24rpx);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}

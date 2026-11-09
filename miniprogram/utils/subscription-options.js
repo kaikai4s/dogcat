@@ -13,7 +13,7 @@ function subscriptionSections(role) {
   if (role === 'admin') return [['common', '商城管理通知', ['adminMallOrderPaid']]]
   return role === 'staff'
     ? [['common', '常用消息', ['staffDirectOrder', 'upcomingServiceReminder', 'serviceProgress', 'serviceFinish']], ['other', '其他消息', ['withdrawResult', 'disputeUpdate']]]
-    : [['common', '常用消息', ['orderAccepted', 'staffDeparture', 'serviceStart', 'serviceFinish']], ['other', '其他消息', ['serviceProgress', 'orderPaid', 'orderAssigned', 'remoteUnlock', 'refundResult', 'disputeUpdate']]]
+    : [['common', '常用消息', ['orderAccepted', 'staffDeparture', 'serviceStart', 'serviceFinish']], ['other', '其他消息', ['serviceProgress', 'orderPaid', 'orderAssigned', 'remoteUnlock', 'refundResult', 'withdrawResult', 'disputeUpdate']]]
 }
 
 function availableSubscriptionIds(settings, role) {

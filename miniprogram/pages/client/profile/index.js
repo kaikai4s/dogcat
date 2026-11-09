@@ -73,6 +73,7 @@ function getInitialProfileData() {
     isNavScrolled: false,
     dovlinLogoDogUrl: getDovlinLogoUrl(),
     loginAgreed: false,
+    showConsentModal: false,
     isGuest,
     isAdmin: roles.includes('admin'),
     showSettings: false,
@@ -336,6 +337,7 @@ Page({
     this.setData({
       isGuest: true,
       loginAgreed: false,
+      showConsentModal: false,
       isAdmin: false,
       staffProfile: null,
       staffEntryReady: true,
@@ -479,9 +481,18 @@ Page({
     this.setData({ loginAgreed: e.detail.agreed === true })
   },
 
+  onConsentConfirm() {
+    this.setData({ loginAgreed: true, showConsentModal: false })
+    this.login()
+  },
+
+  onConsentCancel() {
+    this.setData({ showConsentModal: false })
+  },
+
   login() {
     if (!this.data.loginAgreed) {
-      wx.showToast({ title: '请先阅读并同意用户协议和隐私政策', icon: 'none' })
+      this.setData({ showConsentModal: true })
       return
     }
     if (this.data.loading || this.data.loadingLogin) return

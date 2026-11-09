@@ -19,15 +19,20 @@ function setup(file, result = { requested: false, reason: 'request_failed' }) {
       if (action === 'createOrder') return Promise.resolve({ _id: 'order' })
       if (action === 'createPayment') return Promise.resolve({ paid: true })
       if (action === 'checkStartServiceReadiness') return Promise.resolve({ issues: [] })
+      if (action === 'getMyWithdrawTransferConfirmation') return Promise.resolve({ status: 'WAIT_USER_CONFIRM', packageInfo: 'package', mchId: 'merchant', appId: 'app' })
       return Promise.resolve({})
     },
     loadSystemSettings: async () => { events.push('settings'); return {} },
+    getCachedSystemSettings: () => ({}),
+    ensureLogin: () => Promise.resolve(),
     showLoading() {}, hideLoading() {}, showError: error => { throw error }
   }
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram/pages', file, 'index.js'), 'utf8'), {
     Page(config) { page = config }, console,
     wx: { showToast() {}, getLocation(options) { events.push('location'); if (options && options.fail) options.fail(new Error('mock location failure')) },
       showModal(options) { modals.push(options); if (options.success) options.success({ confirm: false }) },
+      navigateTo(options) { events.push(options.url) },
+      requestMerchantTransfer(options) { events.push('nativeTransfer'); options.success() },
       redirectTo(options) { events.push('redirect'); if (options.success) options.success() } },
     require(name) {
       if (name.endsWith('/cloud')) return cloud
@@ -117,6 +122,77 @@ test('remote unlock refusal is identified by ID mapping and has only one optiona
   assert.equal(modals[0].title, '远程开门提醒未开启')
   assert.ok(events.includes('createPayment'))
 })
+
+for (const [file, role, createAction] of [
+  ['staff/earnings', 'staff', 'createWithdrawRequest'],
+  ['client/profile/assets', 'client', 'createUserAssetWithdraw']
+]) {
+  for (const result of [
+    { requested: false, reason: 'request_failed' },
+    { requested: true, results: { withdrawal: 'reject' } }
+  ]) {
+    test(`${role} withdrawal requests consent in the original gesture, blocks duplicates and proceeds after ${result.requested ? 'refusal' : 'unavailability'}`, async () => {
+      const { page, events, requests, finish } = setup(file, result)
+      page.data.balance = { available: 20 }
+      page.data.summary = { availableAmount: 20 }
+      page.data.amount = '10'
+      page.data.withdrawAmount = '10'
+      const pending = page.withdraw()
+      assert.deepEqual(events, ['consent'])
+      assert.deepEqual(requests, [{ keys: ['withdrawResult'], scene: `${role}_withdraw` }])
+      page.withdraw()
+      assert.equal(requests.length, 1)
+      finish()
+      await pending
+      assert.deepEqual(events, ['consent', createAction])
+      assert.equal(page._submittingLock, false)
+      assert.equal(role === 'staff' ? page.data.submitting : page.data.withdrawing, false)
+    })
+
+    test(`${role} confirmation requests consent before its initial query, blocks duplicates and preserves native flow after ${result.requested ? 'refusal' : 'unavailability'}`, async () => {
+      const { page, events, requests, finish } = setup(file, result)
+      page.autoCheckTransferStatus = async id => { assert.equal(id, 'withdrawal'); events.push('syncTransfer') }
+      const tap = { currentTarget: { dataset: { id: 'withdrawal' } } }
+      const pending = page.confirmWithdrawTransfer(tap)
+      assert.deepEqual(events, ['consent'])
+      assert.deepEqual(requests, [{ keys: ['withdrawResult'], scene: `${role}_withdraw` }])
+      page.confirmWithdrawTransfer(tap)
+      assert.equal(requests.length, 1)
+      finish()
+      await pending
+      assert.deepEqual(events, ['consent', 'getMyWithdrawTransferConfirmation', 'nativeTransfer', 'syncTransfer'])
+      assert.equal(page._confirmingLock, false)
+      assert.equal(page.data.transferBusy, false)
+      assert.equal(page.data.confirmingId, '')
+    })
+  }
+
+  test(`${role} invalid withdrawal and missing confirmation ID never request consent`, async () => {
+    const { page, events } = setup(file)
+    await page.withdraw()
+    page.confirmWithdrawTransfer({ currentTarget: { dataset: {} } })
+    assert.deepEqual(events, [])
+  })
+
+  test(`${role} withdrawal tab routing and role-specific subscription entry`, () => {
+    const { page, events } = setup(file)
+    const initialTab = page.data.activeTab
+    page.onLoad({ tab: 'unknown' })
+    assert.equal(page.data.activeTab, initialTab)
+    page.onLoad({ tab: 'withdraws' })
+    assert.equal(page.data.activeTab, 'withdraws')
+    page.openWithdrawalSubscriptions()
+    assert.deepEqual(events, [`/pages/common/subscriptions/index?role=${role}`])
+  })
+
+  test(`${role} refreshes subscription settings on show before any withdrawal gesture`, async () => {
+    const { page, events } = setup(file)
+    page.applyCurrentTheme = () => {}
+    page.onShow()
+    await flush()
+    assert.deepEqual(events, ['settings'])
+  })
+}
 
 test('staff requesting remote unlock does not ask for customer authorization on the staff phone', async () => {
   const { page, requests, events } = setup('staff/orders/service')

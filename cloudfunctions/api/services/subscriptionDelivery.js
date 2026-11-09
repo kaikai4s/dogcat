@@ -130,12 +130,14 @@ module.exports = function createService({ db, crypto, now }) {
     adminMallOrderPaid: '管理员商城新订单提醒',
     orderPaid: '支付成功通知', serviceStart: '服务开始通知', serviceProgress: '服务进度通知', serviceFinish: '服务完成通知',
     remoteUnlock: '开锁请求通知', upcomingServiceReminder: '即将服务提醒', refundResult: '退款结果通知',
-    disputeUpdate: '售后进度通知', withdrawResult: '提现结果通知', orderCancelled: '订单取消/过期通知', staffCancellation: '订单取消/过期通知',
+    disputeUpdate: '售后进度通知', withdrawResult: '提现状态变更提醒', orderCancelled: '订单取消/过期通知', staffCancellation: '订单取消/过期通知',
     orderChat: '在线沟通未读提醒'
   }
   function deliveryReason(row) {
     if (row.isQuotaExhausted || Number(row.code) === 43101 || /43101/.test(row.error || '')) return '用户未同意或订阅次数已用完，请用户重新订阅'
     return ({ subscription_disabled: '后台订阅消息开关未开启', template_not_configured: '尚未配置该通知模板 ID',
+      withdrawal_notice_obsolete: '提现状态或收款单已变化，已跳过过期提醒',
+      legacy_withdrawal_payload: '历史提现通知缺少可核验记录，已跳过发送',
       legacy_refund_payload: '历史退款通知缺少本次金额和结果时间，已保留记录并跳过发送',
       legacy_order_not_accepted: '旧记录在宠托师接单前生成，已跳过提前发送的接单通知',
       service_reminder_obsolete: '订单已出发、开始、完成或改派，已跳过过期的前往服务提醒',

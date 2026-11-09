@@ -21,6 +21,9 @@ test('applyWechatTransferResult preserves existing wechatPackageInfo on query re
   const service = createWechatTransferService({
     crypto: require('node:crypto'),
     db,
+    ...require('../../cloudfunctions/api/services/subscriptionDelivery')({
+      db, crypto: require('node:crypto'), now: () => new Date()
+    }),
     getSystemSettings: async () => ({ payment: { mchId: 'mch_test', appId: 'app_test' } }),
     getWechatTransferConfig: () => ({ appId: 'app_test' }),
     wechatPayRequest: async () => ({}),
