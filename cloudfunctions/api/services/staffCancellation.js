@@ -1,6 +1,7 @@
 const { readDocuments } = require('../utils/documentPages')
 
-module.exports = function createService({ db, crypto, now, toTimeValue, createRefundForOrder, appendOrderClientMessage, notifyOrder }) {
+module.exports = function createService(context) {
+  const { db, crypto, now, toTimeValue, createRefundForOrder, appendOrderClientMessage, notifyOrder } = context
   const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex')
   const tokenFor = order => hash(['staff_assignment', order._id, order.staffOpenid, toTimeValue(order.assignedAt)])
   const eventIdFor = (openid, data) => `staff_cancel_${hash([data.orderId, openid, data.assignmentToken]).slice(0, 32)}`
@@ -132,6 +133,16 @@ module.exports = function createService({ db, crypto, now, toTimeValue, createRe
       } })
       patch.hasDepositPenaltyEvidence = true
       patch.depositPenaltyEvidenceIds = [...new Set([...(order.depositPenaltyEvidenceIds || []), eventId])]
+      if (typeof context.enqueueAdminAuditNotification === 'function') {
+        await context.enqueueAdminAuditNotification(tx, {
+          auditType: 'staff_cancellation_penalty',
+          targetId: eventId,
+          applicant: order.staffName || user.nickname || '宠托师',
+          type: '取消接单违约审核',
+          reason: `接单取消违约待核定保证金（${data.reason || '取消接单'}）`,
+          page: 'pages/admin/finance/index?tab=deposits'
+        }).catch(() => {})
+      }
     }
     await tx.collection('payment_events').doc(eventId).set({ data: event })
     const timelineTitle = q.publishMode === 'direct' ? '宠托师已取消预约' : '宠托师已取消接单'

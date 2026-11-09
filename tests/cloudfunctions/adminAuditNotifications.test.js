@@ -194,6 +194,19 @@ test('adminPendingAudit: covers community application, appearance customization,
         refundStatus: 'applied'
       }
     ],
+    user_feedback: [
+      {
+        _id: 'fb_1',
+        status: 'pending'
+      }
+    ],
+    staff_deposit_evidences: [
+      {
+        _id: 'ev_1',
+        status: 'pending',
+        amountPendingReview: true
+      }
+    ],
     subscription_logs: [],
     admin_notifications: []
   })
@@ -226,4 +239,16 @@ test('adminPendingAudit: covers community application, appearance customization,
   // 模拟已审核通过
   db.state.mall_orders.find(r => r._id === 'mo_1').refundStatus = 'approved'
   assert.equal(await context.isAuditTargetHandled('mall_after_sale', 'mo_1'), true)
+
+  // 5. 用户意见反馈
+  assert.equal(await context.isAuditTargetHandled('user_feedback', 'fb_1'), false)
+  // 模拟已回复结案
+  db.state.user_feedback.find(r => r._id === 'fb_1').status = 'resolved'
+  assert.equal(await context.isAuditTargetHandled('user_feedback', 'fb_1'), true)
+
+  // 6. 宠托师接单取消违约审核
+  assert.equal(await context.isAuditTargetHandled('staff_cancellation_penalty', 'ev_1'), false)
+  // 模拟已核定
+  db.state.staff_deposit_evidences.find(r => r._id === 'ev_1').status = 'deducted'
+  assert.equal(await context.isAuditTargetHandled('staff_cancellation_penalty', 'ev_1'), true)
 })

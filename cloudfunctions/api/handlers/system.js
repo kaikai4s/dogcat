@@ -8,6 +8,7 @@ module.exports = function createHandler(context) {
     getSubscriptionBalanceSummary,
     getSystemSettings,
     getUser,
+    notifyAdminAudit,
     now,
     recordSubscriptionBalance,
     safeFileId,
@@ -135,6 +136,16 @@ module.exports = function createHandler(context) {
         updatedAt: time
       }
       const created = await db.collection('user_feedback').add({ data: feedback })
+      if (typeof notifyAdminAudit === 'function') {
+        notifyAdminAudit({
+          auditType: 'user_feedback',
+          targetId: created._id,
+          applicant: user.nickname || user.phone || '用户',
+          type: '用户反馈待处理',
+          reason: content.slice(0, 20) || '提交产品意见与建议',
+          page: 'pages/admin/home/index'
+        }).catch(() => {})
+      }
       return { _id: created._id }
     }
     throw new Error('未知 system 操作')

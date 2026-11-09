@@ -519,7 +519,7 @@
           <view class="notice">请从当前小程序的微信公众平台「订阅消息 → 我的模板」复制完整模板 ID。7272、8560 等数字是模板编号，不能作为模板 ID 填入；其他小程序的 ID 也不可用。前台出现微信错误码 20001 时请优先核对此处配置，20002 时检查是否混用了不同类型的模板。</view>
           <view class="notice">管理员提醒：商城已付款新订单与各类业务待审核待办已全面支持管理员微信订阅。管理员可在控制台「管理员消息订阅」主动授权；每次同意增加一次提醒机会。</view>
           <view class="field-item"><text class="label">管理员待审核通知模板</text><input class="input" value="{{settings.subscription.templates.adminPendingAudit}}" data-field="adminPendingAudit" bindinput="subscriptionTemplateInput" placeholder="权限待审核通知模板 ID（35413）" /></view>
-          <view class="policy-notice">模板 35413（权限待审核通知）：申请人 thing1、申请类型 thing2、申请理由 thing3。涵盖宠托师入驻、实操视频、提现申请、疫苗认证、晋升转正、首次用品报销、押金退还、新增小区维护、乐园专属形象定制、订单客诉与商城售后等新待办产生时，向已授权的全部管理员推送微信服务通知。</view>
+          <view class="policy-notice">模板 35413（权限待审核通知）：申请人 thing1、申请类型 thing2、申请理由 thing3。涵盖宠托师入驻、实操视频、提现申请、疫苗认证、晋升转正、首次用品报销、押金退还、新增小区维护、乐园专属形象定制、订单客诉、商城售后、意见反馈与接单取消违约审核等全量新待办产生时，向已授权的全部管理员推送微信服务通知。</view>
           <view class="field-item"><text class="label">管理员商城新订单提醒模板</text><input class="input" value="{{settings.subscription.templates.adminMallOrderPaid}}" data-field="adminMallOrderPaid" bindinput="subscriptionTemplateInput" placeholder="与支付成功模板字段一致；留空沿用支付成功模板" /></view>
           <view class="policy-notice">支付到账后通知有商城订单权限的管理员。管理员需在控制台「管理员消息订阅」主动授权；每次同意增加一次提醒机会。</view>
           <view class="field-item"><text class="label">支付成功模板</text><input class="input" value="{{settings.subscription.templates.orderPaid}}" data-field="orderPaid" bindinput="subscriptionTemplateInput" /></view>
