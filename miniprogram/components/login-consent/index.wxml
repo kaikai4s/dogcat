@@ -27,7 +27,7 @@
     </view>
 
     <!-- 勾选确认行 -->
-    <view class="consent-check-wrapper" bindtap="toggleCheck">
+    <view class="consent-check-wrapper {{shakeCheck ? 'consent-shake' : ''}}" bindtap="toggleCheck">
       <view class="consent-checkbox {{agreed ? 'checked' : ''}}">
         <text class="remix-icon {{agreed ? 'ri-checkbox-circle-fill' : 'ri-checkbox-blank-circle-line'}}"></text>
       </view>

@@ -39,8 +39,16 @@ Component({
     // 点击“同意并继续登录”
     onConfirm() {
       if (!this.data.agreed) {
-        this.setData({ agreed: true })
-        this.triggerEvent('change', { agreed: true })
+        this.setData({ shakeCheck: true })
+        if (this._shakeTimer) clearTimeout(this._shakeTimer)
+        this._shakeTimer = setTimeout(() => {
+          this.setData({ shakeCheck: false })
+        }, 600)
+        wx.showToast({
+          title: '请先阅读并勾选协议',
+          icon: 'none'
+        })
+        return
       }
       this.triggerEvent('confirm', { agreed: true })
     },

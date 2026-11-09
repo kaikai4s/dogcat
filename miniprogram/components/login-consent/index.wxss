@@ -147,6 +147,26 @@
   justify-content: center;
   gap: 12rpx;
   padding: 10rpx 4rpx 20rpx;
+  transition: transform 0.2s ease;
+}
+
+.consent-check-wrapper.consent-shake {
+  animation: consentShake 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+.consent-check-wrapper.consent-shake .consent-checkbox {
+  color: #ff5000 !important;
+  transform: scale(1.22);
+}
+
+.consent-check-wrapper.consent-shake .consent-check-label {
+  color: #ff5000 !important;
+}
+
+@keyframes consentShake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-12rpx); }
+  40%, 80% { transform: translateX(12rpx); }
 }
 
 .consent-checkbox {

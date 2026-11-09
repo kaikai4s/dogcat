@@ -140,12 +140,19 @@ test('login click triggers consent modal instead of inline checkboxes and confir
     assert.equal(page.data.showConsentModal, false)
     assert.equal(page.data.loginAgreed, false)
 
-    // 重新点击登录并确认同意
+    // 重新点击登录，未勾选时点击确认不会登录
     page.login()
     assert.equal(page.data.showConsentModal, true)
     page.syncUserTheme = page.syncUserFont = () => {}
     page.applyUser = page.loadStaffProfile = page.loadPoints = page.loadRewardMailUnread = () => {}
-    page.onConsentConfirm()
+    page.onConsentConfirm({ detail: { agreed: false } })
+    assert.equal(page.data.showConsentModal, true)
+    assert.equal(page.data.loginAgreed, false)
+    assert.equal(calls.length, 0)
+
+    // 用户勾选后再确认，成功无缝继续登录
+    page.onLoginConsentChange({ detail: { agreed: true } })
+    page.onConsentConfirm({ detail: { agreed: true } })
     assert.equal(page.data.showConsentModal, false)
     assert.equal(page.data.loginAgreed, true)
     assert.equal(calls.length, 1)
@@ -159,16 +166,23 @@ test('login click triggers consent modal instead of inline checkboxes and confir
   page.data = { agreed: false }
   page.triggerEvent = (name, detail) => events.push({ name, detail })
 
+  // 未勾选时点击确认：应当拦截，不触发 confirm 事件，触发抖动提醒
+  page.methods.onConfirm.call(page)
+  assert.equal(page.data.agreed, false)
+  assert.equal(page.data.shakeCheck, true)
+  assert.equal(events.filter(e => e.name === 'confirm').length, 0)
+
+  // 点击勾选行
   page.methods.toggleCheck.call(page)
   assert.equal(page.data.agreed, true)
   assert.equal(events.at(-1).name, 'change')
   assert.equal(events.at(-1).detail.agreed, true)
 
+  // 勾选后点击确认：成功触发 confirm
+  page.methods.onConfirm.call(page)
+  assert.equal(events.at(-1).name, 'confirm')
+  assert.equal(events.at(-1).detail.agreed, true)
+
   page.methods.onCancel.call(page)
   assert.equal(events.at(-1).name, 'cancel')
-
-  page.data.agreed = false
-  page.methods.onConfirm.call(page)
-  assert.equal(page.data.agreed, true)
-  assert.equal(events.at(-1).name, 'confirm')
 })

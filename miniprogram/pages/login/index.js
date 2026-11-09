@@ -29,7 +29,12 @@ Page({
     this.setData(getThemeState(theme.value))
   },
 
-  onConsentConfirm() {
+  onConsentConfirm(e) {
+    const agreed = e && e.detail && e.detail.agreed !== undefined ? Boolean(e.detail.agreed) : this.data.loginAgreed
+    if (!agreed) {
+      wx.showToast({ title: '请先阅读并勾选协议', icon: 'none' })
+      return
+    }
     this.setData({ loginAgreed: true, showConsentModal: false })
     this.login()
   },
