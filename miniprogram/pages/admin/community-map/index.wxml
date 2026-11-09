@@ -2,7 +2,7 @@
   <view class="page-title">小区地图管理</view>
   <view class="description">这里接收用户新增申请并整理未匹配地址。核验公共点后，用户下单可直接选择该小区。</view>
   <view class="management-tools">
-    <picker mode="region" bindchange="changeCity"><view class="city-filter">{{city || '选择城市'}} ⌄</view></picker>
+    <picker mode="region" value="{{[city || '成都市']}}" bindchange="changeCity"><view class="city-filter">{{city || '选择城市'}} ⌄</view></picker>
     <button class="link-button" wx:if="{{city}}" bindtap="clearCity">全部城市</button>
     <button class="add-button" bindtap="add" wx:if="{{adminSuper || adminPermissions.communityMap_saveAdmin}}">新增小区</button>
   </view>

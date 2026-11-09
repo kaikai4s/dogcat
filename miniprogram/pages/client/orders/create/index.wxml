@@ -183,7 +183,7 @@
     <view class="order-community-box" wx:if="{{!groupBuyMode && form.publishMode === 'open' && locationReady}}">
       <view class="strong">地图展示小区（选填）</view>
       <view class="muted">选择服务地址附近3公里内的小区，让宠托师在该小区找到订单。地图只展示小区公共点，上门地址仍以你填写的地址为准。</view>
-      <picker mode="region" bindchange="changeCommunityCity" disabled="{{creating || communityApplicationBusy}}"><view class="order-community-city">{{form.city || '选择服务地址所在城市'}} ⌄</view></picker>
+      <picker mode="region" value="{{[form.city || '成都市']}}" bindchange="changeCommunityCity" disabled="{{creating || communityApplicationBusy}}"><view class="order-community-city">{{form.city || '选择服务地址所在城市'}} ⌄</view></picker>
       <view class="order-community-search"><input placeholder="搜索附近已维护的小区" value="{{communityKeyword}}" bindinput="inputCommunityKeyword" bindconfirm="searchOrderCommunities" maxlength="60" disabled="{{creating}}" /><button bindtap="searchOrderCommunities" loading="{{communityLoading}}" disabled="{{creating}}">搜索</button></view>
       <view class="order-community-selected" wx:if="{{orderCommunity}}"><view class="order-community-copy"><view class="strong">已选：{{orderCommunity.name}}</view><view class="muted">{{orderCommunity.city}} {{orderCommunity.district}}</view></view><button bindtap="clearOrderCommunity" disabled="{{creating || communityApplicationBusy}}">取消选择</button></view>
       <view class="order-community-status" wx:if="{{communityApplicationStatus}}">{{communityApplicationStatus}}<button bindtap="clearOrderCommunity" disabled="{{creating || communityApplicationBusy}}">取消关联</button></view>

@@ -81,9 +81,28 @@ Page({
     try {
       await requirePrivacyAuthorize()
       if (this._closed || token !== this._formToken) return
-      const point = await new Promise((resolve, reject) => wx.chooseLocation({
-        ...(validPoint(form) ? { latitude: Number(form.latitude), longitude: Number(form.longitude) } : {}), success: resolve, fail: reject
-      }))
+      const initialPoint = validPoint(form) ? { latitude: Number(form.latitude), longitude: Number(form.longitude) } : null
+      const point = await new Promise((resolve, reject) => {
+        const doOpen = (coords) => {
+          const params = {}
+          if (coords && Number.isFinite(Number(coords.latitude)) && Number.isFinite(Number(coords.longitude))) {
+            params.latitude = Number(coords.latitude)
+            params.longitude = Number(coords.longitude)
+          }
+          wx.chooseLocation({ ...params, success: resolve, fail: reject })
+        }
+        if (initialPoint) {
+          doOpen(initialPoint)
+        } else if (typeof wx.getLocation === 'function') {
+          wx.getLocation({
+            type: 'gcj02',
+            success: (loc) => doOpen({ latitude: loc.latitude, longitude: loc.longitude }),
+            fail: () => doOpen(null)
+          })
+        } else {
+          doOpen(null)
+        }
+      })
       if (this._closed || token !== this._formToken) return
       if (!validPoint(point)) throw new Error('请选择有效的小区公共入口')
       const fields = communityLocationFields(point)

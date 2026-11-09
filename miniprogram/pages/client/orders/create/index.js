@@ -1938,7 +1938,10 @@ typeof Page === 'function' ? Page({
     if (this._closed || this.data.creating) return
     if(this.data.groupBuyMode)return this.showBookingNotice({title:'拼单地点固定为本人所属小区'})
     const seq = this._addressSeq = (this._addressSeq || 0) + 1
-    return chooseSelectedLocation()
+    const initialCoords = (this.data.form && this.data.form.addressLatitude && this.data.form.addressLongitude)
+      ? { latitude: this.data.form.addressLatitude, longitude: this.data.form.addressLongitude }
+      : null
+    return chooseSelectedLocation(initialCoords)
       .then((location) => {
         if (this._closed || this.data.creating || seq !== this._addressSeq) return
         this.setData({

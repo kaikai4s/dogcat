@@ -431,21 +431,54 @@ function requirePrivacyAuthorize() {
   })
 }
 
-function openChooseLocation() {
+function openChooseLocation(options = {}) {
   return new Promise((resolve, reject) => {
-    wx.chooseLocation({
-      success: (location) => {
-        const saved = saveSelectedLocation({ ...location, locationSource: 'manual' })
-        if (saved) resolve(saved)
-        else reject(new Error('位置信息无效'))
-      },
-      fail: reject
-    })
+    let lat = Number(options && options.latitude)
+    let lng = Number(options && options.longitude)
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) {
+      const saved = getSelectedLocation()
+      if (saved && Number.isFinite(Number(saved.latitude)) && Number.isFinite(Number(saved.longitude)) &&
+          (Number(saved.latitude) !== 0 || Number(saved.longitude) !== 0)) {
+        lat = Number(saved.latitude)
+        lng = Number(saved.longitude)
+      }
+    }
+
+    const doChoose = (initialCoords) => {
+      const params = {}
+      if (initialCoords && Number.isFinite(Number(initialCoords.latitude)) && Number.isFinite(Number(initialCoords.longitude)) &&
+          (Number(initialCoords.latitude) !== 0 || Number(initialCoords.longitude) !== 0)) {
+        params.latitude = Number(initialCoords.latitude)
+        params.longitude = Number(initialCoords.longitude)
+      }
+      wx.chooseLocation({
+        ...params,
+        success: (location) => {
+          const saved = saveSelectedLocation({ ...location, locationSource: 'manual' })
+          if (saved) resolve(saved)
+          else reject(new Error('位置信息无效'))
+        },
+        fail: reject
+      })
+    }
+
+    if (Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0)) {
+      doChoose({ latitude: lat, longitude: lng })
+    } else if (typeof wx.getLocation === 'function') {
+      // 首次选点且无缓存坐标时，静默快速获取当前设备 GPS 经纬度作为地图初始中心点，防止地图默认居中在千里之外（如北京）导致首项错误
+      wx.getLocation({
+        type: 'gcj02',
+        success: (loc) => doChoose({ latitude: loc.latitude, longitude: loc.longitude }),
+        fail: () => doChoose(null)
+      })
+    } else {
+      doChoose(null)
+    }
   })
 }
 
-function chooseSelectedLocation() {
-  return requirePrivacyAuthorize().then(() => openChooseLocation())
+function chooseSelectedLocation(options) {
+  return requirePrivacyAuthorize().then(() => openChooseLocation(options))
 }
 
 function getCurrentLocation() {

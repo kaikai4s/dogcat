@@ -75,7 +75,10 @@ Page({
   chooseLocation() {
     if (this._closed) return
     const seq = this._locationSeq = (this._locationSeq || 0) + 1
-    return chooseSelectedLocation()
+    const initialCoords = (this.data.form && this.data.form.latitude && this.data.form.longitude)
+      ? { latitude: this.data.form.latitude, longitude: this.data.form.longitude }
+      : null
+    return chooseSelectedLocation(initialCoords)
       .then((loc) => {
         if (this._closed || seq !== this._locationSeq) return
         this.setData({

@@ -4,7 +4,7 @@
   <view class="staff-home-hero">
     <view class="hero-topline">
       <view class="hero-badge">宠托师端</view>
-      <picker mode="region" bindchange="onCityPickerChange">
+      <picker mode="region" value="{{[selectedCity || currentCity || '成都市']}}" bindchange="onCityPickerChange">
         <view class="city-selector-btn">
           <text class="remix-icon ri-map-pin-2-fill city-icon"></text>
           <text class="city-name">{{selectedCity || '选择城市'}}</text>
