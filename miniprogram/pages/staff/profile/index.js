@@ -4,7 +4,7 @@ const { withStaffWorkflowText } = require('../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { loadMessageUnread } = require('../../../utils/client-nav')
 const { DEFAULT_CARD_STYLE, isHexColor, normalizeCardStyle, buildCardStyle } = require('../utils/profileCardStyle')
-const { extractLocationCity, sameCity } = require('../../../utils/location-city')
+const { extractLocationCity, sameCity } = require('../utils/location-city')
 
 const STAFF_PROFILE_STORAGE = 'staff_profile_display_cache_v1'
 const STAFF_CACHE_TTL = 24 * 60 * 60 * 1000

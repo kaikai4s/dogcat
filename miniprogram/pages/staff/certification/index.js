@@ -3,7 +3,7 @@ const { callFunction, showError, chooseSelectedLocation } = require('../../../ut
 const { withAuditText, withStaffWorkflowText } = require('../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { loadMessageUnread } = require('../../../utils/client-nav')
-const { extractLocationCity, sameCity } = require('../../../utils/location-city')
+const { extractLocationCity, sameCity } = require('../utils/location-city')
 
 const { createPageNav, navMethods } = require('../../../utils/nav')
 

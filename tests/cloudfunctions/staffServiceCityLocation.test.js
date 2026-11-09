@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { createCollectionStore, loadCloudFunction } = require('./helpers')
 const backend = require('../../cloudfunctions/api/utils/locationCity')
-const frontend = require('../../miniprogram/utils/location-city')
+const frontend = require('../../miniprogram/pages/staff/utils/location-city')
 
 test('location city parser only trusts the leading province/city prefix', () => {
   const cases = {
