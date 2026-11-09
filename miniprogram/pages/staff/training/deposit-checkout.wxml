@@ -50,10 +50,10 @@
             <button class="ghost-btn checkout-choose-address" bindtap="chooseSupplyAddress" loading="{{choosingSupplyAddress}}" disabled="{{depositBusy || choosingSupplyAddress}}"><text class="remix-icon ri-map-pin-line"></text><text>选择微信收货地址</text></button>
             <view class="checkout-manual-label">也可手动填写</view>
             <view class="field-label">收件人</view>
-            <input class="supply-address-input {{supplyAddressErrors.name ? 'input-invalid' : ''}}" value="{{supplyAddress.name}}" data-field="name" bindinput="supplyAddressInput" placeholder="收件人姓名" maxlength="40" focus="{{supplyAddressFocus === 'name'}}" disabled="{{depositBusy || choosingSupplyAddress}}" cursor-spacing="24" />
+            <input class="supply-address-input {{supplyAddressErrors.name ? 'input-invalid' : ''}}" value="{{supplyAddress.name}}" data-field="name" bindinput="supplyAddressInput" placeholder="收件人姓名" maxlength="40" disabled="{{depositBusy || choosingSupplyAddress}}" cursor-spacing="24" />
             <view class="checkout-field-error" wx:if="{{supplyAddressErrors.name}}">{{supplyAddressErrors.name}}</view>
             <view class="field-label">收件手机号</view>
-            <input class="supply-address-input {{supplyAddressErrors.phone ? 'input-invalid' : ''}}" type="number" value="{{supplyAddress.phone}}" data-field="phone" bindinput="supplyAddressInput" placeholder="11位手机号" maxlength="11" focus="{{supplyAddressFocus === 'phone'}}" disabled="{{depositBusy || choosingSupplyAddress}}" cursor-spacing="24" />
+            <input class="supply-address-input {{supplyAddressErrors.phone ? 'input-invalid' : ''}}" type="number" value="{{supplyAddress.phone}}" data-field="phone" bindinput="supplyAddressInput" placeholder="11位手机号" maxlength="11" disabled="{{depositBusy || choosingSupplyAddress}}" cursor-spacing="24" />
             <view class="checkout-field-error" wx:if="{{supplyAddressErrors.phone}}">{{supplyAddressErrors.phone}}</view>
             <view class="field-label">所在地区</view>
             <picker mode="region" value="{{supplyRegion}}" bindchange="supplyRegionChange" disabled="{{depositBusy || choosingSupplyAddress}}">
@@ -61,7 +61,7 @@
             </picker>
             <view class="checkout-field-error" wx:if="{{supplyAddressErrors.region}}">{{supplyAddressErrors.region}}</view>
             <view class="field-label">详细地址</view>
-            <input class="supply-address-input {{supplyAddressErrors.detail ? 'input-invalid' : ''}}" value="{{supplyAddress.detail}}" data-field="detail" bindinput="supplyAddressInput" placeholder="街道、小区、楼栋及门牌号" maxlength="100" focus="{{supplyAddressFocus === 'detail'}}" disabled="{{depositBusy || choosingSupplyAddress}}" cursor-spacing="24" />
+            <input class="supply-address-input {{supplyAddressErrors.detail ? 'input-invalid' : ''}}" value="{{supplyAddress.detail}}" data-field="detail" bindinput="supplyAddressInput" placeholder="街道、小区、楼栋及门牌号" maxlength="100" disabled="{{depositBusy || choosingSupplyAddress}}" cursor-spacing="24" />
             <view class="checkout-field-error" wx:if="{{supplyAddressErrors.detail}}">{{supplyAddressErrors.detail}}</view>
             <view class="deposit-address-note">{{depositIntent === 'payment' ? '确认后创建保证金支付，支付成功后由平台安排寄送。' : '提交后由平台安排寄送，请核对收货信息。'}}</view>
           </block>

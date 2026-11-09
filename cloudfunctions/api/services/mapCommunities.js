@@ -62,9 +62,11 @@ module.exports = function createMapCommunities({ db, crypto, hasCoordinate, calc
       const lat = source.addressLatitude ?? source.serviceLatitude ?? source.latitude
       const lng = source.addressLongitude ?? source.serviceLongitude ?? source.longitude
       if (!hasCoordinate(lat, lng)) return null
+      const isLinkedByApplication = Boolean(application && byApplication.has(application))
+      const isLinkedById = Boolean(id && byId.has(id))
       const candidates = (id ? (byId.has(id) ? [byId.get(id)] : [])
-        : application ? (byApplication.has(application) ? [byApplication.get(application)] : []) : findByName(source.serviceAddress, city)).filter(row =>
-        publicCommunity(row) && (!city || cityKeys.get(row._id) === city) &&
+        : isLinkedByApplication ? [byApplication.get(application)] : findByName(source.serviceAddress, city)).filter(row =>
+        publicCommunity(row) && (isLinkedById || isLinkedByApplication || !city || cityKeys.get(row._id) === city) &&
         calcDistanceKm(lat, lng, row.latitude, row.longitude) <=
           (source.serviceCommunitySelection === 'client' || application ? selectionRadiusKm : Number(row.matchRadiusKm || 1)))
       // Ambiguous estates still require manual verification, even if one is closer.
@@ -100,15 +102,16 @@ module.exports = function createMapCommunities({ db, crypto, hasCoordinate, calc
       if (source.deletedAt || source.adminDeletedAt || source.groupBuyRefundRequired || matcher.match(source)) return
       const sourceCity = String(source.city || source.serviceCity || '').trim()
       const application = pendingApplications.get(source.serviceCommunityApplicationId)
-      const associated = application && normalizeCityName(sourceCity) === application.cityKey ? application : null
+      const associated = application || null
       const address = associated?.name || source.serviceAddress
       if (!communityName(address)) return
-      if (!sourceCity) { missingCityCount++; return }
-      const existing = matcher.findByName(address, sourceCity)
-      const parts = communityAddress(address, sourceCity, associated?.district || source.district || source.serviceDistrict || (existing.length === 1 ? existing[0].district : ''))
+      if (!sourceCity && !associated?.city) { missingCityCount++; return }
+      const effectiveCity = sourceCity || associated?.city || ''
+      const existing = matcher.findByName(address, effectiveCity)
+      const parts = communityAddress(address, effectiveCity, associated?.district || source.district || source.serviceDistrict || (existing.length === 1 ? existing[0].district : ''))
       const name = parts.name.slice(0, 60)
       if (!name) return
-      const baseKey = `${normalizeCityName(sourceCity)}|${nameKey(name)}`
+      const baseKey = `${normalizeCityName(effectiveCity)}|${nameKey(name)}`
       if (!districts.has(baseKey)) districts.set(baseKey, new Set())
       if (parts.district) districts.get(baseKey).add(parts.district)
       const latitude = source.addressLatitude ?? source.serviceLatitude, longitude = source.addressLongitude ?? source.serviceLongitude
@@ -118,7 +121,8 @@ module.exports = function createMapCommunities({ db, crypto, hasCoordinate, calc
         : previousId && !activeCommunityIds.has(previousId) ? '原关联小区已停用或不存在，请重新选择'
         : existing.length > 1 ? '同名小区，需核对位置'
         : existing.length === 1 ? (existing[0].retiredAt ? '该小区已删除，不接受新住户' : existing[0].enabled ? '服务地址超出自动匹配距离，请核对公共点或下单时直接选择' : '已维护但未启用') : '尚未维护公共小区'
-      pending.push({ sourceCity, name, baseKey, district: parts.district, existing, kind, reason })
+      pending.push({ sourceCity: effectiveCity, name, baseKey, district: parts.district, existing, kind, reason,
+        ...(associated ? { applicationId: associated._id } : {}) })
     }
     for (const order of orders) add(order, 'orderCount')
     for (const profile of profiles) add(profile, 'staffCount')
@@ -143,7 +147,9 @@ module.exports = function createMapCommunities({ db, crypto, hasCoordinate, calc
           reason: entry.reason })
       }
       groups.get(groupKey)[entry.kind]++
-      if (entry.applicationId) groups.get(groupKey).applicationIds.push(entry.applicationId)
+      if (entry.applicationId && !groups.get(groupKey).applicationIds.includes(entry.applicationId)) {
+        groups.get(groupKey).applicationIds.push(entry.applicationId)
+      }
     }
     return { list: [...groups.values()].sort((a, b) => b.orderCount - a.orderCount || b.staffCount - a.staffCount || a._id.localeCompare(b._id)), missingCityCount }
   }

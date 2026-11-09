@@ -587,3 +587,64 @@ test('published sitters with legacy province-prefixed service cities remain visi
   const result = await handler('client', 'listSitters', { city: '深圳市', communityId: id })
   assert.equal(result.total, 1); assert.equal(result.communities[0].count, 1)
 })
+
+test('admin can correct wrong city on application and save, updating application, open orders and clearing candidate', async () => {
+  const { apply, admin, db } = applicationFixture()
+  // 用户申请时填错了城市：填了广州市，但实际小区在深圳市
+  const applied = await apply('client-a', { name: '南山花园', city: '广州市', district: '天河区' })
+  assert.ok(applied.applicationId)
+
+  // 用户同时创建了一笔待接单订单，使用了该申请且订单城市也是广州市
+  db.state.orders.push(order({
+    _id: 'order_wrong_city',
+    city: '广州市',
+    serviceAddress: '南山花园南门',
+    addressLatitude: 22.540,
+    addressLongitude: 113.930,
+    serviceCommunityApplicationId: applied.applicationId,
+    status: 'paid',
+    publishMode: 'open'
+  }))
+
+  // 待处理列表中，该候选能够正确关联到用户的申请单（包含 applicationIds，从而具备驳回或选点启用的操作）
+  const pendingBefore = await admin('listAdmin', { view: 'pending', city: '广州市' })
+  assert.equal(pendingBefore.total, 1)
+  assert.ok(pendingBefore.list[0].applicationIds.includes(applied.applicationId))
+
+  // 管理员在地图选点时发现真实坐标在深圳市，于是将城市纠正为【深圳市】保存公共小区
+  const saved = await admin('saveAdmin', {
+    name: '南山花园',
+    city: '深圳市',
+    district: '南山区',
+    latitude: 22.541,
+    longitude: 113.931,
+    enabled: true,
+    confirmPublic: true,
+    applicationIds: [applied.applicationId]
+  })
+  assert.ok(saved.id)
+
+  // 校验申请单已被办结，且城市已被纠正为深圳市
+  const appDoc = db.state.platform_configs.find(r => r._id === applied.applicationId)
+  assert.equal(appDoc.status, 'resolved')
+  assert.equal(appDoc.serviceCommunityId, saved.id)
+  assert.equal(appDoc.city, '深圳市')
+  assert.equal(appDoc.cityCorrected, true)
+
+  // 校验系统通知中明确向用户说明城市已更正
+  const notices = applicationNotices(db)
+  assert.equal(notices.length, 1)
+  assert.match(notices[0].content, /所在城市已更正为深圳市/)
+
+  // 校验关联的待接订单城市已被同步更正为深圳市，且关联到新小区
+  const updatedOrder = db.state.orders.find(o => o._id === 'order_wrong_city')
+  assert.equal(updatedOrder.city, '深圳市')
+  assert.equal(updatedOrder.serviceCommunityId, saved.id)
+  assert.equal(updatedOrder.serviceCommunityName, '南山花园')
+
+  // 校验待处理列表中孤儿数据彻底消除（无论是查广州还是查深圳，均不再残留）
+  const gzPendingAfter = await admin('listAdmin', { view: 'pending', city: '广州市' })
+  assert.equal(gzPendingAfter.total, 0)
+  const szPendingAfter = await admin('listAdmin', { view: 'pending', city: '深圳市' })
+  assert.equal(szPendingAfter.total, 0)
+})

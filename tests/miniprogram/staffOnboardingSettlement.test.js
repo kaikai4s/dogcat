@@ -440,3 +440,33 @@ test('unloaded training page ignores its pending response', async () => {
   await pending
   assert.equal(h.page.data.quiz, null)
 })
+
+test('supplyAddressInput updates address smoothly without focus flickering or keyboard dismissal', () => {
+  const h = harness('staff/training', async () => ({}))
+  const template = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/staff/training/deposit-checkout.wxml'), 'utf8')
+  // 模板中不能有动态绑定 focus="{{supplyAddressFocus..." 属性，否则在微信小程序中每次 setData 都会触发 native input 的失焦并收起键盘
+  assert.equal(template.includes('focus="{{supplyAddressFocus'), false, 'input must not bind focus to dynamic expression to avoid keyboard closing on each character')
+
+  h.page.data.supplyAddressErrors = { name: '请填写收件人姓名', phone: '请填写手机号' }
+  h.page.data.supplyAddress = { name: '', phone: '' }
+
+  let lastPatch = null
+  h.page.setData = (patch) => {
+    lastPatch = patch
+    Object.assign(h.page.data, patch)
+  }
+
+  // 输入第一个字符
+  h.page.supplyAddressInput({ currentTarget: { dataset: { field: 'name' } }, detail: { value: '张' } })
+  assert.equal(h.page.data.supplyAddress.name, '张')
+  assert.equal(h.page.data.supplyAddressErrors.name, undefined)
+  assert.equal(h.page.data.supplyAddressErrors.phone, '请填写手机号')
+  assert.equal('supplyAddressFocus' in lastPatch, false)
+
+  // 输入第二个字符
+  h.page.supplyAddressInput({ currentTarget: { dataset: { field: 'name' } }, detail: { value: '张三' } })
+  assert.equal(h.page.data.supplyAddress.name, '张三')
+  // 错误已经清除的情况下，不需要再次向 patch 中塞入 supplyAddressErrors
+  assert.equal('supplyAddressErrors' in lastPatch, false)
+  assert.equal('supplyAddressFocus' in lastPatch, false)
+})

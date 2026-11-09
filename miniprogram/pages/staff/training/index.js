@@ -187,9 +187,17 @@ Page({
     const field = e.currentTarget.dataset.field
     if (!['name', 'phone', 'province', 'city', 'district', 'detail'].includes(field) || this.data.depositBusy) return
     this._supplyAddressDraftEdited = true
-    const errors = { ...this.data.supplyAddressErrors }
-    delete errors[field]
-    this.setData({ supplyAddress: { ...this.data.supplyAddress, [field]: e.detail.value }, supplyAddressErrors: errors, supplyAddressFocus: '' })
+    const nextAddress = { ...(this.data.supplyAddress || {}), [field]: e.detail.value }
+    const patch = { supplyAddress: nextAddress }
+    if (this.data.supplyAddressErrors && this.data.supplyAddressErrors[field]) {
+      const errors = { ...this.data.supplyAddressErrors }
+      delete errors[field]
+      patch.supplyAddressErrors = errors
+    }
+    if (this.data.supplyAddressFocus) {
+      patch.supplyAddressFocus = ''
+    }
+    this.setData(patch)
   },
   supplyRegionChange(e) {
     if (this.data.depositBusy) return

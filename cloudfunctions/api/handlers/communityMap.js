@@ -232,8 +232,17 @@ module.exports = function createHandler(context) {
       await checkTextSecurity(openid, [name, city, district, ...aliases].join(' '), { scene: 1, label: '公共小区资料' })
       // Validate the city snapshot with document locks; nearby duplicate checks
       // must stay valid until commit, including moves between two cities.
-      const cityKeys = [...new Set([cityKey, existing && context.normalizeCityName(existing.city)].filter(Boolean))].sort()
+      const rawApplications = []
+      for (const applicationId of applicationIds) {
+        const app = await readOptionalDocument(db, 'platform_configs', applicationId)
+        if (app && app.key === 'map_community_application') rawApplications.push(app)
+      }
+      const cityKeys = [...new Set([cityKey, existing && context.normalizeCityName(existing.city), ...rawApplications.map(a => a.cityKey)].filter(Boolean))].sort()
       const locks = cityKeys.map(value => 'map_community_catalog_' + hash(value).slice(0, 24))
+      const relatedOrders = applicationIds.length ? await readDocuments(db, db.command, 'orders', {
+        serviceCommunityApplicationId: db.command.in(applicationIds),
+        status: db.command.in(['pending_pay', 'paid'])
+      }, 100) : []
       for (let attempt = 0; attempt < 3; attempt++) {
         const versions = []
         for (const lockId of locks) versions.push(Number((await readOptionalDocument(db, 'platform_configs', lockId))?.version || 0))
@@ -258,9 +267,9 @@ module.exports = function createHandler(context) {
             const founderApplications = []
             for (const applicationId of applicationIds) {
               const application = await readOptionalDocument(tx, 'platform_configs', applicationId)
-              if (!application || application.key !== 'map_community_application' || application.cityKey !== cityKey ||
+              if (!application || application.key !== 'map_community_application' ||
                   !['pending', 'resolved'].includes(application.status) ||
-                  (application.status === 'resolved' && application.serviceCommunityId !== id)) throw new Error('小区申请已变化、已被驳回或城市不一致，请刷新核对')
+                  (application.status === 'resolved' && application.serviceCommunityId !== id)) throw new Error('小区申请已变化或已被驳回，请刷新核对')
               const identity = communityAddress(application.name, application.city, application.district)
               if (application.status === 'pending' && matchingApplications(rejectedApplications, identity.name, identity.district).length) {
                 throw new Error('该小区已有被驳回的申请，不能再次通过，请刷新核对')
@@ -291,11 +300,35 @@ module.exports = function createHandler(context) {
               revision: Number(current?.revision || 0) + (publicChanged ? 1 : 0),
               editVersion: Number(current?.editVersion || current?.revision || 0) + 1, createdAt: current?.createdAt || now() } })
             for (const application of pendingApplications) {
+              const isCityCorrected = application.cityKey !== cityKey
               await tx.collection('platform_configs').doc(application._id).update({ data: {
-                status: 'resolved', serviceCommunityId: id, resolvedAt: now(), resolvedByOpenid: openid, updatedAt: now()
+                status: 'resolved', serviceCommunityId: id,
+                city, cityKey, district: district || application.district || '',
+                originalCity: application.city, originalCityKey: application.cityKey,
+                cityCorrected: isCityCorrected,
+                resolvedAt: now(), resolvedByOpenid: openid, updatedAt: now()
               } })
-              await context.notifyCommunityApplicationResult(tx, application, { status: 'resolved', communityId: id, communityName: name,
-                founder: !current && !!founderUserId && application._id === founderApplications[0]?._id }, { ...admin, openid })
+              await context.notifyCommunityApplicationResult(tx, application, {
+                status: 'resolved',
+                communityId: id,
+                communityName: name,
+                cityCorrection: isCityCorrected ? city : '',
+                founder: !current && !!founderUserId && application._id === founderApplications[0]?._id
+              }, { ...admin, openid })
+            }
+            for (const order of relatedOrders) {
+              const orderCityKey = context.normalizeCityName(order.city)
+              const patchOrder = {
+                serviceCommunityId: id,
+                serviceCommunityName: name,
+                serviceCommunitySelection: 'application',
+                updatedAt: now()
+              }
+              if (orderCityKey !== cityKey) {
+                patchOrder.city = city
+                patchOrder.originalOrderCity = order.city
+              }
+              await tx.collection('orders').doc(order._id).update({ data: patchOrder })
             }
             for (let i = 0; i < locks.length; i++) await tx.collection('platform_configs').doc(locks[i]).set({ data: {
               key: 'map_community_catalog', cityKey: cityKeys[i], version: versions[i] + 1, updatedAt: now() } })
