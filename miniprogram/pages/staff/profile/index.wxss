@@ -191,20 +191,25 @@
 .card-subtitle {
   display: flex;
   align-items: center;
-  gap: 10rpx;
+  gap: 8rpx;
   color: #2d211a;
-  font-size: 30rpx;
+  font-size: 28rpx;
   font-weight: 950;
+  white-space: nowrap;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 .sub-icon {
   color: #e9672f;
-  font-size: 34rpx;
+  font-size: 32rpx;
+  flex-shrink: 0;
 }
 
 .edit-pill-btn {
-  height: 56rpx;
-  padding: 0 20rpx;
+  flex-shrink: 0;
+  height: 52rpx;
+  padding: 0 16rpx;
   border-radius: 999rpx;
   background: #fff0e2;
   color: #d45f22;
@@ -215,6 +220,7 @@
   gap: 6rpx;
   border: none;
   line-height: 1;
+  white-space: nowrap;
 }
 
 .info-list {
@@ -1157,7 +1163,7 @@
 }
 
 .skeleton-config-btn {
-  width: 140rpx;
+  width: 110rpx;
   height: 48rpx;
   border-radius: 999rpx;
 }

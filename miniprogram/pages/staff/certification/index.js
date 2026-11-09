@@ -183,7 +183,7 @@ Page({
   },
 
   // Returns true when the typed city already agrees with the map pick (or cannot be verified).
-  confirmServiceCity(locationCity = extractLocationCity(this.data.form.serviceLocationAddress)) {
+  confirmServiceCity(locationCity = extractLocationCity(this.data.form.serviceLocationAddress || this.data.form.serviceAddress)) {
     const serviceCity = String(this.data.form.serviceCity || '').trim()
     if (!locationCity || sameCity(serviceCity, locationCity)) return true
     wx.showModal({

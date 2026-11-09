@@ -255,7 +255,10 @@ Page({
         rejectUnvaccinatedPets: p.rejectUnvaccinatedPets === true,
         profileBackgroundFileId: p.profileBackgroundFileId || '',
         profileIntro: p.profileIntro || '',
-        weeklySchedule: JSON.parse(JSON.stringify(schedule))
+        weeklySchedule: JSON.parse(JSON.stringify(schedule)),
+        pendingServiceCity: '',
+        confirmServiceCityChange: false,
+        serviceLocationAddress: ''
       },
       activeDay: 1
     })
@@ -344,24 +347,31 @@ Page({
   chooseConfigAddress() {
     chooseSelectedLocation()
       .then((loc) => {
-        // serviceCity is locked after approval; moving cities needs platform review.
+        // serviceCity follows the map pick; moving cities needs explicit confirmation.
         const locationCity = extractLocationCity(loc.address)
         const lockedCity = String((this.data.profile && this.data.profile.serviceCity) || '').trim()
-        if (locationCity && lockedCity && lockedCity !== '服务城市待完善' && !sameCity(lockedCity, locationCity)) {
-          wx.showModal({
-            title: '服务城市不一致',
-            content: `所选地址位于「${locationCity}」，与认证服务城市「${lockedCity}」不一致。请在「${lockedCity}」内重新选点；如需更换服务城市，请联系平台审核更正。`,
-            showCancel: false,
-            confirmText: '我知道了'
-          })
-          return
-        }
-        this.setData({
+        const applyAddress = (cityChange) => this.setData({
           ['configForm.serviceAddress']: loc.name || loc.address || '',
           ['configForm.serviceLocationAddress']: loc.address || '',
           ['configForm.serviceLatitude']: loc.latitude,
-          ['configForm.serviceLongitude']: loc.longitude
+          ['configForm.serviceLongitude']: loc.longitude,
+          ['configForm.confirmServiceCityChange']: cityChange,
+          ['configForm.pendingServiceCity']: cityChange ? locationCity : ''
         })
+        if (locationCity && lockedCity && lockedCity !== '服务城市待完善' && !sameCity(lockedCity, locationCity)) {
+          wx.showModal({
+            title: '更换服务城市',
+            content: `所选地址位于「${locationCity}」，服务城市将从「${lockedCity}」改为「${locationCity}」。保存后需重新确认公开地图所属小区；如新小区尚未维护，需等待平台审核启用后才能选择。`,
+            confirmText: '确认更换',
+            cancelText: '重新选点',
+            success: (res) => {
+              if (res.confirm) applyAddress(true)
+              else this.chooseConfigAddress()
+            }
+          })
+          return
+        }
+        applyAddress(false)
       })
       .catch((err) => {
         if (err && err.errMsg && err.errMsg.includes('cancel')) return

@@ -141,7 +141,7 @@
         <text>接单服务与时间段配置</text>
       </view>
       <button class="edit-pill-btn" bindtap="openConfigModal">
-        <text class="remix-icon ri-edit-line"></text>编辑配置
+        <text class="remix-icon ri-edit-line"></text>编辑
       </button>
     </view>
     <view class="info-list">
@@ -289,6 +289,7 @@
             </view>
             <view class="addr-placeholder" wx:else>📍 点击选择固定服务地址</view>
             <view class="coord-text" wx:if="{{configForm.serviceLatitude}}">坐标: {{configForm.serviceLatitude}}, {{configForm.serviceLongitude}}</view>
+            <view class="coord-text" wx:if="{{configForm.pendingServiceCity}}">保存后服务城市将改为：{{configForm.pendingServiceCity}}</view>
           </view>
           <button class="mini-btn">修改位置</button>
         </view>

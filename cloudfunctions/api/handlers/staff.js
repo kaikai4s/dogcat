@@ -854,7 +854,7 @@ module.exports = function createHandler(context) {
         throw new Error('宠托师认证必须设置固定服务地址及坐标')
       }
       // The typed city drives community matching; reject it when it disagrees with the map pick.
-      assertServiceCityMatchesLocation(serviceCity, data.serviceLocationAddress)
+      assertServiceCityMatchesLocation(serviceCity, data.serviceLocationAddress || data.serviceAddress)
       if (!idCardFrontFileId || !idCardBackFileId) throw new Error('请上传身份证正反面照片')
       if (!facePhotoFileId) throw new Error('请上传自拍/人脸照片')
 
@@ -1069,9 +1069,15 @@ module.exports = function createHandler(context) {
       }
       const user = await getUser(openid)
       if (!user.roles.includes('staff')) throw new Error('仅宠托师可更新接单配置')
-      const identityFields = ['gender', 'realName', 'phone', 'idCardNumber', 'idCardFrontFileId', 'idCardBackFileId', 'facePhotoFileId', 'serviceCity', 'serviceAreas']
+      const identityFields = ['gender', 'realName', 'phone', 'idCardNumber', 'idCardFrontFileId', 'idCardBackFileId', 'facePhotoFileId', 'serviceAreas']
       if (identityFields.some((key) => data[key] !== undefined && data[key] !== profile[key])) {
         throw new Error('认证资料已锁定，如需更正请联系平台审核')
+      }
+      const pickedCity = extractLocationCity(data.serviceLocationAddress || data.serviceAddress)
+      if (data.serviceCity !== undefined && data.serviceCity !== profile.serviceCity) {
+        if (!data.confirmServiceCityChange || !pickedCity || !sameCity(data.serviceCity, pickedCity)) {
+          throw new Error('认证资料已锁定，如需更正请联系平台审核')
+        }
       }
 
       const time = now()
@@ -1117,11 +1123,22 @@ module.exports = function createHandler(context) {
         if (!serviceAddress || !hasCoordinate(serviceLatitude, serviceLongitude)) {
           throw new Error('请选择有效的固定服务地址及坐标')
         }
-        // serviceCity is locked after approval, so a re-picked address must stay in that city.
-        const pickedCity = extractLocationCity(data.serviceLocationAddress)
+        // serviceCity cannot be typed after approval; it may only follow a re-picked
+        // map address, and moving cities requires the staff member's explicit confirmation.
         const lockedCity = safeText(profile.serviceCity).trim()
-        if (pickedCity && lockedCity && lockedCity !== '服务城市待完善' && !sameCity(lockedCity, pickedCity)) {
-          throw new Error(`新服务地址位于「${pickedCity}」，与认证服务城市「${lockedCity}」不一致。如需更换服务城市，请联系平台审核更正`)
+        const hasLockedCity = Boolean(lockedCity) && lockedCity !== '服务城市待完善'
+        if (pickedCity && !hasLockedCity) {
+          updateData.serviceCity = pickedCity
+        } else if (pickedCity && !sameCity(lockedCity, pickedCity)) {
+          if (data.confirmServiceCityChange !== true) {
+            throw new Error(`新服务地址位于「${pickedCity}」，与当前服务城市「${lockedCity}」不一致，请确认更换服务城市后再保存`)
+          }
+          updateData.serviceCity = pickedCity
+          updateData.previousServiceCity = lockedCity
+          updateData.serviceCityChangedAt = time
+          // Public map nodes are city-scoped; the staff must re-pick a community in the new city.
+          updateData.publicMapEnabled = false
+          updateData.publicBookingNeedsConfirmation = true
         }
 
         updateData.serviceAddress = serviceAddress
