@@ -185,14 +185,17 @@
       <view class="rest-list-title">已设置的不接单日期（未来30天）</view>
       <view class="rest-dates-list" wx:if="{{restDateList.length > 0}}">
         <view class="rest-date-item" wx:for="{{restDateList}}" wx:key="dateKey">
-          <view class="rest-item-info">
-            <text class="remix-icon ri-cup-line rest-item-icon"></text>
+          <view class="rest-date-header">
+            <text class="remix-icon ri-calendar-check-line rest-item-icon"></text>
             <view class="rest-date-text">{{item.dateKey}} ({{item.dayName || '休息日'}})</view>
           </view>
-          <button class="resume-work-btn" data-date="{{item.dateKey}}" bindtap="deleteRestDate">
-            <text class="remix-icon ri-restart-line"></text>
-            <text>恢复接单</text>
-          </button>
+          <view class="rest-item-actions">
+            <view class="rest-badge">休息不接单</view>
+            <button class="resume-work-btn" data-date="{{item.dateKey}}" bindtap="deleteRestDate">
+              <text class="remix-icon ri-restart-line"></text>
+              <text>恢复接单</text>
+            </button>
+          </view>
         </view>
       </view>
       <view class="empty-slot" wx:else>

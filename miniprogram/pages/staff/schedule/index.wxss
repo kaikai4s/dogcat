@@ -528,18 +528,30 @@
   display: flex;
   flex-wrap: wrap;
   gap: 14rpx;
+  align-items: center;
+}
+
+.until-actions-row picker {
+  flex: 1;
+  min-width: 260rpx;
 }
 
 .until-actions-row .preset-btn {
-  flex: none;
-  padding: 0 28rpx;
+  width: 100% !important;
+  margin: 0 !important;
+  height: 80rpx;
+  box-sizing: border-box;
 }
 
 .until-actions-row .save-until-btn {
-  margin-left: auto;
+  flex: 1;
+  min-width: 260rpx;
+  height: 80rpx;
 }
 
-.danger-ghost {
+.until-actions-row .danger-ghost {
+  flex: 1;
+  min-width: 240rpx;
   color: #dc2626 !important;
   background: #fef2f2 !important;
 }
@@ -613,29 +625,29 @@
 .rest-dates-list {
   display: flex;
   flex-direction: column;
-  gap: 14rpx;
+  gap: 16rpx;
 }
 
 .rest-date-item {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20rpx 24rpx;
+  flex-direction: column;
+  gap: 14rpx;
+  padding: 22rpx 26rpx;
   border-radius: 22rpx;
   background: #fff9f6;
-  border: 1rpx solid rgba(234, 88, 12, 0.14);
+  border: 1rpx solid rgba(234, 88, 12, 0.16);
+  box-sizing: border-box;
 }
 
-.rest-item-info {
+.rest-date-header {
   display: flex;
   align-items: center;
   gap: 12rpx;
-  min-width: 0;
-  flex: 1;
+  width: 100%;
 }
 
 .rest-item-icon {
-  font-size: 30rpx;
+  font-size: 32rpx;
   color: #ea580c;
   flex-shrink: 0;
 }
@@ -647,25 +659,50 @@
   white-space: nowrap;
 }
 
+.rest-item-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding-top: 14rpx;
+  border-top: 1rpx dashed rgba(234, 88, 12, 0.16);
+}
+
+.rest-badge {
+  font-size: 22rpx;
+  font-weight: 800;
+  color: #dc2626;
+  background: #fee2e2;
+  padding: 6rpx 18rpx;
+  border-radius: 999rpx;
+  line-height: 1.2;
+}
+
 .resume-work-btn {
-  flex-shrink: 0;
+  margin: 0 !important;
+  width: auto !important;
+  min-width: 0 !important;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6rpx;
   height: 56rpx;
-  padding: 0 20rpx;
+  padding: 0 24rpx !important;
   border-radius: 999rpx;
   background: #fff0e2;
   color: #d45f22;
-  border: 1rpx solid rgba(212, 95, 34, 0.2);
-  font-size: 22rpx;
+  border: 1rpx solid rgba(212, 95, 34, 0.25);
+  font-size: 23rpx;
   font-weight: 850;
   line-height: 1;
-  margin-left: 16rpx;
 }
 
 .resume-work-btn .remix-icon {
   font-size: 24rpx;
+}
+
+.resume-work-btn::after {
+  display: none;
 }
 
 .empty-icon.green {
