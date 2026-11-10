@@ -9,6 +9,7 @@ module.exports = function createService({
   appendOrderTimeline,
   beijingClockText,
   buildMallOrderTitle,
+  calculateStaffEarningForOrder,
   cloud,
   db,
   deliverSubscription,
@@ -94,12 +95,24 @@ module.exports = function createService({
       }
     }
     if (templateKey === 'staffDirectOrder') {
+      let rawEarning = detail.staffEarning !== undefined
+        ? Number(detail.staffEarning)
+        : (order.staffEarning !== undefined ? Number(order.staffEarning) : null)
+      if (rawEarning === null || !Number.isFinite(rawEarning)) {
+        if (order.isUrgent && Number(order.urgentStaffReward) > 0) {
+          rawEarning = Number(order.urgentStaffReward)
+        } else {
+          const defaultRate = 0.7
+          rawEarning = Math.round(Number(order.payAmount || 0) * defaultRate * 100) / 100
+        }
+      }
+      const earningAmountStr = Number.isFinite(rawEarning) ? Math.max(0, rawEarning).toFixed(2) : '0.00'
       return {
         character_string2: { value: safeText(orderNo).slice(0, 32) },
         thing5: { value: safeText(detail.tip || '您有新的指定预约，请及时查看并确认').slice(0, 20) },
         thing9: { value: safeText(serviceName).slice(0, 20) },
         time10: { value: formatDateTime(order.startTime) },
-        amount3: { value: Number(order.payAmount).toFixed(2) }
+        amount3: { value: earningAmountStr }
       }
     }
     if (templateKey === 'orderAccepted') {

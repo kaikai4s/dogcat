@@ -39,7 +39,7 @@ test('only paid designated bookings notify the requested staff with exact 8560 f
   await pay()
   assert.deepEqual(sent, [{ touser: 'staff', templateId: 'direct-8560', page: 'pages/staff/orders/detail/index?id=order', data: {
     character_string2: { value: 'O202610110002' }, thing5: { value: '您有新的指定预约，请及时查看并确认' },
-    thing9: { value: '上门遛狗' }, time10: { value: '2099-10-11 10:00' }, amount3: { value: '89.90' }
+    thing9: { value: '上门遛狗' }, time10: { value: '2099-10-11 10:00' }, amount3: { value: '62.93' }
   } }])
   await ctx.settleOrderPayment('order', { paymentNo: db.state.orders[0].paymentNo })
   await ctx.retryFailedSubscriptions()
@@ -134,7 +134,7 @@ for (const kind of ['request', 'assignment']) {
     await ctx.retryFailedSubscriptions()
     assert.equal(sent.length, 1)
     assert.equal(sent[0].touser, 'staff')
-    assert.equal(sent[0].data.amount3.value, '89.90')
+    assert.equal(sent[0].data.amount3.value, '62.93')
     await ctx.retryFailedSubscriptions()
     assert.equal(sent.length, 1)
   })
