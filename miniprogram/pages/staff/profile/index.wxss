@@ -197,8 +197,9 @@
   font-size: 28rpx;
   font-weight: 950;
   white-space: nowrap;
-  flex-shrink: 0;
+  flex: 1;
   min-width: 0;
+  overflow: hidden;
 }
 
 .sub-icon {
@@ -213,17 +214,17 @@
   max-width: fit-content;
   margin: 0 0 0 auto !important;
   flex-shrink: 0;
-  height: 48rpx;
-  padding: 0 18rpx !important;
+  height: 42rpx;
+  padding: 0 12rpx !important;
   border-radius: 999rpx;
   background: #fff0e2;
   color: #d45f22;
-  font-size: 22rpx;
+  font-size: 20rpx;
   font-weight: 850;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6rpx;
+  gap: 4rpx;
   border: none;
   line-height: 1;
   white-space: nowrap;
@@ -725,6 +726,30 @@
   color: #f53f3f;
 }
 
+.schedule-hint-banner {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 12rpx 16rpx;
+  background: #fff4ea;
+  border-radius: 14rpx;
+  margin-bottom: 16rpx;
+  border-left: 6rpx solid #ff7a45;
+}
+
+.schedule-hint-banner .hint-icon {
+  font-size: 26rpx;
+  color: #d45f22;
+  flex-shrink: 0;
+}
+
+.schedule-hint-banner .hint-text {
+  font-size: 22rpx;
+  color: #a45318;
+  line-height: 1.4;
+  font-weight: 700;
+}
+
 .slot-list {
   display: flex;
   flex-direction: column;
@@ -803,6 +828,25 @@
   border: none;
   line-height: 1;
   margin-left: auto;
+  box-shadow: 0 4rpx 12rpx rgba(255, 122, 69, 0.25);
+}
+
+.add-slot-tip {
+  margin-top: 12rpx;
+  font-size: 20rpx;
+  color: #ff7a45;
+  font-weight: 750;
+  line-height: 1.5;
+  padding: 0 4rpx;
+}
+
+.add-slot-tip .tip-line {
+  display: block;
+}
+
+.add-slot-tip .tip-sub {
+  padding-left: 28rpx;
+  color: #a45318;
 }
 
 .config-modal-footer {

@@ -1,5 +1,5 @@
 const { uploadImage } = require('../../../utils/image-upload')
-const { callFunction, showError, chooseSelectedLocation, getCachedUser } = require('../../../utils/cloud')
+const { callFunction, showError, showLoading, hideLoading, chooseSelectedLocation, getCachedUser } = require('../../../utils/cloud')
 const { withStaffWorkflowText } = require('../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { loadMessageUnread } = require('../../../utils/client-nav')
@@ -399,27 +399,54 @@ Page({
   },
 
   bindStartHourChange(e) {
-    this.setData({ startHourIndex: Number(e.detail.value) })
+    const val = Number(e.detail.value)
+    this.setData({ startHourIndex: val })
+    this.promptAddSlotNotice(val, this.data.endHourIndex)
   },
 
   bindEndHourChange(e) {
-    this.setData({ endHourIndex: Number(e.detail.value) })
+    const val = Number(e.detail.value)
+    this.setData({ endHourIndex: val })
+    this.promptAddSlotNotice(this.data.startHourIndex, val)
+  },
+
+  promptAddSlotNotice(start, end) {
+    if (end > start) {
+      const dayName = this.data.weekdays[this.data.activeDay - 1]?.label || '当前星期'
+      wx.showToast({
+        title: `已选时间，请点【+ 添加】加入${dayName}`,
+        icon: 'none',
+        duration: 2000
+      })
+    }
   },
 
   addTimeSlot() {
-    const { activeDay, startHourIndex, endHourIndex, configForm } = this.data
+    const { activeDay, startHourIndex, endHourIndex, configForm, weekdays } = this.data
     if (endHourIndex <= startHourIndex) {
       wx.showToast({ title: '结束时间必须大于开始时间', icon: 'none' })
       return
     }
     const dayKey = String(activeDay)
     const list = Array.isArray(configForm.weeklySchedule[dayKey]) ? configForm.weeklySchedule[dayKey] : []
+    const isDuplicate = list.some(slot => slot.start === startHourIndex && slot.end === endHourIndex)
+    if (isDuplicate) {
+      wx.showToast({ title: '该时间段已存在', icon: 'none' })
+      return
+    }
+    const hasOverlap = list.some(slot => Math.max(slot.start, startHourIndex) < Math.min(slot.end, endHourIndex))
+    if (hasOverlap) {
+      wx.showToast({ title: '该时间段与已有时间重叠', icon: 'none' })
+      return
+    }
     const updated = [...list, { start: startHourIndex, end: endHourIndex }]
     updated.sort((a, b) => a.start - b.start)
 
     this.setData({
       [`configForm.weeklySchedule.${dayKey}`]: updated
     })
+    const dayName = weekdays[activeDay - 1]?.label || '当前星期'
+    wx.showToast({ title: `已成功加入${dayName}`, icon: 'success' })
   },
 
   removeTimeSlot(e) {
@@ -461,13 +488,29 @@ Page({
       return
     }
 
+    this.executeSaveConfig()
+  },
+
+  executeSaveConfig() {
+    if (this._savingLock) return
+    this._savingLock = true
+    if (typeof showLoading === 'function') {
+      showLoading({ title: '正在保存配置...', mask: true })
+    }
+
     callFunction('staff', 'updateStaffProfileConfig', this.data.configForm)
       .then(() => {
-        wx.showToast({ title: '配置已更新', icon: 'none' })
+        if (typeof hideLoading === 'function') hideLoading()
+        this._savingLock = false
+        wx.showToast({ title: '配置已更新', icon: 'success' })
         this.closeConfigModal()
         this.loadProfile()
       })
-      .catch(showError)
+      .catch((err) => {
+        if (typeof hideLoading === 'function') hideLoading()
+        this._savingLock = false
+        showError(err)
+      })
   },
 
   go(e) {

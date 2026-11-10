@@ -20,6 +20,8 @@ function createStaffProfilePage(options = {}) {
     getCachedUser: () => cachedUser,
     callFunction: callFunctionMock,
     showError: () => {},
+    showLoading: () => {},
+    hideLoading: () => {},
     chooseSelectedLocation: async () => ({})
   }
 
@@ -57,7 +59,20 @@ function createStaffProfilePage(options = {}) {
   const setDataLog = []
   page.setData = function(patch, cb) {
     setDataLog.push(patch)
-    Object.assign(this.data, patch)
+    for (const [key, val] of Object.entries(patch || {})) {
+      if (key.includes('.')) {
+        const parts = key.split('.')
+        const last = parts.pop()
+        let curr = this.data
+        for (const p of parts) {
+          if (!curr[p] || typeof curr[p] !== 'object') curr[p] = {}
+          curr = curr[p]
+        }
+        curr[last] = val
+      } else {
+        this.data[key] = val
+      }
+    }
     if (cb) cb()
   }
   return { page, setDataLog, storage }
@@ -236,4 +251,80 @@ test('staff profile cache: isolates cached profiles across different users', () 
   // 不同用户登录时，旧用户缓存不生效，进入骨架预加载状态
   assert.equal(page.data.loadingProfile, true)
   assert.equal(page.data.profile, null)
+})
+
+test('staff profile addTimeSlot prevents duplicate and overlapping intervals', () => {
+  const { page } = createStaffProfilePage({
+    cachedUser: { _id: 'u1' }
+  })
+
+  page.openConfigModal()
+  page.setData({ activeDay: 1, startHourIndex: 19, endHourIndex: 23 })
+  page.addTimeSlot()
+  const toPlain = (v) => JSON.parse(JSON.stringify(v))
+  assert.deepEqual(toPlain(page.data.configForm.weeklySchedule['1']), [{ start: 19, end: 23 }])
+
+  // 重复添加相同区间应被阻止
+  page.addTimeSlot()
+  assert.equal(page.data.configForm.weeklySchedule['1'].length, 1)
+
+  // 重叠区间（如 20-24）应被阻止
+  page.setData({ startHourIndex: 20, endHourIndex: 24 })
+  page.addTimeSlot()
+  assert.equal(page.data.configForm.weeklySchedule['1'].length, 1)
+
+  // 无重叠区间（如 9-12）正常加入并排序
+  page.setData({ startHourIndex: 9, endHourIndex: 12 })
+  page.addTimeSlot()
+  assert.deepEqual(toPlain(page.data.configForm.weeklySchedule['1']), [
+    { start: 9, end: 12 },
+    { start: 19, end: 23 }
+  ])
+})
+
+test('staff profile schedule UI provides explicit guidance banners and direct save without modal block for off days', async () => {
+  const wxml = fs.readFileSync(path.join(root, 'pages/staff/profile/index.wxml'), 'utf8')
+  assert.match(wxml, /class="schedule-hint-banner"/, 'WXML must contain schedule-hint-banner')
+  assert.match(wxml, /若某天不接单，清空或不添加该天时间段即可/, 'WXML must provide clear notice about off days')
+  assert.match(wxml, /class="add-slot-tip"/, 'WXML must show current slot tip')
+
+  let toastShown = null
+  const calls = []
+
+  const { page } = createStaffProfilePage({
+    cachedUser: { _id: 'u2' },
+    callFunctionMock: async (name, action, data) => {
+      calls.push({ name, action, data })
+      return {}
+    }
+  })
+
+  // 1. 测试选时间时给出 toast 引导（如 9:00 至 12:00）
+  page.promptAddSlotNotice = function(start, end) {
+    if (end > start) toastShown = `已选时间，请点【+ 添加】`
+  }
+  page.setData({ endHourIndex: 12 })
+  page.bindStartHourChange({ detail: { value: '9' } })
+  assert.equal(toastShown, '已选时间，请点【+ 添加】')
+
+  // 2. 测试保存接单配置时：某天为空（休息不接单），直接保存成功，不弹窗强迫添加时间段
+  const toPlain = (v) => JSON.parse(JSON.stringify(v))
+  page.openConfigModal()
+  page.setData({
+    activeDay: 2, // 周二未设置任何时间段
+    startHourIndex: 10,
+    endHourIndex: 12,
+    'configForm.serviceAddress': '测试地址',
+    'configForm.serviceLatitude': 30.6,
+    'configForm.serviceLongitude': 104.0,
+    'configForm.profileCardColor': '#ffffff',
+    'configForm.profileCardTextColor': '#2d211a'
+  })
+
+  page.saveConfig()
+  await Promise.resolve()
+
+  const saveCall = calls.find((c) => c.name === 'staff' && c.action === 'updateStaffProfileConfig')
+  assert.ok(saveCall, 'saveConfig must trigger updateStaffProfileConfig')
+  assert.deepEqual(toPlain(saveCall.data.weeklySchedule['2']), [])
 })

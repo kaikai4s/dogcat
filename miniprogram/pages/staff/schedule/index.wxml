@@ -28,7 +28,10 @@
     <view class="preset-actions">
       <button class="preset-btn primary" bindtap="presetWeeklySchedule">
         <text class="remix-icon ri-checkbox-circle-line"></text>
-        <text>一键设置全周 08:00-22:00</text>
+        <view class="preset-btn-text">
+          <text class="preset-main-text">一键设置全周</text>
+          <text class="preset-sub-text">08:00 - 22:00</text>
+        </view>
       </button>
       <button class="preset-btn ghost" bindtap="clearWeeklySchedule">
         <text class="remix-icon ri-close-circle-line"></text>
@@ -57,6 +60,12 @@
         <view class="clear-link" bindtap="clearCurrentDay">清空本日</view>
       </view>
 
+      <!-- 操作指引提示条 -->
+      <view class="schedule-hint-banner">
+        <text class="remix-icon ri-lightbulb-line hint-icon"></text>
+        <text class="hint-text">💡 提示：若某天不接单，清空或不添加该天时间段即可；需接单的天数选好时间后，点击【+ 添加】加入列表。</text>
+      </view>
+
       <!-- 时间段列表 -->
       <view class="slot-list" wx:if="{{weeklySchedule[activeDay] && weeklySchedule[activeDay].length > 0}}">
         <view
@@ -75,7 +84,7 @@
       </view>
       <view class="empty-slot" wx:else>
         <text class="remix-icon ri-information-line empty-icon"></text>
-        <text>{{weekdays[activeDay - 1].label}} 暂无服务时间段（该天不接单）</text>
+        <text>{{weekdays[activeDay - 1].label}} 暂无服务时间段（当天休息不接单）</text>
       </view>
 
       <!-- 添加时间段 -->
@@ -92,6 +101,10 @@
           <button class="add-btn" bindtap="addSlot">
             <text class="remix-icon ri-add-line"></text> 添加
           </button>
+        </view>
+        <view class="add-slot-tip">
+          <view class="tip-line">👉 若【{{weekdays[activeDay - 1].label}}】需接单，选好时间后点击【+ 添加】</view>
+          <view class="tip-line tip-sub">当天休息则无需添加</view>
         </view>
       </view>
 
@@ -155,7 +168,7 @@
       <view class="add-rest-section">
         <view class="add-slot-title">添加休息不接单日期</view>
         <view class="add-rest-row">
-          <picker mode="date" value="{{restPickerDate}}" start="{{todayDate}}" bindchange="bindRestPickerChange">
+          <picker class="rest-date-picker" mode="date" value="{{restPickerDate}}" start="{{todayDate}}" bindchange="bindRestPickerChange">
             <view class="picker-field rest-picker-field">
               <text class="remix-icon ri-calendar-line"></text>
               <text>{{restPickerDate}}</text>
@@ -173,8 +186,8 @@
       <view class="rest-dates-list" wx:if="{{restDateList.length > 0}}">
         <view class="rest-date-item" wx:for="{{restDateList}}" wx:key="dateKey">
           <view class="rest-item-info">
+            <text class="remix-icon ri-cup-line rest-item-icon"></text>
             <view class="rest-date-text">{{item.dateKey}} ({{item.dayName || '休息日'}})</view>
-            <view class="rest-badge">休息不接单</view>
           </view>
           <button class="resume-work-btn" data-date="{{item.dateKey}}" bindtap="deleteRestDate">
             <text class="remix-icon ri-restart-line"></text>

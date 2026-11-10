@@ -425,6 +425,12 @@
             <view class="clear-link" bindtap="clearCurrentDaySchedule">清空本日时间</view>
           </view>
 
+          <!-- 操作指引提示条 -->
+          <view class="schedule-hint-banner">
+            <text class="remix-icon ri-lightbulb-line hint-icon"></text>
+            <text class="hint-text">💡 提示：若某天不接单，清空或不添加该天时间段即可；需接单的天数选好时间后，点击【+ 添加】加入列表。</text>
+          </view>
+
           <!-- 时间段列表 -->
           <view class="slot-list" wx:if="{{configForm.weeklySchedule[activeDay] && configForm.weeklySchedule[activeDay].length > 0}}">
             <view
@@ -437,20 +443,24 @@
             </view>
           </view>
           <view class="empty-slot" wx:else>
-            {{weekdays[activeDay - 1].label}} 暂未添加可预约时间段（不接单）
+            {{weekdays[activeDay - 1].label}} 暂未添加时间段（当天休息不接单）
           </view>
 
           <!-- 添加时间段控件 -->
           <view class="add-slot-row">
             <text class="label">添加区间：</text>
             <picker mode="selector" range="{{hourLabels}}" value="{{startHourIndex}}" bindchange="bindStartHourChange">
-              <view class="picker-box">{{startHourIndex}}:00</view>
+              <view class="picker-box">{{hourLabels[startHourIndex]}}</view>
             </picker>
             <text class="to-text">至</text>
             <picker mode="selector" range="{{hourLabels}}" value="{{endHourIndex}}" bindchange="bindEndHourChange">
-              <view class="picker-box">{{endHourIndex}}:00</view>
+              <view class="picker-box">{{hourLabels[endHourIndex]}}</view>
             </picker>
             <button class="add-btn" bindtap="addTimeSlot">+ 添加</button>
+          </view>
+          <view class="add-slot-tip">
+            <view class="tip-line">👉 若【{{weekdays[activeDay - 1].label}}】需接单，选好时间后点击【+ 添加】</view>
+            <view class="tip-line tip-sub">当天休息则无需添加</view>
           </view>
         </view>
       </view>

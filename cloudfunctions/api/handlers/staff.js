@@ -567,6 +567,9 @@ module.exports = function createHandler(context) {
       const depositSatisfied = staffDepositSatisfied(profile, depositConfig)
       return {
         ...profile,
+        weeklySchedule: normalizeWeeklySchedule(profile.weeklySchedule),
+        weeklyScheduleText: formatWeeklyScheduleText(profile.weeklySchedule),
+        vaccineServicePolicyText: profile.rejectUnvaccinatedPets === true ? '仅服务已接种认证宠物' : '可服务未认证宠物',
         certificationLocked: isStaffProfileLocked(profile),
         depositConfig: {
           enabled: depositConfig.enabled,
@@ -696,7 +699,8 @@ module.exports = function createHandler(context) {
           }
         }
         const allWatched = videos.every(video => isTrainingVideoWatched(video, progress))
-        const update = { trainingVideoProgress: progress, updatedAt: time }
+        const setOp = (val) => (db.command && typeof db.command.set === 'function' ? db.command.set(val) : val)
+        const update = { trainingVideoProgress: setOp(progress), updatedAt: time }
         if (allWatched) {
           const previouslyComplete = videos.every(video => isTrainingVideoWatched(video, latest.trainingVideoProgress))
           update.trainingVideosCompletedAt = previouslyComplete && latest.trainingVideosCompletedAt || time
@@ -1044,7 +1048,13 @@ module.exports = function createHandler(context) {
           const current = (await tx.collection('staff_profiles').doc(existing.data[0]._id).get()).data
           const canUpdateRemovedStaffProfile = current && !userHasStaffRole && current.auditStatus === 'approved'
           if (isStaffProfileLocked(current) && !canUpdateRemovedStaffProfile) throw new Error('认证资料已锁定，如需更正请联系平台审核')
-          await tx.collection('staff_profiles').doc(existing.data[0]._id).update({ data: profile })
+          const setOp = (val) => (db.command && typeof db.command.set === 'function' ? db.command.set(val) : val)
+          const txPayload = {
+            ...profile,
+            ...(profile.weeklySchedule !== undefined ? { weeklySchedule: setOp(profile.weeklySchedule) } : {}),
+            ...(profile.trainingVideoProgress !== undefined ? { trainingVideoProgress: setOp(profile.trainingVideoProgress) } : {})
+          }
+          await tx.collection('staff_profiles').doc(existing.data[0]._id).update({ data: txPayload })
         })
         const identityPayload = { staffProfileId: existing.data[0]._id, userId: user._id, openid, realName, gender, phone, idCardNumber, idCardMasked, realNameVerifyStatus, ...identitySummary, auditStatus: 'pending', updatedAt: time }
         const identityRes = await db.collection('staff_identity_verifications').where({ staffProfileId: existing.data[0]._id }).limit(1).get()
@@ -1146,7 +1156,9 @@ module.exports = function createHandler(context) {
         updateData.serviceLatitude = serviceLatitude
         updateData.serviceLongitude = serviceLongitude
         updateData.serviceRadiusKm = serviceRadiusKm
-        updateData.weeklySchedule = weeklySchedule
+        if (data.weeklySchedule !== undefined) {
+          updateData.weeklySchedule = weeklySchedule
+        }
       }
 
       if (profile.publicBookingPolicyVersion === 1 && ['serviceAddress', 'serviceLatitude', 'serviceLongitude', 'serviceRadiusKm'].some(key => updateData[key] !== undefined && updateData[key] !== profile[key])) {
@@ -1178,8 +1190,26 @@ module.exports = function createHandler(context) {
         updateData.careProfile = data.careProfile
       }
 
-      await db.collection('staff_profiles').doc(profile._id).update({ data: updateData })
-      return { _id: profile._id, ...profile, ...updateData }
+      const setField = (val) => (db.command && typeof db.command.set === 'function' ? db.command.set(val) : val)
+      const dbPayload = { ...updateData }
+      if (updateData.weeklySchedule !== undefined) {
+        dbPayload.weeklySchedule = setField(updateData.weeklySchedule)
+      }
+      if (updateData.careProfile !== undefined && typeof updateData.careProfile === 'object' && updateData.careProfile !== null) {
+        dbPayload.careProfile = setField(updateData.careProfile)
+      }
+
+      await db.collection('staff_profiles').doc(profile._id).update({ data: dbPayload })
+      const effectiveSchedule = updateData.weeklySchedule !== undefined ? updateData.weeklySchedule : profile.weeklySchedule
+      const effectiveReject = updateData.rejectUnvaccinatedPets !== undefined ? updateData.rejectUnvaccinatedPets : profile.rejectUnvaccinatedPets
+      return {
+        _id: profile._id,
+        ...profile,
+        ...updateData,
+        weeklySchedule: normalizeWeeklySchedule(effectiveSchedule),
+        weeklyScheduleText: formatWeeklyScheduleText(effectiveSchedule),
+        vaccineServicePolicyText: effectiveReject === true ? '仅服务已接种认证宠物' : '可服务未认证宠物'
+      }
     }
     if (action === 'updateCurrentLocation') {
       const user = await getUser(openid)
