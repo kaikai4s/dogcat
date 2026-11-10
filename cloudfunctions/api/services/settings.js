@@ -301,6 +301,7 @@ module.exports = function createService({
           orderPaid: safeText(subscription.templates && subscription.templates.orderPaid).trim(),
           orderAssigned: safeText(subscription.templates && subscription.templates.orderAssigned).trim(),
           staffDirectOrder: safeText(subscription.templates && subscription.templates.staffDirectOrder).trim(),
+          staffPublicOrderGrab: safeText(subscription.templates && (subscription.templates.staffPublicOrderGrab || subscription.templates.staffNewPublicOrder)).trim() || 'YUcIBa5N4Nr-A7raD9e9vfKl0TKVqCyD4iMhsVswo_I',
           orderAccepted: safeText(subscription.templates && subscription.templates.orderAccepted).trim(),
           staffDeparture: safeText(subscription.templates && subscription.templates.staffDeparture).trim(),
           serviceProgress: safeText(subscription.templates && subscription.templates.serviceProgress).trim(),

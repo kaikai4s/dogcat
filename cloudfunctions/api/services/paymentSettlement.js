@@ -261,6 +261,15 @@ module.exports = function createService(context) {
     if (result.changed && result.orderType === 'service' && result.order.publishMode === 'direct' && result.order.requestedStaffOpenid) {
       await notifyStaffDirectOrder(result.order, 'request')
     }
+    if (result.changed && result.orderType === 'service' && result.order.publishMode === 'open') {
+      try {
+        if (typeof context.notifyEligibleSittersForPublicOrder === 'function') {
+          await context.notifyEligibleSittersForPublicOrder(result.order)
+        }
+      } catch (error) {
+        console.error('[public-order-grab-notification]', { orderId: result.order._id, message: error.message })
+      }
+    }
     if (result.orderType === 'service' && result.order.groupBuyRefundRequired && typeof context.createRefundForOrder === 'function') {
       await context.createRefundForOrder(result.order, result.order.payAmount, '拼单已截止或无法加入，全额原路退款',
         'system_groupbuy_fail', result.order.clientOpenid, `groupbuy_fail_${result.order._id}`, { cancelStatus: 'expired' })

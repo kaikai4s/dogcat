@@ -140,6 +140,7 @@
     </view>
     <view class="map-entry-row">
       <view class="workbench-location" bindtap="refreshNearby"><text class="remix-icon ri-map-pin-line"></text><text class="workbench-location-text">{{locationText}}</text></view>
+      <button class="map-entry-button reminder-btn" bindtap="subscribeGrabNotification"><text class="remix-icon ri-notification-3-line"></text> 订阅新单</button>
       <button class="map-entry-button" bindtap="openCommunityMap">小区地图 ↗</button>
     </view>
 

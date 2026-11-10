@@ -2,6 +2,7 @@ const { callFunction, setCachedSystemSettings, getCachedSubscriptionResults, set
 const { subscriptionSections, subscriptionTemplateIssue } = require('../../../utils/subscription-options')
 
 const catalog = {
+  staffPublicOrderGrab: ['需求单抢单通知', '附近有符合您时间与服务范围的公共订单时，提醒前往抢单'],
   staffDirectOrder: ['指定单通知', '客户指定预约或平台派单后，及时查看服务安排'],
   orderAccepted: ['接单成功通知', '宠托师接单后，及时了解服务安排'],
   staffDeparture: ['宠托师出发通知', '宠托师出发时，接收预约时间、出发时间和姓名'],

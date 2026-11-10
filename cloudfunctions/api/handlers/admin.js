@@ -4339,6 +4339,15 @@ module.exports = function createHandler(context) {
         })
       }
 
+      try {
+        const freshOrder = (await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))).data
+        if (freshOrder && typeof context.notifyEligibleSittersForPublicOrder === 'function') {
+          await context.notifyEligibleSittersForPublicOrder(freshOrder)
+        }
+      } catch (grabErr) {
+        console.error('[admin-urgent-republish-grab-notification]', { orderId, message: grabErr.message })
+      }
+
       return {
         orderId,
         isUrgent: true,

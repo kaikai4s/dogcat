@@ -85,6 +85,16 @@ function applyOrderFlags(orders, radiusKm) {
 }
 
 Page({
+  subscribeGrabNotification() {
+    requestSubscribeTemplates(['staffPublicOrderGrab'], 'staff_grab_reminder')
+      .then((res) => {
+        if (res && res.accepted && res.accepted.length) {
+          wx.showToast({ title: '已开启新单提醒', icon: 'success' })
+        }
+      })
+      .catch(() => null)
+  },
+
   openCommunityMap() {
     const location = this.data.currentWorkbenchLocation || this.data.customLocation
     wx.navigateTo({ url: '/pages/common/community-map/index?mode=orders&city=' + encodeURIComponent(this.data.selectedCity || '') + '&date=' + (this.data.filterDate || '') + '&kind=' + (this.data.grabTab === 'urgent' ? 'urgent' : 'normal')

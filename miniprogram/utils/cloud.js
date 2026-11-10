@@ -258,6 +258,7 @@ function normalizeSubscriptionConfig(subscription = {}) {
       orderPaid: templates.orderPaid || '',
       orderAssigned: templates.orderAssigned || '',
       staffDirectOrder: templates.staffDirectOrder || '',
+      staffPublicOrderGrab: templates.staffPublicOrderGrab || templates.staffNewPublicOrder || '',
       orderAccepted: templates.orderAccepted || '',
       staffDeparture: templates.staffDeparture || '',
       serviceStart: templates.serviceStart || '',

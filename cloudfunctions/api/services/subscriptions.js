@@ -1,5 +1,6 @@
 const { buildWithdrawalSubscriptionData, withdrawalNotification } = require('./withdrawalNotifications')
 const { buildAdminPendingAuditData, isAuditTargetHandled } = require('./adminAuditNotifications')
+const { buildPublicOrderGrabData } = require('./publicOrderGrabNotifications')
 const { readOptionalDocument } = require('../utils/documentPages')
 
 module.exports = function createService({
@@ -29,6 +30,9 @@ module.exports = function createService({
   function buildSubscriptionPage(order = {}, role = 'client', templateKey = '') {
     const orderId = order && order._id || ''
     const chatParam = templateKey === 'orderChat' ? '&openChat=1' : ''
+    if (templateKey === 'staffPublicOrderGrab') {
+      return orderId ? `pages/staff/home/index?orderId=${orderId}&from=grab_notification` : 'pages/staff/home/index'
+    }
     if (!orderId) return role === 'staff' ? 'pages/staff/home/index' : 'pages/client/home/index'
     if (role === 'staff') {
       return `pages/staff/orders/service/index?id=${orderId}${chatParam}`
@@ -186,6 +190,10 @@ module.exports = function createService({
       }
     }
 
+    if (templateKey === 'staffPublicOrderGrab') {
+      return buildPublicOrderGrabData(order, detail, { formatDateTime, now })
+    }
+
     return {
       thing9: { value: safeText(detail.tip || '订单状态已更新').slice(0, 20) },
       thing4: { value: statusText.slice(0, 20) },
@@ -259,6 +267,9 @@ module.exports = function createService({
     try {
       const settings = await getSystemSettings()
       templateId = settings.subscription.templates[templateKey] || ''
+      if (templateKey === 'staffPublicOrderGrab') {
+        templateId = templateId || settings.subscription.templates.staffNewPublicOrder || ''
+      }
       if (templateKey === 'orderCancelled') {
         templateId = templateId || settings.subscription.templates.staffCancellation || ''
       }

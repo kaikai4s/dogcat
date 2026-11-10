@@ -440,6 +440,7 @@ button.refresh-btn::after {
 .workbench-location .remix-icon { flex-shrink: 0; color: #d45f22; }
 .workbench-location-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .staff-home-page .map-entry-button { flex: 0 0 auto; width: auto; min-width: 0; margin: 0; padding: 14rpx 18rpx; border-radius: 18rpx; background: #fff0e2; color: #d45f22; font-size: 24rpx; line-height: 1.4; white-space: nowrap; box-shadow: none; letter-spacing: 0; }
+.staff-home-page .map-entry-button.reminder-btn { margin-right: 12rpx; background: #e8f4fd; color: #1677ff; }
 .staff-home-page .map-entry-button::after { border: 0; }
 
 .count-badge {
