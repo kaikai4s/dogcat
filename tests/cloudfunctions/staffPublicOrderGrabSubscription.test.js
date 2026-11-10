@@ -274,3 +274,23 @@ test('checkSitterEligibilityForOrder respects active orders limit and daily limi
   assert.equal(resActiveLimit.eligible, false)
   assert.equal(resActiveLimit.reason, 'max_active_orders_reached')
 })
+
+test('unconfigured staffPublicOrderGrab template skips sending and can be configured via saveSystemSettings', async () => {
+  const { ctx, db, sent } = fixture()
+  // 1. 清空模板配置（模拟后台未配置状态）
+  db.state.platform_configs[0].value.subscription.templates.staffPublicOrderGrab = ''
+
+  const order = db.state.orders[0]
+  const payment = await ctx.reserveOrderPayment(order, 'client_1', 'wechat', 'pay_pub_unconfigured')
+  await ctx.settleOrderPayment('order_1', { paymentNo: payment.paymentNo, wxTransactionId: 'wx_tx_unc' })
+  assert.equal(sent.length, 0, '未在后台配置模板ID时跳过发送')
+
+  // 2. 模拟管理员在后台填写并点击保存系统设置
+  const currentSettings = await ctx.getSystemSettings()
+  currentSettings.subscription.templates.staffPublicOrderGrab = 'NEW_CONFIGURED_TEMPLATE_ID'
+  await ctx.saveSystemSettings(currentSettings)
+
+  // 重新获取设置，验证后台已成功持久化保存
+  const savedSettings = await ctx.getSystemSettings()
+  assert.equal(savedSettings.subscription.templates.staffPublicOrderGrab, 'NEW_CONFIGURED_TEMPLATE_ID')
+})
