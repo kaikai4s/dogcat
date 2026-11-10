@@ -209,14 +209,14 @@ module.exports = function createService(context) {
       return { eligible: false, reason: 'max_active_orders_reached' }
     }
 
-    const targetDate = String(order.serviceStartDate || order.startTime || '').slice(0, 10)
+    const targetDate = getDateKeyFromTime(order.startTime) || String(order.serviceStartDate || '').slice(0, 10)
     if (targetDate) {
       const dailyOrdersRes = await db.collection('orders').where({
         staffOpenid: profile.openid,
         status: inOp(['assigned', 'on_the_way', 'in_service', 'day_completed', 'completed'])
       }).get().catch(() => ({ data: [] }))
       const sameDayOrders = (dailyOrdersRes.data || []).filter((o) => {
-        const oDate = String(o.serviceStartDate || o.startTime || '').slice(0, 10)
+        const oDate = getDateKeyFromTime(o.startTime) || String(o.serviceStartDate || '').slice(0, 10)
         return oDate === targetDate && o._id !== order._id
       })
       const maxDailyOrders = Number(settings.dispatch && settings.dispatch.maxStaffDailyOrders || 6)
@@ -241,7 +241,7 @@ module.exports = function createService(context) {
       return { status: 'skipped', reason: 'subscription_disabled', notifiedCount: 0 }
     }
 
-    // 1. 获取候选宠托师档案
+    // 1. 获取候选宠托师档案（支持分页拉取多达 300 名宠托师）
     let candidateProfiles = []
     if (Array.isArray(options.candidateProfiles)) {
       candidateProfiles = options.candidateProfiles
@@ -249,8 +249,18 @@ module.exports = function createService(context) {
       const condition = {
         auditStatus: 'approved'
       }
-      const fetchRes = await db.collection('staff_profiles').where(condition).limit(100).get().catch(() => ({ data: [] }))
-      candidateProfiles = fetchRes.data || []
+      let cursor = ''
+      while (candidateProfiles.length < 300) {
+        const queryCond = { ...condition }
+        if (cursor && db.command && typeof db.command.gt === 'function') {
+          queryCond._id = db.command.gt(cursor)
+        }
+        const fetchRes = await db.collection('staff_profiles').where(queryCond).orderBy('_id', 'asc').limit(100).get().catch(() => ({ data: [] }))
+        const page = fetchRes.data || []
+        candidateProfiles.push(...page)
+        if (page.length < 100) break
+        cursor = page[page.length - 1]._id
+      }
     }
 
     if (!candidateProfiles.length) {

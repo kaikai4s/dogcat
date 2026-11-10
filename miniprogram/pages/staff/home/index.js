@@ -88,8 +88,12 @@ Page({
   subscribeGrabNotification() {
     requestSubscribeTemplates(['staffPublicOrderGrab'], 'staff_grab_reminder')
       .then((res) => {
-        if (res && res.accepted && res.accepted.length) {
+        if (!res || !res.requested) return
+        const values = Object.values(res.results || {})
+        if (values.includes('accept')) {
           wx.showToast({ title: '已开启新单提醒', icon: 'success' })
+        } else if (values.includes('reject')) {
+          wx.showToast({ title: '已取消订阅', icon: 'none' })
         }
       })
       .catch(() => null)

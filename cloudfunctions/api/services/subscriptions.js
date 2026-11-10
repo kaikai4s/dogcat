@@ -431,6 +431,11 @@ module.exports = function createService({
         : order.status === 'assigned' && order.staffOpenid === message.openid && order.assignmentNoticeRevision === message.assignmentVersion)
       if (!current) return { status: 'skipped', error: 'staff_assignment_obsolete', templateKey: message.templateKey }
     }
+    if (message.templateKey === 'staffPublicOrderGrab') {
+      const order = (await db.collection('orders').doc(message.orderId).get().catch(() => ({ data: null }))).data
+      const canGrab = order && !order.adminDeletedAt && !order.deletedAt && order.paymentStatus === 'paid' && order.status === 'paid' && order.publishMode === 'open' && !order.staffOpenid && !order.requestedStaffOpenid
+      if (!canGrab) return { status: 'skipped', error: 'public_grab_obsolete', templateKey: message.templateKey }
+    }
     return sendSubscribeMessageOnce(message.openid, message.templateKey, message.page, message.messageData, message.orderId)
   }
   async function sendSubscribeMessage(openid, templateKey, page, messageData = {}, orderId = '', deliveryKey = '') {
