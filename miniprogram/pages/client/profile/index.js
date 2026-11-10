@@ -98,6 +98,7 @@ function getInitialProfileData() {
     avatarUrl: isGuest ? '' : (user.avatarUrl || ''),
     avatarImages: [],
     ...emptySummary,
+    petCount: 0,
     rewardMailUnreadCount: 0,
     rewardMailUnclaimedCount: 0,
     staffUnreadCount: 0,
@@ -243,7 +244,7 @@ Page({
   },
 
   refreshDetails() {
-    return Promise.all([this.loadStaffProfile(), this.loadPoints(), this.loadRewardMailUnread(), this.loadUnread()])
+    return Promise.all([this.loadStaffProfile(), this.loadPoints(), this.loadRewardMailUnread(), this.loadUnread(), this.loadPetCount()])
   },
 
   refreshProfile(force = false) {
@@ -349,6 +350,7 @@ Page({
       avatarUrl: '',
       avatarImages: [],
       ...emptySummary,
+      petCount: 0,
       rewardMailUnreadCount: 0,
       rewardMailUnclaimedCount: 0,
       staffUnreadCount: 0,
@@ -609,6 +611,18 @@ Page({
     }).catch(() => {})
   },
 
+  loadPetCount() {
+    if (!this._scope) return Promise.resolve()
+    const ticket = this.ticket('pets')
+    return callFunction('pet', 'listPets')
+      .then((res) => {
+        if (!this.active(ticket)) return
+        const count = Array.isArray(res) ? res.length : (res && Array.isArray(res.list) ? res.list.length : 0)
+        this.setData({ petCount: count })
+      })
+      .catch(() => {})
+  },
+
   loadUnread() {
     if (!this._scope) return Promise.resolve()
     clearTimeout(this._staffUnreadTimer)
@@ -738,6 +752,12 @@ Page({
         wx.reLaunch({ url: '/pages/admin/home/index' })
       })
       .catch(showError)
+  },
+
+  openPets() {
+    return this.ensurePageLogin({ content: '登录后可管理宠物档案。' })
+      .then(() => this.active(this._entryTicket) && wx.navigateTo({ url: '/pages/client/pets/list/index' }))
+      .catch(() => {})
   },
 
   openAddresses() {

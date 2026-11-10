@@ -18,6 +18,7 @@ test('client profile entries converted to icon grid with badges and styling', as
 
   // 2. Check all entries are present with expected handlers and icons
   const entries = [
+    { label: '宠物档案', handler: 'openPets', icon: 'ri-paw-print-fill' },
     { label: '编辑资料', handler: 'editProfile', icon: 'ri-user-settings-fill' },
     { label: '我的地址', handler: 'openAddresses', icon: 'ri-map-pin-2-fill' },
     { label: '我的关注', handler: 'openFavorites', icon: 'ri-star-fill' },
