@@ -168,6 +168,12 @@ test('buildPublicOrderGrabData formats template 67413 exact 5 fields with bounds
   assert.equal(data.thing3.value, '超级无敌大金毛豆豆')
   assert.equal(data.time4.value, '2026-11-10 14:00')
   assert.equal(data.amount5.value, '58.00')
+
+  // 防御测试：缺失金额或 NaN 输入时安全回退 0.00，绝不传 NaN 到微信
+  const emptyData = ctx.buildPublicOrderGrabData({ serviceSummary: '', startTime: '' }, { staffEarning: undefined })
+  assert.equal(emptyData.thing1.value, '宠护服务')
+  assert.ok(emptyData.time4.value.length > 0)
+  assert.equal(emptyData.amount5.value, '0.00')
 })
 
 test('checkSitterEligibilityForOrder validates distance, schedule, rest days, and bounds', async () => {
@@ -190,10 +196,14 @@ test('checkSitterEligibilityForOrder validates distance, schedule, rest days, an
   assert.equal(resFar.eligible, false)
   assert.equal(resFar.reason, 'out_of_service_range')
 
-  // 3. 当天休假不接单 -> 排除
+  // 3. 当天休假不接单 -> 排除（显式传 exceptions 或不传自动拉取数据库均能精准拦截）
   const resRest = await ctx.checkSitterEligibilityForOrder(pRest, order, settings, exceptions)
   assert.equal(resRest.eligible, false)
   assert.equal(resRest.reason, 'out_of_working_hours')
+
+  const resRestAuto = await ctx.checkSitterEligibilityForOrder(pRest, order, settings)
+  assert.equal(resRestAuto.eligible, false)
+  assert.equal(resRestAuto.reason, 'out_of_working_hours')
 })
 
 test('checkSitterEligibilityForOrder checks gender, vaccine, and history exclusions', async () => {

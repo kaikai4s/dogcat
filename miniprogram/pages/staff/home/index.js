@@ -158,6 +158,15 @@ Page({
     acceptingOrderId: ''
   },
 
+  onLoad(query = {}) {
+    const targetOrderId = query.orderId || query.id
+    if (targetOrderId && (query.from === 'grab_notification' || query.source === 'subscription')) {
+      wx.navigateTo({
+        url: `/pages/staff/orders/detail/index?id=${targetOrderId}`
+      })
+    }
+  },
+
     onPullDownRefresh() {
     Promise.resolve(this.initStaffHome()).finally(() => {
       loadMessageUnread(this, "staff")

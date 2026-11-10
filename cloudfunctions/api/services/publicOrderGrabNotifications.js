@@ -25,7 +25,7 @@ function buildPublicOrderGrabData(order = {}, detail = {}, helpers = {}) {
   )
 
   // 1. 服务类别 (thing1, 限制 20 字)
-  const rawService = order.serviceSummary || (order.serviceType === 'walk' ? '上门遛狗' : '上门喂养') || '宠护服务'
+  const rawService = order.serviceSummary || (order.serviceType === 'walk' ? '上门遛狗' : (order.serviceType ? '上门喂养' : '宠护服务'))
   const serviceType = sanitize(rawService).slice(0, 20) || '宠护服务'
 
   // 2. 服务标题 (thing2, 限制 20 字)
@@ -42,11 +42,11 @@ function buildPublicOrderGrabData(order = {}, detail = {}, helpers = {}) {
   const petName = sanitize(rawPetNames).slice(0, 20) || '爱宠'
 
   // 4. 需求时间 (time4, 限制 20 字，标准时间格式)
-  const timeText = sanitize(formatDateTime(order.startTime || detail.startTime || now())).slice(0, 20)
+  const timeText = sanitize(formatDateTime(order.startTime || detail.startTime) || formatDateTime(now())).slice(0, 20) || '请查看订单'
 
   // 5. 订单金额 (amount5, 限制金额格式，支持小数两位)
-  const rawAmount = Number(detail.staffEarning !== undefined ? detail.staffEarning : (order.payAmount || 0))
-  const amountStr = Math.max(0, rawAmount).toFixed(2)
+  const rawAmount = Number(detail.staffEarning !== undefined ? detail.staffEarning : (order.payAmount !== undefined ? order.payAmount : 0))
+  const amountStr = Number.isFinite(rawAmount) ? Math.max(0, rawAmount).toFixed(2) : '0.00'
 
   return {
     thing1: { value: serviceType },
@@ -100,7 +100,7 @@ module.exports = function createService(context) {
   /**
    * 筛选单个宠托师是否符合该订单的可抢单资格
    */
-  async function checkSitterEligibilityForOrder(profile, order, settings, scheduleExceptions = []) {
+  async function checkSitterEligibilityForOrder(profile, order, settings, scheduleExceptions = null) {
     if (!profile || !profile.openid) return { eligible: false, reason: 'invalid_profile' }
 
     // 1. 不能抢自己发布的订单
@@ -150,8 +150,8 @@ module.exports = function createService(context) {
     }
 
     // 9. 服务范围判断（Service Range & Distance）
-    const orderLat = Number(order.serviceLatitude || order.addressLatitude || 0)
-    const orderLng = Number(order.serviceLongitude || order.addressLongitude || 0)
+    const orderLat = Number(order.serviceLatitude || order.addressLatitude || order.latitude || 0)
+    const orderLng = Number(order.serviceLongitude || order.addressLongitude || order.longitude || 0)
     if (!hasCoordinate(orderLat, orderLng)) {
       return { eligible: false, reason: 'order_missing_coordinates' }
     }
@@ -180,10 +180,15 @@ module.exports = function createService(context) {
       }
     }
 
-    // 10.2 排班检查（周排班 weeklySchedule 与特殊休息日 staff_schedule_exceptions）
+    // 10.2 排班检查（按需获取特殊休息日并校验周排班）
+    let exceptions = scheduleExceptions
+    if (!Array.isArray(exceptions)) {
+      const exceptionsRes = await db.collection('staff_schedule_exceptions').where({ staffOpenid: profile.openid }).get().catch(() => ({ data: [] }))
+      exceptions = exceptionsRes.data || []
+    }
     try {
       for (const session of sessions) {
-        await validateStaffScheduleOnly(profile, session.startTime, session.endTime, { exceptions: scheduleExceptions })
+        await validateStaffScheduleOnly(profile, session.startTime, session.endTime, { exceptions })
       }
     } catch (scheduleErr) {
       return { eligible: false, reason: 'out_of_working_hours', error: scheduleErr.message }
@@ -267,13 +272,10 @@ module.exports = function createService(context) {
       return { status: 'skipped', reason: 'no_approved_sitters', notifiedCount: 0 }
     }
 
-    // 2. 批量评估宠托师符合度
+    // 2. 批量评估宠托师符合度（前置内存筛选，通过者按需查询排班与冲突）
     const eligibleSitters = []
     for (const profile of candidateProfiles) {
-      const exceptionsRes = await db.collection('staff_schedule_exceptions').where({ staffOpenid: profile.openid }).get().catch(() => ({ data: [] }))
-      const scheduleExceptions = exceptionsRes.data || []
-
-      const checkResult = await checkSitterEligibilityForOrder(profile, order, settings, scheduleExceptions)
+      const checkResult = await checkSitterEligibilityForOrder(profile, order, settings)
       if (checkResult.eligible) {
         eligibleSitters.push({
           profile,
