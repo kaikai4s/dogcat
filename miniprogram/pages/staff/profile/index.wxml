@@ -140,7 +140,7 @@
         <text class="remix-icon ri-map-pin-user-line sub-icon"></text>
         <text>接单服务与时间段配置</text>
       </view>
-      <button class="edit-pill-btn" bindtap="openConfigModal">
+      <button class="edit-pill-btn" size="mini" bindtap="openConfigModal">
         <text class="remix-icon ri-edit-line"></text>编辑
       </button>
     </view>

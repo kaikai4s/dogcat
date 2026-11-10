@@ -577,6 +577,7 @@ function logoutCurrentUser() {
   authRevision += 1
   pendingUserRequests.clear()
   wx.setStorageSync(AUTH_LOGGED_OUT_KEY, true)
+  try { wx.removeStorageSync('staff_profile_display_cache_v1') } catch (_) {}
   const globalData = getAppData()
   globalData.user = null
   globalData.isGuest = true

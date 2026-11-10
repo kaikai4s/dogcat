@@ -375,6 +375,9 @@ Page({
       if (!this._unloaded) {
         if (paymentSubmitted) {
           wx.showToast({ title: confirmed?.deposit?.status === 'paid' ? '保证金已缴纳' : '结果确认中，请刷新状态，勿重复支付', icon: 'none' })
+          if (confirmed?.deposit?.status === 'paid') {
+            try { wx.removeStorageSync('staff_profile_display_cache_v1') } catch (_) {}
+          }
         }
         this.load()
         this.setData({ depositBusy: false })
@@ -402,6 +405,7 @@ Page({
         try {
           await callFunction('staff', 'requestDepositRefund', { reason })
           if (this._unloaded) return
+          try { wx.removeStorageSync('staff_profile_display_cache_v1') } catch (_) {}
           wx.showToast({ title: '已提交，以服务端状态为准', icon: 'none' })
         } catch (error) {
           if (!this._unloaded) showError(error)

@@ -20,7 +20,9 @@ test('staff profile service config card title prevents text wrapping with compac
   assert.match(wxss, /\.card-subtitle\s*\{[^}]*white-space:\s*nowrap/s, 'card-subtitle must have white-space: nowrap')
   assert.match(wxss, /\.card-subtitle\s*\{[^}]*font-size:\s*28rpx/s, 'card-subtitle font-size should be 28rpx to leave ample room')
 
-  // 3. edit-pill-btn must prevent shrinking and wrapping
+  // 3. edit-pill-btn must prevent shrinking and wrapping, and must not stretch (width: auto)
   assert.match(wxss, /\.edit-pill-btn\s*\{[^}]*flex-shrink:\s*0/s, 'edit-pill-btn must have flex-shrink: 0')
   assert.match(wxss, /\.edit-pill-btn\s*\{[^}]*white-space:\s*nowrap/s, 'edit-pill-btn must have white-space: nowrap')
+  assert.match(wxss, /\.edit-pill-btn\s*\{[^}]*width:\s*auto/s, 'edit-pill-btn must have width: auto to prevent default 184px stretch')
+  assert.match(wxml, /class="edit-pill-btn"[^>]*size="mini"/s, 'edit-pill-btn must use size="mini"')
 })

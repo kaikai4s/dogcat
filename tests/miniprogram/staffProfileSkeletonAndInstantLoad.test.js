@@ -157,3 +157,83 @@ test('staff profile WXML contains skeleton loading structure for hero, wallet, a
   // 验证在没有 statusTitle 时不强行显示空粉色徽章
   assert.match(wxml, /wx:if="\{\{statusTitle\}\}"/)
 })
+
+test('staff profile deposit notice: never pre-populates stale deposit warning on initial render, preventing flash', async () => {
+  const cachedUser = {
+    _id: 'user_s3',
+    nickname: '宠托师阿杰',
+    avatarUrl: 'https://example.com/sitter3.jpg'
+  }
+  // 模拟缓存中残留了历史未缴保证金提示（如缴费前留存的快照）
+  const cachedProfile = {
+    _id: 'p3',
+    auditStatus: 'approved',
+    staffLevel: 'intern',
+    depositStatus: 'paid', // 实际上已经交了押金
+    depositNotice: {
+      needDeposit: true,
+      amount: 500,
+      title: '未缴纳履约保证金'
+    }
+  }
+
+  const { page, storage } = createStaffProfilePage({
+    cachedUser,
+    storageData: {
+      staff_profile_display_cache_v1: {
+        userId: 'user_s3',
+        profile: cachedProfile,
+        balance: { available: 100, pending: 0, withdrawn: 0 },
+        cachedAt: Date.now()
+      }
+    },
+    callFunctionMock: async (name, action) => {
+      if (name === 'auth' && action === 'me') {
+        return { _id: 'user_s3', nickname: '宠托师阿杰', roles: ['staff'] }
+      }
+      if (name === 'staff' && action === 'getStaffProfile') {
+        return {
+          _id: 'p3',
+          auditStatus: 'approved',
+          staffLevel: 'intern',
+          depositStatus: 'paid',
+          depositNotice: null
+        }
+      }
+      return {}
+    }
+  })
+
+  // 1. 首屏渲染时，绝不从离线缓存中预显欠缴保证金警告，防止闪现
+  assert.equal(page.data.depositNotice, null)
+  assert.equal(page.data.statusTitle, '实习宠托师')
+
+  // 2. 接口返回后，真实保证金状态保持为 null
+  await page.loadProfile()
+  assert.equal(page.data.depositNotice, null)
+
+  // 3. 验证新写入的缓存移除了任何残留的 depositNotice
+  const saved = storage.get('staff_profile_display_cache_v1')
+  assert.equal(saved.profile.depositNotice, undefined)
+})
+
+test('staff profile cache: isolates cached profiles across different users', () => {
+  const cachedUser = {
+    _id: 'user_different',
+    nickname: '不同用户'
+  }
+  const { page } = createStaffProfilePage({
+    cachedUser,
+    storageData: {
+      staff_profile_display_cache_v1: {
+        userId: 'user_original',
+        profile: { _id: 'p_orig', staffLevel: 'certified' },
+        cachedAt: Date.now()
+      }
+    }
+  })
+
+  // 不同用户登录时，旧用户缓存不生效，进入骨架预加载状态
+  assert.equal(page.data.loadingProfile, true)
+  assert.equal(page.data.profile, null)
+})

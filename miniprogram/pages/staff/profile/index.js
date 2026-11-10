@@ -9,21 +9,32 @@ const { extractLocationCity, sameCity } = require('../utils/location-city')
 const STAFF_PROFILE_STORAGE = 'staff_profile_display_cache_v1'
 const STAFF_CACHE_TTL = 24 * 60 * 60 * 1000
 
-function readStaffProfileCache() {
+function readStaffProfileCache(currentUser) {
   try {
     const cached = wx.getStorageSync(STAFF_PROFILE_STORAGE)
     if (cached && cached.profile && typeof cached.cachedAt === 'number' && Date.now() - cached.cachedAt < STAFF_CACHE_TTL) {
+      const currentId = currentUser?._id || currentUser?.openid || ''
+      if (currentId && cached.userId && cached.userId !== currentId) {
+        return null
+      }
       return cached
     }
   } catch (_) {}
   return null
 }
 
-function writeStaffProfileCache(profile, balance) {
+function writeStaffProfileCache(profile, balance, currentUser) {
   if (!profile) return
   try {
+    const userId = currentUser?._id || currentUser?.openid || profile.userId || profile.openid || ''
+    const cacheableProfile = { ...profile }
+    // 已交押金的宠托师不保留任何待缴告警，防止离线快照预加载误闪烁
+    if (cacheableProfile.depositStatus === 'paid') {
+      delete cacheableProfile.depositNotice
+    }
     wx.setStorageSync(STAFF_PROFILE_STORAGE, {
-      profile,
+      userId,
+      profile: cacheableProfile,
       balance,
       cachedAt: Date.now()
     })
@@ -83,7 +94,7 @@ function getInitialStaffProfileData() {
     user = typeof getCachedUser === 'function' ? getCachedUser() : null
   } catch (_) {}
 
-  const cached = readStaffProfileCache()
+  const cached = readStaffProfileCache(user)
   const profile = cached?.profile || null
   const balance = cached?.balance || null
 
@@ -91,7 +102,6 @@ function getInitialStaffProfileData() {
   let statusTip = ''
   let isApproved = false
   let hasAddr = false
-  let depositNotice = null
   let balanceData = null
 
   if (profile) {
@@ -101,7 +111,6 @@ function getInitialStaffProfileData() {
     statusTip = profileView?.auditRemark || info.tip
     isApproved = profileView?.auditStatus === 'approved'
     hasAddr = Boolean(profileView?.serviceAddress && profileView?.serviceLatitude && profileView?.serviceLongitude)
-    depositNotice = profileView?.depositNotice || null
     if (balance) {
       balanceData = {
         ...balance,
@@ -132,7 +141,7 @@ function getInitialStaffProfileData() {
     statusTitle,
     statusTip,
     missingAddressNotice: isApproved && !hasAddr,
-    depositNotice,
+    depositNotice: null, // 履约保证金状态以实时网络请求为准，首屏秒开不从离线缓存预显欠费警报，杜绝已交押金用户界面闪烁
     showConfigModal: false,
     weekdays: WEEKDAYS,
     radiusOptions,
@@ -210,7 +219,7 @@ Page({
           withdrawnText: Number(balance.withdrawn || 0).toFixed(2)
         } : null
 
-        writeStaffProfileCache(profile, balance)
+        writeStaffProfileCache(profile, balance, user)
 
         this.setData({
           loadingProfile: false,

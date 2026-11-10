@@ -185,6 +185,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16rpx;
   margin-bottom: 20rpx;
 }
 
@@ -196,7 +197,7 @@
   font-size: 28rpx;
   font-weight: 950;
   white-space: nowrap;
-  flex-shrink: 1;
+  flex-shrink: 0;
   min-width: 0;
 }
 
@@ -207,20 +208,30 @@
 }
 
 .edit-pill-btn {
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: fit-content;
+  margin: 0 0 0 auto !important;
   flex-shrink: 0;
-  height: 52rpx;
-  padding: 0 16rpx;
+  height: 48rpx;
+  padding: 0 18rpx !important;
   border-radius: 999rpx;
   background: #fff0e2;
   color: #d45f22;
   font-size: 22rpx;
   font-weight: 850;
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6rpx;
   border: none;
   line-height: 1;
   white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.edit-pill-btn::after {
+  display: none;
 }
 
 .info-list {
