@@ -1,0 +1,90 @@
+{
+  "boy/sw": {
+    "source": "raw/boy-turnaround.png",
+    "sourceCrop": [
+      0,
+      0,
+      512,
+      512
+    ],
+    "scale": 0.8519269776876268,
+    "base": "bases/boy/sw.png"
+  },
+  "boy/se": {
+    "source": "raw/boy-turnaround.png",
+    "sourceCrop": [
+      512,
+      0,
+      1024,
+      512
+    ],
+    "scale": 0.8624229979466119,
+    "base": "bases/boy/se.png"
+  },
+  "boy/nw": {
+    "source": "raw/boy-turnaround.png",
+    "sourceCrop": [
+      0,
+      512,
+      512,
+      1024
+    ],
+    "scale": 0.8624229979466119,
+    "base": "bases/boy/nw.png"
+  },
+  "boy/ne": {
+    "source": "raw/boy-turnaround.png",
+    "sourceCrop": [
+      512,
+      512,
+      1024,
+      1024
+    ],
+    "scale": 0.8641975308641975,
+    "base": "bases/boy/ne.png"
+  },
+  "girl/sw": {
+    "source": "raw/girl-turnaround.png",
+    "sourceCrop": [
+      0,
+      0,
+      512,
+      512
+    ],
+    "scale": 0.8450704225352113,
+    "base": "bases/girl/sw.png"
+  },
+  "girl/se": {
+    "source": "raw/girl-turnaround.png",
+    "sourceCrop": [
+      512,
+      0,
+      1024,
+      512
+    ],
+    "scale": 0.8450704225352113,
+    "base": "bases/girl/se.png"
+  },
+  "girl/nw": {
+    "source": "raw/girl-turnaround.png",
+    "sourceCrop": [
+      0,
+      512,
+      512,
+      1024
+    ],
+    "scale": 0.865979381443299,
+    "base": "bases/girl/nw.png"
+  },
+  "girl/ne": {
+    "source": "raw/girl-turnaround.png",
+    "sourceCrop": [
+      512,
+      512,
+      1024,
+      1024
+    ],
+    "scale": 0.865979381443299,
+    "base": "bases/girl/ne.png"
+  }
+}

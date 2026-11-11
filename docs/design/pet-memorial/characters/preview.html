@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>纪念园 · 人物动作预览</title><link rel="icon" href="data:,">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#112c27;color:#f1eddb;font:16px system-ui,sans-serif}main{max-width:1180px;margin:auto;padding:32px 24px}h1{font-size:30px;margin:4px 0 12px}p{color:#bbc9bd;line-height:1.7}header{display:flex;align-items:center;justify-content:space-between;gap:20px}small{color:#bda76d;letter-spacing:3px}.controls{display:flex;gap:12px;flex-wrap:wrap;margin:24px 0}button,select{font:inherit;color:#f5efd8;background:#25453a;border:1px solid #5b7058;border-radius:8px;padding:10px 16px;cursor:pointer}button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid #e8cd86}label{display:flex;align-items:center;gap:8px}.stage{position:relative;border-radius:18px;overflow:hidden;border:1px solid #53654e;background:#3c623f}canvas{display:block;width:100%;height:auto}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:20px}.card{background:#223f35;border:1px solid #4c6049;border-radius:14px;text-align:center;padding:12px}.card canvas{max-width:220px;margin:auto}.status{font-size:13px;color:#cbbf98}a{color:#e6d59c}@media(max-width:700px){header{display:block}.grid{grid-template-columns:repeat(2,1fr)}main{padding:20px 12px}}
+</style>
+<main><header><div><small>PET MEMORIAL GARDEN</small><h1>让思念有一个相见的地方</h1><p>人物动作素材预览 · 金色微光、披风与无五官设计</p></div><a href="../../../../output/imagegen/pet-memorial/pet-memorial-characters.zip">下载素材包</a></header>
+<div class="controls"><label>人物<select id="who"><option value="boy">男角色</option><option value="girl">女角色</option></select></label><label>动作<select id="action"><option value="walk">行走</option><option value="idle">待机</option></select></label><label>朝向<select id="direction"><option value="sw">左前方</option><option value="se">右前方</option><option value="nw">左后方</option><option value="ne">右后方</option></select></label><button id="pause">暂停</button><label>逐帧<input id="frame" type="range" min="0" max="11" value="0"></label></div>
+<div class="stage"><canvas id="scene" width="1120" height="630"></canvas></div><p class="status" id="status">加载素材中…</p>
+<div class="grid" id="views"></div><p>上方显示园区合成效果，下方放大检查四个朝向。待机 8 帧/秒，行走 12 帧/秒；可暂停并拖动滑块查看每一帧。</p></main>
+<script>
+const $=id=>document.getElementById(id),dirs=['sw','se','nw','ne'],labels=['左前方','右前方','左后方','右后方'];
+const images={},cards=[],bg=new Image();bg.src='garden-preview.jpg';
+let paused=false,phase=0,last=0,loaded=0,failed=0;
+for(const who of ['boy','girl'])for(const action of ['idle','walk'])for(const dir of dirs){const key=`${who}/${action}-${dir}`,im=new Image();im.onload=()=>loaded++;im.onerror=()=>failed++;im.src=`runtime/${key}.png`;images[key]=im;}
+dirs.forEach((dir,i)=>{const el=document.createElement('div');el.className='card';const title=document.createElement('div');title.textContent=labels[i];const canvas=document.createElement('canvas');canvas.width=256;canvas.height=256;el.append(title,canvas);$('views').append(el);cards.push(canvas);});
+$('pause').onclick=()=>{paused=!paused;$('pause').textContent=paused?'播放':'暂停'};
+$('frame').oninput=()=>{paused=true;$('pause').textContent='播放';phase=Number($('frame').value)};
+for(const id of ['who','action','direction'])$(id).onchange=()=>phase=0;
+function sprite(ctx,im,frame,x,y,size){if(im.complete&&im.naturalWidth)ctx.drawImage(im,frame%4*256,Math.floor(frame/4)*256,256,256,x-size/2,y-size*230/256,size,size);}
+function draw(t){const dt=Math.min((t-last)/1000,.1);last=t;const who=$('who').value,action=$('action').value,dir=$('direction').value;if(!paused)phase=(phase+dt*(action==='walk'?12:8))%12;const frame=Math.floor(phase);$('frame').value=frame;const ctx=$('scene').getContext('2d');ctx.fillStyle='#436543';ctx.fillRect(0,0,1120,630);if(bg.complete&&bg.naturalWidth)ctx.drawImage(bg,0,0,1120,630);const x=560,y=410;ctx.fillStyle='#182a2245';ctx.beginPath();ctx.ellipse(x,y-2,14,4,0,0,Math.PI*2);ctx.fill();sprite(ctx,images[`${who}/${action}-${dir}`],frame,x,y,112);cards.forEach((canvas,i)=>{const c=canvas.getContext('2d');c.fillStyle='#223f35';c.fillRect(0,0,256,256);sprite(c,images[`${who}/${action}-${dirs[i]}`],frame,128,230,256)});$('status').textContent=failed?`有 ${failed} 张素材加载失败`:`${loaded}/16 张图集已加载 · 当前第 ${frame+1}/12 帧 · ${paused?'已暂停':'循环播放'}`;requestAnimationFrame(draw)}requestAnimationFrame(draw);
+</script></html>

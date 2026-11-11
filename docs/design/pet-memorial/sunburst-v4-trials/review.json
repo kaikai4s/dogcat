@@ -1,0 +1,144 @@
+{
+  "requestedModel": "gpt-image-2.6-sunburst",
+  "rawSize": [
+    1248,
+    832
+  ],
+  "frameSize": [
+    312,
+    416
+  ],
+  "frameCount": 8,
+  "frames": [
+    {
+      "frame": 1,
+      "bboxAlphaAbove32": [
+        53,
+        25,
+        252,
+        373
+      ],
+      "sha256": "10ee17ebe636b0c06f580ef26aad9ed39fd2bf75918fac897e7b28dacb8d010b",
+      "alphaExtrema": [
+        0,
+        254
+      ]
+    },
+    {
+      "frame": 2,
+      "bboxAlphaAbove32": [
+        57,
+        25,
+        255,
+        375
+      ],
+      "sha256": "5d429e24541bf10f177bef6342e2594352a0873fd01f93abb2e060ed5c889c38",
+      "alphaExtrema": [
+        0,
+        255
+      ]
+    },
+    {
+      "frame": 3,
+      "bboxAlphaAbove32": [
+        61,
+        25,
+        259,
+        375
+      ],
+      "sha256": "270b13f936534222f58f4f6eb108dc935367c96e2176a9465e81bde24ec6bd58",
+      "alphaExtrema": [
+        0,
+        255
+      ]
+    },
+    {
+      "frame": 4,
+      "bboxAlphaAbove32": [
+        62,
+        25,
+        259,
+        374
+      ],
+      "sha256": "cb6b3357717e71488a86923a50371bc6f5d53114637650c17d19b71bd98864e7",
+      "alphaExtrema": [
+        0,
+        255
+      ]
+    },
+    {
+      "frame": 5,
+      "bboxAlphaAbove32": [
+        57,
+        26,
+        257,
+        359
+      ],
+      "sha256": "948c5e2c7031ee917b1821b949f5c0d7bc78bba5262424f45c45799895106839",
+      "alphaExtrema": [
+        0,
+        255
+      ]
+    },
+    {
+      "frame": 6,
+      "bboxAlphaAbove32": [
+        60,
+        25,
+        257,
+        358
+      ],
+      "sha256": "c66d89eff96ed34520fa28390bf4ef2a461c29cb0fb4a46be7c20b9be63fb526",
+      "alphaExtrema": [
+        0,
+        255
+      ]
+    },
+    {
+      "frame": 7,
+      "bboxAlphaAbove32": [
+        63,
+        25,
+        260,
+        361
+      ],
+      "sha256": "7847d28d4240988843ac3f056acbee03c065394ab8f7dfc4975cf420bdb665ab",
+      "alphaExtrema": [
+        0,
+        255
+      ]
+    },
+    {
+      "frame": 8,
+      "bboxAlphaAbove32": [
+        65,
+        26,
+        261,
+        361
+      ],
+      "sha256": "e86326ee22ec2aa8dadef695a33e73f176529a529ee430ca1c2b39d643d514ac",
+      "alphaExtrema": [
+        0,
+        255
+      ]
+    }
+  ],
+  "postprocessing": "Equal-cell slicing only; no per-frame scaling, warping or synthesized inbetweens",
+  "visualStatus": "improved-sample-not-production",
+  "productionReady": false,
+  "generationCalls": 6,
+  "acceptedProductionAnimations": 0,
+  "improvements": [
+    "visible near-arm swing between contact poses",
+    "near and far legs show different contact/recovery phases",
+    "corrected guide reduced excessive stance crouch",
+    "no per-frame image stretching or procedural character deformation"
+  ],
+  "remainingIssues": [
+    "boot volume and angle consistency need refinement",
+    "generated shirt hem differs from original reference",
+    "far-arm visibility varies across frames",
+    "loop transition and planted-foot travel have not passed in-engine validation"
+  ],
+  "previewBrowserVerification": "file URL navigation rejected by browser tool policy; no bypass attempted"
+}

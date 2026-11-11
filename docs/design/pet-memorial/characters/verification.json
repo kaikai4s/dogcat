@@ -1,0 +1,151 @@
+{
+  "animations": {
+    "boy/idle-sw": {
+      "uniqueFrames": 12,
+      "realAlpha": true,
+      "noEdgeClipping": true,
+      "atlasMatchesFrames": true,
+      "detachedLowerPixelsMax": 0,
+      "loopBoundaryDifference": 0.0030020407866686583,
+      "maxAdjacentDifference": 0.003102076705545187
+    },
+    "boy/idle-se": {
+      "uniqueFrames": 12,
+      "realAlpha": true,
+      "noEdgeClipping": true,
+      "atlasMatchesFrames": true,
+      "detachedLowerPixelsMax": 0,
+      "loopBoundaryDifference": 0.0028781918808817863,
+      "maxAdjacentDifference": 0.002950589172542095
+    },
+    "boy/idle-nw": {
+      "uniqueFrames": 12,
+      "realAlpha": true,
+      "noEdgeClipping": true,
+      "atlasMatchesFrames": true,
+      "detachedLowerPixelsMax": 0,
+      "loopBoundaryDifference": 0.0025859756860882044,
+      "maxAdjacentDifference": 0.002632651012390852
+    },
+    "boy/idle-ne": {
+      "uniqueFrames": 12,
+      "realAlpha": true,
+      "noEdgeClipping": true,
+      "atlasMatchesFrames": true,
+      "detachedLowerPixelsMax": 0,
+      "loopBoundaryDifference": 0.002616843208670616,
+      "maxAdjacentDifference": 0.0027103822212666273
+    },
+    "boy/walk-sw": {
+      "uniqueFrames": 12,
+      "realAlpha": true,
+      "noEdgeClipping": true,
+      "atlasMatchesFrames": true,
+      "detachedLowerPixelsMax": 0,
+      "loopBoundaryDifference": 0.0058487639762461185,
+      "maxAdjacentDifference": 0.013298701494932175
+    },
+    "boy/walk-se": {
+      "uniqueFrames": 12,
+      "realAlpha": true,
+      "noEdgeClipping": true,
+      "atlasMatchesFrames": true,
+      "detachedLowerPixelsMax": 0,
+      "loopBoundaryDifference": 0.006899106781929731,
+      "maxAdjacentDifference": 0.013823785819113255
+    },
+    "boy/walk-nw": {
+      "uniqueFrames": 12,
+      "realAlpha": true,
+      "noEdgeClipping": true,
+      "atlasMatchesFrames": true,
+      "detachedLowerPixelsMax": 0,
+      "loopBoundaryDifference": 0.006699671968817711,
+      "maxAdjacentDifference": 0.013047495856881142
+    },
+    "boy/walk-ne": {
+      "uniqueFrames": 12,
+      "realAlpha": true,
+      "noEdgeClipping": true,
+      "atlasMatchesFrames": true,
+      "detachedLowerPixelsMax": 0,
+      "loopBoundaryDifference": 0.0064304787665605545,
+      "maxAdjacentDifference": 0.012984884902834892
+    },
+    "girl/idle-sw": {
+      "uniqueFrames": 12,
+      "realAlpha": true,
+      "noEdgeClipping": true,
+      "atlasMatchesFrames": true,
+      "detachedLowerPixelsMax": 0,
+      "loopBoundaryDifference": 0.0035491357557475567,
+      "maxAdjacentDifference": 0.0037461589090526104
+    },
+    "girl/idle-se": {
+      "uniqueFrames": 12,
+      "realAlpha": true,
+      "noEdgeClipping": true,
+      "atlasMatchesFrames": true,
+      "detachedLowerPixelsMax": 0,
+      "loopBoundaryDifference": 0.003343417542055249,
+      "maxAdjacentDifference": 0.0034981239587068558
+    },
+    "girl/idle-nw": {
+      "uniqueFrames": 12,
+      "realAlpha": true,
+      "noEdgeClipping": true,
+      "atlasMatchesFrames": true,
+      "detachedLowerPixelsMax": 0,
+      "loopBoundaryDifference": 0.003720938228070736,
+      "maxAdjacentDifference": 0.0039931912906467915
+    },
+    "girl/idle-ne": {
+      "uniqueFrames": 12,
+      "realAlpha": true,
+      "noEdgeClipping": true,
+      "atlasMatchesFrames": true,
+      "detachedLowerPixelsMax": 0,
+      "loopBoundaryDifference": 0.003066576551645994,
+      "maxAdjacentDifference": 0.00319080357439816
+    },
+    "girl/walk-sw": {
+      "uniqueFrames": 12,
+      "realAlpha": true,
+      "noEdgeClipping": true,
+      "atlasMatchesFrames": true,
+      "detachedLowerPixelsMax": 0,
+      "loopBoundaryDifference": 0.006030574440956116,
+      "maxAdjacentDifference": 0.013227968476712704
+    },
+    "girl/walk-se": {
+      "uniqueFrames": 12,
+      "realAlpha": true,
+      "noEdgeClipping": true,
+      "atlasMatchesFrames": true,
+      "detachedLowerPixelsMax": 0,
+      "loopBoundaryDifference": 0.006539332680404186,
+      "maxAdjacentDifference": 0.01325741596519947
+    },
+    "girl/walk-nw": {
+      "uniqueFrames": 12,
+      "realAlpha": true,
+      "noEdgeClipping": true,
+      "atlasMatchesFrames": true,
+      "detachedLowerPixelsMax": 0,
+      "loopBoundaryDifference": 0.006392648443579674,
+      "maxAdjacentDifference": 0.01374260988086462
+    },
+    "girl/walk-ne": {
+      "uniqueFrames": 12,
+      "realAlpha": true,
+      "noEdgeClipping": true,
+      "atlasMatchesFrames": true,
+      "detachedLowerPixelsMax": 0,
+      "loopBoundaryDifference": 0.007433949038386345,
+      "maxAdjacentDifference": 0.013722386211156845
+    }
+  },
+  "totalFrames": 192,
+  "status": "passed",
+  "scope": "File structure, alpha, slicing, detached lower-limb pixels and loop continuity. Visual acceptance is separate."
+}
