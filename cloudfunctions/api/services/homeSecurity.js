@@ -270,8 +270,8 @@ module.exports = function createService({
       isAllDestroyed = updatedSec.sessionCodes.every((item) => item.destroyed === true)
     }
 
-    // 全单完结或单日完单或全部场次已销毁
-    const isFullyDestroyed = !hasSessionCodes || !sessionIndex || isAllDestroyed || options.isFinal === true
+    // 全单完结或单日订单完单或全部场次已销毁（多日订单中间场次且使用统一门锁密码时，不销毁统一门锁密码）
+    const isFullyDestroyed = options.isFinal === true || !sessionIndex || (hasSessionCodes && isAllDestroyed)
     if (isFullyDestroyed) {
       if (updatedSec.oneTimeCode) {
         updatedSec.oneTimeCode = {

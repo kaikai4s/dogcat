@@ -400,6 +400,34 @@
   line-height: 1.45;
 }
 
+.multi-day-status-tip {
+  margin-bottom: 18rpx;
+  padding: 20rpx 24rpx;
+  border-radius: 22rpx;
+  background: #f0fdf4;
+  border: 1rpx solid #bbf7d0;
+  color: #166534;
+  font-size: 26rpx;
+  line-height: 1.5;
+}
+
+.multi-day-status-tip .multi-day-tip-title {
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  margin-bottom: 6rpx;
+}
+
+.multi-day-status-tip .multi-day-tip-sub {
+  font-size: 23rpx;
+  color: #15803d;
+}
+
+.text-green {
+  color: #16a34a;
+}
+
 .ghost-btn {
   background: #fff0e2;
   color: #7a6a5e;

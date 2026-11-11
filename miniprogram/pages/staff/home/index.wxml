@@ -293,6 +293,7 @@
 
         <view class="chip-row">
           <view class="chip"><text class="remix-icon ri-time-line"></text>{{beijingTime.format(item.startTime)}}</view>
+          <view class="chip purple" wx:if="{{item.orderType === 'multi_day' || (item.sessionCount && item.sessionCount > 1)}}">连续{{item.sessionCount}}天</view>
           <view class="chip green" wx:if="{{item.staffEarning}}"><text class="remix-icon ri-money-cny-circle-line"></text>{{item.staffEarningText}}</view>
           <view class="chip blue">待抢单</view>
           <view class="chip warn" wx:if="{{item.inRange === false}}">超出范围</view>
@@ -300,7 +301,7 @@
         </view>
 
         <view class="order-actions">
-          <button class="ghost-btn" data-id="{{item._id}}" bindtap="detail">查看拼单</button>
+          <button class="ghost-btn" data-id="{{item._id}}" bindtap="detail">{{item.isGroupBuyBundle ? '查看拼单' : '订单详情'}}</button>
           <button class="primary-btn" data-id="{{item._id}}" disabled="{{acceptingOrderId}}" loading="{{acceptingOrderId === item._id}}" bindtap="accept">{{acceptingOrderId === item._id ? '抢单中...' : '立即抢单'}}</button>
           <button class="ghost-btn nav-btn" data-approximate="{{item.locationIsApproximate}}" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" bindtap="openNavigation">
             <text class="remix-icon ri-map-pin-line"></text>{{item.locationIsApproximate ? '区域导航' : '导航'}}
@@ -398,6 +399,7 @@
 
         <view class="chip-row">
           <view class="chip"><text class="remix-icon ri-time-line"></text>{{beijingTime.format(item.startTime)}}</view>
+          <view class="chip purple" wx:if="{{item.orderType === 'multi_day' || (item.sessionCount && item.sessionCount > 1)}}">连续{{item.sessionCount}}天</view>
           <view class="chip urgent-earning-chip"><text class="remix-icon ri-money-cny-circle-line"></text>收益 {{item.staffEarningText}} (含补贴)</view>
         </view>
 

@@ -70,7 +70,7 @@ function withServiceActionState(order) {
   const activeSession = sessions.find((item) => item.status === 'in_service' || Number(item.index) === Number(order.activeSessionIndex || 0)) || null
   const nextSession = sessions.find((item) => item.status !== 'completed') || null
   const startTime = toTimeValue((nextSession && nextSession.startTime) || order.startTime)
-  const canDepart = order.status === 'assigned'
+  const canDepart = ['assigned', 'day_completed'].includes(order.status)
   const isOnTheWay = order.status === 'on_the_way'
   const canStartService = ['assigned', 'on_the_way', 'day_completed'].includes(order.status)
   const canRequestEarlyStart = ['assigned', 'on_the_way', 'day_completed'].includes(order.status) && startTime > Date.now()
