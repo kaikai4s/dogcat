@@ -38,7 +38,10 @@ test('actual start sends template 71479 to client once per service session', asy
   const order = db.state.orders[0]
   order.status = 'day_completed'
   order.serviceSessions[0].status = 'completed'
+  order.serviceSessions[0].finishedAt = new Date()
   order.serviceSessions.push({ ...order.serviceSessions[0], index: 2, status: 'pending' })
+  db.state.checkin_logs.push({ ...db.state.checkin_logs[0], _id: 'second-photo', mediaFileId: 'cloud://second-photo.jpg',
+    serverTime: new Date(), serviceSessionIndex: 2, serviceSessionScheduledAt: order.serviceSessions[1].startTime })
   const second = await start()
   assert.equal(second.ok, true, second.message)
   assert.equal(sent.length, 2)

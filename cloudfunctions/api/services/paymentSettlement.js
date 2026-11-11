@@ -1,4 +1,5 @@
 const { readDocuments } = require('../utils/documentPages')
+const { parseDateValue } = require('../utils/time')
 
 module.exports = function createService(context) {
   const { db, crypto, now, getPayableOrder, createPaymentNo,
@@ -323,8 +324,15 @@ module.exports = function createService(context) {
         if (coupon.status !== 'available') {
           throw new Error(coupon.status === 'locked' ? '优惠券已被其他订单锁定' : (coupon.status === 'used' ? '优惠券已被使用' : '优惠券不可用'))
         }
-        const validTo = new Date(coupon.validTo || 0).getTime()
-        if (validTo && validTo < new Date(time).getTime()) {
+        const validFrom = parseDateValue(coupon.validFrom)
+        const validTo = parseDateValue(coupon.validTo)
+        if ((coupon.validFrom && !validFrom) || (coupon.validTo && !validTo) ||
+            (validFrom && validTo && validFrom.getTime() > validTo.getTime())) throw new Error('优惠券有效期异常，请联系客服')
+        // Recheck the current instant inside each transaction attempt. A quote
+        // can outlive the coupon, and unzoned dates are Beijing wall time.
+        const couponTime = parseDateValue(now()).getTime()
+        if (validFrom && validFrom.getTime() > couponTime) throw new Error('优惠券尚未生效')
+        if (validTo && validTo.getTime() < couponTime) {
           throw new Error('优惠券已过期')
         }
         await tx.collection('user_coupons').doc(couponId).update({

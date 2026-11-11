@@ -10,6 +10,7 @@ function setup() {
   vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/admin/settings/index.js'), 'utf8'), {
     Page(value) { page = value }, wx: { showToast(value) { toasts.push(value.title) }, showModal(value) { confirmation = value } },
     require(name) {
+      if (name.endsWith('/format')) return require('../../miniprogram/utils/format')
       if (name.endsWith('/payment-config')) return require('../../miniprogram/pages/admin/settings/payment-config')
       if (name.endsWith('/subscription-options')) return require('../../miniprogram/utils/subscription-options')
       return { showError(error) { errors.push(error.message) } }

@@ -1,9 +1,10 @@
-module.exports = function createHelpers({
-  db, ORDER_STATUS, now, getOrderPaymentDeadline, getSystemSettings,
-  getWechatPayConfig, wechatPayRequest, validatePaymentCallbackPayload,
-  markOrderPaid, sanitizeWechatPayload, couponDisplayStatus,
-  normalizeMallProduct, getSkuById, notifyOrder
-}) {
+module.exports = function createHelpers(context) {
+  const {
+    db, ORDER_STATUS, now, getOrderPaymentDeadline, getSystemSettings,
+    getWechatPayConfig, wechatPayRequest, validatePaymentCallbackPayload,
+    markOrderPaid, sanitizeWechatPayload, couponDisplayStatus,
+    normalizeMallProduct, getSkuById, notifyOrder
+  } = context
   async function reconcilePayment(order, payment, requireExpired = true) {
     if (payment.channel === 'mock') {
       if (['success', 'paid'].includes(payment.status)) {
@@ -57,7 +58,7 @@ module.exports = function createHelpers({
     }
     // Bound transaction size explicitly rather than partially cancelling an order.
     if (payments.length > 50) throw new Error('订单支付记录过多，需人工核对')
-    return db.runTransaction(async transaction => {
+    const success = await db.runTransaction(async transaction => {
       const current = (await transaction.collection(collectionName).doc(order._id).get()).data
       if (!current || current.status !== ORDER_STATUS.PENDING_PAY || current.paymentStatus === 'paid') return false
       if (current.paymentNo !== order.paymentNo || current.paymentStatus !== order.paymentStatus) return false

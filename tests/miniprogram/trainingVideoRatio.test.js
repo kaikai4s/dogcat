@@ -22,6 +22,7 @@ function setup(route = 'staff/training', callFunction = async () => ({})) {
     setTimeout(callback, delay) { const id = ++timerId; timers.set(id, { callback, dueAt: now + delay }); return id },
     clearTimeout(id) { timers.delete(id) },
     require(name) {
+      if (name.endsWith('/format')) return require('../../miniprogram/utils/format')
       if (name.endsWith('/payment-config')) return require('../../miniprogram/pages/admin/settings/payment-config')
       if (name.endsWith('/subscription-options')) return require('../../miniprogram/utils/subscription-options')
       return { callFunction: async (...args) => { calls.push(args); return callFunction(...args) }, showError: value => errors.push(value),

@@ -118,7 +118,7 @@ module.exports = function createService({
 
   function nextMonthStart(monthKey) {
     const [year, month] = normalizeMonthKey(monthKey).split('-').map(Number)
-    return new Date(year, month, 1, -8, 0, 0, 0)
+    return new Date(Date.UTC(year, month, 1, -8, 0, 0, 0))
   }
 
   async function countPetBeautyVotes(monthKey, options = {}) {

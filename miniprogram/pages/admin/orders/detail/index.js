@@ -1,7 +1,8 @@
 const { optionalAdminRead } = require('../../utils/admin-page-read')
-const { callFunction, showError } = require('../../../../utils/cloud')
+const { callFunction, showError, getCloudEnv } = require('../../../../utils/cloud')
+const { uploadImage } = require('../../../../utils/image-upload')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
-const { withOrderText, formatCheckinEvent } = require('../../../../utils/format')
+const { withOrderText, formatCheckinEvent, parseBeijingDate } = require('../../../../utils/format')
 const { copyText } = require('../../../../utils/clipboard')
 
 const SERVICE_ORDER_STATUS_OPTIONS = [
@@ -15,23 +16,6 @@ const SERVICE_ORDER_STATUS_OPTIONS = [
   { value: 'refunded', label: '已退款' }
 ]
 
-function parseBeijingDate(value) {
-  if (!value) return null
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value
-  const text = String(value).trim()
-  if (/^\d{10,13}$/.test(text)) {
-    const num = Number(text)
-    return new Date(text.length === 10 ? num * 1000 : num)
-  }
-  const localMatch = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/)
-  if (localMatch) {
-    const [, year, month, day, hour = '0', minute = '0', second = '0'] = localMatch
-    return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour) - 8, Number(minute), Number(second)))
-  }
-  const time = new Date(text).getTime()
-  return Number.isFinite(time) ? new Date(time) : null
-}
-
 function formatFullBeijingDateTime(date) {
   if (!date || Number.isNaN(date.getTime())) return ''
   const beijing = new Date(date.getTime() + 8 * 60 * 60 * 1000)
@@ -41,6 +25,14 @@ function formatFullBeijingDateTime(date) {
   const h = String(beijing.getUTCHours()).padStart(2, '0')
   const min = String(beijing.getUTCMinutes()).padStart(2, '0')
   return `${y}-${m}-${d} ${h}:${min}`
+}
+
+function manualRewardPreview(order, base, deduction = 0) {
+  const baseCents = Math.round(Number(base || 0) * 100)
+  const payCents = Math.round(Number(order.payAmount || 0) * 100)
+  const refundCents = Math.round(Number(order.refundedAmount || 0) * 100)
+  const refundDeduction = payCents > 0 ? Math.round(baseCents * refundCents / payCents) : 0
+  return Math.max(0, baseCents - Math.round(Number(deduction || 0) * 100) - refundDeduction) / 100
 }
 
 const CHECKIN_EVENT_LABELS = {
@@ -165,11 +157,13 @@ function computeInitialUrgentTime(order, durationMinutes = 60) {
 
   // 如果原订单开始时间有效且在当前时间30分钟之后，可优先使用原时间，否则使用计算出的合规加急时间
   if (order && order.startTime) {
-    const origStart = parseBeijingDate(order.startTime)
+    const firstSession = Array.isArray(order.serviceSessions) && order.serviceSessions.length ? order.serviceSessions[0] : order
+    const origStart = parseBeijingDate(firstSession.startTime)
     if (origStart && origStart.getTime() >= now.getTime() + 30 * 60 * 1000) {
+      const origEnd = parseBeijingDate(firstSession.endTime)
       return {
-        startTime: order.startTime,
-        endTime: order.endTime || formatFullBeijingDateTime(new Date(origStart.getTime() + durationMinutes * 60 * 1000))
+        startTime: formatFullBeijingDateTime(origStart),
+        endTime: formatFullBeijingDateTime(origEnd && origEnd > origStart ? origEnd : new Date(origStart.getTime() + durationMinutes * 60 * 1000))
       }
     }
   }
@@ -468,6 +462,15 @@ Page({
       wx.showToast({ title: '订单已开始服务或已结束，无法转加急单', icon: 'none' })
       return
     }
+    if (order.groupBuyId || order.source === 'community_groupbuy') {
+      wx.showToast({ title: '拼单需要整团调整，不能单户转加急', icon: 'none' })
+      return
+    }
+    if (order.status === 'day_completed' || Number(order.lastCompletedSessionIndex || 0) > 0 ||
+        (order.serviceSessions || []).some(session => ['completed','in_service','cancelled'].includes(session.status))) {
+      wx.showToast({ title: '已有履约或取消场次，无法整单转加急', icon: 'none' })
+      return
+    }
     const defaultReward = order.urgentStaffReward || Math.round(Number(order.payAmount || 60) * 0.7 * 100) / 100
     const durationMinutes = Number(order.durationMinutes || 60) || 60
     const initialTimes = computeInitialUrgentTime(order, durationMinutes)
@@ -658,7 +661,11 @@ Page({
     }
     if (endTime) {
       const endDateObj = parseBeijingDate(endTime)
-      if (endDateObj && endDateObj.getTime() <= startDateObj.getTime()) {
+      if (!endDateObj) {
+        wx.showToast({ title: '结束时间格式有误，需为 YYYY-MM-DD HH:mm', icon: 'none' })
+        return
+      }
+      if (endDateObj.getTime() <= startDateObj.getTime()) {
         wx.showToast({ title: '服务结束时间必须晚于开始时间', icon: 'none' })
         return
       }
@@ -899,6 +906,7 @@ Page({
   },
 
   openManualCompleteModal() {
+    if (this.data.submittingManualComplete) return
     const order = this.data.detail && this.data.detail.order
     if (!order) return
     const reward = Number(order.standardStaffReward || this.data.standardStaffReward || 0)
@@ -906,7 +914,7 @@ Page({
       showManualCompleteModal: true,
       standardStaffReward: reward,
       manualDeductAmountInput: '0',
-      computedFinalReward: reward.toFixed(2),
+      computedFinalReward: manualRewardPreview(order, reward).toFixed(2),
       manualCompleteRemarkInput: '',
       manualCompleteImages: [],
       submittingManualComplete: false
@@ -921,7 +929,7 @@ Page({
     const val = e.detail.value
     const deduct = Math.max(0, Number(val || 0))
     const base = Number(this.data.standardStaffReward || 0)
-    const finalReward = Math.max(0, base - deduct)
+    const finalReward = manualRewardPreview(this.data.detail.order, base, deduct)
     this.setData({
       manualDeductAmountInput: val,
       computedFinalReward: finalReward.toFixed(2)
@@ -937,7 +945,7 @@ Page({
     else if (type === 'half') deduct = Math.round(base * 0.5 * 100) / 100
     else if (type === 'all') deduct = base
 
-    const finalReward = Math.max(0, base - deduct)
+    const finalReward = manualRewardPreview(this.data.detail.order, base, deduct)
     this.setData({
       manualDeductAmountInput: String(deduct),
       computedFinalReward: finalReward.toFixed(2)
@@ -976,6 +984,7 @@ Page({
   },
 
   submitManualComplete() {
+    if (this.data.submittingManualComplete) return
     const order = this.data.detail && this.data.detail.order
     if (!order) return
     const remark = String(this.data.manualCompleteRemarkInput || '').trim()
@@ -983,30 +992,44 @@ Page({
       wx.showToast({ title: '请填写核实说明与原因', icon: 'none' })
       return
     }
-    const deductAmount = Math.max(0, Number(this.data.manualDeductAmountInput || 0))
+    const deductAmount = Number(this.data.manualDeductAmountInput || 0)
+    if (!Number.isFinite(deductAmount) || deductAmount < 0 || !Number.isSafeInteger(Math.round(deductAmount * 100)) || Math.abs(deductAmount * 100 - Math.round(deductAmount * 100)) > 1e-7) {
+      wx.showToast({ title: '请输入最多两位小数的非负金额', icon: 'none' })
+      return
+    }
     const base = Number(this.data.standardStaffReward || 0)
     if (deductAmount > base) {
       wx.showToast({ title: '扣除金额不可大于应得收益', icon: 'none' })
       return
     }
-    const finalReward = Math.max(0, Math.round((base - deductAmount) * 100) / 100)
+    const finalReward = manualRewardPreview(order, base, deductAmount)
 
     wx.showModal({
       title: '确认核实并完成服务',
-      content: `宠托师原本应得：¥${base.toFixed(2)}\n违规扣除金额：¥${deductAmount.toFixed(2)}\n最终实发收益：¥${finalReward.toFixed(2)}\n确认更新订单为已完成并执行收益结算吗？`,
+      content: `宠托师原本应得：¥${base.toFixed(2)}\n违规扣除金额：¥${deductAmount.toFixed(2)}\n扣除已退款后预计收益：¥${finalReward.toFixed(2)}\n${order.groupBuyId ? '核实全部服务后，等待同团住户完成再统一结算。' : '确认全部服务已完成并执行收益结算？'}${order.paymentStatus === 'refunding' ? '\n处理中退款会继续影响收益，暂不可提现。' : ''}`,
       confirmColor: '#10b981',
       success: (res) => {
-        if (!res.confirm) return
+        if (!res.confirm || this.data.submittingManualComplete) return
+        const orderId = this.data.id
+        const images = [...(this.data.manualCompleteImages || [])]
         this.setData({ submittingManualComplete: true })
-        callFunction('admin', 'manualCompleteOrder', {
-          orderId: this.data.id,
-          remark,
-          deductAmount,
-          deductReason: remark,
-          evidenceImages: this.data.manualCompleteImages
+        Promise.all(images.map((filePath, index) => {
+          if (filePath.startsWith('cloud://')) return filePath
+          return uploadImage({ config: { env: getCloudEnv() }, filePath,
+            cloudPath: `admin-order-proofs/${orderId}/${Date.now()}_${index}_${Math.random().toString(36).slice(2, 10)}.jpg` })
+            .then(result => result.fileID)
+        })).then((evidenceImages) => {
+          this.setData({ manualCompleteImages: evidenceImages })
+          return callFunction('admin', 'manualCompleteOrder', {
+            orderId,
+            remark,
+            deductAmount,
+            deductReason: remark,
+            evidenceImages
+          })
         })
-          .then(() => {
-            wx.showToast({ title: '已成功核实完单' })
+          .then((result) => {
+            wx.showToast({ title: result && result.partialGroupCompleted ? '已核实，待拼单统一结算' : '已成功核实完单', icon: 'none' })
             this.closeManualCompleteModal()
             this.load()
           })

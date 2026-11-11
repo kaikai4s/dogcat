@@ -6,27 +6,11 @@ const { flushServiceOfflineTasks } = require('../../../../utils/serviceOfflineSy
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { createClientRequestId, enqueueOfflineTask, getOfflineTaskCount, retryOfflineTasks } = require('../../../../utils/offlineQueue')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
-const { formatDateTime, buildOrderCareCards, formatCheckinEvent } = require('../../../../utils/format')
+const { formatDateTime, parseBeijingDate, buildOrderCareCards, formatCheckinEvent } = require('../../../../utils/format')
 const { copyText } = require('../../../../utils/clipboard')
 function toTimeValue(value) {
-  if (!value) return 0
-  if (value instanceof Date) return value.getTime()
-  if (typeof value === 'number') return Number.isFinite(value) ? value : 0
-  const text = String(value).trim()
-  if (/^\d{10,13}$/.test(text)) {
-    const num = Number(text)
-    return Number.isFinite(num) ? (text.length === 10 ? num * 1000 : num) : 0
-  }
-  const localMatch = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/)
-  if (localMatch) {
-    const [, year, month, day, hour = '0', minute = '0', second = '0'] = localMatch
-    return Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour) - 8, Number(minute), Number(second))
-  }
-  let parsed = new Date(text).getTime()
-  if (Number.isNaN(parsed)) {
-    parsed = new Date(text.replace(/-/g, '/').replace('T', ' ')).getTime()
-  }
-  return Number.isNaN(parsed) ? 0 : parsed
+  const date = parseBeijingDate(value)
+  return date ? date.getTime() : 0
 }
 
 function isNetworkError(error) {
@@ -68,12 +52,13 @@ function withServiceActionState(order) {
   const serviceStarted = order.status === 'in_service'
   const sessions = Array.isArray(order.serviceSessions) ? order.serviceSessions : []
   const activeSession = sessions.find((item) => item.status === 'in_service' || Number(item.index) === Number(order.activeSessionIndex || 0)) || null
-  const nextSession = sessions.find((item) => item.status !== 'completed') || null
+  const nextSession = sessions.find((item) => !['completed', 'cancelled'].includes(item.status)) || null
   const startTime = toTimeValue((nextSession && nextSession.startTime) || order.startTime)
-  const canDepart = ['assigned', 'day_completed'].includes(order.status)
+  const hasPendingSession = sessions.length === 0 || Boolean(nextSession)
+  const canDepart = hasPendingSession && ['assigned', 'day_completed'].includes(order.status)
   const isOnTheWay = order.status === 'on_the_way'
-  const canStartService = ['assigned', 'on_the_way', 'day_completed'].includes(order.status)
-  const canRequestEarlyStart = ['assigned', 'on_the_way', 'day_completed'].includes(order.status) && startTime > Date.now()
+  const canStartService = hasPendingSession && ['assigned', 'on_the_way', 'day_completed'].includes(order.status)
+  const canRequestEarlyStart = hasPendingSession && ['assigned', 'on_the_way', 'day_completed'].includes(order.status) && startTime > Date.now()
   const sanitization = (order.checkinRequirements || []).find((item) => item.eventType === 'sanitization')
   const sanitizationRequired = Boolean((sanitization && sanitization.required) || (order.requiredCheckins || []).includes('sanitization'))
   const sanitizationCompleted = Boolean(sanitization && sanitization.completed)
@@ -117,6 +102,7 @@ function withServiceActionState(order) {
     isOnTheWay,
     canStartService,
     canRequestEarlyStart,
+    isWaitingForGroupCompletion: Boolean(order.groupBuyId) && order.status === 'day_completed' && !hasPendingSession,
     isStartOverdue,
     startOverdueMinutes,
     isFinishOverdue,
@@ -336,11 +322,8 @@ Page({
     if (this._unloaded || this._startingLock || this._finishingLock) return Promise.resolve()
     const requestSeq = this._orderRequestSeq = (this._orderRequestSeq || 0) + 1
     const isCurrent = () => !this._unloaded && requestSeq === this._orderRequestSeq
-    return Promise.all([
-      callFunction('order', 'getOrderDetail', { id: this.data.id, role: 'staff' }),
-      callFunction('checkin', 'listOrderCheckins', { orderId: this.data.id }).catch(() => [])
-    ])
-      .then(([order, checkins]) => {
+    return callFunction('order', 'getOrderDetail', { id: this.data.id, role: 'staff' })
+      .then((order) => {
         if (!isCurrent() || !order) return
         const app = typeof getApp === 'function' ? getApp() : null
         const currentUser = (app && app.globalData && app.globalData.user) || {}
@@ -358,29 +341,9 @@ Page({
           return
         }
 
+        // The detail response evaluates photo ownership, visit and Beijing-date
+        // validity together. History from a separate request cannot replace it.
         const displayOrder = withServiceActionState(order)
-        if (displayOrder && Array.isArray(displayOrder.checkinRequirements)) {
-          const sessionStartedAt = toTimeValue(displayOrder.currentSessionStartedAt || (displayOrder.activeSession && displayOrder.activeSession.startedAt) || displayOrder.startedAt)
-          const validCheckins = (checkins || []).filter((item) => {
-            if (item.eventType === 'sanitization') return true
-            if (displayOrder.status !== 'in_service' || !sessionStartedAt) return !item.deletedAt
-            return !item.deletedAt && toTimeValue(item.recordedAt || item.serverTime || item.createdAt) >= (sessionStartedAt - 60000)
-          })
-          const countsByType = {}
-          validCheckins.forEach((c) => {
-            if (c.eventType && c.mediaFileId) {
-              countsByType[c.eventType] = (countsByType[c.eventType] || 0) + 1
-            }
-          })
-          displayOrder.checkinRequirements = displayOrder.checkinRequirements.map((req) => {
-            const count = countsByType[req.eventType] !== undefined ? countsByType[req.eventType] : (req.photoCount || 0)
-            return {
-              ...req,
-              photoCount: count,
-              completed: count > 0 || Boolean(req.completed)
-            }
-          })
-        }
         const earlyStart = (order && order.earlyStartRequest) || null
         this.setData({
           order: displayOrder,
@@ -722,24 +685,47 @@ Page({
   },
 
   recordKeyReturned() {
+    const order = this.data.order || {}
+    if (order.status !== 'in_service') {
+      wx.showToast({ title: '请开始本次服务后登记', icon: 'none' })
+      return
+    }
     if (!this.data.keyReturnImageFileIds.length) {
       wx.showToast({ title: '请上传放回钥匙图片', icon: 'none' })
       return
     }
+    const visitScope = (current) => {
+      const active = current.activeSession || {}
+      return { sessionIndex: Number(current.activeSessionIndex || active.index || 1),
+        sessionStartedAt: current.currentSessionStartedAt || active.startedAt || current.startedAt || '' }
+    }
+    const payload = { orderId: this.data.id, ...visitScope(order), imageFileIds: this.data.keyReturnImageFileIds.slice() }
+    const isCurrentVisit = () => {
+      const current = this.data.order || {}
+      const scope = visitScope(current)
+      return this.data.id === payload.orderId && current.status === 'in_service' &&
+        scope.sessionIndex === payload.sessionIndex && toTimeValue(scope.sessionStartedAt) === toTimeValue(payload.sessionStartedAt)
+    }
     this.setData({ returningKey: true })
-    callFunction('homeSecurity', 'recordKeyReturned', { orderId: this.data.id, imageFileIds: this.data.keyReturnImageFileIds })
+    callFunction('homeSecurity', 'recordKeyReturned', payload)
       .then((security) => {
+        if (this._unloaded) return
+        this.setData({ returningKey: false })
+        if (!isCurrentVisit()) return
         wx.showToast({ title: '已记录放回' })
-        this.setData({ returningKey: false, keyReturnImageFileIds: [], order: { ...(this.data.order || {}), orderHomeSecurity: security } })
+        this.setData({ keyReturnImageFileIds: [], order: { ...(this.data.order || {}), orderHomeSecurity: security } })
       })
       .catch((error) => {
-        this.setData({ returningKey: false })
         if (isNetworkError(error)) {
-          enqueueOfflineTask('key_return', { orderId: this.data.id, imageFileIds: this.data.keyReturnImageFileIds, clientRequestId: createClientRequestId('key_return') })
-          this.setData({ offlineTaskCount: getOfflineTaskCount(this.data.id), keyReturnImageFileIds: [] })
+          enqueueOfflineTask('key_return', { ...payload, clientRequestId: createClientRequestId('key_return') })
+          if (this._unloaded) return
+          this.setData({ returningKey: false, offlineTaskCount: getOfflineTaskCount(this.data.id),
+            ...(isCurrentVisit() ? { keyReturnImageFileIds: [] } : {}) })
           wx.showToast({ title: '网络异常，已加入待补传', icon: 'none' })
           return
         }
+        if (this._unloaded) return
+        this.setData({ returningKey: false })
         showError(error)
       })
   },

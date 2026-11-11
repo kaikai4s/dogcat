@@ -4,7 +4,7 @@ const { placedBuildings, isPublicBuilding } = require('../utils/plot-buildings')
 const { SceneSync } = require('../utils/scene-sync')
 const lifePage = require('../utils/life-page')
 const { decorateListing } = require('../utils/community-group-buy')
-const { formatServiceTypes } = require('../../utils/format')
+const { formatServiceTypes, formatBeijingClock } = require('../../utils/format')
 
 function withServiceText(service) {
   return service ? { ...service, serviceTypeText: service.serviceSummary || formatServiceTypes(service.serviceType) } : null
@@ -353,8 +353,7 @@ Page({
     if (!msg) return
     const text = String(msg).trim()
     if (!text) return
-    const d = new Date()
-    const time = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+    const time = formatBeijingClock()
     const history = (this.data.messageHistory || []).slice(-49)
     history.push({ time, text })
     this.setData({

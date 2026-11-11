@@ -1,3 +1,6 @@
+const { readOptionalDocument } = require('../utils/documentPages')
+const { keyReturnScope, keyReturnRecords, findKeyReturn } = require('../utils/keyReturnEvidence')
+
 module.exports = function createHandler(context) {
   const {
     appendOrderClientMessage,
@@ -447,15 +450,13 @@ module.exports = function createHandler(context) {
       if (!order) throw new Error('订单不存在')
       if (order.staffOpenid !== openid) throw new Error('不是该订单绑定员工')
       const security = stripLegacyHomeSecuritySecrets(order.orderHomeSecurity || order.homeSecuritySnapshot || {})
-      if (security.type !== 'key' || !security.key) throw new Error('该订单不是钥匙入户方式')
-      if (security.key && security.key.returnedAt) {
-        const prevImages = Array.isArray(security.key.returnImageFileIds) ? security.key.returnImageFileIds : []
-        const inputImages = Array.isArray(data.imageFileIds) ? data.imageFileIds.filter(Boolean) : []
-        if (inputImages.length && prevImages.length && inputImages.join(',') === prevImages.join(',')) {
-          return toPublicOrderHomeSecurity(security)
-        }
-        throw new Error('钥匙已完成放回登记，不可重复覆盖归还记录')
-      }
+      if ((security.type || security.lockMethod) !== 'key' || !security.key) throw new Error('该订单不是钥匙入户方式')
+      const expectedScope = keyReturnScope(order)
+      const hasScope = data.sessionIndex != null && data.sessionStartedAt != null
+      if ((order.serviceSessions || []).length > 1 && !hasScope) throw new Error('缺少服务场次，请刷新后重新登记钥匙归还')
+      const scope = hasScope ? { sessionIndex: Number(data.sessionIndex), sessionStartedAt: data.sessionStartedAt } : expectedScope
+      if (!Number.isSafeInteger(scope.sessionIndex) || scope.sessionIndex < 1 ||
+          (hasScope && !toTimeValue(scope.sessionStartedAt))) throw new Error('服务场次无效，请刷新后重试')
       const imageFileIds = Array.isArray(data.imageFileIds) ? data.imageFileIds.filter(Boolean) : []
       if (!imageFileIds.length) throw new Error('请上传放回钥匙位置图片')
       const returnNote = safeText(data.note || data.returnNote).trim()
@@ -469,12 +470,36 @@ module.exports = function createHandler(context) {
         }
       }
       const time = now()
-      const updatedSecurity = { ...security, key: { ...security.key, returnedAt: time.toISOString(), returnImageFileIds: imageFileIds, returnNote }, updatedAt: time }
-      await db.collection('orders').doc(data.orderId).update({ data: { orderHomeSecurity: updatedSecurity, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(updatedSecurity), updatedAt: time } })
-      const returnSecRes = await db.collection('order_home_security').where({ orderId: data.orderId }).limit(1).get().catch(() => ({ data: [] }))
-      const returnSecDoc = returnSecRes && returnSecRes.data && returnSecRes.data[0]
-      if (returnSecDoc) await db.collection('order_home_security').doc(returnSecDoc._id).update({ data: removeLegacySecretFields({ ...updatedSecurity, updatedAt: time }) })
-      return toPublicOrderHomeSecurity(updatedSecurity)
+      return db.runTransaction(async tx => {
+        const latestUser = await readOptionalDocument(tx, 'users', user._id)
+        if (!latestUser || latestUser.openid !== openid || latestUser.status !== 'active' ||
+            !Array.isArray(latestUser.roles) || !latestUser.roles.includes('staff')) throw new Error('员工账号不可登记钥匙归还')
+        const latest = await readOptionalDocument(tx, 'orders', orderId)
+        if (!latest || latest.staffOpenid !== openid) throw new Error('不是该订单绑定员工')
+        const latestSecurity = stripLegacyHomeSecuritySecrets(latest.orderHomeSecurity || latest.homeSecuritySnapshot || {})
+        if ((latestSecurity.type || latestSecurity.lockMethod) !== 'key' || !latestSecurity.key) throw new Error('该订单不是钥匙入户方式')
+        const receipt = findKeyReturn(latestSecurity.key, scope, openid)
+        if (receipt) {
+          if (JSON.stringify(receipt.returnImageFileIds) === JSON.stringify(imageFileIds)) return toPublicOrderHomeSecurity(latestSecurity, latest)
+          throw new Error('钥匙已完成放回登记，不可重复覆盖归还记录')
+        }
+        if (latest.status !== 'in_service') throw new Error('仅服务中的订单可以登记钥匙归还')
+        const latestScope = keyReturnScope(latest)
+        if (Number(latestScope.sessionIndex) !== scope.sessionIndex ||
+            toTimeValue(latestScope.sessionStartedAt) !== toTimeValue(scope.sessionStartedAt) ||
+            toTimeValue(latestScope.sessionStartedAt) > time.getTime()) throw new Error('服务场次已变化，请刷新后重试')
+        const record = { ...scope, staffOpenid: openid, returnedAt: time.toISOString(), returnImageFileIds: imageFileIds, returnNote }
+        const updatedKey = { ...latestSecurity.key, returnedAt: record.returnedAt,
+          returnedSessionIndex: scope.sessionIndex, returnedSessionStartedAt: scope.sessionStartedAt,
+          returnedStaffOpenid: openid, returnImageFileIds: imageFileIds, returnNote,
+          returnRecords: [...keyReturnRecords(latestSecurity.key), record] }
+        const updatedSecurity = { ...latestSecurity, key: updatedKey, updatedAt: time }
+        const mirror = (await tx.collection('order_home_security').where({ orderId }).limit(1).get()).data?.[0]
+        await tx.collection('orders').doc(orderId).update({ data: { orderHomeSecurity: updatedSecurity,
+          homeSecuritySnapshot: toPublicHomeSecuritySnapshot(updatedSecurity), updatedAt: time } })
+        if (mirror) await tx.collection('order_home_security').doc(mirror._id).update({ data: { key: updatedKey, updatedAt: time } })
+        return toPublicOrderHomeSecurity(updatedSecurity, latest)
+      })
     }
     throw new Error('未知 homeSecurity 操作')
   }

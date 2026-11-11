@@ -23,7 +23,8 @@ test('1. multi-pet multi-day pricing precision: no floating point IEEE-754 drift
   const orderData = {
     serviceTypes: ['visit_fee', 'feed', 'play'],
     startTime: '2026-10-01 10:00',
-    serviceDays: 3,
+    orderType: 'multi_day',
+    endDate: '2026-10-03',
     petServiceDurations: [
       { serviceKey: 'play', petId: 'pet_cat_1', durationMinutes: 90 },
       { serviceKey: 'play', petId: 'pet_cat_2', durationMinutes: 60 } // 续时 1 个 30 分钟 = 18.8 元
@@ -31,6 +32,10 @@ test('1. multi-pet multi-day pricing precision: no floating point IEEE-754 drift
   }
 
   const pricing = await context.calcOrderPricing(orderData, pets)
+
+  assert.equal(pricing.sessionCount, 3)
+  assert.equal(pricing.amount, 500.7)
+  assert.equal(pricing.priceSnapshot.sessionPricing.length, 3)
 
   // 验证每个价格细项均没有浮点尾数
   pricing.priceItems.forEach(item => {

@@ -19,6 +19,7 @@ function createPageInstance() {
     Page(config) { page = config },
     wx,
     require(name) {
+      if (name.endsWith('/format')) return require('../../miniprogram/utils/format')
       if (name.endsWith('/theme')) return { applyTheme: () => ({ value: 'day' }), getThemeState: () => ({}) }
       return {
         callFunction: () => Promise.resolve({}),

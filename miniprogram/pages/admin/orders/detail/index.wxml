@@ -107,6 +107,7 @@
 
   <!-- 费用与收益分成结算卡片 -->
   <view class="admin-card financial-card" wx:if="{{detail.order.profitError}}">{{detail.order.profitError}}，收益暂不估算。请核对宠托师管理中的个人提成比例。</view>
+  <view class="admin-card financial-card" wx:if="{{detail.order.legacyManualAccountingNeedsReview || detail.order.completionOrdinalNeedsReview}}">历史完单次数或奖励记录待核对，请结合积分、补签卡与收益流水确认。</view>
   <view class="admin-card financial-card" wx:if="{{detail.order.profitSummary && detail.order.profitSummary.hasPayment}}">
     <view class="card-subtitle-between">
       <view class="card-subtitle">
@@ -125,6 +126,7 @@
         <view class="profit-amount">¥{{detail.order.profitSummary.payAmount}}</view>
         <view class="profit-sub" wx:if="{{detail.order.profitSummary.refundAmount > 0}}">已退 ¥{{detail.order.profitSummary.refundAmount}} · 净额 ¥{{detail.order.profitSummary.netPayAmount}}</view>
         <view class="profit-sub" wx:else>有效流水 ¥{{detail.order.profitSummary.netPayAmount}}</view>
+        <view class="profit-sub" wx:if="{{detail.order.profitSummary.pendingRefundAmount > 0}}">退款处理中 ¥{{detail.order.profitSummary.pendingRefundAmount}}</view>
       </view>
 
       <view class="profit-item staff-item">
@@ -547,9 +549,11 @@
         </view>
 
         <view class="highlight-text" style="margin-top: 14rpx; padding: 12rpx; border-radius: 12rpx; background: #f0fdf4; font-size: 26rpx; display: flex; justify-content: space-between; align-items: center;">
-          <text style="color: #065f46;">最终实发宠托师收益：</text>
+          <text style="color: #065f46;">扣除已退款后预计收益：</text>
           <text class="strong" style="color: #059669; font-size: 32rpx;">¥{{computedFinalReward}}</text>
         </view>
+        <view class="muted" wx:if="{{detail.order.groupBuyId}}">核实全部服务后，等待同团住户全部完成再统一结算。</view>
+        <view class="muted" wx:if="{{detail.order.paymentStatus === 'refunding'}}">退款处理中，最终收益以退款结果为准，暂不可提现。</view>
 
         <view class="form-label" style="margin-top: 18rpx;">核实说明 / 扣减原因 (必填)</view>
         <textarea placeholder="例如：宠托师已线下履约，因地下室无信号未能打卡，经电话核实无误；扣除20元服务费作为漏打卡处罚" value="{{manualCompleteRemarkInput}}" bindinput="inputManualCompleteRemark" />

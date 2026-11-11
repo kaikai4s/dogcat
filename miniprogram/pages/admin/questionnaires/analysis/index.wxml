@@ -1,3 +1,4 @@
+<wxs module="beijingTime" src="../../../../utils/beijing-time.wxs" />
 <view class="page analysis-page">
   <!-- 头部看板 -->
   <view class="hero">
@@ -77,7 +78,7 @@
         </view>
         <view class="summary-text">{{report.summary}}</view>
         <view class="summary-meta" wx:if="{{report.updatedAt || report.generatedAt}}">
-          <text class="remix-icon ri-time-line"></text> 分析时间：{{report.updatedAt || report.generatedAt}}
+          <text class="remix-icon ri-time-line"></text> 分析时间：{{beijingTime.format(report.updatedAt || report.generatedAt)}}
         </view>
       </view>
 

@@ -12,11 +12,11 @@ function isValidIdCard(idCard) {
   const year = parseInt(id.substring(6, 10), 10)
   const month = parseInt(id.substring(10, 12), 10)
   const day = parseInt(id.substring(12, 14), 10)
-  const currentYear = new Date().getFullYear()
+  const currentYear = require('../utils/time').toCstParts().year
 
   if (year < 1900 || year > currentYear) return false
   if (month < 1 || month > 12) return false
-  const maxDays = new Date(year, month, 0).getDate()
+  const maxDays = new Date(Date.UTC(year, month, 0)).getUTCDate()
   if (day < 1 || day > maxDays) return false
 
   const weights = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2]

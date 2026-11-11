@@ -106,8 +106,8 @@ module.exports = function createService({
 
   function toBeijingString(value) {
     if (!value) return ''
-    const date = value instanceof Date ? value : new Date(value)
-    if (Number.isNaN(date.getTime())) return String(value || '')
+    const date = require('../utils/time').parseDateValue(value)
+    if (!date) return String(value || '')
     const cst = new Date(date.getTime() + 8 * 60 * 60 * 1000)
     const year = cst.getUTCFullYear()
     const month = String(cst.getUTCMonth() + 1).padStart(2, '0')

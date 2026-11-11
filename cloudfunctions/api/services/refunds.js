@@ -1,5 +1,6 @@
 const { getOrderRefundState } = require('../utils/orderRefundState')
 const { shouldRestoreMallRefundStock } = require('../utils/mallRefundStock')
+const { toTimeValue } = require('../utils/time')
 
 module.exports = function createService({ db, crypto, now, getPayableOrder, getSystemSettings,
   assertPaymentModeAllowed, getWechatPayConfig, wechatPayRequest, sanitizeWechatPayload, amountYuanToFen, createRefundNo, restoreOrderCoupon,
@@ -59,7 +60,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
       // guard and its writes share the refund reservation transaction and rollback.
       if (source === 'staff_cancel' && typeof options.beforeReserve !== 'function') throw new Error('缺少宠托师取消校验')
       const cancellationPatch = typeof options.beforeReserve === 'function'
-        ? await options.beforeReserve(tx, current, { collectionName: resolved.collectionName, requested })
+        ? await options.beforeReserve(tx, current, { collectionName: resolved.collectionName, requested, refundId: id })
         : {}
       if (!['paid', 'refunding'].includes(current.paymentStatus)) throw new Error('订单未支付或状态不支持退款')
       if (source === 'mall_after_sale' && !['applied', 'return_shipped'].includes(current.refundStatus)) {
@@ -80,6 +81,10 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
       if (!Number.isSafeInteger(reserved + requested) || reserved + requested > total) throw new Error('退款金额不能超过可退金额上限')
       if (options.cancelStatus && (current.status !== order.status || current.staffOpenid !== order.staffOpenid)) throw new Error('订单状态已变化，请刷新后重新取消')
       const time = now()
+      const cancellationHoldId = cancellationPatch.cancellationEarningHoldId || current.cancellationEarningHoldId
+      const cancellationRefundTarget = cancellationPatch.cancellationRefundTargetAmount ?? current.cancellationRefundTargetAmount ??
+        cancellationPatch.cancellationRefundAmount ?? current.cancellationRefundAmount ?? 0
+      const cancellationHolds = cancellationHoldId && successful < Math.round(Number(cancellationRefundTarget) * 100) ? [cancellationHoldId] : []
       const value = { orderId: order._id, orderNo: current.orderNo || '', collectionName: resolved.collectionName,
         paymentNo: current.paymentNo || '', wxTransactionId: current.wxTransactionId || '', refundNo: createRefundNo(),
         openid: current.clientOpenid || '', amount: Number(current.payAmount), refundAmount: requested / 100,
@@ -89,7 +94,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
       await tx.collection(resolved.collectionName).doc(order._id).update({ data: {
         paymentStatus: 'refunding', refundStatus: 'processing', refundAmount: (reserved + requested) / 100,
         refundNo: value.refundNo, refundRevision: Number(current.refundRevision || 0) + 1, updatedAt: time,
-        pendingEarningRefundIds: [...new Set([...(current.pendingEarningRefundIds || []), id])],
+        pendingEarningRefundIds: [...new Set([...(current.pendingEarningRefundIds || []), id, ...cancellationHolds])],
         ...(options.cancelStatus ? { status: options.cancelStatus, cancelReason: reason || '', cancelledAt: time } : {}),
         ...(options.cancelStatus === 'expired' ? { expiredAt: time, expireReason: '服务开始时间前无人接单' } : {}),
         ...(source === 'mall_after_sale' && current.afterSaleType === 'return_and_refund' && current.refundStatus === 'return_shipped'
@@ -100,7 +105,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         refundNo: value.refundNo, status: 'processing', detail: { refundAmount: value.refundAmount, source }, createdAt: time } })
       if (typeof adjustStaffEarningsForRefund === 'function') {
         await adjustStaffEarningsForRefund(order._id, requested / 100, total / 100, reason, tx, {
-          phase: 'reserve', refundId: id
+          phase: 'reserve', refundId: id, additionalHoldIds: cancellationHolds
         })
       }
       return { _id: id, ...value }
@@ -119,8 +124,8 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
   async function refreshOrderRefunds(orders, collectionName = 'orders') {
     const checkedAt = now()
     const candidates = orders.filter(order => getOrderRefundState(order) === 'refunding' &&
-      (!order.refundSyncCheckedAt || new Date(checkedAt).getTime() - new Date(order.refundSyncCheckedAt).getTime() >= 30000))
-      .sort((a, b) => (new Date(a.refundSyncCheckedAt || 0).getTime() || 0) - (new Date(b.refundSyncCheckedAt || 0).getTime() || 0)).slice(0, 10)
+      (!order.refundSyncCheckedAt || toTimeValue(checkedAt) - toTimeValue(order.refundSyncCheckedAt) >= 30000))
+      .sort((a, b) => toTimeValue(a.refundSyncCheckedAt) - toTimeValue(b.refundSyncCheckedAt)).slice(0, 10)
     if (!candidates.length) return orders
     const pendingByOrder = await Promise.all(candidates.map(async order => {
       try {
@@ -131,7 +136,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         return []
       }
     }))
-    const pending = pendingByOrder.flat().sort((a, b) => new Date(a.updatedAt || 0) - new Date(b.updatedAt || 0)).slice(0, 10)
+    const pending = pendingByOrder.flat().sort((a, b) => toTimeValue(a.updatedAt) - toTimeValue(b.updatedAt)).slice(0, 10)
     const checkedIds = new Set(pending.map(refund => refund.orderId))
     // Orders without a pending refund must not indefinitely occupy the first ten candidates.
     candidates.forEach((order, index) => { if (!pendingByOrder[index].length) checkedIds.add(order._id) })
@@ -222,8 +227,14 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
       const hasProcessing = rows.some(row => (row._id === refund._id ? status : row.status) === 'processing')
       const total = amountYuanToFen(order.payAmount)
       const full = successful >= total
+      const releaseHoldIds = status === 'success' && order.cancellationEarningHoldId &&
+        successful >= amountYuanToFen(order.cancellationRefundTargetAmount ?? order.cancellationRefundAmount)
+        ? [order.cancellationEarningHoldId] : []
       if (latest.earningsAccountingVersion === 2 && !latest.earningsApplied && ['success', 'failed'].includes(status)) {
-        await adjustStaffEarningsForRefund(order._id, latest.refundAmount, latest.amount, latest.reason, tx, { phase: status, refundId: latest._id })
+        await adjustStaffEarningsForRefund(order._id, latest.refundAmount, latest.amount, latest.reason, tx, {
+          phase: status, refundId: latest._id, releaseHoldIds,
+          ...(status === 'success' ? { cumulativeRefundAmount: successful / 100 } : {})
+        })
         patch.earningsApplied = status === 'success'
         await tx.collection('refunds').doc(refund._id).update({ data: { earningsApplied: patch.earningsApplied } })
       }
@@ -268,7 +279,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
       await tx.collection(resolved.collectionName).doc(order._id).update({ data: {
         refundAmount: reserved / 100, refundedAmount: successful / 100,
         paymentStatus, refundStatus,
-        ...(['success', 'failed'].includes(status) ? { pendingEarningRefundIds: (order.pendingEarningRefundIds || []).filter(id => id !== refund._id) } : {}),
+        ...(['success', 'failed'].includes(status) ? { pendingEarningRefundIds: (order.pendingEarningRefundIds || []).filter(id => id !== refund._id && !releaseHoldIds.includes(id)) } : {}),
         status: nextStatus,
         ...(shouldRestoreStock ? { stockRestorePending: true, stockRestoreCheckedAt: time, stockRestoreError: '' } : {}),
         updatedAt: time
@@ -321,6 +332,11 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
           }
         }
       } catch (error) {
+        // Gateway queries may succeed while local settlement fails. Keep the
+        // funds reserved and rotate this row so later refunds are still polled.
+        await db.collection('refunds').where({ _id: row._id, status: 'processing' }).update({ data: {
+          lastError: String(error.message || error).slice(0, 300), updatedAt: now()
+        } }).catch(updateError => console.error('[refund-reconcile-update]', { id: row._id, message: updateError.message }))
         console.error('[refund-reconcile]', { id: row._id, message: error.message })
       }
     }

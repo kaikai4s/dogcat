@@ -1,3 +1,4 @@
+const { toBeijingDate } = require('../../../../utils/format')
 const cloud = require('../../../../utils/cloud') || {}
 const { callFunction, showError, ensureLogin, savePendingInvite, getCachedUser } = cloud
 const showLoading = (opts) => {
@@ -21,7 +22,7 @@ function formatContestTitle(monthKey) {
       return `${parseInt(match[1], 10)}月宠物最美大赛`
     }
   }
-  const currentMonth = new Date().getMonth() + 1
+  const currentMonth = toBeijingDate(new Date()).getUTCMonth() + 1
   return `${currentMonth}月宠物最美大赛`
 }
 

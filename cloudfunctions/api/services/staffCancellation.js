@@ -1,4 +1,5 @@
 const { readDocuments } = require('../utils/documentPages')
+const { isParticipatingGroupOrder } = require('../utils/groupBuyMembership')
 
 module.exports = function createService(context) {
   const { db, crypto, now, toTimeValue, createRefundForOrder, appendOrderClientMessage, notifyOrder } = context
@@ -20,6 +21,14 @@ module.exports = function createService(context) {
     if (!user || user.openid !== openid || user.status !== 'active' || !Array.isArray(user.roles) || !user.roles.includes('staff')) throw new Error('仅当前有效宠托师可取消接单')
     return user
   }
+  function refundableBalance(order) {
+    const total = Math.round(Number(order.payAmount || 0) * 100)
+    const reserved = Math.round(Math.max(Number(order.refundAmount || 0), Number(order.refundedAmount || 0)) * 100)
+    if (![total, reserved].every(value => Number.isSafeInteger(value) && value >= 0) || reserved > total) {
+      throw new Error('订单退款金额异常，请联系平台核对')
+    }
+    return (total - reserved) / 100
+  }
   function quote(order, openid, time = now()) {
     if (!order || order.adminDeletedAt || order.staffOpenid !== openid) throw new Error('仅订单当前宠托师可取消接单')
     const assigned = toTimeValue(order.assignedAt)
@@ -36,7 +45,7 @@ module.exports = function createService(context) {
     return {
       orderId: order._id, assignmentToken: assigned ? tokenFor(order) : '', publishMode: direct ? 'direct' : 'open',
       canCancel: !blocked, isFree: !blocked && !pending, amountPendingReview: pending,
-      deductAmount: 0, refundAmount: direct && !blocked ? Number(order.payAmount || 0) : 0,
+      deductAmount: 0, refundAmount: direct && !blocked ? refundableBalance(order) : 0,
       returnsToPool: !direct, ruleText: blocked || (direct ? '接单10分钟内免费取消，订单全额退款' : pending ? '取消后订单返回接单大厅，保证金扣除金额待平台审核' : '接单10分钟内免费取消，订单返回接单大厅')
     }
   }
@@ -178,7 +187,7 @@ module.exports = function createService(context) {
           await createRefundForOrder({ ...order, _id: data.orderId }, q.refundAmount, data.reason, 'staff_cancel', openid, eventId, {
             cancelStatus: 'cancelled',
             beforeReserve: async (tx, current, reservation) => {
-              if (reservation.collectionName !== 'orders' || reservation.requested !== Math.round(Number(current.payAmount) * 100)) throw new Error('退款金额已变化，请刷新后重试')
+              if (reservation.collectionName !== 'orders' || reservation.requested !== Math.round(refundableBalance(current) * 100)) throw new Error('退款金额已变化，请刷新后重试')
               return (await commitCancellation(tx, current, user, openid, data, eventId, 'direct')).patch
             }
           })
@@ -199,8 +208,7 @@ module.exports = function createService(context) {
           let siblingIds = []
           if (current && current.groupBuyId) {
             const members = await readDocuments(tx, db.command, 'orders', { groupBuyId: current.groupBuyId })
-            const active = members.filter(member => !member.deletedAt && !member.adminDeletedAt && !member.groupBuyRefundRequired &&
-              member.paymentStatus === 'paid' && !['pending_pay', 'cancelled', 'closed', 'refunded', 'expired'].includes(member.status))
+            const active = members.filter(isParticipatingGroupOrder)
             if (!active.some(member => member._id === data.orderId)) throw new Error('拼单成员已变化，请刷新后重试')
             for (const member of active) {
               if (member.staffOpenid !== openid || !quote(member, openid).canCancel || quote(member, openid).publishMode !== 'open') throw new Error('拼单中有住户已开始履约或不可取消，请联系平台')
@@ -245,34 +253,49 @@ module.exports = function createService(context) {
       }
       if (!event.subscriptionDone) {
         const sent = await notifyOrder(event.notificationOrder.clientOpenid, 'orderCancelled', event.notificationOrder,
-          { statusText: direct ? '已取消' : '待重新接单', cancelReason: direct ? '宠托师取消接单，已发起全额退款' : '宠托师取消接单，订单等待重新接单', refundAmount: direct ? event.refundAmount : 0, cancelledAt: event.createdAt }, 'client')
+          { statusText: direct ? '已取消' : '待重新接单', cancelReason: direct ? '宠托师取消接单，已发起全额退款' : '宠托师取消接单，订单等待重新接单', refundAmount: direct ? event.refundAmount : 0, cancelledAt: event.createdAt }, 'client', eventId)
         if (!sent || !['sent', 'skipped'].includes(sent.status)) throw new Error('订阅通知待重试')
         await update({ subscriptionDone: true })
       }
       if (Array.isArray(event.siblingOrders)) {
+        const messageDoneIds = new Set(event.siblingMessageDoneIds || [])
+        const subscriptionDoneIds = new Set(event.siblingSubscriptionDoneIds || [])
+        let firstError
         for (const sib of event.siblingOrders) {
           try {
-            await appendOrderClientMessage(sib, {
-              eventType: 'staff_cancellation',
-              title: '宠托师已取消接单，拼单重新等待接单',
-              detail: '同小区拼单宠托师因故取消接单，拼单已整包返回抢单大厅，等待其他宠托师顺路接单。',
-              actorRole: 'system',
-              unreadForClient: true,
-              idempotencyKey: `${eventId}_${sib._id}`,
-              createdAt: event.createdAt
-            })
-            if (typeof notifyOrder === 'function') {
-              await notifyOrder(sib.clientOpenid, 'orderCancelled', sib, {
+            if (!messageDoneIds.has(sib._id)) {
+              const message = await appendOrderClientMessage(sib, {
+                eventType: 'staff_cancellation',
+                title: '宠托师已取消接单，拼单重新等待接单',
+                detail: '同小区拼单宠托师因故取消接单，拼单已整包返回抢单大厅，等待其他宠托师顺路接单。',
+                actorRole: 'system',
+                unreadForClient: true,
+                idempotencyKey: `${eventId}_${sib._id}`,
+                createdAt: event.createdAt
+              })
+              if (!message) throw new Error('拼单住户订单消息未保存')
+              messageDoneIds.add(sib._id)
+              await update({ siblingMessageDoneIds: [...messageDoneIds] })
+            }
+            if (!subscriptionDoneIds.has(sib._id)) {
+              const sent = await notifyOrder(sib.clientOpenid, 'orderCancelled', sib, {
                 statusText: '待重新接单',
                 cancelReason: '宠托师取消接单，拼单已重新放回大厅',
                 refundAmount: 0,
                 cancelledAt: event.createdAt
-              }, 'client').catch(() => {})
+              }, 'client', `${eventId}_${sib._id}`)
+              if (!sent || !['sent', 'skipped'].includes(sent.status)) throw new Error('拼单住户订阅通知待重试')
+              subscriptionDoneIds.add(sib._id)
+              await update({ siblingSubscriptionDoneIds: [...subscriptionDoneIds] })
             }
           } catch (e) {
+            firstError = firstError || e
             console.error('[staff-cancellation-sibling-notification]', sib._id, e.message)
           }
         }
+        // Deliver other households even when one fails; retain each successful
+        // stage so the durable retry only sends the missing notifications.
+        if (firstError) throw firstError
       }
       await update({ notificationStatus: 'done', leaseToken: '', leaseUntil: null })
     } catch (error) {

@@ -1773,8 +1773,8 @@ test('staff visibility and accept permissions respect open and direct publish mo
     ],
     pets: [{ _id: 'pet1', openid: 'openid_client', name: '可乐', breed: '金毛', weight: 12, birthday: '2024-05-01', personality: '活泼' }],
     orders: [
-      { _id: 'open_order', clientOpenid: 'openid_client', petId: 'pet1', petName: '可乐', status: 'paid', publishMode: 'open', staffOpenid: '', requestedStaffOpenid: '', startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', serviceAddress: '阳光花园', addressDetail: '1号楼', doorplate: '101', contactPhone: '13812345678', addressLatitude: 31.2, addressLongitude: 121.5 },
-      { _id: 'direct_order', clientOpenid: 'openid_client', petId: 'pet1', petName: '可乐', status: 'paid', publishMode: 'direct', staffOpenid: '', requestedStaffOpenid: 'openid_staff_a', startTime: '2099-07-28 11:00', endTime: '2099-07-28 12:00', serviceAddress: '阳光花园', addressDetail: '2号楼', doorplate: '202', contactPhone: '13812345678', addressLatitude: 31.2, addressLongitude: 121.5 }
+      { _id: 'open_order', clientOpenid: 'openid_client', petId: 'pet1', petName: '可乐', status: 'paid', paymentStatus: 'paid', publishMode: 'open', staffOpenid: '', requestedStaffOpenid: '', startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', serviceAddress: '阳光花园', addressDetail: '1号楼', doorplate: '101', contactPhone: '13812345678', addressLatitude: 31.2, addressLongitude: 121.5 },
+      { _id: 'direct_order', clientOpenid: 'openid_client', petId: 'pet1', petName: '可乐', status: 'paid', paymentStatus: 'paid', publishMode: 'direct', staffOpenid: '', requestedStaffOpenid: 'openid_staff_a', startTime: '2099-07-28 11:00', endTime: '2099-07-28 12:00', serviceAddress: '阳光花园', addressDetail: '2号楼', doorplate: '202', contactPhone: '13812345678', addressLatitude: 31.2, addressLongitude: 121.5 }
     ]
   })
   const clientFn = loadCloudFunction('api', db, 'openid_client')
@@ -1885,7 +1885,7 @@ test('admin assignOrder writes staff profile and admin assignment source', async
       { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' }
     ],
     staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', auditStatus: 'approved' }],
-    orders: [{ _id: 'order1', status: 'paid', publishMode: 'direct', requestedStaffOpenid: 'other_staff', staffOpenid: '', startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00' }],
+    orders: [{ _id: 'order1', status: 'paid', paymentStatus: 'paid', publishMode: 'direct', requestedStaffOpenid: 'other_staff', staffOpenid: '', startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00' }],
     admin_operation_logs: []
   })
   const fn = loadCloudFunction('api', db, 'openid_admin')

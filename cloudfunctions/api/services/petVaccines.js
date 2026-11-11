@@ -1,9 +1,10 @@
+const { toCstParts } = require('../utils/time')
+
 module.exports = function createService({ safeText, nowText }) {
   const VALID_STATUSES = ['none', 'pending', 'approved', 'rejected', 'expired']
 
   function todayText() {
-    if (typeof nowText === 'function') return String(nowText()).slice(0, 10)
-    return new Date().toISOString().slice(0, 10)
+    return toCstParts(typeof nowText === 'function' ? nowText() : new Date()).dateKey
   }
 
   function normalizePetVaccineCertification(cert = {}) {

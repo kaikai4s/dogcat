@@ -1,3 +1,5 @@
+const { clockHours } = require('../utils/time')
+const { readDocuments } = require('../utils/documentPages')
 module.exports = function createService({
   WEEKDAY_NAMES,
   calcDistanceKm,
@@ -63,8 +65,8 @@ module.exports = function createService({
     if (startParts.dayOfWeek === endParts.dayOfWeek && durationHours <= 24) {
       const dayOfWeek = startParts.dayOfWeek
       const dayName = WEEKDAY_NAMES[dayOfWeek] || `周${dayOfWeek}`
-      const startVal = startParts.hour + startParts.minute / 60
-      const endVal = endParts.hour + endParts.minute / 60
+      const startVal = clockHours(startParts)
+      const endVal = clockHours(endParts)
       const slots = normalized[String(dayOfWeek)] || []
       if (!slots.length) {
         throw new Error(`宠托师在${dayName}未设置可接单时间段`)
@@ -97,8 +99,8 @@ module.exports = function createService({
       const endDateStr = endBeijingStr.slice(0, 10)
       const isEndDay = currDateStr === endDateStr
 
-      const segmentStart = currParts.hour + currParts.minute / 60
-      const segmentEnd = isEndDay ? (endParts.hour + endParts.minute / 60) : 24
+      const segmentStart = clockHours(currParts)
+      const segmentEnd = isEndDay ? (clockHours(endParts)) : 24
 
       const fits = slots.some((slot) => segmentStart >= slot.start && segmentEnd <= slot.end)
       if (!fits) {
@@ -148,8 +150,8 @@ module.exports = function createService({
     const endsAtMidnight = endParts.dateObj.getTime() === toTimeValue(dateKey) + 86400000
     if (startKey !== dateKey || (endKey !== dateKey && !endsAtMidnight)) throw new Error('跨日期服务需按天校验排班')
     if (!slots.length) throw new Error(emptyMessage)
-    const startVal = startParts.hour + startParts.minute / 60
-    const endVal = endsAtMidnight ? 24 : endParts.hour + endParts.minute / 60
+    const startVal = clockHours(startParts)
+    const endVal = endsAtMidnight ? 24 : clockHours(endParts)
     const fits = slots.some((slot) => startVal >= slot.start && endVal <= slot.end)
     if (!fits) {
       const allowedText = slots.map((s) => `${String(s.start).padStart(2, '0')}:00-${String(s.end).padStart(2, '0')}:00`).join('、')
@@ -338,7 +340,7 @@ module.exports = function createService({
     const base = baseParts ? baseParts.dateObj : now()
     const normalizedWeekly = normalizeWeeklySchedule(profile.weeklySchedule)
     const maxDays = Math.min(Math.max(Number(days || 14), 1), 31)
-    const exceptions = (await db.collection('staff_schedule_exceptions').where({ staffOpenid: profile.openid }).get()).data || []
+    const exceptions = await readDocuments(db, db.command, 'staff_schedule_exceptions', { staffOpenid: profile.openid })
     const orders = []
     for await (const page of staffConflictOrderPages(profile.openid)) orders.push(...page)
     const availableOrders = orders.filter(isOrderConflictCandidate)
@@ -362,10 +364,15 @@ module.exports = function createService({
         slots = status === 'available' ? normalizeScheduleSlots(exception.slots) : []
         remark = exception.remark || (status === 'unavailable' ? '休息不接单' : '')
       }
+      const dayStart = toTimeValue(dateKey)
+      const dayEnd = dayStart + 86400000
       const busyOrders = availableOrders
         .flatMap(order => getOrderTimeRanges(order)
-          .filter(range => getDateKeyFromTime(range.startTime) === dateKey)
-          .map(range => ({ orderId: order._id, ...range, serviceSummary: order.serviceSummary || '' })))
+          .filter(range => toTimeValue(range.startTime) < dayEnd && toTimeValue(range.endTime) > dayStart)
+          .map(range => ({ orderId: order._id,
+            startTime: toTimeValue(range.startTime) < dayStart ? formatDateTimeParts(new Date(dayStart)) : range.startTime,
+            endTime: toTimeValue(range.endTime) > dayEnd ? formatDateTimeParts(new Date(dayEnd)) : range.endTime,
+            serviceSummary: order.serviceSummary || '' })))
       list.push({ dateKey, dayOfWeek, dayName: WEEKDAY_NAMES[dayOfWeek], source, status, slots, busyOrders, remark })
     }
     return list

@@ -1,3 +1,5 @@
+const { sanitizationVisit } = require('../utils/checkinVisit')
+
 module.exports = function createService({
   CHECKIN_EVENT_TYPES,
   checkinEventText,
@@ -40,13 +42,24 @@ module.exports = function createService({
     return formatDateKey(new Date(toTimeValue(value) + 8 * 60 * 60 * 1000))
   }
 
-  function isValidSanitization(item, order, current = now()) {
+  function isValidSanitization(item, order, current) {
+    const visit = sanitizationVisit(order)
+    const reference = current || visit.startedAt || now()
     const timestamp = toTimeValue(item.serverTime)
+    const scoped = item.serviceSessionIndex != null
+    if (scoped && Number(item.serviceSessionIndex) !== visit.index) return false
+    if (item.serviceSessionScheduledAt && toTimeValue(item.serviceSessionScheduledAt) !== toTimeValue(visit.scheduledAt)) return false
+    const previousFinishes = visit.previous.map(session => toTimeValue(session.finishedAt))
+    // Legacy photos must be provably newer than the preceding visit. New
+    // photos also carry a server-assigned visit, including when history is incomplete.
+    if (!scoped && visit.hasPrevious && (!previousFinishes.length || previousFinishes.some(value => !value))) return false
+    const previousFinish = Math.max(0, ...previousFinishes)
+    if (previousFinish && (scoped ? timestamp < previousFinish : timestamp <= previousFinish)) return false
     return item.eventType === 'sanitization' && hasCheckinPhoto(item) &&
       item.orderId === order._id && item.staffOpenid === order.staffOpenid &&
       item.sanitizationVersion === 1 && item.preStart === true && !item.isBackfilled &&
-      hasCoordinate(item.latitude, item.longitude) && timestamp > 0 && timestamp <= toTimeValue(current) &&
-      sanitizationDateKey(item.serverTime) === sanitizationDateKey(current)
+      hasCoordinate(item.latitude, item.longitude) && timestamp > 0 && timestamp <= toTimeValue(reference) &&
+      sanitizationDateKey(item.serverTime) === sanitizationDateKey(reference)
   }
 
   async function validateSanitizationMedia(fileId, orderId, staffOpenid) {
@@ -64,14 +77,14 @@ module.exports = function createService({
     if (!image) throw new Error('消毒打卡必须上传有效图片（不超过10MB）')
   }
 
-  async function requireSanitizationEvidence(order, current = now()) {
+  async function requireSanitizationEvidence(order, current) {
     if (!requiresSanitization(order)) return
     const candidates = (await readScopedDocuments('checkin_logs', { orderId: order._id, eventType: 'sanitization' }))
       .filter((item) => isValidSanitization(item, order, current))
     for (const item of candidates) {
       try {
         await validateSanitizationMedia(item.mediaFileId, order._id, order.staffOpenid)
-        return
+        return item
       } catch (error) {}
     }
     throw new Error('请先完成本次服务开始前的消毒拍照打卡（须为当天有效照片）')

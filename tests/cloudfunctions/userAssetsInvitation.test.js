@@ -340,7 +340,8 @@ test('unwithdrawn invitation commission expires after validity period, reduces a
   assert.equal(earning.amount, 10)
   assert.equal(earning.status, 'available')
   assert.equal(earning.validityDays, 30)
-  assert.ok(earning.expiresAt)
+  assert.match(earning.expiresAt, /Z$/)
+  assert.equal(new Date(earning.expiresAt).getTime() - new Date(earning.createdAt).getTime(), 30 * 86400000)
 
   // 2. 在有效期内查询，状态为正常可提现
   const summary1 = await inviter.main({ module: 'finance', action: 'getUserAssetSummary' })

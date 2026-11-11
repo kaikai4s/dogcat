@@ -6,7 +6,7 @@ function pad(value) {
 function format(value) {
   if (value === undefined || value === null || value === '') return '';
   var text = '' + value;
-  var local = text.match(getRegExp('^(\\d{4})-(\\d{1,2})-(\\d{1,2})(?:[ T](\\d{1,2}):(\\d{1,2})(?::(\\d{1,2}))?)?$'));
+  var local = text.match(getRegExp('^(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})(?:[ T](\\d{1,2}):(\\d{1,2})(?::(\\d{1,2})(?:\\.\\d{1,3})?)?)?$'));
   if (local) {
     var day = local[1] + '-' + pad(local[2] * 1) + '-' + pad(local[3] * 1);
     if (!local[4]) return day;

@@ -13,7 +13,7 @@ test('fixed-date coupons and the cancellation threshold use Beijing in every ser
     const issuance = require('./cloudfunctions/api/services/couponIssuance')({normalizeCouponSnapshot: v=>v});
     const range=issuance.getCouponValidRange({validType:'fixed_range',validFromFixed:'2026-09-25',validToFixed:'2026-09-26'}, new Date());
     assert.equal(range.validFrom.toISOString(),'2026-09-24T16:00:00.000Z');
-    assert.equal(range.validTo.toISOString(),'2026-09-26T15:59:59.000Z');
+    assert.equal(range.validTo.toISOString(),'2026-09-26T15:59:59.999Z');
     const service=require('./cloudfunctions/api/services/orderAccess')({toTimeValue:time.toTimeValue,now:()=>new Date('2026-09-24T18:40:00Z')});
     const order={status:'assigned',payAmount:69.25};
     assert.equal(service.getCancelQuoteForOrder({...order,startTime:'2026-09-26 02:39'}).refundAmount,55.4);
@@ -35,7 +35,7 @@ test('lottery coupons use the entire last Beijing day of a fixed validity range'
   assert.equal(result.ok, true, result.message)
   assert.equal(db.state.user_coupons.length, 1)
   assert.equal(new Date(db.state.user_coupons[0].validFrom).toISOString(), '2026-09-24T16:00:00.000Z')
-  assert.equal(new Date(db.state.user_coupons[0].validTo).toISOString(), '2099-09-26T15:59:59.000Z')
+  assert.equal(new Date(db.state.user_coupons[0].validTo).toISOString(), '2099-09-26T15:59:59.999Z')
 })
 
 test('overdue scans start on the Beijing calendar date', async () => {
@@ -52,7 +52,12 @@ test('overdue scans start on the Beijing calendar date', async () => {
   await context.processOverdueUnstartedOrders('2026-09-24T18:40:00Z')
   await context.processOverdueUnfinishedOrders('2026-09-24T18:40:00Z')
   assert.equal(filters.length, 3)
-  for (const filter of filters) assert.equal(filter.startTime.$gte, '2026-09-18 00:00')
+  for (const filter of filters.slice(0, 2)) {
+    const window = filter.$and[1].$or
+    assert.equal(window[0].startTime.$gte, '2026-09-18 00:00')
+    assert.equal(window[1].endTime.$gte, '2026-09-18 00:00')
+  }
+  assert.deepEqual(filters[2], { status: 'in_service' })
 })
 
 test('pet age uses Beijing calendar days at month boundaries', () => {

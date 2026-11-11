@@ -1,3 +1,5 @@
+const { beijingDateText, beijingClockText } = require('../utils/time')
+const { freezeOrderSessionPricing } = require('../utils/orderSessionPricing')
 module.exports = function createService({
   PET_TIMED_SERVICE_KEYS,
   addMinutesToDateTimeText,
@@ -222,7 +224,7 @@ module.exports = function createService({
     if (surchargeEnabled && sessions && sessions.length && data.startTime) {
       const dateRuleMatches = {}
       sessions.forEach((session) => {
-        const sessionDate = session.date || (session.startTime ? String(session.startTime).slice(0, 10) : '')
+        const sessionDate = session.date || (session.startTime ? beijingDateText(session.startTime) : '')
         if (!sessionDate) return
         const matched = dateSurchargeRules.find((rule) => rule.date === sessionDate)
         if (matched) {
@@ -251,7 +253,7 @@ module.exports = function createService({
 
       const timeSlotRuleMatches = {}
       sessions.forEach((session) => {
-        const startClock = session.startTime && session.startTime.length >= 16 ? session.startTime.slice(11, 16) : (data.startClock || '')
+        const startClock = session.startTime ? beijingClockText(session.startTime) : (data.startClock || '')
         if (!startClock) return
         const matched = timeSlotSurchargeRules.find((rule) => {
           const s = String(rule.startTime || '').trim()
@@ -307,13 +309,13 @@ module.exports = function createService({
       priceSnapshot: { services: priceItems, unitServices: unitPriceItems, extraPetItems: unitExtraPetItems, timedExtraItems: unitTimedExtraItems, surchargeItems: surchargePriceItems, petServiceDurations: petDurationResult.durations, durationMinutes, sessionCount, sessions, weight, petCount, dogCount, staffPriceLevel, staffLevelText: isInternPrice ? '实习宠托师' : '认证宠托师', originalAmount: amount, discountAmount: 0, payAmount: amount }
     }
     const openid = options.openid || ''
-    if (!openid) return basePricing
+    if (!openid) return freezeOrderSessionPricing(basePricing)
     if (data.couponId) {
       const couponRes = await db.collection('user_coupons').doc(data.couponId).get().catch(() => ({ data: null }))
       const coupon = couponRes && couponRes.data
       const result = evaluateCoupon(coupon, basePricing, openid)
       if (!result.applicable) throw new Error(result.reason)
-      return applyCouponToPricing(basePricing, result)
+      return freezeOrderSessionPricing(applyCouponToPricing(basePricing, result))
     }
     if (data.autoApplyCoupon === true) {
       const coupons = await getAvailableUserCoupons(openid)
@@ -321,9 +323,9 @@ module.exports = function createService({
         .map((coupon) => evaluateCoupon(coupon, basePricing, openid))
         .filter((item) => item.applicable)
         .sort((a, b) => b.discountAmount - a.discountAmount)[0]
-      return applyCouponToPricing(basePricing, best)
+      return freezeOrderSessionPricing(applyCouponToPricing(basePricing, best))
     }
-    return basePricing
+    return freezeOrderSessionPricing(basePricing)
   }
 
   return {

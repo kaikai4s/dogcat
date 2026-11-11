@@ -1,3 +1,4 @@
+const { formatBeijingDate } = require('../../../utils/format')
 const { callFunction, showError, showLoading, hideLoading } = require('../../../utils/cloud')
 const { navMethods } = require('../../../utils/nav')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
@@ -15,11 +16,7 @@ const WEEKDAYS = [
 ]
 
 function formatTodayDate() {
-  const d = new Date()
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+  return formatBeijingDate()
 }
 
 Page({

@@ -1,3 +1,6 @@
+const { currentKeyReturn } = require('../utils/keyReturnEvidence')
+const { checkinMatchesVisit, assertCompletionSnapshot } = require('../utils/checkinVisit')
+
 module.exports = function createService({
   ORDER_STATUS,
   addPoints,
@@ -57,7 +60,7 @@ module.exports = function createService({
     const eventSet = checkins.filter((item) => {
       if (!hasCheckinPhoto(item)) return false
       if (item.eventType === 'sanitization') return isValidSanitization(item, order, sessionStartedAt)
-      return !sessionStartedAt || toTimeValue(item.recordedAt || item.serverTime || item.createdAt) >= (sessionStartedAt - 60000)
+      return checkinMatchesVisit(item, order, sessionStartedAt)
     }).reduce((map, item) => ({ ...map, [item.eventType]: true }), {})
 
     const requirements = Array.isArray(order.checkinRequirements) && order.checkinRequirements.length
@@ -66,7 +69,8 @@ module.exports = function createService({
     const missing = requirements.filter((item) => item.required && !eventSet[item.eventType]).map((item) => item.label || checkinEventText(item.eventType))
 
     const security = order.orderHomeSecurity || order.homeSecuritySnapshot || {}
-    if (security.type === 'key' && security.key && security.key.returnRequired && !security.key.returnedAt) {
+    if ((security.type || security.lockMethod) === 'key' && (!security.key ||
+        (security.key.returnRequired !== false && !currentKeyReturn(security.key, order, sessionStartedAt)))) {
       missing.push('放回钥匙打卡')
     }
 
@@ -119,6 +123,7 @@ module.exports = function createService({
       await runTransactionWithConflictRetry(async tx => {
         const current = (await tx.collection('orders').doc(orderId).get()).data
         if (!current || current.status !== ORDER_STATUS.IN_SERVICE || current.staffOpenid !== order.staffOpenid) throw new Error('订单状态不可完成当天服务')
+        assertCompletionSnapshot(current, order)
         if (Number(current.activeSessionIndex || 0) && Number(current.activeSessionIndex) !== sessionIndex) throw new Error('服务日期已变化，请刷新订单')
         await tx.collection('orders').doc(orderId).update({ data: dayUpdateData })
         await enqueueOrderNotification(tx, order.clientOpenid, 'serviceFinish', order, { statusText: '当天已完成', completedAt: time, tip: isAuto ? '今日服务打卡齐全，系统已确认完成' : '今日服务已完成' }, 'client', `finish:day:${sessionIndex}`)
@@ -173,7 +178,8 @@ module.exports = function createService({
     }
 
     const completedOrder = { ...order, _id: orderId, status: ORDER_STATUS.COMPLETED, serviceSessions: completedSessions, completedAt: time, updatedAt: time }
-    const notifications = [{ openid: order.clientOpenid, detail: { statusText: '已完成', completedAt: time, tip: isAuto ? '服务打卡齐全，系统已确认完成，可查看服务报告' : '服务已完成，可查看服务报告' }, role: 'client' }]
+    const finishTip = order.completionType === 'admin_manual' ? '平台已核实完成，可查看订单详情' : isAuto ? '服务打卡齐全，系统已确认完成，可查看服务报告' : '服务已完成，可查看服务报告'
+    const notifications = [{ openid: order.clientOpenid, detail: { statusText: '已完成', completedAt: time, tip: finishTip }, role: 'client' }]
     if (isAuto && order.staffOpenid) notifications.push({ openid: order.staffOpenid, detail: { statusText: '已自动结算完成', completedAt: time, tip: '订单已自动完成，收益已结算' }, role: 'staff' })
     const rewardsRes = await ensureOrderCompletionRewards(completedOrder, time, { completionPatch: updateData, notifications })
     if (rewardsRes.alreadyCompleted) return { id: orderId, status: ORDER_STATUS.COMPLETED, completedOrderCount: rewardsRes.completedOrderCount, autoCompleted: isAuto }
@@ -209,18 +215,20 @@ module.exports = function createService({
       })
       await notifyOrder(order.staffOpenid, 'serviceFinish', order, { statusText: '已自动结算完成', completedAt: time, tip: '订单已自动完成，收益已结算' }, 'staff', 'finish:final')
     }
-    await notifyOrder(order.clientOpenid, 'serviceFinish', order, { statusText: '已完成', completedAt: time, tip: isAuto ? '服务打卡齐全，系统已确认完成，可查看服务报告' : '服务已完成，可查看服务报告' }, 'client', 'finish:final')
+    await notifyOrder(order.clientOpenid, 'serviceFinish', order, { statusText: '已完成', completedAt: time, tip: finishTip }, 'client', 'finish:final')
 
     return { id: orderId, status: ORDER_STATUS.COMPLETED, completedOrderCount: rewardsRes.completedOrderCount, autoCompleted: isAuto }
   }
 
   async function ensureOrderCompletionRewards(order, time = now(), options = {}) {
     const orderId = order._id
-    const result = await runTransactionWithConflictRetry(async transaction => {
+    const execute = async transaction => {
       const currentOrder = (await transaction.collection('orders').doc(orderId).get()).data
-      if (!currentOrder || ![ORDER_STATUS.COMPLETED, ...(options.completionPatch ? [ORDER_STATUS.IN_SERVICE, ORDER_STATUS.DAY_COMPLETED] : [])].includes(currentOrder.status)) throw new Error('订单状态不可完成')
+      const allowedStatuses = [ORDER_STATUS.COMPLETED, ...(options.completionPatch ? [ORDER_STATUS.IN_SERVICE, ORDER_STATUS.DAY_COMPLETED,
+        ...(options.manualVerification ? [ORDER_STATUS.ASSIGNED, ORDER_STATUS.ON_THE_WAY] : [])] : [])]
+      if (!currentOrder || !allowedStatuses.includes(currentOrder.status)) throw new Error('订单状态不可完成')
       if (options.completionPatch && currentOrder.staffOpenid !== order.staffOpenid) throw new Error('订单员工已变化')
-      if (currentOrder.status === ORDER_STATUS.IN_SERVICE && Number(currentOrder.activeSessionIndex || 0) &&
+      if (!options.manualVerification && currentOrder.status === ORDER_STATUS.IN_SERVICE && Number(currentOrder.activeSessionIndex || 0) &&
           Number(options.completionPatch && options.completionPatch.lastCompletedSessionIndex) !== Number(currentOrder.activeSessionIndex)) throw new Error('服务日期已变化，请刷新订单')
       const clientOpenid = currentOrder.clientOpenid
       const candidate = await getUser(clientOpenid)
@@ -228,6 +236,8 @@ module.exports = function createService({
       const clientUser = (await transaction.collection('users').doc(candidate._id).get()).data
       if (!clientUser || clientUser.openid !== clientOpenid) throw new Error('订单客户归属异常')
       const alreadyCompleted = currentOrder.status === ORDER_STATUS.COMPLETED
+      if (!alreadyCompleted && options.completionPatch && !options.manualVerification) assertCompletionSnapshot(currentOrder, order)
+      const legacyManualCompletion = alreadyCompleted && currentOrder.completionType === 'admin_manual' && !currentOrder.adminManualAccountingVersion
       const orderPatch = { ...(!alreadyCompleted ? options.completionPatch || {} : {}) }
       const completedAt = currentOrder.completedAt || time
 
@@ -249,16 +259,19 @@ module.exports = function createService({
       // 2. 客户完单数防重累加
       let completedOrderCount = Number(clientUser.completedOrderCount || 0)
       if (!Number.isSafeInteger(completedOrderCount) || completedOrderCount < 0) throw new Error('客户完单次数异常，请核对')
-      if (!currentOrder.clientOrderCounted) {
+      if (!currentOrder.clientOrderCounted && !legacyManualCompletion) {
         completedOrderCount += 1
         await transaction.collection('users').doc(clientUser._id).update({
           data: { completedOrderCount, updatedAt: time }
         })
         orderPatch.clientOrderCounted = true
       }
+      // The old admin path incremented outside the completion transaction and
+      // swallowed failures. Its missing marker cannot prove whether it counted.
+      if (legacyManualCompletion) orderPatch.legacyManualAccountingNeedsReview = true
       const completionOrdinal = currentOrder.completionOrdinal != null
         ? Number(currentOrder.completionOrdinal)
-        : currentOrder.clientOrderCounted ? 0 : completedOrderCount
+        : currentOrder.clientOrderCounted || legacyManualCompletion ? 0 : completedOrderCount
       if (!Number.isSafeInteger(completionOrdinal) || completionOrdinal < 0) throw new Error('订单完单序号异常，请核对')
       if (completionOrdinal) orderPatch.completionOrdinal = completionOrdinal
       else orderPatch.completionOrdinalNeedsReview = true
@@ -286,17 +299,39 @@ module.exports = function createService({
       }
       orderPatch.retroCardEvaluated = true
 
+      const completedOrder = { ...currentOrder, ...orderPatch }
+      // New manual completions count the staff profile in the same transaction.
+      // Older manual records already incremented it without an order marker.
+      if (completedOrder.adminManualAccountingVersion === 2 && !currentOrder.staffOrderCounted && completedOrder.staffProfileId) {
+        let profile
+        try { profile = (await transaction.collection('staff_profiles').doc(completedOrder.staffProfileId).get()).data } catch (error) {
+          if (!String(error.message || error.errMsg).includes(`document with _id ${completedOrder.staffProfileId} does not exist`)) throw error
+        }
+        if (profile) {
+          if (profile.openid !== completedOrder.staffOpenid) throw new Error('订单宠托师档案归属异常')
+          const count = Number(profile.completedOrderCount || 0)
+          if (!Number.isSafeInteger(count) || count < 0) throw new Error('宠托师完单次数异常，请核对')
+          await transaction.collection('staff_profiles').doc(profile._id).update({ data: { completedOrderCount: count + 1, updatedAt: time } })
+          orderPatch.staffOrderCounted = true
+        }
+      }
+      const earning = await ensureStaffEarning(completedOrder, completedAt, { transaction })
+      if (completedOrder.adminManualAccountingVersion === 2) {
+        if (earning && (earning.staffOpenid !== completedOrder.staffOpenid ||
+            Math.round(Number(earning.deductAmount || 0) * 100) !== Math.round(Number(completedOrder.adminManualDeductEarning || 0) * 100))) throw new Error('已有收益与核实扣减不一致，请先核对账目')
+        orderPatch.adminManualStaffReward = earning ? earning.amount : 0
+      }
       if (Object.keys(orderPatch).length > 0) {
         orderPatch.updatedAt = time
         await transaction.collection('orders').doc(orderId).update({ data: orderPatch })
       }
-      await ensureStaffEarning({ ...currentOrder, ...orderPatch }, completedAt, { transaction })
       if (!alreadyCompleted) {
         for (const notification of options.notifications || []) await enqueueOrderNotification(transaction, notification.openid, 'serviceFinish', currentOrder, notification.detail, notification.role, 'finish:final')
       }
-      return { completedOrderCount, pointsAwarded: true, alreadyCompleted }
-    })
-    if (order.staffProfileId) {
+      return { completedOrderCount, pointsAwarded: true, alreadyCompleted, earning }
+    }
+    const result = options.transaction ? await execute(options.transaction) : await runTransactionWithConflictRetry(execute)
+    if (!options.transaction && order.staffProfileId) {
       try {
         const profile = normalizeStaffWorkflow((await db.collection('staff_profiles').doc(order.staffProfileId).get()).data)
         if (profile && profile.staffLevel === 'intern') {

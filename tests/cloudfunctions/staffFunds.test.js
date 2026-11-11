@@ -177,7 +177,7 @@ test('initial deposit payment is atomic and concurrent callbacks produce one led
 
 test('withdrawal of staff from service conflicts with a new assignment through the shared user', async () => {
   const { db, service } = setup()
-  const order = { _id: 'o', status: 'paid', staffOpenid: '', startTime: '2099-10-01 10:00', endTime: '2099-10-01 11:00' }
+  const order = { _id: 'o', status: 'paid', paymentStatus: 'paid', staffOpenid: '', startTime: '2099-10-01 10:00', endTime: '2099-10-01 11:00' }
   db.state.orders.push(order)
   const retries = optimistic(db)
   const results = await Promise.allSettled([

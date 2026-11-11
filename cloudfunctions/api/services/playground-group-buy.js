@@ -1,17 +1,20 @@
+const { beijingDateText, toTimeValue } = require('../utils/time')
+const { freezeOrderSessionPricing } = require('../utils/orderSessionPricing')
+const { isParticipatingGroupOrder: participating } = require('../utils/groupBuyMembership')
+const { documentPages } = require('../utils/documentPages')
 const world = require('./playground-world')
 const { readConfig } = require('./playground-config')
 const COLLECTION = 'pet_playground_groups'
 const active = (o) => o && !o.deletedAt && !o.adminDeletedAt && !['cancelled', 'closed', 'refunded', 'expired'].includes(o.status) && o.paymentStatus !== 'closed'
-const participating = (order) => active(order) && !order.groupBuyRefundRequired && order.status !== 'pending_pay' && order.paymentStatus === 'paid'
 const optional = async (db, collection, id) => world.readDocument(db, collection, id, '读取拼单', true)
 const isGroup = (data) => data.source === 'community_groupbuy' || !!data.groupBuyId
-const keyOf = (sessions) => (sessions || []).map((s) => [s.date, require('../utils/time').toTimeValue(s.startTime)])
+const keyOf = (sessions) => (sessions || []).map((s) => [beijingDateText(s.startTime), toTimeValue(s.startTime)])
 function discounted(order, rules) {
   const original = Math.round(Number(order.amount) * 100)
   const fee = rules.waiveVisitFee ? (order.priceSnapshot && order.priceSnapshot.services || []).filter((p) => p.key === 'visit_fee').reduce((sum, p) => sum + Math.round(Number(p.price || 0) * 100), 0) : 0
   const pay = Math.max(1, Math.round(Math.max(0, original - fee) * rules.discountRate))
-  return { groupBuyDiscountAmount: (original - pay) / 100, discountAmount: (original - pay) / 100, payAmount: pay / 100,
-    priceSnapshot: { ...order.priceSnapshot, originalAmount: original / 100, groupBuyRules: rules, discountAmount: (original - pay) / 100, payAmount: pay / 100 } }
+  return freezeOrderSessionPricing({ groupBuyDiscountAmount: (original - pay) / 100, discountAmount: (original - pay) / 100, payAmount: pay / 100,
+    priceSnapshot: { ...order.priceSnapshot, originalAmount: original / 100, groupBuyRules: rules, discountAmount: (original - pay) / 100, payAmount: pay / 100 } })
 }
 module.exports = function createGroupBuy(context) {
   const { db } = context
@@ -19,8 +22,19 @@ module.exports = function createGroupBuy(context) {
   const lateRefundReason = '拼单已截止或无法加入，全额原路退款'
   async function refundFailedGroupOrder(order) {
     if (typeof context.createRefundForOrder !== 'function') return
-    return context.createRefundForOrder(order, order.payAmount, order.groupBuyRefundReason || lateRefundReason,
-      'system_groupbuy_fail', order.clientOpenid, `groupbuy_fail_${order._id}`, { cancelStatus: 'expired' })
+    const current = await optional(db, 'orders', order._id)
+    // Let the existing refund settle before calculating the remaining balance.
+    if (!current || current.paymentStatus !== 'paid') return
+    const requestId = `groupbuy_fail_${current._id}`
+    const existing = (await db.collection('refunds').where({ orderId: current._id, clientRequestId: requestId }).limit(2).get()).data || []
+    if (existing.length > 1) throw new Error('拼单退款记录重复，请先对账')
+    const total = Math.round(Number(current.payAmount) * 100)
+    const reserved = Math.round(Number(current.refundAmount || 0) * 100)
+    if (!Number.isSafeInteger(total) || !Number.isSafeInteger(reserved) || reserved < 0 || reserved > total) throw new Error('拼单退款金额异常，请先对账')
+    const amount = existing[0] ? existing[0].refundAmount : (total - reserved) / 100
+    if (!(amount > 0)) return
+    return context.createRefundForOrder(current, amount, existing[0] ? existing[0].reason : (current.groupBuyRefundReason || lateRefundReason),
+      'system_groupbuy_fail', current.clientOpenid, requestId, { cancelStatus: 'expired' })
   }
   async function identity(openid) {
     const user = await context.getUser(openid)
@@ -39,7 +53,14 @@ module.exports = function createGroupBuy(context) {
     if (data.communityId !== own.id || String(data.serviceAddress || '').trim() !== own.community.name) throw new Error('拼单服务地点只能选择自己所属的小区')
     const sessions = Array.isArray(pricing.sessions) ? pricing.sessions : []
     if (!sessions.length) throw new Error('拼单服务时段不能为空')
-    const dates = new Set(sessions.map((s) => s.date || (s.startTime ? String(s.startTime).slice(0, 10) : '')).filter(Boolean))
+    const dates = new Set()
+    for (const session of sessions) {
+      const start = toTimeValue(session.startTime), end = toTimeValue(session.endTime)
+      if (!start || end <= start) throw new Error('拼单服务时间不正确')
+      dates.add(beijingDateText(start))
+      // Service ranges exclude the end instant; a finish exactly at midnight is valid.
+      dates.add(beijingDateText(end - 1))
+    }
     if (dates.size > 1) throw new Error('同小区拼单仅支持同一自然日内的单日服务，不可跨天预约')
     const group = data.groupBuyId ? await optional(db, COLLECTION, String(data.groupBuyId)) : null
     if (data.groupBuyId && !group) throw new Error('拼单不存在')
@@ -74,8 +95,9 @@ module.exports = function createGroupBuy(context) {
     if (members.some((m) => m.openid === order.clientOpenid || m.householdKey === prepared.householdKey)) throw new Error('每户只能参加同一拼单一次，请查看我的拼单')
     if (members.length >= 20) throw new Error('该拼单人数已满')
     if (members.some(m => m.order.staffOpenid)) throw new Error('拼单已被接单，不可继续加入')
-    const pending = (await tx.collection('orders').where({ groupBuyId: id, status: 'pending_pay' }).limit(100).get()).data || []
-    if (pending.some((o) => o._id !== orderId && active(o) && o.paymentDeadline > now() && (o.clientOpenid === order.clientOpenid || o.groupBuyHouseholdKey === prepared.householdKey))) throw new Error('每户只能参加同一拼单一次，请先处理待付款订单')
+    for await (const pending of documentPages(tx, db.command, 'orders', { groupBuyId: id, status: 'pending_pay' })) {
+      if (pending.some((o) => o._id !== orderId && active(o) && o.paymentDeadline > now() && (o.clientOpenid === order.clientOpenid || o.groupBuyHouseholdKey === prepared.householdKey))) throw new Error('每户只能参加同一拼单一次，请先处理待付款订单')
+    }
     // Only a private order intent exists before payment. No group or member is
     // published until the verified payment transaction activates this order.
     return { ...order, ...discounted(order, group.rules), groupBuyId: id, source: 'community_groupbuy',
@@ -138,7 +160,7 @@ module.exports = function createGroupBuy(context) {
             }
           })
           for (const m of activeMembers) {
-            const refundRequired = m.order && m.order.paymentStatus === 'paid' && Number(m.order.payAmount || 0) > 0
+            const refundRequired = m.order && ['paid', 'refunding'].includes(m.order.paymentStatus) && Number(m.order.payAmount || 0) > 0
             const patch = { groupBuyStatus: 'cancelled', updatedAt: time,
               ...(refundRequired ? { status: 'expired', groupBuyRefundRequired: true,
                 groupBuyRefundReason: '拼单人数不足且招募已截止，系统自动全额退款' } : {}) }
@@ -187,7 +209,7 @@ module.exports = function createGroupBuy(context) {
   }
 
   async function activatePaidOrder(tx, order) {
-    if (!order.groupBuyId || !participating(order)) return order
+    if (!order.groupBuyId || order.paymentStatus !== 'paid' || !participating(order)) return order
     const id = order.groupBuyId, time = now()
     let group = await optional(tx, COLLECTION, id)
     if (!group) {
@@ -258,7 +280,7 @@ module.exports = function createGroupBuy(context) {
 
       for (const m of activeMembers) {
         const ord = m.order
-        const isPaid = ord && ord.paymentStatus === 'paid' && Number(ord.payAmount || 0) > 0
+        const isPaid = ord && ['paid', 'refunding'].includes(ord.paymentStatus) && Number(ord.payAmount || 0) > 0
         if (isPaid) {
           const patch = { status: 'expired', groupBuyStatus: 'cancelled', groupBuyRefundRequired: true,
             groupBuyRefundReason: '拼单截止未成团，系统自动全额退款', cancelReason, updatedAt: stamp }

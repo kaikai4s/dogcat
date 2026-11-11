@@ -20,10 +20,8 @@ module.exports = function createService({
     const rows = []
     let cursor = ''
     while (rows.length < maxLimit) {
-      const query = { ...condition }
-      if (cursor && db.command && typeof db.command.gt === 'function') {
-        query._id = db.command.gt(cursor)
-      }
+      const query = cursor && db.command && typeof db.command.and === 'function'
+        ? db.command.and([condition, { _id: db.command.gt(cursor) }]) : condition
       const page = (await db.collection('orders').where(query).orderBy('_id', 'asc').limit(100).get()).data || []
       rows.push(...page)
       if (page.length < 100) break
@@ -43,14 +41,14 @@ module.exports = function createService({
     const inOp = _ && typeof _.in === 'function' ? _.in.bind(_) : (arr) => ({ $in: arr })
     const wherePendingService = { status: inOp([ORDER_STATUS.ASSIGNED, (ORDER_STATUS && ORDER_STATUS.ON_THE_WAY) || 'on_the_way']) }
     const whereDayCompleted = { status: ORDER_STATUS.DAY_COMPLETED }
-    if (_ && typeof _.gte === 'function') {
-      wherePendingService.startTime = _.gte(windowStartText)
-      whereDayCompleted.startTime = _.gte(windowStartText)
-    }
+    // Include ongoing multi-day bookings and legacy rows with incomplete end times.
+    const withinWindow = condition => _ && typeof _.and === 'function'
+      ? _.and([condition, _.or([{ startTime: _.gte(windowStartText) }, { endTime: _.gte(windowStartText) }, { endTime: _.exists(false) }])])
+      : condition
 
     const [pendingOrders, dayCompletedOrders] = await Promise.all([
-      readActiveOrders(wherePendingService),
-      readActiveOrders(whereDayCompleted)
+      readActiveOrders(withinWindow(wherePendingService)),
+      readActiveOrders(withinWindow(whereDayCompleted))
     ])
     const candidates = [...pendingOrders, ...dayCompletedOrders]
     console.log('[processOverdueUnstartedOrders] scanning candidates:', {
@@ -62,10 +60,12 @@ module.exports = function createService({
     const processed = []
 
     for (const order of candidates) {
-      if (!order.staffOpenid) continue
+      if (!order.staffOpenid || order.deletedAt || order.adminDeletedAt) continue
       const activeSession = getActiveServiceSession(order)
-      const nextSession = getNextPendingServiceSession(order)
-      const targetSession = activeSession || nextSession || (Array.isArray(order.serviceSessions) && order.serviceSessions[0]) || { index: 1, startTime: order.startTime }
+      const nextSession = getNextPendingServiceSession(order, currentTime)
+      const hasSessions = Array.isArray(order.serviceSessions) && order.serviceSessions.length > 0
+      const targetSession = activeSession || nextSession || (!hasSessions && order.startTime ? { index: 1, startTime: order.startTime } : null)
+      if (!targetSession || ['completed', 'cancelled'].includes(targetSession.status)) continue
       const sessionIndex = Number(targetSession.index || 1)
       const sessionStartTime = toTimeValue((targetSession && targetSession.startTime) || order.startTime)
       const overdueMinutes = sessionStartTime ? Math.round((currentTs - sessionStartTime) / 60000) : null
@@ -199,7 +199,7 @@ module.exports = function createService({
       }
 
       if (Object.keys(updates).length > 0) {
-        const time = currentTime instanceof Date ? currentTime : new Date(currentTime)
+        const time = new Date(currentTs)
         updates.updatedAt = time
         await db.collection('orders').doc(order._id).update({ data: updates })
         processed.push({ orderId: order._id, sessionIndex, updates })
@@ -214,15 +214,9 @@ module.exports = function createService({
     if (!currentTs) return []
     const ACTIVE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
     const windowStartTs = currentTs - ACTIVE_WINDOW_MS
-    const windowStartText = `${formatDateTime(windowStartTs).slice(0, 10)} 00:00`
-
-    const _ = db.command
-    const whereInService = { status: ORDER_STATUS.IN_SERVICE }
-    if (_ && typeof _.gte === 'function') {
-      whereInService.startTime = _.gte(windowStartText)
-    }
-
-    const orders = await readActiveOrders(whereInService)
+    // The booking may have started weeks ago while its current visit started
+    // today. Apply the window to the parsed current session below, not day one.
+    const orders = await readActiveOrders({ status: ORDER_STATUS.IN_SERVICE }, Infinity)
     const processed = []
 
     for (const order of orders) {
@@ -246,8 +240,16 @@ module.exports = function createService({
 
       // 情况 1：打卡凭证齐全，超时 30 分钟未结束 -> 智能自动完成服务并结算
       if (overdueMs >= 30 * 60 * 1000 && checkinResult.isComplete && !isAutoCompletedForSession) {
-        const time = currentTime instanceof Date ? currentTime : new Date(currentTime)
-        const completeRes = await completeOrderService({ ...order, _id: order._id }, activeSession, time, { isAuto: true, actor: 'system' })
+        const time = new Date(currentTs)
+        let completeRes
+        try {
+          completeRes = await completeOrderService({ ...order, _id: order._id }, activeSession, time, { isAuto: true, actor: 'system' })
+        } catch (error) {
+          // A new photo, deletion or changed visit requires fresh validation
+          // on the next sweep, while other orders can still be processed.
+          if (['SERVICE_PROOF_CHANGED', 'SERVICE_VISIT_CHANGED'].includes(error.code)) continue
+          throw error
+        }
         processed.push({ orderId: order._id, sessionIndex, type: 'auto_completed', result: completeRes })
         continue
       }
@@ -256,7 +258,7 @@ module.exports = function createService({
       const incidentSessions = Array.isArray(order.finishOverdueIncidentSessions) ? order.finishOverdueIncidentSessions : []
       const hasCreatedIncidentForSession = incidentSessions.includes(sessionIndex) || (sessionIndex === 1 && order.finishOverdueIncidentCreated === true && !order.finishOverdueIncidentSessions)
       if (overdueMs >= 60 * 60 * 1000 && !checkinResult.isComplete && !hasCreatedIncidentForSession) {
-        const time = currentTime instanceof Date ? currentTime : new Date(currentTime)
+        const time = new Date(currentTs)
         await appendOrderTimeline(order._id, 'finish_overdue_incident', '服务严重超时未结束告警', `服务已超时 60 分钟且打卡凭证缺失（${checkinResult.missing.join('、')}），系统已转平台客服紧急跟进。`, 'system')
         await appendOrderClientMessage(order, {
           eventType: 'service_finish_overdue_notice',
@@ -329,7 +331,7 @@ module.exports = function createService({
       const remindedSessions = Array.isArray(order.overdueFinishRemindedSessions) ? order.overdueFinishRemindedSessions : []
       const hasRemindedForSession = remindedSessions.includes(sessionIndex) || (sessionIndex === 1 && order.overdueFinishReminded === true && !order.overdueFinishRemindedSessions)
       if (overdueMs >= 15 * 60 * 1000 && !hasRemindedForSession) {
-        const time = currentTime instanceof Date ? currentTime : new Date(currentTime)
+        const time = new Date(currentTs)
         if (checkinResult.isComplete) {
           await appendOrderStaffMessage(order, {
             eventType: 'overdue_finish_reminder',

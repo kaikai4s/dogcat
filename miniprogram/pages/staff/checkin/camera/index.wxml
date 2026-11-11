@@ -30,7 +30,7 @@
           <text class="remix-icon ri-gallery-line sub-icon"></text>
           <text>已上传照片</text>
         </view>
-        <view class="photo-tip">{{photos.length}} 张，至少保留 1 张才计入必打卡。</view>
+        <view class="photo-tip">共 {{photos.length}} 张。本次打卡进度请查看订单页；历史场次与消毒凭证保留。</view>
       </view>
       <view class="photo-count">{{photos.length}}</view>
     </view>
@@ -39,7 +39,7 @@
       <view class="photo-cell" wx:for="{{photos}}" wx:key="_id">
         <image class="checkin-photo" src="{{item.mediaFileId}}" mode="aspectFill" data-url="{{item.mediaFileId}}" bindtap="previewPhoto" />
         <view class="photo-meta">{{item.remark || '无备注'}}</view>
-        <button class="mini-delete" data-id="{{item._id}}" loading="{{deletingId === item._id}}" disabled="{{deletingId === item._id}}" bindtap="deletePhoto">
+        <button wx:if="{{item.canDelete}}" class="mini-delete" data-id="{{item._id}}" loading="{{deletingId === item._id}}" disabled="{{deletingId === item._id}}" bindtap="deletePhoto">
           <text class="remix-icon ri-delete-bin-line"></text>
           <text>删除</text>
         </button>

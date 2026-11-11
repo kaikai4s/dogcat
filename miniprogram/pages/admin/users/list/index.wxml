@@ -1,3 +1,4 @@
+<wxs module="beijingTime" src="../../../../utils/beijing-time.wxs" />
 <view class="{{themeClass}} {{fontClass}} page admin-users-page">
   <view class="dashboard-header">
     <view class="badge">人员管理</view>
@@ -50,8 +51,8 @@
       <view class="info-row"><view class="label">绑定邀请人</view><view class="value">{{item.inviterOpenid || '无'}} <text wx:if="{{item.inviterOpenid}}" class="copy-tag" data-text="{{item.inviterOpenid}}" bindtap="copyText">复制</text></view></view>
       <view class="info-row"><view class="label">已完成服务</view><view class="value">{{item.completedOrderCount}} 单</view></view>
       <view class="info-row"><view class="label">补签卡</view><view class="value">{{item.retroCardCount}} 张</view></view>
-      <view class="info-row highlight-time-row"><view class="label">注册时间</view><view class="value font-time">{{item.createdAtText}}</view></view>
-      <view class="info-row"><view class="label">最后更新</view><view class="value">{{item.updatedAtText}}</view></view>
+      <view class="info-row highlight-time-row"><view class="label">注册时间</view><view class="value font-time">{{beijingTime.format(item.createdAtText)}}</view></view>
+      <view class="info-row"><view class="label">最后更新</view><view class="value">{{beijingTime.format(item.updatedAtText)}}</view></view>
     </view>
     <view class="user-actions">
       <button class="mini-btn highlight-btn" data-openid="{{item.openid}}" bindtap="viewUserPets">查看TA的宠物</button>

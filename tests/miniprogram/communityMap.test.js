@@ -40,7 +40,9 @@ function pageFixture(options = {}) {
     callFunction(module, action, data) { return new Promise((resolve, reject) => requests.push({ module, action, data, resolve, reject })) },
     ...options.cloud }
   vm.runInNewContext(fs.readFileSync(require.resolve('../../miniprogram/pages/common/community-map/index.js'), 'utf8'), {
-    Page(value) { page = value }, require(name) { return name === './utils' ? require('../../miniprogram/pages/common/community-map/utils') : cloud },
+    Page(value) { page = value }, require(name) {
+      if (name.endsWith('/format')) return require('../../miniprogram/utils/format')
+      return name === './utils' ? require('../../miniprogram/pages/common/community-map/utils') : cloud },
     wx, getApp: () => app, getCurrentPages: () => options.pages || [], setTimeout: (fn, ms) => { const timer = setTimeout(fn, ms); timer.unref(); return timer }, clearTimeout
   })
   page.data = { ...page.data, city: '上海市', checkingIdentity: false, selected: { _id: 'a', name: 'A' }, ...options.data }

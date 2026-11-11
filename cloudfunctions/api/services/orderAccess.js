@@ -1,3 +1,4 @@
+const { getOrderSessionPricing } = require('../utils/orderSessionPricing')
 const { normalizeStaffGenderRequirement, matchesStaffGender, assertStaffGenderMatches } = require('../utils/staffGender')
 
 module.exports = function createService({
@@ -117,6 +118,21 @@ module.exports = function createService({
   }
 
   function getCancelQuoteForOrder(order) {
+    const quote = calculateCancelQuoteForOrder(order)
+    if (!quote.canCancel || quote.refundAmount <= 0) return quote
+    const total = Math.round(Number(order.payAmount || 0) * 100)
+    const reserved = Math.round(Math.max(Number(order.refundAmount || 0), Number(order.refundedAmount || 0)) * 100)
+    if (![total, reserved].every(value => Number.isSafeInteger(value) && value >= 0) || reserved > total) {
+      throw new Error('订单退款金额异常，请联系平台核对')
+    }
+    const remaining = total - reserved
+    if (Math.round(quote.refundAmount * 100) <= remaining) return quote
+    const refundAmount = remaining / 100
+    return { ...quote, refundAmount, refundStatus: refundAmount > 0 ? 'processing' : 'not_required',
+      ruleText: `此前已退款或占用退款额度 ¥${(reserved / 100).toFixed(2)}，按取消规则，本次可退 ¥${refundAmount.toFixed(2)}` }
+  }
+
+  function calculateCancelQuoteForOrder(order) {
     if ((order.groupBuyId || order.source === 'community_groupbuy') && (order.groupBuyStatus === 'formed' || order.groupBuyFormed === true)) {
       return {
         canCancel: false,
@@ -128,6 +144,58 @@ module.exports = function createService({
     if (order.status === 'pending_pay') return { canCancel: true, refundAmount: 0, refundStatus: 'not_required', ruleText: '待支付订单可直接取消' }
     if (order.status === 'paid') return { canCancel: true, refundAmount: Number(order.payAmount || 0), refundStatus: 'processing', ruleText: '已支付未接单订单可全额退款' }
     if (order.status === 'expired') return { canCancel: true, refundAmount: Number(order.payAmount || 0), refundStatus: 'processing', ruleText: '过期未接单订单可全额退款' }
+    if (['day_completed', 'assigned', 'on_the_way'].includes(order.status) && (order.status === 'day_completed' || (order.serviceSessions || []).some(s => s.status === 'completed'))) {
+      const sessions = Array.isArray(order.serviceSessions) && order.serviceSessions.length > 0
+        ? order.serviceSessions
+        : [{ index: 1, status: 'completed' }]
+      const completedSessions = sessions.filter(s => s.status === 'completed')
+      const unservedSessions = sessions.filter(s => s.status !== 'completed' && s.status !== 'cancelled').sort((a, b) => toTimeValue(a.startTime) - toTimeValue(b.startTime))
+
+      if (unservedSessions.length === 0) {
+        return { canCancel: false, refundAmount: 0, refundStatus: 'not_required', ruleText: '所有服务场次均已完成，不可取消' }
+      }
+
+      const sessionPricing = getOrderSessionPricing(order, sessions)
+
+      // 计算未履约场次的退款金额
+      let refundTotal = 0
+      let nextSessionDeducted = false
+      const currentTime = now().getTime()
+
+      unservedSessions.forEach((session, idx) => {
+        const perSessionCents = Math.round(sessionPricing[sessions.indexOf(session)].payAmount * 100)
+        const sessionStart = toTimeValue(session.startTime)
+        const hoursBefore = sessionStart ? (sessionStart - currentTime) / 36e5 : 0
+        if (idx === 0) {
+          // 下一场次服务
+          if (hoursBefore >= 24) {
+            refundTotal += perSessionCents
+          } else {
+            // 不足24小时扣除20%违约金，退80%
+            refundTotal += Math.round(perSessionCents * 0.8)
+            nextSessionDeducted = true
+          }
+        } else {
+          // 更后面的场次，距离时间充分，全额退还
+          refundTotal += perSessionCents
+        }
+      })
+
+      const finalRefundAmount = Math.max(0, refundTotal / 100)
+      const ruleText = nextSessionDeducted
+        ? `已完成${completedSessions.length}天服务不予退还；距下次服务不足24小时扣除20%，剩余${unservedSessions.length}天退款 ¥${finalRefundAmount.toFixed(2)}`
+        : `已完成${completedSessions.length}天服务不予退还，剩余${unservedSessions.length}天未履约服务退款 ¥${finalRefundAmount.toFixed(2)}`
+
+      return {
+        canCancel: true,
+        refundAmount: finalRefundAmount,
+        refundStatus: finalRefundAmount > 0 ? 'processing' : 'not_required',
+        ruleText,
+        isMultiDayPartialCancel: true,
+        completedSessionsCount: completedSessions.length,
+        unservedSessionsCount: unservedSessions.length
+      }
+    }
     if (order.status === 'assigned' || order.status === 'on_the_way') {
       const start = toTimeValue(order.startTime)
       const hoursBeforeStart = start ? (start - now().getTime()) / 36e5 : 0
@@ -136,10 +204,11 @@ module.exports = function createService({
       // 如果是指定订单（direct模式），检查是否在免责取消时间窗口内（接单后2小时）
       const isDirectOrder = order.publishMode === 'direct' || order.assignmentSource === 'direct_accept'
       if (isDirectOrder && order.assignedAt) {
-        const hoursAfterAccept = (now().getTime() - new Date(order.assignedAt).getTime()) / 36e5
+        const assignedAt = toTimeValue(order.assignedAt)
+        const hoursAfterAccept = assignedAt ? (now().getTime() - assignedAt) / 36e5 : Infinity
         const freeGracePeriodHours = 2 // 免责取消时间窗口：2小时
 
-        if (hoursAfterAccept <= freeGracePeriodHours) {
+        if (hoursAfterAccept >= 0 && hoursAfterAccept <= freeGracePeriodHours) {
           // 在免责时间窗口内，指定订单可免费取消
           return {
             canCancel: true,
@@ -159,59 +228,6 @@ module.exports = function createService({
         refundStatus: 'processing',
         ruleText: hoursBeforeStart >= 24 ? '距服务开始超过24小时，可全额退款' : '距服务开始不足24小时，可退80%',
         needsNegotiation: isDirectOrder && hoursBeforeStart < 24 // 指定订单超时取消需要协商
-      }
-    }
-    if (order.status === 'day_completed') {
-      const sessions = Array.isArray(order.serviceSessions) && order.serviceSessions.length > 0
-        ? order.serviceSessions
-        : [{ index: 1, status: 'completed' }]
-      const totalSessions = sessions.length
-      const completedSessions = sessions.filter(s => s.status === 'completed')
-      const unservedSessions = sessions.filter(s => s.status !== 'completed' && s.status !== 'cancelled')
-
-      if (unservedSessions.length === 0) {
-        return { canCancel: false, refundAmount: 0, refundStatus: 'not_required', ruleText: '所有服务场次均已完成，不可取消' }
-      }
-
-      const payAmount = Number(order.payAmount || 0)
-      const perSessionAmount = totalSessions > 0 ? (payAmount / totalSessions) : 0
-
-      // 计算未履约场次的退款金额
-      let refundTotal = 0
-      let nextSessionDeducted = false
-      const currentTime = now().getTime()
-
-      unservedSessions.forEach((session, idx) => {
-        const sessionStart = toTimeValue(session.startTime)
-        const hoursBefore = sessionStart ? (sessionStart - currentTime) / 36e5 : 0
-        if (idx === 0) {
-          // 下一场次服务
-          if (hoursBefore >= 24) {
-            refundTotal += perSessionAmount
-          } else {
-            // 不足24小时扣除20%违约金，退80%
-            refundTotal += perSessionAmount * 0.8
-            nextSessionDeducted = true
-          }
-        } else {
-          // 更后面的场次，距离时间充分，全额退还
-          refundTotal += perSessionAmount
-        }
-      })
-
-      const finalRefundAmount = Math.max(0, Math.round(refundTotal * 100) / 100)
-      const ruleText = nextSessionDeducted
-        ? `已完成${completedSessions.length}天服务不予退还；距下次服务不足24小时扣除20%，剩余${unservedSessions.length}天退款 ¥${finalRefundAmount.toFixed(2)}`
-        : `已完成${completedSessions.length}天服务不予退还，剩余${unservedSessions.length}天未履约服务退款 ¥${finalRefundAmount.toFixed(2)}`
-
-      return {
-        canCancel: true,
-        refundAmount: finalRefundAmount,
-        refundStatus: 'processing',
-        ruleText,
-        isMultiDayPartialCancel: true,
-        completedSessionsCount: completedSessions.length,
-        unservedSessionsCount: unservedSessions.length
       }
     }
     return { canCancel: false, refundAmount: 0, refundStatus: 'pending_manual', ruleText: '服务中或已完成订单需申请平台介入' }

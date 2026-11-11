@@ -63,6 +63,12 @@ module.exports = function createService({ db, now, parseDateValue, releaseWechat
       const refundCents = cents(refundAmount)
       const payCents = cents(totalPayAmount)
       if (!refundCents || !payCents || refundCents > payCents) throw new Error('退款收益金额异常')
+      const cumulativeCents = options.cumulativeRefundAmount == null ? refundCents : cents(options.cumulativeRefundAmount)
+      if (cumulativeCents < refundCents || cumulativeCents > payCents) throw new Error('累计退款收益金额异常')
+      const previousCents = cumulativeCents - refundCents
+      // Round cumulative totals, then take their difference so installments and
+      // refunds settled concurrently have the same result as a single refund.
+      const proportionalDeduction = (base, part) => Number((BigInt(base) * BigInt(part) + BigInt(payCents) / 2n) / BigInt(payCents))
       const released = new Map()
       const results = []
       for (const original of earnings) {
@@ -70,10 +76,10 @@ module.exports = function createService({ db, now, parseDateValue, releaseWechat
         const holds = Array.isArray(earning.pendingRefundIds) ? earning.pendingRefundIds : []
         if (phase === 'reserve') {
           if (earning.status === 'withdrawing') await pendingWithdrawal(tx, earning)
-          await tx.collection('staff_earnings').doc(earning._id).update({ data: { pendingRefundIds: [...new Set([...holds, refundId])], updatedAt: now() } })
+          await tx.collection('staff_earnings').doc(earning._id).update({ data: { pendingRefundIds: [...new Set([...holds, refundId, ...(options.additionalHoldIds || [])])], updatedAt: now() } })
           continue
         }
-        const remainingHolds = holds.filter(id => id !== refundId)
+        const remainingHolds = holds.filter(id => id !== refundId && !(options.releaseHoldIds || []).includes(id))
         if (phase === 'failed') {
           await tx.collection('staff_earnings').doc(earning._id).update({ data: { pendingRefundIds: remainingHolds, updatedAt: now() } })
           continue
@@ -84,14 +90,16 @@ module.exports = function createService({ db, now, parseDateValue, releaseWechat
         }
         const amount = cents(earning.amount)
         const base = cents(earning.originalAmount ?? earning.amount)
-        const full = refundCents === payCents
+        const full = cumulativeCents === payCents
         const priorDebt = earning.status === 'withdrawn' ? cents(earning.overpaidDebtAmount || 0) : 0
-        const deduction = Math.min(Math.max(0, amount - priorDebt), full ? amount : Math.round(base * refundCents / payCents))
+        const deduction = Math.min(Math.max(0, amount - priorDebt), full ? amount :
+          proportionalDeduction(base, cumulativeCents) - proportionalDeduction(base, previousCents))
         const time = now()
         const patch = { pendingRefundIds: remainingHolds, updatedAt: time }
         let action
         if (earning.status === 'withdrawn') {
-          Object.assign(patch, { hasOverpaidDebt: true, overpaidDebtAmount: (cents(earning.overpaidDebtAmount || 0) + deduction) / 100,
+          const debt = priorDebt + deduction
+          Object.assign(patch, { hasOverpaidDebt: debt > 0, overpaidDebtAmount: debt / 100,
             refundVoidReason: reason || '订单退款，收益已提现转入待追缴' })
           action = 'staff_earning_withdrawn_debt'
         } else {

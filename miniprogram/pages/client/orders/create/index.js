@@ -233,8 +233,8 @@ function getSitterScheduleForDate(dateStr, requestedSitter, sitterAvailability =
   }
 
   const [y, m, d] = dateStr.split('-').map(Number)
-  const dateObj = new Date(y, m - 1, d)
-  const jsDay = dateObj.getDay()
+  const dateObj = new Date(Date.UTC(y, m - 1, d))
+  const jsDay = dateObj.getUTCDay()
   const dayKey = String(jsDay === 0 ? 7 : jsDay)
   const slots = Array.isArray(weekly[dayKey]) ? weekly[dayKey] : []
 
@@ -359,7 +359,7 @@ function formatPetHint(pet) {
 
 function getVoiceWeekday(startDate) {
   const date = toBeijingDate(`${startDate} 00:00:00`)
-  if (!date) return new Date().getDay()
+  if (!date) return toBeijingDate(new Date()).getUTCDay()
   return date.getUTCDay()
 }
 
@@ -522,8 +522,8 @@ typeof Page === 'function' ? Page({
     minDate: formatDate(new Date()),
     minClock: '',
     showCalendarModal: false,
-    calendarYear: new Date().getFullYear(),
-    calendarMonth: new Date().getMonth() + 1,
+    calendarYear: toBeijingDate(new Date()).getUTCFullYear(),
+    calendarMonth: toBeijingDate(new Date()).getUTCMonth() + 1,
     calendarDays: [],
     calendarEmptyDays: [],
     canPrevMonth: false,
@@ -1503,8 +1503,8 @@ typeof Page === 'function' ? Page({
     const form = this.data.form
     const startDate = form.startDate || formatDate(now)
     const [startYear, startMonth] = startDate.split('-').map(Number)
-    const calendarYear = startYear || now.getFullYear()
-    const calendarMonth = startMonth || (now.getMonth() + 1)
+    const calendarYear = startYear || toBeijingDate(now).getUTCFullYear()
+    const calendarMonth = startMonth || (toBeijingDate(now).getUTCMonth() + 1)
 
     this.setData({
       showCalendarModal: true,
@@ -1564,16 +1564,16 @@ typeof Page === 'function' ? Page({
   refreshCalendarUI() {
     const { calendarYear, calendarMonth, calendarTempOrderType, calendarTempStartDate, calendarTempEndDate, calendarTempStartClock } = this.data
     const now = new Date()
-    const currentYear = now.getFullYear()
-    const currentMonth = now.getMonth() + 1
+    const currentYear = toBeijingDate(now).getUTCFullYear()
+    const currentMonth = toBeijingDate(now).getUTCMonth() + 1
     const todayStr = formatDate(now)
 
     const canPrevMonth = calendarYear > currentYear || (calendarYear === currentYear && calendarMonth > currentMonth)
     const monthDiff = (calendarYear - currentYear) * 12 + (calendarMonth - currentMonth)
     const canNextMonth = monthDiff < 3
 
-    const firstDayWeek = new Date(calendarYear, calendarMonth - 1, 1).getDay()
-    const daysCount = new Date(calendarYear, calendarMonth, 0).getDate()
+    const firstDayWeek = new Date(Date.UTC(calendarYear, calendarMonth - 1, 1)).getUTCDay()
+    const daysCount = new Date(Date.UTC(calendarYear, calendarMonth, 0)).getUTCDate()
     const dateMap = this.data.surchargeDateMap || {}
 
     const isDirect = this.data.form.publishMode === 'direct' && Boolean(this.data.requestedSitter)

@@ -1,3 +1,4 @@
+<wxs module="beijingTime" src="../../../utils/beijing-time.wxs" />
 <view class="map-page {{mode}} {{reducedMotion ? 'reduced-motion' : ''}} {{selected ? 'has-sheet' : ''}} {{expanded ? 'is-expanded' : ''}}">
   <view class="topbar">
     <view class="headline"><view class="headline-copy"><text class="eyebrow">DOVELIN · NEIGHBOURHOOD</text><view class="title">{{mode === 'orders' ? '小区里，发现好任务' : '身边的安心宠托师'}}</view></view><button class="text-btn list-button" bindtap="listView">列表 ↗</button></view>
@@ -34,7 +35,7 @@
             <block wx:if="{{mode === 'orders'}}">
               <view class="bundle-ribbon" wx:if="{{item.isGroupBuyBundle}}">同小区拼单 · {{item.householdCount}} 户 · 接整团</view>
               <view class="card-top"><view class="card-heading"><view class="service-mark"><text class="remix-icon ri-home-heart-line"></text></view><view class="card-heading-copy"><view class="card-title">{{item.serviceSummary || '上门宠物照护'}}</view><text class="urgent-tag" wx:if="{{item.isUrgent}}">加急任务</text></view></view></view>
-              <view class="time-line">{{item.startTime}}</view><view class="muted">{{item.sessionCount}} 次服务 · 单次 {{item.durationMinutes}} 分钟</view><view class="pet-summary">{{item.petSummary}}</view>
+              <view class="time-line">{{beijingTime.format(item.startTime)}}</view><view class="muted">{{item.sessionCount}} 次服务 · 单次 {{item.durationMinutes}} 分钟</view><view class="pet-summary">{{item.petSummary}}</view>
               <view class="tags"><text class="soft-tag" wx:if="{{!item.inRange}}">需确认当前位置范围</text><text class="soft-tag" wx:if="{{!item.inTime}}">需确认履约时间</text></view>
               <view class="earnings"><text class="earnings-label">预计{{item.isGroupBuyBundle ? '整团' : '整单'}}收益</text><text class="earnings-value">{{item.staffEarningText}}</text></view>
             </block>

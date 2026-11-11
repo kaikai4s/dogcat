@@ -1,3 +1,5 @@
+const { userAssetExpiryDate } = require('../utils/userAssetExpiry')
+const { parseDateValue, toCstParts } = require('../utils/time')
 const { readDocuments, readOptionalDocument } = require('../utils/documentPages')
 
 const { WECHAT_MIN_TRANSFER_CENTS, isAbsentSmallTransfer } = require('../utils/wechatTransferLimits')
@@ -75,17 +77,9 @@ module.exports = function createService(context) {
     if (earning.status === 'expired') return true
     if (earning.status !== 'available') return false
     if (earning.sourceType !== 'invite_binding' && !earning.expiresAt) return false
-    const nowMs = (currentTime instanceof Date ? currentTime : new Date(currentTime)).getTime()
-    if (earning.expiresAt) {
-      const expireMs = new Date(earning.expiresAt).getTime()
-      return Number.isFinite(expireMs) && expireMs <= nowMs
-    }
-    const days = Number(earning.validityDays || validityDays)
-    if (days > 0 && earning.createdAt) {
-      const createMs = new Date(earning.createdAt).getTime()
-      return Number.isFinite(createMs) && createMs + days * 86400000 <= nowMs
-    }
-    return false
+    const current = parseDateValue(currentTime)
+    const expiry = userAssetExpiryDate(earning, validityDays)
+    return Boolean(current && expiry && expiry <= current)
   }
 
   async function expireUserAssetEarnings(openid, options = {}) {
@@ -209,7 +203,7 @@ module.exports = function createService(context) {
       if (validityDays > 0) {
         const createDate = new Date(time)
         const expireDate = new Date(createDate.getTime() + validityDays * 24 * 60 * 60 * 1000)
-        expiresAt = expireDate.toISOString().replace('T', ' ').slice(0, 19)
+        expiresAt = expireDate.toISOString()
       }
       const earning = {
         _id: earningId,
@@ -373,13 +367,9 @@ module.exports = function createService(context) {
       else if (row.status === 'expired') statusText = '已过期'
 
       let expiresAtText = ''
-      if (row.expiresAt) {
-        expiresAtText = row.status === 'expired'
-          ? `已于 ${String(row.expiresAt).slice(0, 10)} 过期`
-          : `${String(row.expiresAt).slice(0, 10)} 到期`
-      } else if (validityDays > 0 && row.createdAt) {
-        const d = new Date(new Date(row.createdAt).getTime() + validityDays * 86400000)
-        const dateStr = d.toISOString().replace('T', ' ').slice(0, 10)
+      const expiry = userAssetExpiryDate(row, validityDays)
+      if (expiry) {
+        const dateStr = toCstParts(expiry).dateKey
         expiresAtText = row.status === 'expired' ? `已于 ${dateStr} 过期` : `${dateStr} 到期`
       }
       return {

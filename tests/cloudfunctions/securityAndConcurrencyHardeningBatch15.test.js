@@ -27,7 +27,7 @@ test('assignOrderAtomically: 事务内校验宠托师进行中订单上限', asy
     users: [{ _id: 'u_staff', openid: 'openid_staff', status: 'active', roles: ['staff'] }],
     staff_profiles: [{ _id: 'sp_1', openid: 'openid_staff', auditStatus: 'approved' }],
     orders: [
-      { _id: 'target_order', status: 'paid', startTime: '2026-10-01 10:00', endTime: '2026-10-01 11:00' },
+      { _id: 'target_order', status: 'paid', paymentStatus: 'paid', startTime: '2026-10-01 10:00', endTime: '2026-10-01 11:00' },
       ...Array.from({ length: 2 }, (_, index) => ({
         _id: `active_${index + 1}`,
         staffOpenid: 'openid_staff',
@@ -54,7 +54,7 @@ test('assignOrderAtomically: 事务内重校验疫苗偏好', async () => {
   const db = createCollectionStore({
     users: [{ _id: 'u_staff', openid: 'openid_staff_vaccine', status: 'active', roles: ['staff'] }],
     staff_profiles: [{ _id: 'sp_1', openid: 'openid_staff_vaccine', auditStatus: 'approved', rejectUnvaccinatedPets: true }],
-    orders: [{ _id: 'target_order', status: 'paid', startTime: '2026-10-01 10:00', endTime: '2026-10-01 11:00' }]
+    orders: [{ _id: 'target_order', status: 'paid', paymentStatus: 'paid', startTime: '2026-10-01 10:00', endTime: '2026-10-01 11:00' }]
   })
   const { assignOrderAtomically } = createAssignmentService(db, {
     attachOrderDisplayData: async (order) => ({ ...order, petVaccineSummary: { hasUnapprovedPets: true } }),

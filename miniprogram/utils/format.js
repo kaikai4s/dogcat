@@ -268,10 +268,17 @@ function parseBeijingDate(value) {
     const num = Number(text)
     return new Date(text.length === 10 ? num * 1000 : num)
   }
-  const localMatch = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/)
+  const calendar = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/)
+  if (calendar) {
+    const [, y, m, d, h = '0', min = '0', sec = '0'] = calendar
+    const day = new Date(Date.UTC(+y, +m - 1, +d))
+    if (day.getUTCFullYear() !== +y || day.getUTCMonth() !== +m - 1 || day.getUTCDate() !== +d ||
+        +h > 23 || +min > 59 || +sec > 59) return null
+  }
+  const localMatch = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2})(?:\.(\d{1,3}))?)?)?$/)
   if (localMatch) {
-    const [, year, month, day, hour = '0', minute = '0', second = '0'] = localMatch
-    return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour) - 8, Number(minute), Number(second)))
+    const [, year, month, day, hour = '0', minute = '0', second = '0', millisecond = '0'] = localMatch
+    return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour) - 8, Number(minute), Number(second), Number(millisecond.padEnd(3, '0'))))
   }
   const time = new Date(text).getTime()
   return Number.isFinite(time) ? new Date(time) : null
@@ -281,6 +288,18 @@ function parseBeijingDate(value) {
 function toBeijingDate(value) {
   const date = parseBeijingDate(value)
   return date ? new Date(date.getTime() + 8 * 60 * 60 * 1000) : null
+}
+
+function formatBeijingDate(value = new Date()) {
+  const date = toBeijingDate(value)
+  if (!date) return ''
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`
+}
+
+function formatBeijingClock(value = new Date()) {
+  const date = toBeijingDate(value)
+  if (!date) return ''
+  return `${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}`
 }
 
 function formatDateTime(value) {
@@ -560,6 +579,8 @@ module.exports = {
   formatIncidentAction,
   toBeijingDate,
   parseBeijingDate,
+  formatBeijingDate,
+  formatBeijingClock,
   formatDateTime,
   formatAppointmentTime,
   withOrderText,

@@ -163,8 +163,9 @@
       <text>连续多天订单：每天需要重新开始服务并完成当天任务。</text>
     </view>
     <view class="multi-day-status-tip done" wx:if="{{order && order.status === 'day_completed'}}">
-      <view class="multi-day-tip-title"><text class="remix-icon ri-checkbox-circle-fill text-green"></text>今日服务已完成</view>
-      <view class="multi-day-tip-sub" wx:if="{{order.nextSession}}">下一次服务场次：第 {{order.nextSession.index}} 天 · {{order.nextSession.startTime}}</view>
+      <view class="multi-day-tip-title"><text class="remix-icon ri-checkbox-circle-fill text-green"></text>{{order.isWaitingForGroupCompletion ? '本户服务已完成' : '今日服务已完成'}}</view>
+      <view class="multi-day-tip-sub" wx:if="{{order.isWaitingForGroupCompletion}}">等待同拼单其他住户完成后统一结算。</view>
+      <view class="multi-day-tip-sub" wx:if="{{order.nextSession}}">下一次服务场次：第 {{order.nextSession.index}} 天 · {{beijingTime.format(order.nextSession.startTime)}}</view>
     </view>
     <view class="pre-service-card" wx:if="{{order && order.canStartService}}">
       <view class="guide-box">
@@ -243,9 +244,9 @@
         <view class="info-row"><view class="label">钥匙位置</view><view class="value">{{order.orderHomeSecurity.key.location}}</view></view>
         <view class="image-list" wx:if="{{order.orderHomeSecurity.key.imageFileIds.length}}"><image wx:for="{{order.orderHomeSecurity.key.imageFileIds}}" wx:key="*this" class="security-image" src="{{item}}" mode="aspectFill" /></view>
         <view class="security-desc">{{order.orderHomeSecurity.key.returnedAt ? '已完成放回钥匙打卡，照片已留存' : '钥匙安全责任：请核对照片寻匙开门；服务结束离开前必须原位放回并拍照打卡，确保锁闭'}}</view>
-        <button class="ghost-btn full-btn" wx:if="{{!order.orderHomeSecurity.key.returnedAt}}" loading="{{returningKey}}" disabled="{{returningKey}}" bindtap="chooseKeyReturnImage">上传放回钥匙图片</button>
+        <button class="ghost-btn full-btn" wx:if="{{order.status === 'in_service' && !order.orderHomeSecurity.key.returnedAt}}" loading="{{returningKey}}" disabled="{{returningKey}}" bindtap="chooseKeyReturnImage">上传放回钥匙图片</button>
         <view class="image-list" wx:if="{{keyReturnImageFileIds.length}}"><image wx:for="{{keyReturnImageFileIds}}" wx:key="*this" class="security-image" src="{{item}}" mode="aspectFill" /></view>
-        <button class="primary-btn full-btn" wx:if="{{!order.orderHomeSecurity.key.returnedAt}}" loading="{{returningKey}}" disabled="{{returningKey}}" bindtap="recordKeyReturned">确认已放回钥匙</button>
+        <button class="primary-btn full-btn" wx:if="{{order.status === 'in_service' && !order.orderHomeSecurity.key.returnedAt}}" loading="{{returningKey}}" disabled="{{returningKey}}" bindtap="recordKeyReturned">确认已放回钥匙</button>
       </view>
     </view>
   </view>

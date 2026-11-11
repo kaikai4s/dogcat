@@ -315,6 +315,7 @@ test('admin batchRequireDepositRepay flags selected sitters, blocking them from 
   // 验证接单强管控拦截：该宠托师尝试接单时被系统拒绝
   db.state.orders.push({
     _id: 'order_test_take_1',
+    paymentStatus: 'paid',
     orderNo: 'O20260922888',
     status: 'paid',
     serviceType: 'walk',

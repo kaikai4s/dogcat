@@ -158,7 +158,7 @@ ${order.completedAt ? `订单完成时间：${safeText(order.completedAt)}\n` : 
       const specialNotes = safeText(p.specialNotes).trim()
       const serviceName = safeText(data.serviceName || data.serviceType).trim()
       const startDate = safeText(data.startDate).trim()
-      const dateKey = safeText(data.dateKey).trim() || safeText(nowText()).slice(0, 10)
+      const dateKey = safeText(data.dateKey).trim() || require('../utils/time').toCstParts(nowText()).dateKey
       const cachePetKey = petId || `${name}_${p.species || 'pet'}`
       const cacheId = ['pet_voice_daily', openid, cachePetKey, dateKey].map((part) => safeText(part).replace(/[^a-zA-Z0-9_-]/g, '_')).join('_').slice(0, 500)
 

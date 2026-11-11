@@ -1,3 +1,4 @@
+const { formatBeijingClock } = require('../../../utils/format')
 const { callFunction, showError, getSelectedLocation, saveSelectedLocation, requirePrivacyAuthorize, ensureLogin, requestSubscribeTemplates, subscribeIdentityChange, getCloudEnv, isLoginRequiredError } = require('../../../utils/cloud')
 const { clusterCommunities, inRegion, validPoint, safeDecodeCity, locationCity, viewportKey, readViewport, storeViewport } = require('./utils')
 
@@ -194,7 +195,7 @@ Page({
       if (seq !== this._seq || this._closed || this._hidden) return
       this._communities = result.communities || []; this._loaded = true
       this.setData({ unmatchedCount: result.unmatchedCount || 0, loading: false,
-        updatedText: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) })
+        updatedText: formatBeijingClock() })
       this.fitCommunities()
       this.renderMarkers()
       if (this.data.selected) {

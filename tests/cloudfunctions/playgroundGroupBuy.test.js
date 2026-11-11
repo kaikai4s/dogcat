@@ -7,6 +7,7 @@ const createGroups=require('../../cloudfunctions/api/services/playground-group-b
 const createSettlement=require('../../cloudfunctions/api/services/paymentSettlement')
 const {communityId}=require('../../cloudfunctions/api/services/playground-world')
 const {groupConfig,careConfig}=require('../../cloudfunctions/api/services/playground-config')
+const {toTimeValue}=require('../../cloudfunctions/api/utils/time')
 function fixture(){
   let stamp=Date.parse('2026-10-20T00:00:00Z')
   const community={name:'A小区',city:'上海',district:'浦东',address:'公开小区地址'},id=communityId({residentialCommunity:community})
@@ -29,7 +30,7 @@ function fixture(){
 test('group orders attach atomically, form by distinct households, freeze cent pricing and retain private member identities',async()=>{
   const f=fixture(),first=await f.submit('a'),id=first.order.groupBuyId
   assert.equal(first.order.groupBuyStatus,'recruiting')
-  const guard=require('../../cloudfunctions/api/services/paymentDeadline')({toTimeValue:(t)=>new Date(t).getTime(),now:f.context.now})
+  const guard=require('../../cloudfunctions/api/services/paymentDeadline')({toTimeValue,now:f.context.now})
   assert.doesNotThrow(()=>guard.assertOrderPaymentOpen(first.order))
   assert.equal(first.order.payAmount,70.4)
   assert.equal(first.order.discountAmount,29.6)
@@ -76,7 +77,7 @@ test('server rejects spoofed communities, off-community addresses, mismatched ti
   await assert.rejects(f.groups.prepare('d',f.data('d',{groupBuyId:id}),f.pricing),/只能选择|不属于/)
   await assert.rejects(f.groups.prepare('a',f.data('a',{serviceAddress:'其他小区'}),f.pricing),/只能选择/)
   await assert.rejects(f.groups.prepare('a',f.data('a',{couponId:'coupon'}),f.pricing),/不可.*叠加/)
-  await assert.rejects(f.groups.prepare('b',f.data('b',{groupBuyId:id}),{...f.pricing,sessions:[{...f.pricing.sessions[0],startTime:'2026-10-21 11:00'}]}),/服务日期和时段/)
+  await assert.rejects(f.groups.prepare('b',f.data('b',{groupBuyId:id}),{...f.pricing,sessions:[{...f.pricing.sessions[0],startTime:'2026-10-21 11:00',endTime:'2026-10-21 11:30'}]}),/服务日期和时段/)
   await assert.rejects(f.submit('b',{groupBuyId:id,addressDetail:'楼栋a'}),/每户/)
   const other=await f.groups.list('d')
   assert.equal(other.groups.length,0)
@@ -94,6 +95,48 @@ test('cancelled orders do not count toward households and invalid admin rules ar
   assert.throws(()=>groupConfig({minHouseholds:1}),/户数/)
   assert.throws(()=>careConfig({cat:{eatRate:-1}}),/cat|猫/)
   assert.equal(careConfig({cat:{eatRate:.5},dog:{eatRate:.2}}).cat.eatRate,.5)
+})
+
+test('refunding active households retain their group membership and duplicate-household protection',async()=>{
+  const f=fixture(),first=await f.submit('a'),id=first.order.groupBuyId
+  await f.submit('b',{groupBuyId:id})
+  f.db.state.orders.find(o=>o._id===first.order._id).paymentStatus='refunding'
+  assert.equal((await f.groups.list('b')).myGroups[0].householdCount,2)
+  await assert.rejects(f.submit('a',{groupBuyId:id},'duplicate-refunding'),/每户/)
+  await f.submit('c',{groupBuyId:id})
+  assert.equal((await f.groups.list('c')).myGroups[0].householdCount,3)
+})
+
+test('refund processing cannot hide an assigned member and let a new household join',async()=>{
+  const f=fixture(),first=await f.submit('a'),id=first.order.groupBuyId
+  const member=f.db.state.orders.find(o=>o._id===first.order._id)
+  Object.assign(member,{paymentStatus:'refunding',status:'assigned',staffOpenid:'staff'})
+  await assert.rejects(f.submit('b',{groupBuyId:id}),/已被接单/)
+})
+
+for (const sameAccount of [true, false]) {
+  test(`pending household protection scans beyond a hundred expired intents (${sameAccount ? 'same account' : 'shared household'})`, async () => {
+    const f = fixture(), first = await f.submit('a'), id = first.order.groupBuyId
+    const pending = await f.submit('b', { groupBuyId: id }, 'b-pending', false)
+    f.db.state.orders.unshift(...Array.from({ length: 105 }, (_, i) => ({ ...pending.order,
+      _id: `old_${i}`, clientOpenid: `old_${i}`, groupBuyHouseholdKey: `old_${i}`,
+      paymentDeadline: f.context.nowMs() - 1 })))
+    const who = sameAccount ? 'b' : 'c'
+    await assert.rejects(f.submit(who, { groupBuyId: id, addressDetail: '楼栋b' }, 'duplicate-pending', false), /每户/)
+    assert.equal(f.db.state.orders.filter(o => o.clientRequestId === 'duplicate-pending').length, 0)
+  })
+}
+
+test('cancelling a pending join cannot remove live refunding households from a formed group',async()=>{
+  const f=fixture(),first=await f.submit('a'),id=first.order.groupBuyId
+  await f.submit('b',{groupBuyId:id})
+  const pending=await f.submit('c',{groupBuyId:id},'pending-c',false)
+  f.db.state.orders.find(o=>o._id===first.order._id).paymentStatus='refunding'
+  f.db.state.orders.find(o=>o._id===pending.order._id).status='cancelled'
+  await f.groups.onOrderCancelled(pending.order._id,id)
+  assert.equal(f.db.state.pet_playground_groups[0].status,'formed')
+  assert.equal(f.db.state.pet_playground_groups[0].members.length,2)
+  assert.equal((await f.groups.list('a')).myGroups[0].householdCount,2)
 })
 test('real order quote and create routes carry group context, enforce local coordinates and join the same group',async(t)=>{
   t.mock.timers.enable({apis:['Date'],now:new Date('2026-10-20T00:00:00Z')})
@@ -320,7 +363,7 @@ test('group buy enforces single-day schedule and prevents unilateral cancellatio
   // 获取 cancelQuote 验证 canCancel 必须为 false
   const orderAccess=require('../../cloudfunctions/api/services/orderAccess')({
     now:f.context.now,
-    toTimeValue:(t)=>new Date(t).getTime(),
+    toTimeValue,
     getSystemSettings:async()=>({})
   })
   const quote=orderAccess.getCancelQuoteForOrder(freshB)
@@ -336,7 +379,7 @@ test('group buy unformed orders are excluded from open hall and expire 2 hours b
   })
   const expireService=require('../../cloudfunctions/api/scheduled/expireOrders')({
     now:f.context.now,
-    toTimeValue:(t)=>new Date(t).getTime(),
+    toTimeValue,
     ORDER_STATUS:{PAID:'paid',EXPIRED:'expired'},
     safeText:(s)=>String(s||''),
     createRefundForOrder:async(order,amount,reason)=>{
@@ -994,7 +1037,7 @@ test('同小区拼单先支付保障: 成团后服务开始前2小时无人接�
   // 当时间推进到服务开始前 2 小时以内（例如 2026-10-21 08:30，距服务开始只有 1.5 小时）且无人接单
   const expireService = require('../../cloudfunctions/api/scheduled/expireOrders')({
     now: () => new Date('2026-10-21T08:30:00+08:00'),
-    toTimeValue: (t) => new Date(t).getTime(),
+    toTimeValue,
     ORDER_STATUS: { PAID: 'paid', EXPIRED: 'expired' },
     safeText: (s) => s || '',
     createRefundForOrder: f.context.createRefundForOrder,
@@ -1021,4 +1064,21 @@ test('同小区拼单先支付保障: 成团后服务开始前2小时无人接�
   assert.equal(freshA.groupBuyStatus, 'cancelled')
   assert.equal(freshB.status, 'expired')
   assert.equal(freshB.groupBuyStatus, 'cancelled')
+})
+
+test('a group-buy session cannot run past the last instant of its Beijing service date',async()=>{
+  const f=fixture()
+  for (const [startTime,endTime] of [
+    ['2026-10-21 23:30','2026-10-22 00:30'],
+    ['2026-10-21T15:30:00Z','2026-10-21T16:30:00Z']
+  ]) {
+    await assert.rejects(f.groups.prepare('a',f.data('a'),{...f.pricing,sessions:[{date:'2026-10-21',startTime,endTime}]}),/跨天|同一自然日/)
+  }
+  await assert.doesNotReject(f.groups.prepare('a',f.data('a'),{...f.pricing,sessions:[{date:'2026-10-21',startTime:'2026-10-21 23:30',endTime:'2026-10-22 00:00'}]}))
+})
+
+test('group joining compares actual Beijing dates even when legacy date labels differ',async()=>{
+  const f=fixture(),first=await f.submit('a')
+  const session={date:'2026-10-20',startTime:'2026-10-21T02:00:00Z',endTime:'2026-10-21T02:30:00Z'}
+  await assert.doesNotReject(f.groups.prepare('b',f.data('b',{groupBuyId:first.order.groupBuyId}),{...f.pricing,sessions:[session]}))
 })

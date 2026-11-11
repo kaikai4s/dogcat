@@ -1,3 +1,4 @@
+<wxs module="beijingTime" src="../../../../utils/beijing-time.wxs" />
 <view class="{{themeClass}} {{fontClass}} page admin-pets-page">
   <view class="dashboard-header">
     <view class="badge">人员管理</view>
@@ -54,8 +55,8 @@
     <view class="info-list pet-info-grid">
       <view class="info-row"><view class="label">生日/出生</view><view class="value">{{item.birthday || '未设置'}}</view></view>
       <view class="info-row"><view class="label">体重</view><view class="value">{{item.weight ? item.weight + ' kg' : '未设置'}}</view></view>
-      <view class="info-row"><view class="label">档案创建时间</view><view class="value highlight-time">{{item.createdAt || '未知'}}</view></view>
-      <view class="info-row"><view class="label">最后更新时间</view><view class="value">{{item.updatedAt || '未知'}}</view></view>
+      <view class="info-row"><view class="label">档案创建时间</view><view class="value highlight-time">{{beijingTime.format(item.createdAt) || '未知'}}</view></view>
+      <view class="info-row"><view class="label">最后更新时间</view><view class="value">{{beijingTime.format(item.updatedAt) || '未知'}}</view></view>
     </view>
 
     <!-- 主人归属信息卡片 -->
@@ -91,7 +92,7 @@
         </view>
         <view wx:if="{{item.beautyContestDisqualified}}" class="disqualified-detail">
           <view class="reason-row"><text class="reason-label">下架原因：</text><text class="reason-text">{{item.disqualifiedReason || '违反大赛规则'}}</text></view>
-          <view class="disqualified-time" wx:if="{{item.disqualifiedAt}}">下架时间：{{item.disqualifiedAt}}</view>
+          <view class="disqualified-time" wx:if="{{item.disqualifiedAt}}">下架时间：{{beijingTime.format(item.disqualifiedAt)}}</view>
         </view>
       </view>
       <view class="contest-btn-wrap">

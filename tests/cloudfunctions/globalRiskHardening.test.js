@@ -181,6 +181,18 @@ test('parallel household finishes cannot leave both waiting for each other', asy
   assert.equal(s.settled.size, 2)
 })
 
+test('a refunding live household must finish before the rest of its group can settle', async () => {
+  const s = groupContext()
+  s.db.state.orders[1].paymentStatus = 'refunding'
+  const first = await s.service.finishGroup(structuredClone(s.db.state.orders[0]), s.session, s.now())
+  assert.equal(first.partialGroupCompleted, true)
+  assert.equal(first.remainingCount, 1)
+  assert.equal(s.settled.size, 0)
+  const last = await s.service.finishGroup(structuredClone(s.db.state.orders[1]), s.session, s.now())
+  assert.equal(last.allGroupCompleted, true)
+  assert.equal(s.settled.size, 2)
+})
+
 test('partially failed group settlement retries even through an already completed household', async () => {
   const s = groupContext()
   await s.service.finishGroup(structuredClone(s.db.state.orders[0]), s.session, s.now())
@@ -203,6 +215,46 @@ test('scheduled group reconciliation recovers a failed settlement', async () => 
   s.setFailure(false)
   await s.service.retryPendingGroupCompletions()
   assert.ok(s.db.state.orders.every(order => order.status === 'completed' && !order.groupCompletionPending))
+})
+
+test('waiting household automatically settles after the last unfinished household is fully refunded', async () => {
+  const s = groupContext()
+  await s.service.finishGroup(structuredClone(s.db.state.orders[0]), s.session, s.now())
+  assert.equal(s.db.state.orders[0].groupCompletionPending, true)
+  await s.db.collection('orders').doc('b').update({ data: { status: 'refunded', paymentStatus: 'refunded' } })
+  await s.service.retryPendingGroupCompletions()
+  assert.equal(s.db.state.orders[0].status, 'completed')
+  assert.equal(s.db.state.orders[0].groupCompletionPending, false)
+  assert.equal(s.db.state.orders[1].status, 'refunded')
+  assert.deepEqual([...s.settled], ['a'])
+})
+
+test('waiting groups rotate so more than thirty pending households cannot starve a ready group', async () => {
+  const s = groupContext()
+  const template = structuredClone(s.db.state.orders[0])
+  s.db.state.orders = Array.from({ length: 31 }, (_, index) => ['a', 'b'].map(suffix => ({
+    ...template, _id: `${index}_${suffix}`, groupBuyId: `g${index}`,
+    status: suffix === 'a' || index === 30 ? 'day_completed' : 'in_service',
+    groupCompletionPending: suffix === 'a', updatedAt: new Date(0),
+    serviceSessions: [{ ...s.session, status: suffix === 'a' || index === 30 ? 'completed' : 'in_service' }]
+  }))).flat()
+  s.db.state.pet_playground_groups = Array.from({ length: 31 }, (_, index) => ({ _id: `g${index}`, status: 'formed' }))
+  await s.service.retryPendingGroupCompletions()
+  await s.service.retryPendingGroupCompletions()
+  assert.ok(s.db.state.orders.filter(order => order.groupBuyId === 'g30').every(order => order.status === 'completed' && !order.groupCompletionPending))
+  assert.equal(s.settled.size, 2)
+  assert.ok(s.db.state.orders.filter(order => order.groupBuyId !== 'g30' && order._id.endsWith('_b')).every(order => order.status === 'in_service'))
+})
+
+test('terminal refunded completion markers are cleared without blocking another ready household', async () => {
+  const s = groupContext()
+  Object.assign(s.db.state.orders[0], { status: 'completed', paymentStatus: 'refunded', groupCompletionPending: true, updatedAt: new Date(0) })
+  Object.assign(s.db.state.orders[1], { status: 'day_completed', groupCompletionPending: true, updatedAt: new Date(1),
+    serviceSessions: [{ ...s.session, status: 'completed' }] })
+  await s.service.retryPendingGroupCompletions()
+  assert.ok(s.db.state.orders.every(order => order.status === 'completed' && !order.groupCompletionPending))
+  assert.deepEqual([...s.settled], ['b'])
+  assert.equal(await s.service.retryPendingGroupCompletions(), 0)
 })
 
 test('group finishing preserves evidence requirements and future service sessions', async () => {

@@ -59,6 +59,14 @@ test('group cancellation reads past unpaid history and atomically releases every
   assert.equal(s.db.state.payment_events.length, 1)
 })
 
+test('group cancellation cannot split off a household while its sibling refund is processing', async () => {
+  const s = setup({ groupBuyId: 'g' })
+  s.db.state.orders.push({ ...s.db.state.orders[0], _id: 'sibling', paymentStatus: 'refunding' })
+  await assert.rejects(s.service.cancelStaffAcceptedOrder('staff', await s.data()), /不可取消|退款/)
+  assert.ok(s.db.state.orders.every(order => order.status === 'assigned' && order.staffOpenid === 'staff'))
+  assert.equal(s.db.state.payment_events.length, 0)
+})
+
 test('group cancellation query failure never cancels only the entry household', async () => {
   const s = setup({ groupBuyId: 'g' })
   const input = await s.data()
@@ -203,6 +211,106 @@ test('notification retries preserve successful message stage and survive failed 
   assert.equal(s.counts().messageCalls, 1)
   assert.equal(s.db.state.payment_events[0].notificationStatus, 'done')
 })
+
+for (const failure of ['message_throw', 'message_empty', 'subscription_throw', 'subscription_failed']) {
+  test(`group cancellation retries a sibling ${failure} without repeating successful households`, async () => {
+    const s = setup({ groupBuyId: 'g' })
+    for (const id of ['a', 'b', 'c']) s.db.state.orders.push({ ...s.db.state.orders[0], _id: id, clientOpenid: `client_${id}` })
+    const messages = new Map()
+    const subscriptions = new Map()
+    const deliveryKeys = new Map()
+    let failed = false
+    s.context.appendOrderClientMessage = async (order, message) => {
+      messages.set(order._id, (messages.get(order._id) || 0) + 1)
+      if (order._id === 'b' && failure.startsWith('message') && !failed) {
+        failed = true
+        if (failure === 'message_throw') throw new Error('neighbor message unavailable')
+        return null
+      }
+      assert.ok(message.idempotencyKey)
+      return { _id: `message_${order._id}` }
+    }
+    s.context.notifyOrder = async (openid, key, order, detail, role, deliveryKey) => {
+      subscriptions.set(order._id, (subscriptions.get(order._id) || 0) + 1)
+      const keys = deliveryKeys.get(order._id) || []
+      deliveryKeys.set(order._id, [...keys, deliveryKey])
+      if (order._id === 'b' && failure.startsWith('subscription') && !failed) {
+        failed = true
+        if (failure === 'subscription_throw') throw new Error('neighbor subscription unavailable')
+        return { status: 'failed' }
+      }
+      return { status: 'sent' }
+    }
+    s.rebuild()
+    const result = await s.service.cancelStaffAcceptedOrder('staff', await s.data())
+    assert.equal(result.cancelled, true)
+    assert.ok(s.db.state.orders.every(order => order.status === 'paid' && !order.staffOpenid))
+    const event = s.db.state.payment_events.find(row => row.eventType === 'staff_cancellation')
+    assert.equal(event.notificationStatus, 'pending')
+    assert.equal(event.messageDone, true)
+    assert.equal(event.subscriptionDone, true)
+    assert.equal(messages.get('c'), 1)
+    assert.equal(subscriptions.get('c'), 1)
+    await s.service.retryStaffCancellationNotifications()
+    assert.equal(s.db.state.payment_events.find(row => row._id === event._id).notificationStatus, 'done')
+    for (const id of ['o', 'a', 'c']) {
+      assert.equal(messages.get(id), 1)
+      assert.equal(subscriptions.get(id), 1)
+    }
+    assert.equal(messages.get('b'), failure.startsWith('message') ? 2 : 1)
+    assert.equal(subscriptions.get('b'), failure.startsWith('subscription') ? 2 : 1)
+    for (const keys of deliveryKeys.values()) {
+      assert.ok(keys[0])
+      assert.equal(new Set(keys).size, 1)
+    }
+    await s.service.retryStaffCancellationNotifications()
+    assert.equal(messages.get('b'), failure.startsWith('message') ? 2 : 1)
+    assert.equal(subscriptions.get('b'), failure.startsWith('subscription') ? 2 : 1)
+  })
+}
+
+test('direct staff cancellation refunds only the balance after earlier compensation', async () => {
+  const s = setup({ publishMode: 'direct' })
+  enableRefundSettlement(s)
+  await s.context.requestOrderRefund(structuredClone(s.db.state.orders[0]), 20, '此前补偿', 'admin_manual', 'admin', 'compensation')
+  const quote = await s.service.getStaffCancellationQuote('staff', { orderId: 'o' })
+  assert.equal(quote.refundAmount, 80)
+  const input = await s.data()
+  const result = await s.service.cancelStaffAcceptedOrder('staff', input)
+  assert.equal(result.refundAmount, 80)
+  assert.equal(s.db.state.orders[0].refundedAmount, 100)
+  assert.equal(s.db.state.orders[0].paymentStatus, 'refunded')
+  assert.equal(s.db.state.orders[0].staffOpenid, '')
+  assert.deepEqual(s.db.state.refunds.map(row => row.refundAmount), [20, 80])
+  assert.equal(s.db.state.payment_events.find(row => row.eventType === 'staff_cancellation').refundAmount, 80)
+  await s.service.cancelStaffAcceptedOrder('staff', input)
+  assert.equal(s.db.state.refunds.length, 2)
+})
+
+test('direct staff cancellation rechecks the latest partial compensation before reservation', async () => {
+  const s = setup({ publishMode: 'direct' })
+  enableRefundSettlement(s)
+  const refund = s.context.createRefundForOrder
+  s.context.createRefundForOrder = async (...args) => {
+    await s.context.requestOrderRefund(structuredClone(s.db.state.orders[0]), 20, '并发补偿', 'admin_manual', 'admin', 'compensation')
+    return refund(...args)
+  }
+  s.rebuild()
+  await assert.rejects(s.service.cancelStaffAcceptedOrder('staff', await s.data()), /退款金额已变化/)
+  assert.equal(s.db.state.orders[0].status, 'assigned')
+  assert.equal(s.db.state.orders[0].staffOpenid, 'staff')
+  assert.equal(s.db.state.orders[0].refundedAmount, 20)
+  assert.equal(s.db.state.payment_events.filter(row => row.eventType === 'staff_cancellation').length, 0)
+  assert.equal(s.db.state.refunds.length, 1)
+})
+
+function enableRefundSettlement(s) {
+  Object.assign(s.context, require('../../cloudfunctions/api/services/refundEarnings')({ ...s.context,
+    parseDateValue: require('../../cloudfunctions/api/utils/time').parseDateValue }))
+  Object.assign(s.context, createRefunds(s.context))
+  Object.assign(s.context, createLifecycle(s.context))
+  s.rebuild()
+}
 
 test('message failure leaves durable pending event and is retried before subscription', async () => {
   const s = setup()

@@ -11,6 +11,7 @@ function pageAt(file, dependencies, wx = {}) {
   vm.runInNewContext(fs.readFileSync(path.join(root, file), 'utf8'), {
     Page(config) { page = config }, wx, console, setTimeout, clearTimeout,
     require(name) {
+      if (name.endsWith('/format')) return require('../../miniprogram/utils/format')
       if (name.endsWith('/cloud')) return dependencies.cloud || {}
       if (name.endsWith('/image-upload')) return dependencies.imageUpload || {}
       if (name.endsWith('/payment-config')) return require(path.join(root, 'pages/admin/settings/payment-config'))

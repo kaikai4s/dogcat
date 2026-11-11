@@ -31,6 +31,38 @@ function setup(orders = [order('a'), order('b')]) {
   return { db, context, assign }
 }
 
+test('daily quota checks later dates of an incoming multi-day order', async () => {
+  const sessions = ['2099-09-29', date].map((day, i) => ({ index: i + 1, date: day, startTime: `${day} 16:00`, endTime: `${day} 17:00`, status: 'pending' }))
+  const target = { ...order('target'), startTime: sessions[0].startTime, endTime: sessions[1].endTime, serviceSessions: sessions }
+  const existing = Array.from({ length: 6 }, (_, i) => ({ ...order(`existing_${i}`), status: 'completed', staffOpenid: 'staff' }))
+  const { db, assign } = setup([target, ...existing])
+  await assert.rejects(assign('target', 'staff', { enforceAcceptLimits: true }), /2099-09-30.*单日接单上限/)
+  assert.equal(db.state.orders[0].status, 'paid')
+})
+
+test('daily quota counts completed later visits of existing multi-day orders', async () => {
+  const existing = Array.from({ length: 6 }, (_, i) => ({ ...order(`existing_${i}`), status: 'completed', staffOpenid: 'staff',
+    startTime: '2099-09-29 10:00', serviceSessions: [
+      { index: 1, startTime: '2099-09-29 10:00', endTime: '2099-09-29 11:00', status: 'completed' },
+      { index: 2, startTime: `${date} 10:00`, endTime: `${date} 11:00`, status: 'completed' }
+    ] }))
+  const { assign } = setup([order('target', '16:00', '17:00'), ...existing])
+  await assert.rejects(assign('target', 'staff', { enforceAcceptLimits: true }), /单日接单上限/)
+})
+
+test('daily quota excludes cancelled visits and deleted orders', async () => {
+  const existing = Array.from({ length: 6 }, (_, i) => ({ ...order(`existing_${i}`), status: 'completed', staffOpenid: 'staff',
+    serviceSessions: [{ index: 1, startTime: `${date} 10:00`, endTime: `${date} 11:00`, status: 'cancelled' }] }))
+  const deleted = { ...order('deleted'), status: 'completed', staffOpenid: 'staff', deletedAt: new Date() }
+  const target = { ...order('target', '16:00', '17:00'), serviceLatitude: 31.2, serviceLongitude: 121.5 }
+  const { db, context } = setup([target, ...existing, deleted])
+  await context.assignOrderAtomically('target', target, {
+    staffOpenid: 'staff', staffUserId: 'user', staffProfileId: 'profile', status: 'assigned',
+    acceptLocationLatitude: 31.2, acceptLocationLongitude: 121.5
+  }, { enforceAcceptLimits: true })
+  assert.equal(db.state.orders[0].status, 'assigned')
+})
+
 test('daily assignment limit includes recent orders beyond 1000 historical completed rows', async () => {
   const history = Array.from({ length: 1105 }, (_, i) => ({ ...order(`a_old_${String(i).padStart(4, '0')}`), status: 'completed', staffOpenid: 'staff', startTime: '2098-01-01 10:00', endTime: '2098-01-01 11:00' }))
   const current = Array.from({ length: 6 }, (_, i) => ({ ...order(`z_today_${i}`), status: 'completed', staffOpenid: 'staff' }))
@@ -267,6 +299,15 @@ test('admin assigns every paid household and excludes unpaid joins', async () =>
   assert.equal(response.ok, true, response.message)
   assert.deepEqual(db.state.orders.map(o => o.status), ['assigned', 'assigned', 'pending_pay'])
   assert.ok(db.state.orders.slice(0, 2).every(o => o.staffOpenid === 'staff'))
+})
+
+test('assignment waits for every live group household refund instead of assigning an incomplete bundle', async () => {
+  const group = { groupBuyId: 'group', groupBuyStatus: 'formed' }
+  const { db, assign } = setup([{ ...order('a'), ...group }, { ...order('b'), ...group, paymentStatus: 'refunding' }])
+  await assert.rejects(assign('a'), /退款.*处理|退款中/)
+  assert.ok(db.state.orders.every(o => o.status === 'paid' && !o.staffOpenid))
+  db.state.orders[1].paymentStatus = 'paid'
+  assert.equal((await assign('a')).bundledCount, 2)
 })
 
 test('a failure on a sibling rolls back the entire group assignment', async () => {

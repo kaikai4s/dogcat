@@ -1,8 +1,11 @@
+const { beijingDateText } = require('../utils/time')
 const crypto = require('crypto')
 const { normalizeStaffGenderRequirement, assertStaffGenderMatches } = require('../utils/staffGender')
 const { filterTrackPoints } = require('../utils/trackQuality')
 const { getOrderRefundState } = require('../utils/orderRefundState')
 const { assertModuleAvailable } = require('../services/moduleMaintenance')
+const { readDocuments, readOptionalDocument } = require('../utils/documentPages')
+const { checkinMatchesVisit } = require('../utils/checkinVisit')
 
 module.exports = function createHandler(context) {
   const {
@@ -120,7 +123,7 @@ module.exports = function createHandler(context) {
     if (!order) return order
     const { groupBuyIntent, groupBuyHouseholdKey, ...publicOrder } = order
     const security = order.orderHomeSecurity || order.homeSecuritySnapshot
-    const publicSecurity = toPublicOrderHomeSecurity(security)
+    const publicSecurity = toPublicOrderHomeSecurity(security, order)
     return { ...publicOrder, orderHomeSecurity: publicSecurity, homeSecuritySnapshot: publicSecurity ? toPublicHomeSecuritySnapshot(publicSecurity) : null }
   }
 
@@ -365,15 +368,15 @@ module.exports = function createHandler(context) {
 
       if (startDate) {
         list = list.filter((order) => {
-          const start = String(order.serviceStartDate || order.startTime || order.createdAt || '').slice(0, 10)
-          const end = String(order.serviceEndDate || order.endTime || start).slice(0, 10)
+          const start = beijingDateText(order.serviceStartDate || order.startTime || order.createdAt || '')
+          const end = beijingDateText(order.serviceEndDate || order.endTime || start)
           return end >= startDate
         })
       }
 
       if (endDate) {
         list = list.filter((order) => {
-          const start = String(order.serviceStartDate || order.startTime || order.createdAt || '').slice(0, 10)
+          const start = beijingDateText(order.serviceStartDate || order.startTime || order.createdAt || '')
           return start <= endDate
         })
       }
@@ -419,9 +422,9 @@ module.exports = function createHandler(context) {
       const activeSession = getActiveServiceSession(order)
       const sessionStartedAt = toTimeValue(order.currentSessionStartedAt || (activeSession && activeSession.startedAt) || order.startedAt)
       const checkinGroups = groupCheckinsByEventType(checkinsRes.filter((item) => {
-        if (item.eventType === 'sanitization') return isValidSanitization(item, order, order.currentSessionStartedAt || (activeSession && activeSession.startedAt) || order.startedAt || now())
+        if (item.eventType === 'sanitization') return isValidSanitization(item, order)
         if (order.status !== ORDER_STATUS.IN_SERVICE || !sessionStartedAt) return isActiveCheckin(item)
-        return isActiveCheckin(item) && toTimeValue(item.recordedAt || item.serverTime || item.createdAt) >= (sessionStartedAt - 60000)
+        return isActiveCheckin(item) && checkinMatchesVisit(item, order, sessionStartedAt)
       }))
       const baseCheckinRequirements = Array.isArray(displayOrder.checkinRequirements) && displayOrder.checkinRequirements.length
         ? displayOrder.checkinRequirements
@@ -429,12 +432,14 @@ module.exports = function createHandler(context) {
       const checkinRequirements = baseCheckinRequirements.some((item) => item.eventType === 'pet_beauty_photo')
         ? baseCheckinRequirements
         : baseCheckinRequirements.concat([{ eventType: 'pet_beauty_photo', label: checkinEventText('pet_beauty_photo'), required: false, optional: true, serviceTypes: displayOrder.serviceTypes || [displayOrder.serviceType], sortOrder: 999 }])
-      const orderSecurity = securityRes.data[0] || displayOrder.orderHomeSecurity || displayOrder.homeSecuritySnapshot
+      const embeddedSecurity = displayOrder.orderHomeSecurity || displayOrder.homeSecuritySnapshot
+      const orderSecurity = (embeddedSecurity?.type || embeddedSecurity?.lockMethod) === 'key'
+        ? embeddedSecurity : securityRes.data[0] || embeddedSecurity
       const enrichedRequirements = checkinRequirements.map((item) => {
         const group = checkinGroups[item.eventType] || { count: 0, photos: [] }
         return { ...item, completed: group.count > 0, photoCount: group.count, photos: group.photos }
       })
-      const publicSecurity = toPublicOrderHomeSecurity(orderSecurity)
+      const publicSecurity = toPublicOrderHomeSecurity(orderSecurity, order)
       const resultOrder = { ...displayOrder, trackCount: filterTrackPoints(tracksRes).length, checkinPhotoCount: Object.values(checkinGroups).reduce((sum, group) => sum + group.count, 0), checkinRequirements: enrichedRequirements, earlyStartRequest: toEarlyStartView(earlyStart), orderHomeSecurity: publicSecurity, homeSecuritySnapshot: publicSecurity ? toPublicHomeSecuritySnapshot(publicSecurity) : null }
       const requestedRole = safeText(data.role).trim()
       const isStaffView = requestedRole === 'staff' || user.activeRole === 'staff' || (order.clientOpenid !== openid && user.roles.includes('staff'))
@@ -621,81 +626,84 @@ module.exports = function createHandler(context) {
         }
         const cancelled = await cancelUnpaidOrder(order, { reason: reason || '宠物主取消', actorRole: 'client' })
         if (!cancelled) throw new Error('支付或订单状态已更新，请刷新后重新取消')
-        if (order.groupBuyId || order.source === 'community_groupbuy') {
-          const groupBuy = require('../services/playground-group-buy')(context)
-          if (typeof groupBuy.onOrderCancelled === 'function') {
-            await groupBuy.onOrderCancelled(data.orderId, order.groupBuyId).catch((e) => console.error('[cancelOrder] sync group buy error:', e))
-          }
-        }
         return { orderId: data.orderId, status: 'cancelled', refundAmount: 0, refundStatus: '', refundNo: '' }
       }
       assertOrderTransition(order.status, ORDER_STATUS.CANCELLED, '订单状态不可取消')
       const quote = getCancelQuoteForOrder(order)
       if (!quote.canCancel) throw new Error(quote.ruleText)
+      if (order.paymentStatus === 'refunding' || (quote.refundAmount > 0 && order.paymentStatus !== 'paid')) throw new Error('订单支付或退款状态已变化，请刷新后重试')
       const time = now()
       const update = { status: 'cancelled', cancelReason: reason || '', refundStatus: quote.refundStatus, refundAmount: quote.refundAmount, canceledAt: time, updatedAt: time }
-      if (order.status === 'day_completed') {
-        update.serviceSessions = (order.serviceSessions || []).map((s) => s.status === 'completed' ? s : { ...s, status: 'cancelled', cancelledAt: time })
-      }
-      let retainedEarningRate = null
-      if (order.status === 'day_completed' && order.staffOpenid && typeof ensureStaffEarning === 'function' &&
-          Number(order.payAmount || 0) > Number(quote.refundAmount || 0)) {
-        const existingEarning = (await db.collection('staff_earnings').where({ orderId: data.orderId }).limit(1).get()).data?.[0]
-        if (existingEarning?.commissionRate !== undefined && existingEarning?.commissionRate !== null) {
-          retainedEarningRate = existingEarning.commissionRate
-        } else {
-          const settings = await getSystemSettings()
-          retainedEarningRate = await context.resolveStaffCommissionRate(order, settings.settlement?.staffCommissionRate ?? 0.7)
+      // Recheck the quote and settle the ledger in the same transaction as
+      // cancellation/refund reservation, before calling the payment gateway.
+      const prepareCancellation = async (tx, current, metadata = {}) => {
+        if (!current || current.status !== order.status || current.staffOpenid !== order.staffOpenid ||
+            current.clientOpenid !== openid) throw new Error('订单状态已变化，请刷新后重新取消')
+        if (current.paymentStatus !== order.paymentStatus || current.paymentStatus === 'refunding') {
+          throw new Error('订单支付或退款状态已变化，请刷新后重试')
+        }
+        const latestQuote = getCancelQuoteForOrder(current)
+        if (!latestQuote.canCancel || latestQuote.refundAmount !== quote.refundAmount ||
+            JSON.stringify(current.serviceSessions || []) !== JSON.stringify(order.serviceSessions || [])) {
+          throw new Error('服务场次或退款金额已变化，请刷新后重新取消')
+        }
+        if (!latestQuote.isMultiDayPartialCancel) return {}
+        // A terminal gateway failure still leaves the cancelled visits owed to
+        // the client. Hold settlement until a replacement refund succeeds.
+        const cancellationEarningHoldId = metadata.refundId ? `cancelled_service_${data.orderId}` : ''
+        if (current.staffOpenid && typeof ensureStaffEarning === 'function') {
+          const existing = (await tx.collection('staff_earnings').where({ orderId: data.orderId }).limit(1).get()).data?.[0]
+          if (!existing) {
+            await ensureStaffEarning({ ...current, _id: data.orderId }, time, {
+              transaction: tx,
+              pendingRefundIds: metadata.refundId ? [metadata.refundId, cancellationEarningHoldId] : [],
+              reason: '多天订单取消剩余服务，按退款流水结算收益'
+            })
+          }
+        }
+        return {
+          ...(cancellationEarningHoldId ? { cancellationEarningHoldId, cancellationRefundAmount: latestQuote.refundAmount,
+            cancellationRefundTargetAmount: (Math.round(Number(current.refundedAmount || 0) * 100) + Math.round(latestQuote.refundAmount * 100)) / 100 } : {}),
+          serviceSessions: (current.serviceSessions || []).map(session =>
+            ['completed', 'cancelled'].includes(session.status) ? session : { ...session, status: 'cancelled', cancelledAt: time })
         }
       }
       let refund = null
       if (order.paymentStatus === 'paid' && quote.refundAmount > 0) {
-        refund = await createRefundForOrder(order, quote.refundAmount, reason || '宠物主取消', 'client_cancel', openid, clientRequestId, { cancelStatus: 'cancelled' })
+        refund = await createRefundForOrder(order, quote.refundAmount, reason || '宠物主取消', 'client_cancel', openid, clientRequestId, {
+          cancelStatus: 'cancelled', beforeReserve: prepareCancellation
+        })
         update.paymentStatus = 'refunding'
         update.refundNo = refund.refundNo
       }
-      if (!refund) await updateOrderWhenStatus(data.orderId, order.status, update, '订单状态不可取消')
-      if (order.status === 'day_completed') {
-        await db.collection('orders').doc(data.orderId).update({
-          data: {
-            serviceSessions: update.serviceSessions,
-            updatedAt: time
-          }
-        }).catch(() => {})
-        if (order.staffOpenid && typeof ensureStaffEarning === 'function') {
-          const retainedAmount = Math.max(0, Number(order.payAmount || 0) - Number(quote.refundAmount || 0))
-          const existingEarning = (await db.collection('staff_earnings').where({ orderId: data.orderId }).limit(1).get().catch(() => ({ data: [] })))?.data?.[0]
-          const rate = existingEarning?.commissionRate ?? retainedEarningRate
-          const staffEarningAmount = Math.round(retainedAmount * rate * 100) / 100
-          if (staffEarningAmount > 0) {
-            if (existingEarning && ['withdrawing', 'withdrawn', 'frozen'].includes(existingEarning.status)) {
-              console.warn('[cancelOrder] staff earning is already withdrawing/withdrawn/frozen, skip override:', existingEarning._id)
-            } else if (existingEarning && ['pending', 'available'].includes(existingEarning.status)) {
-              await db.collection('staff_earnings').doc(existingEarning._id).update({
-                data: { amount: staffEarningAmount, deductReason: '多天订单取消剩余服务结算已履约天数', updatedAt: time }
-              }).catch((e) => console.error('[cancelOrder] staff earning update error:', e))
-            } else if (!existingEarning) {
-              await ensureStaffEarning(order, time, { overrideAmount: staffEarningAmount, reason: '多天订单取消剩余服务，结算已履约天数收益' }).catch((e) => console.error('[cancelOrder] staff earning settlement error:', e))
+      if (!refund) {
+        await db.runTransaction(async tx => {
+          const current = (await tx.collection('orders').doc(data.orderId).get()).data
+          const patch = await prepareCancellation(tx, current)
+          await tx.collection('orders').doc(data.orderId).update({ data: { ...update, ...patch,
+            ...(Number(current.refundAmount || current.refundedAmount || 0) > 0 ? {
+              refundAmount: current.refundAmount ?? current.refundedAmount,
+              refundStatus: current.refundStatus || quote.refundStatus
+            } : {}), cancelledAt: time } })
+          // A zero-cent refund does not mean the coupon was unused. Only an
+          // entirely cancelled free order restores it, in this transaction.
+          if (current.couponId && Number(current.payAmount || 0) === 0 && !quote.isMultiDayPartialCancel) {
+            if (typeof restoreOrderCoupon === 'function') {
+              await restoreOrderCoupon(current.couponId, data.orderId, tx)
+            } else {
+              const couponRes = await tx.collection('user_coupons').doc(current.couponId).get()
+              const coupon = couponRes && couponRes.data
+              if (coupon && ['locked', 'used'].includes(coupon.status) &&
+                  (coupon.usedOrderId === data.orderId || coupon.lockedOrderId === data.orderId)) {
+                await tx.collection('user_coupons').doc(current.couponId).update({
+                  data: { status: 'available', lockedOrderId: '', lockedAt: null, usedOrderId: '', usedAt: null, updatedAt: time }
+                })
+              }
             }
           }
-        }
+        })
       }
-      if (order.couponId) {
-        if (!refund) {
-          if (typeof restoreOrderCoupon === 'function') {
-            await restoreOrderCoupon(order.couponId, data.orderId)
-          } else {
-            const couponRes = await db.collection('user_coupons').doc(order.couponId).get().catch(() => ({ data: null }))
-            const coupon = couponRes && couponRes.data
-            if (coupon && ['locked', 'used'].includes(coupon.status)) {
-              await db.collection('user_coupons').doc(order.couponId).update({
-                data: { status: 'available', lockedOrderId: '', lockedAt: null, usedOrderId: '', usedAt: null, updatedAt: time }
-              })
-            }
-          }
-        }
-      }
-      const refundOrder = refund ? (await db.collection('orders').doc(data.orderId).get()).data : null
+      const refundOrder = (await db.collection('orders').doc(data.orderId).get()).data
       const cancelledOrder = refundOrder || { ...order, _id: data.orderId, ...update }
       if (typeof destroyOrderHomeSecuritySecrets === 'function') {
         await destroyOrderHomeSecuritySecrets(data.orderId, {
@@ -709,8 +717,8 @@ module.exports = function createHandler(context) {
       if (order.staffOpenid && typeof appendOrderStaffMessage === 'function') {
         await appendOrderStaffMessage(cancelledOrder, {
           eventType: 'cancelled',
-          title: order.status === 'day_completed' ? '客户已取消后续未履约服务' : '订单已取消',
-          detail: order.status === 'day_completed' ? `客户取消了后续未履约服务。${quote.ruleText}` : '客户已取消预约。',
+          title: quote.isMultiDayPartialCancel ? '客户已取消后续未履约服务' : '订单已取消',
+          detail: quote.isMultiDayPartialCancel ? `客户取消了后续未履约服务。${quote.ruleText}` : '客户已取消预约。',
           actorRole: 'system'
         }).catch(() => {})
       }
@@ -948,7 +956,8 @@ module.exports = function createHandler(context) {
       const estimatedArrivalTime = new Date(time.getTime() + estimatedTravelMinutes * 60 * 1000)
       const isProximity = (distanceKm !== null && distanceKm <= 1.0) || estimatedTravelMinutes <= 10
 
-      const departureSession = getNextPendingServiceSession(order, time) || { index: 1, startTime: order.startTime }
+      const departureSession = getNextPendingServiceSession(order, time)
+      if (!departureSession) throw new Error('所有服务场次均已完成或取消，不可再次出发')
       const departureKey = makeIdempotencyKey('staff_departure', order._id, order.staffOpenid, String(departureSession.index), departureSession.startTime)
       const departureDetail = { appointmentTime: departureSession.startTime, departedAt: time, staffName: order.staffName || user.realName || user.name || user.nickname || '宠托师' }
       const updateData = {
@@ -977,9 +986,10 @@ module.exports = function createHandler(context) {
       const departure = await db.runTransaction(async tx => {
         const latest = (await tx.collection('orders').doc(order._id).get()).data
         if (!latest || latest.staffOpenid !== openid) throw new Error('订单指派已变化，请刷新后重试')
+        const latestSession = getNextPendingServiceSession(latest, time)
+        if (!latestSession) throw new Error('所有服务场次均已完成或取消，不可再次出发')
         if (latest.status === ORDER_STATUS.ON_THE_WAY) return { repeated: true, order: latest }
         if (!['assigned', 'day_completed'].includes(latest.status)) throw new Error('当前订单状态不可出发前往')
-        const latestSession = getNextPendingServiceSession(latest, time) || { index: 1, startTime: latest.startTime }
         if (latestSession.index !== departureSession.index || latestSession.startTime !== departureSession.startTime) throw new Error('服务场次已变化，请刷新后重试')
         const nextOrder = { ...latest, ...updateData }
         await tx.collection('orders').doc(order._id).update({ data: updateData })
@@ -987,13 +997,15 @@ module.exports = function createHandler(context) {
 
         const updatedSiblings = []
         if (latest.groupBuyId) {
-          const siblingsRes = await tx.collection('orders').where({
+          const siblings = await readDocuments(tx, db.command, 'orders', {
             groupBuyId: latest.groupBuyId,
-            staffOpenid: openid
-          }).get().catch(() => ({ data: [] }))
-          const validSiblings = (siblingsRes.data || []).filter(s => s._id !== latest._id && ['assigned', 'day_completed'].includes(s.status))
+            staffOpenid: openid,
+            status: db.command.in(['assigned', 'day_completed'])
+          })
+          const validSiblings = siblings.filter(s => s._id !== latest._id)
           for (const sib of validSiblings) {
-            const sibSession = getNextPendingServiceSession(sib, time) || { index: 1, startTime: sib.startTime }
+            const sibSession = getNextPendingServiceSession(sib, time)
+            if (!sibSession) continue
             const sibKey = makeIdempotencyKey('staff_departure', sib._id, sib.staffOpenid, String(sibSession.index), sibSession.startTime)
             const sibDetail = { appointmentTime: sibSession.startTime, departedAt: time, staffName: sib.staffName || user.realName || user.name || user.nickname || '宠托师' }
             const sibUpdate = {
@@ -1425,7 +1437,7 @@ module.exports = function createHandler(context) {
       if (!currentSession) throw new Error('暂无可开始的当天服务任务')
       if (!(await canStartOrderSession({ ...order, _id: data.id }, currentSession, time))) throw new Error('服务时间未到，可申请提前开始')
 
-      await requireSanitizationEvidence({ ...order, _id: data.id }, time)
+      const sanitizationEvidence = await requireSanitizationEvidence({ ...order, _id: data.id }, time)
 
       const currentLat = Number(data.currentLatitude)
       const currentLng = Number(data.currentLongitude)
@@ -1468,6 +1480,10 @@ module.exports = function createHandler(context) {
         if (!latest || latest.status !== order.status || latest.staffOpenid !== openid) throw new Error('订单状态不可开始服务')
         const latestSession = getNextPendingServiceSession(latest, time)
         if (!latestSession || latestSession.index !== currentSession.index || latestSession.startTime !== currentSession.startTime) throw new Error('服务场次已变化，请刷新后重试')
+        if (requiresSanitization(latest)) {
+          const proof = sanitizationEvidence && await readOptionalDocument(tx, 'checkin_logs', sanitizationEvidence._id)
+          if (!proof || proof.mediaFileId !== sanitizationEvidence.mediaFileId || !isValidSanitization(proof, latest, time)) throw new Error('消毒凭证已变化，请重新拍照并开始服务')
+        }
         const activeConflict = await findActiveStaffService(openid, data.id, tx)
         if (activeConflict) throw new Error(`当前已有订单正在服务中，请先完成${activeConflict.petName ? activeConflict.petName + '的' : ''}订单后再开始新的服务`)
         const patch = {

@@ -1,3 +1,4 @@
+const { beijingDateText } = require('../utils/time')
 const { createHash } = require('crypto')
 const trainingQuizVersion = training => createHash('sha256').update(JSON.stringify([training.passScore, training.quiz])).digest('hex')
 const { requireStaffGender, normalizeStaffGenderRequirement, matchesStaffGender, assertStaffGenderMatches, isStaffProfileLocked } = require('../utils/staffGender')
@@ -1637,15 +1638,15 @@ module.exports = function createHandler(context) {
 
       if (startDate) {
         list = list.filter((order) => {
-          const start = String(order.serviceStartDate || order.startTime || order.createdAt || '').slice(0, 10)
-          const end = String(order.serviceEndDate || order.endTime || start).slice(0, 10)
+          const start = beijingDateText(order.serviceStartDate || order.startTime || order.createdAt || '')
+          const end = beijingDateText(order.serviceEndDate || order.endTime || start)
           return end >= startDate
         })
       }
 
       if (endDate) {
         list = list.filter((order) => {
-          const start = String(order.serviceStartDate || order.startTime || order.createdAt || '').slice(0, 10)
+          const start = beijingDateText(order.serviceStartDate || order.startTime || order.createdAt || '')
           return start <= endDate
         })
       }
@@ -1716,14 +1717,14 @@ module.exports = function createHandler(context) {
         throw new Error(`您当前进行中订单已有 ${currentActiveCount} 笔，已达接单上限（最多 ${maxActiveOrders} 笔），请先履约完成后再接新单`)
       }
 
-      const targetDate = String(order.serviceStartDate || order.startTime || '').slice(0, 10)
+      const targetDate = beijingDateText(order.serviceStartDate || order.startTime || '')
       if (targetDate) {
         const dailyOrdersRes = await db.collection('orders').where({
           staffOpenid: openid,
           status: inOp(['assigned', 'on_the_way', 'in_service', 'day_completed', 'completed'])
         }).get().catch(() => ({ data: [] }))
         const sameDayOrders = (dailyOrdersRes.data || []).filter((o) => {
-          const oDate = String(o.serviceStartDate || o.startTime || '').slice(0, 10)
+          const oDate = beijingDateText(o.serviceStartDate || o.startTime || '')
           return oDate === targetDate && o._id !== orderId
         })
         const maxDailyOrders = Number(settings.dispatch && settings.dispatch.maxStaffDailyOrders || 6)
@@ -1782,14 +1783,14 @@ module.exports = function createHandler(context) {
       }
 
       // 校验目标服务日期的单日接单上限（防止单日接单过多导致疲劳超时违约）
-      const targetDate = String(order.serviceStartDate || order.startTime || '').slice(0, 10)
+      const targetDate = beijingDateText(order.serviceStartDate || order.startTime || '')
       if (targetDate) {
         const dailyOrdersRes = await db.collection('orders').where({
           staffOpenid: openid,
           status: inOp(['assigned', 'on_the_way', 'in_service', 'day_completed', 'completed'])
         }).get().catch(() => ({ data: [] }))
         const sameDayOrders = (dailyOrdersRes.data || []).filter((o) => {
-          const oDate = String(o.serviceStartDate || o.startTime || '').slice(0, 10)
+          const oDate = beijingDateText(o.serviceStartDate || o.startTime || '')
           return oDate === targetDate && o._id !== orderId
         })
         const maxDailyOrders = Number(settings.dispatch && settings.dispatch.maxStaffDailyOrders || 6)

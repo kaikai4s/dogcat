@@ -1,6 +1,6 @@
 const { uploadImage } = require('../../../utils/image-upload')
 const { callFunction, showError, chooseSelectedLocation } = require('../../../utils/cloud')
-const { withAuditText, withStaffWorkflowText } = require('../../../utils/format')
+const { withAuditText, withStaffWorkflowText, toBeijingDate } = require('../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { loadMessageUnread } = require('../../../utils/client-nav')
 const { extractLocationCity, sameCity } = require('../utils/location-city')
@@ -40,10 +40,10 @@ function validateIdCardLocal(idCard) {
   const year = parseInt(id.substring(6, 10), 10)
   const month = parseInt(id.substring(10, 12), 10)
   const day = parseInt(id.substring(12, 14), 10)
-  const currentYear = new Date().getFullYear()
+  const currentYear = toBeijingDate(new Date()).getUTCFullYear()
   if (year < 1900 || year > currentYear) return false
   if (month < 1 || month > 12) return false
-  const maxDays = new Date(year, month, 0).getDate()
+  const maxDays = new Date(Date.UTC(year, month, 0)).getUTCDate()
   if (day < 1 || day > maxDays) return false
   const weights = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2]
   const checkCodes = ['1', '0', 'X', '9', '8', '7', '6', '5', '4', '3', '2']

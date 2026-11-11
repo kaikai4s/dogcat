@@ -55,7 +55,7 @@ module.exports = function createService({
   function getMonthDays(monthKey) {
     const matched = String(monthKey || '').match(/^(\d{4})-(\d{2})$/)
     if (!matched) return 31
-    return new Date(Number(matched[1]), Number(matched[2]), 0).getDate()
+    return new Date(Date.UTC(Number(matched[1]), Number(matched[2]), 0)).getUTCDate()
   }
 
   function defaultCheckinDays(monthKey) {

@@ -38,6 +38,7 @@ function loadPage(relativePath, cloud, wx = {}) {
   vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../../miniprogram', relativePath), 'utf8'), {
     Page(value) { page = value },
     require(name) {
+      if (name.endsWith('/format')) return require('../../miniprogram/utils/format')
       if (name.endsWith('/cloud')) return cloud
       if (name.endsWith('/payment-config')) return require(path.resolve(__dirname, '../../miniprogram', path.dirname(relativePath), name))
       if (name.endsWith('/offlineQueue')) return { createClientRequestId: () => 'test-payment' }

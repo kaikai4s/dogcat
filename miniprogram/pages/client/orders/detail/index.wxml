@@ -210,7 +210,7 @@
       <view class="info-row"><view class="label">放回状态</view><view class="value {{order.orderHomeSecurity.key.returnedAt ? 'status-green' : 'status-orange'}}">{{order.orderHomeSecurity.key.returnedAt ? '已放回原位' : '服务中 · 待宠托师放回打卡'}}</view></view>
       <view class="image-list" wx:if="{{order.orderHomeSecurity.key.returnImageFileIds.length}}"><image wx:for="{{order.orderHomeSecurity.key.returnImageFileIds}}" wx:key="*this" class="security-image" src="{{item}}" mode="aspectFill" /></view>
       <view class="notice-text" wx:if="{{!order.orderHomeSecurity.key.returnedAt}}">宠托师必须在服务完成离开前将钥匙放回原位置并拍照打卡，平台全程留痕存证。</view>
-      <view class="notice-text" wx:if="{{order.orderHomeSecurity.key.returnedAt}}">钥匙已于 {{order.orderHomeSecurity.key.returnedAt}} 放回原位置并拍照留存。</view>
+      <view class="notice-text" wx:if="{{order.orderHomeSecurity.key.returnedAt}}">钥匙已于 {{beijingTime.format(order.orderHomeSecurity.key.returnedAt)}} 放回原位置并拍照留存。</view>
     </view>
     <view class="reset-panel" wx:if="{{resettingCode}}">
       <view class="reset-tip-box">

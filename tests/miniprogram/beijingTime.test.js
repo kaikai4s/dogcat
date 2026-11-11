@@ -125,7 +125,7 @@ test('raw timestamp bindings use the shared formatter and all WXS imports resolv
     }
     if (file.replaceAll('\\', '/') === 'client/points/index.wxml') continue // Already decorated in JS.
     for (const node of source.matchAll(/>([^<]*)</g)) {
-      assert.doesNotMatch(node[1], /\{\{(?:[\w.]+\.)?(?:createdAt|paidAt|completedAt|availableAt|lastRequestedAt|validTo)\}\}/, file)
+      assert.doesNotMatch(node[1], /\{\{(?:[\w.]+\.)?(?:createdAt|paidAt|completedAt|availableAt|lastRequestedAt|validTo|returnedAt|disqualifiedAt)\}\}/, file)
     }
   }
   assert.ok(count >= 24)

@@ -6,6 +6,22 @@ const { createCollectionStore } = require('./helpers')
 const optimistic = require('./optimisticTransactions')
 const createContext = require('../../cloudfunctions/api/services/context')
 
+test('refund display synchronization applies its exact thirty-second Beijing cooldown to unzoned history', async () => {
+  const clock = new Date('2026-11-11T16:30:00Z')
+  const orders = [
+    { _id: 'due', refundSyncCheckedAt: '2026-11-12 00:29:30' },
+    { _id: 'early', refundSyncCheckedAt: '2026-11-12 00:29:30.001' },
+    { _id: 'future', refundSyncCheckedAt: '2026-11-12 00:31:00' }
+  ].map(row => ({ status: 'cancelled', paymentStatus: 'refunding', refundStatus: 'processing', payAmount: 100, ...row }))
+  const db = createCollectionStore({ orders })
+  const context = createContext({ db, cloud: {} })
+  const service = require('../../cloudfunctions/api/services/refunds')({ ...context, now: () => clock })
+  await service.refreshOrderRefunds(structuredClone(orders))
+  assert.equal(db.state.orders.find(row => row._id === 'due').refundSyncCheckedAt.getTime(), clock.getTime())
+  assert.equal(db.state.orders.find(row => row._id === 'early').refundSyncCheckedAt, orders[1].refundSyncCheckedAt)
+  assert.equal(db.state.orders.find(row => row._id === 'future').refundSyncCheckedAt, orders[2].refundSyncCheckedAt)
+})
+
 test('WeChat refund POST and GET include required headers and correctly signed request bodies', async t => {
   const previous = process.env.PAYMENT_ENV
   process.env.PAYMENT_ENV = 'production'
@@ -282,6 +298,48 @@ test('invalid mock refunds do not indefinitely block later valid refunds', async
   assert.equal(db.state.refunds[30].status, 'success')
   assert.equal(db.state.orders[30].paymentStatus, 'refunded')
   assert.equal(errors.mock.callCount(), 59)
+})
+
+test('wechat refund settlement errors rotate without starving later valid refunds or releasing reserved funds', async t => {
+  t.mock.method(console, 'error', () => {})
+  const rows = Array.from({ length: 31 }, (_, index) => ({ _id: `refund-${index}`, orderId: `order-${index}`,
+    collectionName: 'orders', openid: 'client', refundNo: `R${index}`, amount: 1, refundAmount: 1,
+    channel: 'wechat', status: 'processing', earningsAccountingVersion: 2,
+    updatedAt: new Date(Date.UTC(2026, 0, 1, 0, 0, index)) }))
+  const db = createCollectionStore({ refunds: rows, orders: rows.map(row => ({ _id: row.orderId, clientOpenid: 'client',
+    status: 'cancelled', paymentStatus: 'refunding', paymentChannel: 'wechat', payAmount: 1, refundAmount: 1,
+    pendingEarningRefundIds: [row._id] })) })
+  optimistic(db)
+  const context = createContext({ db, cloud: {} })
+  let blockSettlement = true
+  const service = require('../../cloudfunctions/api/services/refunds')({ ...context,
+    getSystemSettings: async () => ({ payment: { mode: 'wechat', refundEnabled: true } }),
+    getWechatPayConfig: () => ({}), sanitizeWechatPayload: value => value,
+    wechatPayRequest: async (method, path) => ({ status: 'SUCCESS',
+      out_refund_no: decodeURIComponent(path.split('/').pop()), amount: { refund: 100, total: 100 } }),
+    adjustStaffEarningsForRefund: async (orderId, ...args) => {
+      if (blockSettlement && orderId !== 'order-30') throw new Error('模拟账目待核对')
+      return context.adjustStaffEarningsForRefund(orderId, ...args)
+    }, enqueueOrderNotification: async () => {}, notifyOrder: async () => {}
+  })
+  await service.reconcilePendingRefunds()
+  assert.equal(db.state.refunds[30].status, 'processing')
+  await service.reconcilePendingRefunds()
+  assert.equal(db.state.refunds[30].status, 'success')
+  assert.match(db.state.refunds[0].lastError || '', /模拟账目待核对/)
+  assert.equal(db.state.orders[30].paymentStatus, 'refunded')
+  for (let i = 0; i < 30; i++) {
+    assert.equal(db.state.refunds[i].status, 'processing')
+    assert.equal(db.state.orders[i].paymentStatus, 'refunding')
+    assert.equal(db.state.orders[i].refundAmount, 1)
+    assert.deepEqual(db.state.orders[i].pendingEarningRefundIds, [`refund-${i}`])
+  }
+  blockSettlement = false
+  await service.reconcilePendingRefunds()
+  assert.ok(db.state.refunds.every(row => row.status === 'success'))
+  assert.ok(db.state.orders.every(order => order.paymentStatus === 'refunded'))
+  assert.ok(db.state.orders.every(order => order.pendingEarningRefundIds.length === 0))
+  assert.equal(db.state.finance_logs.filter(row => row.action === 'refund_success').length, 31)
 })
 
 test('the original payment channel takes precedence over a later payment-mode change', async () => {

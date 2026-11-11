@@ -115,3 +115,50 @@ test('missing-template delivery can be manually queued after configuration', asy
   assert.equal(result.ok, true, result.message)
   assert.equal(db.state.subscription_logs.find(item => item._id === row._id).status, 'queued')
 })
+
+function interceptGroupQuery(db, transform) {
+  const transaction = db.runTransaction
+  db.runTransaction = callback => transaction(tx => callback({ ...tx, collection(name) {
+    const collection = tx.collection(name)
+    return { ...collection, where(where) {
+      const query = collection.where(where)
+      return name === 'orders' && where.groupBuyId ? transform(query) : query
+    } }
+  } }))
+}
+
+test('group departure query failure rolls back every household and notification', async () => {
+  const { db, depart, sent } = fixture()
+  db.state.orders[0].groupBuyId = 'group'
+  db.state.orders.push({ ...structuredClone(db.state.orders[0]), _id: 'sibling', clientOpenid: 'neighbor' })
+  interceptGroupQuery(db, query => {
+    const proxy = new Proxy(query, { get(target, key) {
+      if (key === 'get') return async () => { throw new Error('模拟拼单查询故障') }
+      if (typeof target[key] === 'function') return (...args) => { target[key](...args); return proxy }
+      return target[key]
+    } })
+    return proxy
+  })
+  const result = await depart()
+  assert.equal(result.ok, false)
+  assert.ok(db.state.orders.every(order => order.status === 'assigned'))
+  assert.equal(sent.length, 0)
+  assert.equal((db.state.subscription_logs || []).length, 0)
+})
+
+test('group departure includes active households beyond the database default page', async () => {
+  const { db, depart, sent } = fixture()
+  db.state.orders[0].groupBuyId = 'group'
+  const order = structuredClone(db.state.orders[0])
+  db.state.orders.unshift(...Array.from({ length: 105 }, (_, i) => ({ ...order, _id: `history-${String(i).padStart(3, '0')}`, status: 'cancelled' })))
+  db.state.orders.push({ ...order, _id: 'sibling', clientOpenid: 'neighbor' })
+  interceptGroupQuery(db, query => {
+    query.limit(100)
+    return query
+  })
+  const result = await depart()
+  assert.equal(result.ok, true, result.message)
+  assert.equal(db.state.orders.find(row => row._id === 'sibling').status, 'on_the_way')
+  assert.ok(db.state.orders.filter(row => row._id.startsWith('history-')).every(row => row.status === 'cancelled'))
+  assert.deepEqual(sent.map(message => message.touser).sort(), ['client', 'neighbor'])
+})

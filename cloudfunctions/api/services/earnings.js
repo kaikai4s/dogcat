@@ -172,7 +172,7 @@ module.exports = function createService({
         mockReason: isMock ? '模拟支付测试订单，不计入真实可提现资金池' : '',
         status: isMock ? 'mock_settled' : earning.status
       }
-      value.pendingRefundIds = currentOrder?.pendingEarningRefundIds || []
+      value.pendingRefundIds = [...new Set([...(currentOrder?.pendingEarningRefundIds || []), ...(options.pendingRefundIds || [])])]
       // A completion racing a refund may create this ledger after the refund
       // was finalized. Explicit retained-amount overrides already include it.
       if (options.overrideAmount === undefined && Number(currentOrder?.refundedAmount) > 0 && grossCents > 0) {
@@ -310,6 +310,7 @@ module.exports = function createService({
         hasPayment: false,
         payAmount: 0,
         refundAmount: 0,
+        pendingRefundAmount: 0,
         netPayAmount: 0,
         staffReward: 0,
         platformProfit: 0,
@@ -326,21 +327,25 @@ module.exports = function createService({
     }
 
     const payAmount = Number(order.payAmount || 0)
-    const refundAmount = Number(order.refundAmount || 0)
+    const isRefunding = order.paymentStatus === 'refunding' || order.refundStatus === 'processing'
+    // refundAmount on an order includes reserved requests. Only confirmed
+    // successes reduce revenue; legacy terminal rows may lack refundedAmount.
+    const refundAmount = Number(order.refundedAmount ?? (isRefunding || ['failed', 'applied', 'rejected'].includes(order.refundStatus) ? 0 : order.refundAmount) ?? 0)
+    const pendingRefundAmount = isRefunding ? Math.max(0, Math.round((Number(order.refundAmount || 0) - refundAmount) * 100) / 100) : 0
     const netPayAmount = Math.max(0, Math.round((payAmount - refundAmount) * 100) / 100)
     const rate = Number(actualEarning?.commissionRate ?? commissionRate ?? 0.7)
     const ratePercentText = `${Math.round(rate * 100)}%`
     const platformRatePercentText = `${Math.max(0, 100 - Math.round(rate * 100))}%`
 
-    const isPaid = Boolean(order.paidAt) || order.paymentStatus === 'paid' ||
-      ['paid', 'assigned', 'on_the_way', 'in_service', 'day_completed', 'pending_confirm', 'completed'].includes(order.status) ||
-      (order.status === 'cancelled' && payAmount > 0)
+    const isPaid = Boolean(order.paidAt) || ['paid', 'refunding', 'refunded'].includes(order.paymentStatus) ||
+      (!order.paymentStatus && ['paid', 'assigned', 'on_the_way', 'in_service', 'day_completed', 'pending_confirm', 'completed'].includes(order.status))
 
     if (!isPaid || payAmount <= 0) {
       return {
         hasPayment: false,
         payAmount,
         refundAmount,
+        pendingRefundAmount,
         netPayAmount: 0,
         staffReward: 0,
         platformProfit: 0,
@@ -356,11 +361,12 @@ module.exports = function createService({
       }
     }
 
-    if (netPayAmount <= 0 && refundAmount >= payAmount) {
+    if (!isRefunding && netPayAmount <= 0 && refundAmount >= payAmount) {
       return {
         hasPayment: true,
         payAmount,
         refundAmount,
+        pendingRefundAmount,
         netPayAmount: 0,
         staffReward: 0,
         platformProfit: 0,
@@ -425,11 +431,16 @@ module.exports = function createService({
       settlementStatus = 'cancelled'
       settlementStatusText = '已取消订单结算'
     }
+    if (isRefunding) {
+      settlementStatus = 'refunding'
+      settlementStatusText = '退款处理中，收益待确认'
+    }
 
     return {
       hasPayment: true,
       payAmount,
       refundAmount,
+      pendingRefundAmount,
       netPayAmount,
       staffReward,
       platformProfit,

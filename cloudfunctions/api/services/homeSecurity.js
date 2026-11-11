@@ -1,4 +1,5 @@
 const { readOptionalDocument } = require('../utils/documentPages')
+const { currentKeyReturn } = require('../utils/keyReturnEvidence')
 
 module.exports = function createService({
   db,
@@ -214,6 +215,15 @@ module.exports = function createService({
         location: security.key.location || security.keyLocation || '',
         imageFileIds: Array.isArray(security.key.imageFileIds) ? security.key.imageFileIds : [],
         returnRequired: security.key.returnRequired !== false,
+        returnedSessionIndex: Number(security.key.returnedSessionIndex || 0),
+        returnedSessionStartedAt: security.key.returnedSessionStartedAt || '',
+        returnedStaffOpenid: security.key.returnedStaffOpenid || '',
+        returnRecords: (Array.isArray(security.key.returnRecords) ? security.key.returnRecords : []).map(record => ({
+          sessionIndex: Number(record.sessionIndex || 0), sessionStartedAt: record.sessionStartedAt || '',
+          staffOpenid: record.staffOpenid || '', returnedAt: record.returnedAt || '',
+          returnImageFileIds: Array.isArray(record.returnImageFileIds) ? record.returnImageFileIds : [],
+          returnNote: record.returnNote || ''
+        })),
         returnedAt: security.key.returnedAt || '',
         returnImageFileIds: Array.isArray(security.key.returnImageFileIds) ? security.key.returnImageFileIds : [],
         returnNote: security.key.returnNote || ''
@@ -223,10 +233,16 @@ module.exports = function createService({
     return safe
   }
 
-  function toPublicOrderHomeSecurity(security) {
+  function toPublicOrderHomeSecurity(security, order = null) {
     if (!security) return null
     const type = security.type || security.lockMethod || 'someone_home'
-    return toPublicHomeSecuritySnapshot({ ...security, type, lockMethod: type, lockMethodText: security.lockMethodText || lockMethodText(type) })
+    const snapshot = toPublicHomeSecuritySnapshot({ ...security, type, lockMethod: type, lockMethodText: security.lockMethodText || lockMethodText(type) })
+    if (order?.status === 'in_service' && type === 'key' && snapshot.key) {
+      const receipt = currentKeyReturn(security.key, order)
+      snapshot.key = { ...snapshot.key, returnedAt: receipt?.returnedAt || '',
+        returnImageFileIds: receipt?.returnImageFileIds || [], returnNote: receipt?.returnNote || '' }
+    }
+    return snapshot
   }
 
   async function destroyOrderHomeSecuritySecrets(orderId, options = {}) {

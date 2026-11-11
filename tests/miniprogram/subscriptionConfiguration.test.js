@@ -50,7 +50,7 @@ test('administrator cannot save template numbers or placeholders, but can leave 
     let page
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/admin/settings/index.js'), 'utf8'), {
       Page(config) { page = config }, wx: {},
-      require: name => name.endsWith('/subscription-options') ? options : name.endsWith('/payment-config') ? require('../../miniprogram/pages/admin/settings/payment-config') : {
+      require: name => name.endsWith('/format') ? require('../../miniprogram/utils/format') : name.endsWith('/subscription-options') ? options : name.endsWith('/payment-config') ? require('../../miniprogram/pages/admin/settings/payment-config') : {
         callFunction: (...args) => { calls.push(args); return new Promise(() => {}) }, showError: error => errors.push(error.message)
       }
     })
@@ -68,7 +68,7 @@ test('admin subscription delivery list defaults to three records and supports ex
   let page
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/admin/settings/index.js'), 'utf8'), {
     Page(config) { page = config }, wx: {},
-    require: name => name.endsWith('/subscription-options') ? options : name.endsWith('/payment-config') ? require('../../miniprogram/pages/admin/settings/payment-config') : {}
+    require: name => name.endsWith('/format') ? require('../../miniprogram/utils/format') : name.endsWith('/subscription-options') ? options : name.endsWith('/payment-config') ? require('../../miniprogram/pages/admin/settings/payment-config') : {}
   })
   page.setData = function (patch) { Object.assign(this.data, patch) }
   assert.equal(page.data.subscriptionDeliveriesExpanded, false)

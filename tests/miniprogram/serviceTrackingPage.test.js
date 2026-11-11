@@ -55,7 +55,8 @@ function setup(t, options = {}) {
         return options.flush ? options.flush() : { flushed: false, offlineTaskCount: 0, offlineBlockedCount: 0, offlineUnownedCount: 0 }
       } }
       if (name.endsWith('/cloud')) return cloud
-      if (name.endsWith('/offlineQueue')) return { createClientRequestId: () => 'request', getOfflineTaskCount: () => 0, retryOfflineTasks: id => calls.push(['retryOffline', id]) }
+      if (name.endsWith('/offlineQueue')) return { createClientRequestId: () => 'request', getOfflineTaskCount: () => 0,
+        enqueueOfflineTask: (type, payload) => calls.push(['enqueueOffline', type, payload]), retryOfflineTasks: id => calls.push(['retryOffline', id]) }
       if (name.endsWith('/sessionChat')) return { sessionChatMethods: () => ({ stopSessionChatRefresh() {} }) }
       if (name.endsWith('/nav')) return { navMethods: () => ({}), createPageNav: () => ({}) }
       if (name.endsWith('/theme')) return { applyTheme: () => ({ value: 'day' }), getThemeState: () => ({}) }
@@ -69,6 +70,69 @@ function setup(t, options = {}) {
   t.after(() => timers.forEach(clearInterval))
   return { page, manager, calls, modals, errors, emit(value) { snapshot = value; listener(value) } }
 }
+
+for (const eventType of ['sanitization', 'feed']) {
+  test(`historical ${eventType} photos cannot override backend visit requirements on the service page`, async t => {
+    const h = setup(t, { cloud: async action => {
+      if (action === 'getOrderDetail') return { ...order,
+        checkinRequirements: [{ eventType, required: true, completed: false, photoCount: 0, photos: [] }] }
+      if (action === 'listOrderCheckins') return [{ eventType, mediaFileId: 'cloud://old',
+        serviceSessionIndex: 1, recordedAt: '2026-10-19 10:00:10' }]
+      return {}
+    } })
+    await h.page.loadOrder()
+    const requirement = h.page.data.order.checkinRequirements[0]
+    assert.equal(requirement.completed, false)
+    assert.equal(requirement.photoCount, 0)
+    assert.equal(h.page.data.order.allCheckinsDone, false)
+  })
+}
+
+test('service page preserves backend valid photo counts without merging another response', async t => {
+  const h = setup(t, { cloud: async action => {
+    if (action === 'getOrderDetail') return { ...order,
+      checkinRequirements: [{ eventType: 'sanitization', required: true, completed: true, photoCount: 1, photos: [{ _id: 'valid' }] }] }
+    if (action === 'listOrderCheckins') return Array.from({ length: 3 }, (_, index) => ({ eventType: 'sanitization', mediaFileId: `cloud://old-${index}` }))
+    return {}
+  } })
+  await h.page.loadOrder()
+  assert.equal(h.page.data.order.checkinRequirements[0].photoCount, 1)
+  assert.equal(h.page.data.order.sanitizationCompleted, true)
+  assert.equal(h.page.data.order.allCheckinsDone, true)
+})
+
+test('finished group household hides departure, start and early-start actions', async t => {
+  const h = setup(t, { cloud: async action => {
+    if (action === 'getOrderDetail') return { _id: 'order', status: 'day_completed', groupBuyId: 'group',
+      startTime: '2099-09-30 10:00', serviceSessions: [
+        { index: 1, startTime: '2099-09-30 10:00', status: 'completed' },
+        { index: 2, startTime: '2099-10-01 10:00', status: 'cancelled' }
+      ] }
+    return []
+  } })
+  await h.page.loadOrder()
+  assert.equal(h.page.data.order.canDepart, false)
+  assert.equal(h.page.data.order.canStartService, false)
+  assert.equal(h.page.data.order.canRequestEarlyStart, false)
+  assert.equal(h.page.data.order.isWaitingForGroupCompletion, true)
+  assert.equal(h.page.data.order.nextSession, null)
+})
+
+test('multi-day order with remaining visits still displays service actions', async t => {
+  const h = setup(t, { cloud: async action => {
+    if (action === 'getOrderDetail') return { _id: 'order', status: 'day_completed',
+      serviceSessions: [
+        { index: 1, startTime: '2099-09-30 10:00', status: 'completed' },
+        { index: 2, startTime: '2099-10-01 10:00', status: 'pending' }
+      ] }
+    return []
+  } })
+  await h.page.loadOrder()
+  assert.equal(h.page.data.order.canDepart, true)
+  assert.equal(h.page.data.order.canStartService, true)
+  assert.equal(h.page.data.order.canRequestEarlyStart, true)
+  assert.equal(h.page.data.order.isWaitingForGroupCompletion, false)
+})
 
 test('onLoad subscribes only to this order; hide/unload never stop the global session', async t => {
   const h = setup(t)
@@ -323,6 +387,78 @@ test('offline flush displays shared result and only successful flush reloads onc
   await tick()
   assert.ok(h.calls.some(c => c[0] === 'retryOffline'))
   assert.equal(h.calls.filter(c => c[0] === 'getOrderDetail').length, 1)
+})
+
+test('key return sends the current visit identity and queues that same snapshot after a network failure', async t => {
+  const response = deferred()
+  const h = setup(t, { cloud: action => action === 'recordKeyReturned' ? response.promise : Promise.resolve({}) })
+  h.page.data.keyReturnImageFileIds = ['cloud://return']
+  h.page.recordKeyReturned()
+  const payload = h.calls.find(call => call[0] === 'recordKeyReturned')[1]
+  assert.equal(payload.sessionIndex, 2)
+  assert.equal(payload.sessionStartedAt, order.currentSessionStartedAt)
+  h.page.data.order = { ...order, activeSessionIndex: 3, currentSessionStartedAt: '2026-10-20 10:00' }
+  h.page.data.keyReturnImageFileIds = ['cloud://different']
+  response.reject(new Error('network timeout'))
+  await tick()
+  const queued = h.calls.find(call => call[0] === 'enqueueOffline')[2]
+  assert.equal(queued.sessionIndex, 2)
+  assert.equal(queued.sessionStartedAt, order.currentSessionStartedAt)
+  assert.deepEqual(Array.from(queued.imageFileIds), ['cloud://return'])
+  assert.deepEqual(h.page.data.keyReturnImageFileIds, ['cloud://different'])
+})
+
+test('a delayed key return response cannot replace the next visit evidence', async t => {
+  const response = deferred()
+  const h = setup(t, { cloud: () => response.promise })
+  h.page.data.keyReturnImageFileIds = ['cloud://return']
+  h.page.recordKeyReturned()
+  const nextOrder = { ...order, activeSessionIndex: 3, currentSessionStartedAt: '2026-10-20 10:00',
+    orderHomeSecurity: { type: 'key', key: { returnedAt: '' } } }
+  h.page.data.order = nextOrder
+  h.page.data.keyReturnImageFileIds = ['cloud://next']
+  response.resolve({ type: 'key', key: { returnedAt: '2026-10-19 10:30' } })
+  await tick()
+  assert.equal(h.page.data.order, nextOrder)
+  assert.deepEqual(h.page.data.keyReturnImageFileIds, ['cloud://next'])
+})
+
+test('key return uses the active visit for legacy orders missing top-level session markers', async t => {
+  const h = setup(t)
+  h.page.data.order = { ...order, activeSessionIndex: 0, currentSessionStartedAt: '', startedAt: '2026-10-18 10:00',
+    activeSession: { index: 2, startedAt: order.currentSessionStartedAt } }
+  h.page.data.keyReturnImageFileIds = ['cloud://return']
+  h.page.recordKeyReturned()
+  await tick()
+  const payload = h.calls.find(call => call[0] === 'recordKeyReturned')[1]
+  assert.equal(payload.sessionIndex, 2)
+  assert.equal(payload.sessionStartedAt, order.currentSessionStartedAt)
+})
+
+test('key return failure after leaving the page retains its scoped offline evidence without updating UI', async t => {
+  const response = deferred()
+  const h = setup(t, { cloud: () => response.promise })
+  h.page.data.keyReturnImageFileIds = ['cloud://return']
+  h.page.recordKeyReturned()
+  h.page._unloaded = true
+  response.reject(new Error('network timeout'))
+  await tick()
+  const queued = h.calls.find(call => call[0] === 'enqueueOffline')[2]
+  assert.equal(queued.sessionIndex, 2)
+  assert.deepEqual(Array.from(queued.imageFileIds), ['cloud://return'])
+  assert.equal(h.errors.length, 0)
+})
+
+test('key return actions require an active service on both the page and template', async t => {
+  const h = setup(t)
+  h.page.data.order = { ...order, status: 'assigned' }
+  h.page.data.keyReturnImageFileIds = ['cloud://return']
+  h.page.recordKeyReturned()
+  assert.equal(h.calls.some(call => call[0] === 'recordKeyReturned'), false)
+  const template = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/staff/orders/service/index.wxml'), 'utf8')
+  const buttons = template.match(/<button[^>]+bindtap="(?:recordKeyReturned|chooseKeyReturnImage)"[^>]*>/g)
+  assert.equal(buttons.length, 2)
+  assert.ok(buttons.every(button => button.includes("order.status === 'in_service'")))
 })
 
 test('reading another in-service order cannot replace the global session or capture into it', async t => {

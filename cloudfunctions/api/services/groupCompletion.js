@@ -1,5 +1,6 @@
 const crypto = require('crypto')
 const { readDocuments } = require('../utils/documentPages')
+const { isParticipatingGroupOrder } = require('../utils/groupBuyMembership')
 
 module.exports = function createGroupCompletion({ db, now, normalizeServiceSessions, markServiceSession,
   isFinalServiceSession, evaluateCheckinCompletion, completeSingleOrderService, appendOrderTimeline, appendOrderClientMessage, toTimeValue }) {
@@ -18,8 +19,7 @@ module.exports = function createGroupCompletion({ db, now, normalizeServiceSessi
       const current = (await tx.collection('orders').doc(order._id).get()).data
       if (!current || !current.staffOpenid || current.staffOpenid !== order.staffOpenid || current.groupBuyId !== order.groupBuyId) throw new Error('拼单归属已变化，请刷新后重试')
       const rows = await readDocuments(tx, db.command, 'orders', { groupBuyId: current.groupBuyId })
-      let members = rows.filter(member => !member.deletedAt && !member.adminDeletedAt && !member.groupBuyRefundRequired &&
-        member.paymentStatus === 'paid' && !['pending_pay', 'cancelled', 'closed', 'refunded', 'expired'].includes(member.status))
+      let members = rows.filter(isParticipatingGroupOrder)
       if (!members.some(member => member._id === order._id) || members.some(member => member.staffOpenid !== order.staffOpenid)) throw new Error('拼单成员或宠托师归属异常，请联系平台')
       let staged = false
       if (!ready(current)) {
@@ -31,7 +31,7 @@ module.exports = function createGroupCompletion({ db, now, normalizeServiceSessi
         if (!checkins.isComplete) throw new Error(`缺少必打卡照片：${checkins.missing.join('、')}`)
         const session = { ...activeSession, startedAt: activeSession.startedAt || current.currentSessionStartedAt || current.startedAt || '', finishedAt: time }
         const patch = { status: 'day_completed', serviceSessions: markServiceSession(normalizeServiceSessions(current), session.index, { status: 'completed', finishedAt: time }),
-          groupCompletionSession: session, groupCompletionPending: false, groupCompletionIsAuto: options.isAuto === true,
+          groupCompletionSession: session, groupCompletionPending: true, groupCompletionIsAuto: options.isAuto === true,
           activeSessionIndex: 0, activeSessionDate: '', currentSessionStartedAt: '', lastCompletedSessionIndex: session.index, updatedAt: time }
         await tx.collection('orders').doc(order._id).update({ data: patch })
         members = members.map(member => member._id === order._id ? { ...current, ...patch } : member)
@@ -81,13 +81,28 @@ module.exports = function createGroupCompletion({ db, now, normalizeServiceSessi
   }
 
   async function retryPendingGroupCompletions() {
-    const rows = (await db.collection('orders').where({ groupCompletionPending: true, status: db.command.in(['day_completed', 'completed']) }).orderBy('updatedAt', 'asc').limit(30).get()).data || []
+    const rows = (await db.collection('orders').where(db.command.or([
+      { groupCompletionPending: true, status: db.command.in(['day_completed', 'completed']) },
+      // Earlier waiting households were saved without the retry marker.
+      { status: 'day_completed', groupBuyId: db.command.exists(true) }
+    ])).orderBy('updatedAt', 'asc').limit(30).get()).data || []
     const groups = new Set()
     for (const order of rows) {
       if (!order.groupBuyId || groups.has(order.groupBuyId)) continue
+      if (!isParticipatingGroupOrder(order)) {
+        await db.collection('orders').doc(order._id).update({ data: { groupCompletionPending: false, updatedAt: now() } })
+        continue
+      }
       groups.add(order.groupBuyId)
       try {
-        if (ready(order)) await finishGroup(order, readySession(order), now(), { isAuto: order.groupCompletionIsAuto === true })
+        let allGroupCompleted = false
+        if (ready(order)) {
+          const result = await finishGroup(order, readySession(order), now(), { isAuto: order.groupCompletionIsAuto === true })
+          allGroupCompleted = result.allGroupCompleted === true
+        }
+        // Waiting groups must also rotate, otherwise the oldest thirty rows
+        // can permanently hide later groups whose members are all ready.
+        if (!allGroupCompleted) await db.collection('orders').doc(order._id).update({ data: { updatedAt: now() } })
       } catch (error) {
         console.error('[group-completion-retry]', { groupId: order.groupBuyId, message: error.message })
         // Rotate failed rows so one damaged group cannot starve later retries.

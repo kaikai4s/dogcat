@@ -26,6 +26,7 @@ function createPage({ storage = '', storageFails = false, respond = () => ({}) }
     Page(config) { page = config },
     wx,
     require(name) {
+      if (name.endsWith('/format')) return require('../../miniprogram/utils/format')
       if (name.endsWith('/theme')) return { applyTheme: () => ({ value: 'day' }), getThemeState: () => ({}) }
       return {
         callFunction(module, action, data) { calls.push({ action, data }); return Promise.resolve(respond(action, data)) },

@@ -3,6 +3,33 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
+const { execFileSync } = require('node:child_process')
+
+for (const TZ of ['UTC','Asia/Shanghai','America/Los_Angeles']) {
+  test(`mixed service-track timestamps keep the same Beijing ordering and gaps under ${TZ}`, () => {
+    execFileSync(process.execPath,['-e',`
+      const assert = require('node:assert/strict')
+      for (const file of ['./cloudfunctions/api/utils/trackQuality', './miniprogram/utils/trackQuality',
+        './miniprogram/pages/staff/utils/trackQuality', './miniprogram/pages/client/orders/utils/trackQuality',
+        './miniprogram/pages/admin/utils/trackQuality']) {
+        const quality = require(file)
+        const epoch = Date.parse('2026-12-31T16:30:00.321Z')
+        for (const input of ['2027-01-01 00:30:00.321','2027/01/01 00:30:00.321','2026-12-31T16:30:00.321Z',epoch]) {
+          assert.equal(quality.pointTime(input),epoch,file)
+        }
+        assert.equal(quality.pointTime('2027-02-29 10:00'),0,file)
+        const points = [
+          {id:'first',recordedAt:'2027-01-01 00:30:00.321'},
+          {id:'second',recordedAt:'2026-12-31T16:30:10.321Z'},
+          {id:'third',recordedAt:epoch+20000}
+        ].map(point=>({...point,latitude:31.2,longitude:121.5,accuracy:10}))
+        const accepted = quality.filterTrackPoints(points)
+        assert.deepEqual(accepted.map(point=>point.id),['first','second','third'],file)
+        assert.deepEqual(accepted.map(point=>point.breakBefore),[true,false,false],file)
+      }
+    `],{cwd:path.resolve(__dirname,'../..'),env:{...process.env,TZ},stdio:'pipe'})
+  })
+}
 
 test('main-package and subpackage track quality helpers match the server rules', () => {
   const root = path.resolve(__dirname, '../../miniprogram')

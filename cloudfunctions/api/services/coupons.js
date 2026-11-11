@@ -1,5 +1,7 @@
 const { readOptionalDocument } = require('../utils/documentPages')
 
+const { toTimeValue } = require('../utils/time')
+
 module.exports = function createService({
   db,
   now,
@@ -51,7 +53,7 @@ module.exports = function createService({
 
   function couponDisplayStatus(coupon, time = now()) {
     if (coupon.status === 'used' || coupon.status === 'locked' || coupon.status === 'void') return coupon.status
-    const validTo = new Date(coupon.validTo || 0).getTime()
+    const validTo = toTimeValue(coupon.validTo)
     if (validTo && validTo < time.getTime()) return 'expired'
     return coupon.status || 'available'
   }
@@ -108,7 +110,7 @@ module.exports = function createService({
     if (!coupon || coupon.openid !== openid) return { applicable: false, reason: '优惠券不存在' }
     const status = couponDisplayStatus(coupon)
     if (status !== 'available') return { applicable: false, reason: couponStatusText(status) }
-    const validFrom = new Date(coupon.validFrom || 0).getTime()
+    const validFrom = toTimeValue(coupon.validFrom)
     if (validFrom > now().getTime()) return { applicable: false, reason: '优惠券尚未生效' }
     const snapshot = normalizeCouponSnapshot(coupon)
     if (!couponBusinessMatches(snapshot, pricing)) return { applicable: false, reason: snapshot.usageScope === 'mall' ? '仅限商城用品订单使用' : '仅限上门服务订单使用' }
@@ -176,7 +178,7 @@ module.exports = function createService({
         (!coupon.usedOrderId && !coupon.lockedOrderId)
 
       if (['used', 'locked'].includes(coupon.status) && isLinkedToOrder) {
-        const validToTs = new Date(coupon.validTo || 0).getTime()
+        const validToTs = toTimeValue(coupon.validTo)
         const isExpired = Boolean(validToTs && validToTs < time.getTime())
         const targetStatus = isExpired ? 'expired' : 'available'
         const updateData = {

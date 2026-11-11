@@ -1,6 +1,10 @@
+const { userAssetExpiryDate } = require('../utils/userAssetExpiry')
+const { beijingDateText, parseDateValue: parseBeijingDateValue } = require('../utils/time')
 const { DEFAULT_STAFF_TRAINING_QUIZ } = require('../config/constants')
 const { requireStaffGender } = require('../utils/staffGender')
 const { getOrderRefundState } = require('../utils/orderRefundState')
+const { getOrderSessionPricing } = require('../utils/orderSessionPricing')
+const crypto = require('crypto')
 
 module.exports = function createHandler(context) {
   const {
@@ -41,6 +45,9 @@ module.exports = function createHandler(context) {
     detachUserFromHistoricalRecords,
     ensureMonthConfig,
     ensureStaffEarning,
+    ensureOrderCompletionRewards,
+    completeOrderService,
+    normalizeServiceSessions,
     expireDueUnacceptedOrders,
     getClientRequestId,
     getUser,
@@ -1174,13 +1181,13 @@ module.exports = function createHandler(context) {
         readAll('user_asset_earnings', { userOpenid: target.openid }, 2000).catch(() => []),
         readAll('withdraw_requests', { assetType: 'user', userOpenid: target.openid }, 500).catch(() => [])
       ])
-      const currentTime = new Date().toISOString()
+      const currentTime = now()
       let commAvailable = 0
       let commExpired = 0
       earningsRows.forEach((r) => {
         const amt = Number(r.amount || 0)
         let status = r.status || 'available'
-        if (status === 'available' && r.expiresAt && String(r.expiresAt) < currentTime) {
+        if (status === 'available' && userAssetExpiryDate(r) && userAssetExpiryDate(r) <= currentTime) {
           status = 'expired'
         }
         if (status === 'available') commAvailable += amt
@@ -1231,12 +1238,12 @@ module.exports = function createHandler(context) {
           activity: '营销活动发放',
           invite_reward: '邀请好友奖励'
         }
-        const currentTime = new Date().toISOString()
+        const currentTime = now()
         result.coupons = rawCoupons
           .map((item) => {
             const snap = item.templateSnapshot || {}
             let status = item.status || 'available'
-            if (status === 'available' && item.validTo && String(item.validTo) < currentTime) {
+            if (status === 'available' && parseBeijingDateValue(item.validTo) && parseBeijingDateValue(item.validTo) < currentTime) {
               status = 'expired'
             }
             const statusMap = { available: '可使用', used: '已使用', expired: '已过期', locked: '已锁定', void: '已作废' }
@@ -1320,7 +1327,7 @@ module.exports = function createHandler(context) {
           readAll('withdraw_requests', { assetType: 'user', userOpenid: targetUserOpenid }, 500).catch(() => [])
         ])
 
-        const currentTime = new Date().toISOString()
+        const currentTime = now()
         let available = 0
         let expired = 0
         let withdrawing = 0
@@ -1328,7 +1335,7 @@ module.exports = function createHandler(context) {
         earningsRows.forEach((row) => {
           const amt = Number(row.amount || 0)
           let status = row.status || 'available'
-          if (status === 'available' && row.expiresAt && String(row.expiresAt) < currentTime) {
+          if (status === 'available' && userAssetExpiryDate(row) && userAssetExpiryDate(row) <= currentTime) {
             status = 'expired'
           }
           if (status === 'available') available += amt
@@ -1354,7 +1361,7 @@ module.exports = function createHandler(context) {
         const earnings = earningsRows
           .map((item) => {
             let status = item.status || 'available'
-            if (status === 'available' && item.expiresAt && String(item.expiresAt) < currentTime) {
+            if (status === 'available' && userAssetExpiryDate(item) && userAssetExpiryDate(item) <= currentTime) {
               status = 'expired'
             }
             return {
@@ -1369,7 +1376,7 @@ module.exports = function createHandler(context) {
               sourceId: item.sourceId || '',
               orderId: item.orderId || '',
               createdAt: item.createdAt || '',
-              expiresAt: item.expiresAt || ''
+              expiresAt: userAssetExpiryDate(item) || ''
             }
           })
           .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
@@ -1620,8 +1627,8 @@ module.exports = function createHandler(context) {
         const avatarFileId = pet.avatarFileId || (beautyPhotos[0] && (beautyPhotos[0].fileId || beautyPhotos[0].url)) || ''
         const rawWeight = Number(pet.weight)
         const weight = Number.isFinite(rawWeight) && rawWeight > 0 ? rawWeight : ''
-        const createdAt = pet.createdAt instanceof Date ? pet.createdAt.toISOString().replace('T', ' ').slice(0, 19) : (pet.createdAt || '')
-        const updatedAt = pet.updatedAt instanceof Date ? pet.updatedAt.toISOString().replace('T', ' ').slice(0, 19) : (pet.updatedAt || '')
+        const createdAt = pet.createdAt || ''
+        const updatedAt = pet.updatedAt || ''
         return {
           _id: pet._id || '',
           exclusiveId: pet.exclusiveId || '',
@@ -2445,155 +2452,104 @@ module.exports = function createHandler(context) {
       const remark = safeText(data.remark || data.reason).trim()
       if (!remark) throw new Error('请填写核实完单说明')
 
-      const standardEarning = await calculateStaffEarningForOrder(order).catch(() => ({ earningAmount: 0 }))
-      const baseReward = Number(standardEarning.earningAmount || 0)
-
-      let deductAmount = Number(data.deductAmount)
-      if (isNaN(deductAmount) || deductAmount < 0) deductAmount = 0
-      if (deductAmount > baseReward) {
-        throw new Error(`违规扣除金额（¥${deductAmount.toFixed(2)}）不能大于宠托师原本应得收益（¥${baseReward.toFixed(2)}）`)
-      }
-      const finalStaffReward = Math.max(0, Math.round((baseReward - deductAmount) * 100) / 100)
-      const evidenceImages = Array.isArray(data.evidenceImages) ? data.evidenceImages : []
-
+      const deductionInput = data.deductAmount
+      if (deductionInput != null && typeof deductionInput !== 'number' && typeof deductionInput !== 'string') throw new Error('违规扣除金额格式不正确')
+      const deductAmount = deductionInput == null || deductionInput === '' ? 0 : Number(deductionInput)
+      const deductCents = Math.round(deductAmount * 100)
+      if (!Number.isFinite(deductAmount) || deductAmount < 0 || !Number.isSafeInteger(deductCents) || Math.abs(deductAmount * 100 - deductCents) > 1e-7) throw new Error('违规扣除金额必须为非负数，最多两位小数')
+      const evidenceImages = data.evidenceImages == null ? [] : data.evidenceImages
+      if (!Array.isArray(evidenceImages) || evidenceImages.length > 4 || evidenceImages.some(fileId => typeof fileId !== 'string' || !fileId.startsWith('cloud://'))) throw new Error('请先上传有效的核实凭证图片，最多4张')
       const time = now()
-      const updateData = {
-        status: 'completed',
-        completionType: 'admin_manual',
-        completedAt: time,
-        adminManualCompletedAt: time,
-        adminManualCompletedBy: openid,
-        adminManualRemark: remark,
-        adminManualDeductEarning: deductAmount,
-        adminManualDeductReason: deductAmount > 0 ? (safeText(data.deductReason).trim() || remark) : '',
-        adminManualStaffReward: finalStaffReward,
-        adminManualEvidenceImages: evidenceImages,
-        activeSessionIndex: 0,
-        activeSessionDate: '',
-        currentSessionStartedAt: '',
-        isStartOverdue: false,
-        isFinishOverdue: false,
-        updatedAt: time
-      }
-
-      if (evidenceImages.length > 0) {
-        try {
-          await Promise.all(evidenceImages.map((imgUrl, idx) => {
-            return db.collection('checkin_logs').add({
-              data: {
-                orderId,
-                eventType: 'admin_supplement',
-                eventText: '平台核实补录凭证',
-                mediaFileId: imgUrl,
-                remark: `管理员线下核实补录图片 #${idx + 1}`,
-                recordedAt: time,
-                createdAt: time,
-                createdBy: openid,
-                source: 'admin'
-              }
-            })
-          }))
-        } catch (err) {
-          // ignore error
-        }
-      }
-
-      const completedOrder = await db.runTransaction(async tx => {
+      const result = await db.runTransaction(async tx => {
         const latest = (await tx.collection('orders').doc(orderId).get()).data
         if (!latest || !['assigned', 'on_the_way', 'in_service', 'day_completed'].includes(latest.status) || latest.status !== order.status || latest.staffOpenid !== order.staffOpenid) throw new Error('订单状态已变化，请刷新后重试')
-        const completed = { ...latest, ...updateData, _id: orderId }
-        await tx.collection('orders').doc(orderId).update({ data: updateData })
-        await enqueueOrderNotification(tx, latest.clientOpenid, 'serviceFinish', completed, { completedAt: time, tip: '平台已核实完成，可查看订单详情' }, 'client', 'finish:final')
-        return completed
-      })
-      await notifyOrder(completedOrder.clientOpenid, 'serviceFinish', completedOrder, { completedAt: time, tip: '平台已核实完成，可查看订单详情' }, 'client', 'finish:final')
-      await resolveOrderDispatchNotifications(orderId, { reason: 'admin_manual_completed', actor: openid, time })
-        .catch((err) => console.error('[manualCompleteOrder] resolve dispatch notifications failed:', err))
-
-      if (typeof destroyOrderHomeSecuritySecrets === 'function') {
-        await destroyOrderHomeSecuritySecrets(orderId, {
-          reason: 'admin_manual_completed',
-          actor: 'admin',
-          time
-        }).catch((err) => console.error('[manualCompleteOrder] destroy secrets failed:', err))
-      }
-
-      if (order.staffOpenid) {
-        await ensureStaffEarning(
-          { ...order, _id: orderId, completionType: 'admin_manual' },
-          time,
-          {
-            deductAmount,
-            deductReason: deductAmount > 0 ? (safeText(data.deductReason).trim() || remark) : '',
-            overrideAmount: finalStaffReward,
-            completionType: 'admin_manual'
-          }
-        )
-      }
-
-      const pointsDelta = Math.max(Math.floor(Number(order.payAmount || 0) / 10), 1)
-      await addPoints(order.clientOpenid, order.clientUserId, pointsDelta, 'order_complete', orderId, `完成订单 +${pointsDelta} 积分`, { applyMultiplier: true, baseDelta: pointsDelta }).catch(() => {})
-
-      try {
-        const clientUser = await getUser(order.clientOpenid)
-        if (clientUser && clientUser._id) {
-          const completedOrderCount = Number(clientUser.completedOrderCount || 0) + 1
-          await db.collection('users').doc(clientUser._id).update({ data: { completedOrderCount, updatedAt: time } })
+        if (latest.adminManualAccountingVersion === 2) throw new Error('订单已核实，请等待拼单统一结算')
+        if (latest.paymentStatus && !['paid', 'refunding'].includes(latest.paymentStatus)) throw new Error('订单支付状态不可核实完单')
+        const standardEarning = await calculateStaffEarningForOrder(latest)
+        const baseReward = Number(standardEarning.earningAmount || 0)
+        if (!Number.isFinite(baseReward) || baseReward < 0 || !Number.isSafeInteger(Math.round(baseReward * 100))) throw new Error('宠托师应得收益金额异常，请核对')
+        if (deductCents > Math.round(baseReward * 100)) throw new Error(`违规扣除金额（¥${deductAmount.toFixed(2)}）不能大于宠托师原本应得收益（¥${baseReward.toFixed(2)}）`)
+        const sessions = normalizeServiceSessions(latest).map(session => ({ ...session, status: 'completed', finishedAt: session.finishedAt || time }))
+        const finalSession = sessions[sessions.length - 1]
+        if (latest.groupBuyId && !finalSession) throw new Error('拼单服务场次缺失，请联系平台')
+        const updateData = {
+          status: latest.groupBuyId ? 'day_completed' : 'completed',
+          completionType: 'admin_manual',
+          adminManualAccountingVersion: 2,
+          adminManualCompletedAt: time,
+          adminManualCompletedBy: openid,
+          adminManualRemark: remark,
+          adminManualDeductEarning: deductAmount,
+          adminManualDeductReason: deductAmount > 0 ? (safeText(data.deductReason).trim() || remark) : '',
+          adminManualEvidenceImages: evidenceImages,
+          serviceSessions: sessions,
+          lastCompletedSessionIndex: finalSession ? finalSession.index : 0,
+          activeSessionIndex: 0,
+          activeSessionDate: '',
+          currentSessionStartedAt: '',
+          isStartOverdue: false,
+          isFinishOverdue: false,
+          updatedAt: time
         }
-      } catch (err) {}
-
-      if (order.staffProfileId) {
-        try {
-          const pRes = await db.collection('staff_profiles').doc(order.staffProfileId).get()
-          if (pRes.data) {
-            const completedCount = Number(pRes.data.completedOrderCount || 0) + 1
-            await db.collection('staff_profiles').doc(order.staffProfileId).update({ data: { completedOrderCount: completedCount, updatedAt: time } })
-          }
-        } catch (err) {}
+        for (const [index, mediaFileId] of evidenceImages.entries()) {
+          const proofId = `admin_proof_${crypto.createHash('sha256').update(JSON.stringify([orderId, index])).digest('hex').slice(0, 32)}`
+          await tx.collection('checkin_logs').doc(proofId).set({ data: {
+            orderId, eventType: 'admin_supplement', eventText: '平台核实补录凭证', mediaFileId,
+            remark: `管理员线下核实补录图片 #${index + 1}`, recordedAt: time, createdAt: time, createdBy: openid, source: 'admin'
+          } })
+        }
+        if (latest.groupBuyId) {
+          Object.assign(updateData, { groupCompletionSession: { ...finalSession, finishedAt: time }, groupCompletionPending: true, groupCompletionIsAuto: false })
+          await tx.collection('orders').doc(orderId).update({ data: updateData })
+          return { order: { ...latest, ...updateData }, baseReward }
+        }
+        updateData.completedAt = time
+        const rewards = await ensureOrderCompletionRewards(latest, time, {
+          transaction: tx, manualVerification: true, completionPatch: updateData,
+          notifications: [{ openid: latest.clientOpenid, detail: { completedAt: time, tip: '平台已核实完成，可查看订单详情' }, role: 'client' }]
+        })
+        return { order: { ...latest, ...updateData, adminManualStaffReward: rewards.earning ? rewards.earning.amount : 0 }, baseReward }
+      })
+      let completedOrder = result.order
+      let completion = { status: 'completed' }
+      if (completedOrder.groupBuyId) {
+        completion = await completeOrderService(completedOrder, completedOrder.groupCompletionSession, time, { actor: 'admin' })
+        completedOrder = (await db.collection('orders').doc(orderId).get()).data
+      } else {
+        await notifyOrder(completedOrder.clientOpenid, 'serviceFinish', completedOrder, { completedAt: time, tip: '平台已核实完成，可查看订单详情' }, 'client', 'finish:final')
+          .catch(err => console.error('[manualCompleteOrder] finish notification deferred:', err))
       }
-
+      const pendingGroup = completion.partialGroupCompleted === true
+      const baseReward = result.baseReward
+      const finalStaffReward = pendingGroup ? null : Number(completedOrder.adminManualStaffReward || 0)
+      await resolveOrderDispatchNotifications(orderId, { reason: 'admin_manual_completed', actor: openid, time })
+        .catch(err => console.error('[manualCompleteOrder] resolve dispatch notifications failed:', err))
+      if (typeof destroyOrderHomeSecuritySecrets === 'function') {
+        await destroyOrderHomeSecuritySecrets(orderId, { reason: 'admin_manual_completed', actor: 'admin', time })
+          .catch(err => console.error('[manualCompleteOrder] destroy secrets failed:', err))
+      }
+      const settlementText = pendingGroup ? '等待同拼单团全部住户服务完成后统一结算' : `实际入账收益 ¥${finalStaffReward.toFixed(2)}`
       const timelineTitle = deductAmount > 0
-        ? `管理员核实并手动完单（扣减收益 ¥${deductAmount.toFixed(2)}）`
-        : `管理员核实并手动完单`
-      const timelineDesc = `核实说明：${remark}。宠托师原应得 ¥${baseReward.toFixed(2)}${deductAmount > 0 ? `，因未规范打卡扣除 ¥${deductAmount.toFixed(2)}，实发收益 ¥${finalStaffReward.toFixed(2)}` : `，全额入账收益 ¥${finalStaffReward.toFixed(2)}`}。`
-      await appendOrderTimeline(orderId, 'admin_manual_completed', timelineTitle, timelineDesc, 'admin')
-
-      await appendOrderClientMessage({ ...order, _id: orderId, status: 'completed' }, {
-        eventType: 'completed',
-        title: '订单已由平台核实完成',
-        detail: `平台管理员已协助核实履约并确认完单：${remark}。您的实付金额与权益不受影响，如有疑问可联系客服。`,
+        ? `管理员核实并手动完单（扣减收益 ¥${deductAmount.toFixed(2)}）` : '管理员核实并手动完单'
+      await appendOrderTimeline(orderId, 'admin_manual_completed', timelineTitle,
+        `核实说明：${remark}。宠托师原应得 ¥${baseReward.toFixed(2)}，违规扣除 ¥${deductAmount.toFixed(2)}；${settlementText}。`, 'admin')
+      await appendOrderClientMessage(completedOrder, {
+        eventType: pendingGroup ? 'day_completed' : 'completed',
+        title: pendingGroup ? '住户服务已由平台核实' : '订单已由平台核实完成',
+        detail: `平台管理员已协助核实履约：${remark}。${pendingGroup ? '等待同团全部住户完成后统一结算。' : '可查看订单详情。'}`,
         actorRole: 'admin'
       })
-
-      if (order.staffOpenid) {
-        const staffMsgDetail = deductAmount > 0
-          ? `您的订单（${order.serviceSummary || order.orderNo}）由于未按规范在小程序内完成全部打卡，经平台核实后手动确认完单。本单原本应得收益 ¥${baseReward.toFixed(2)}，扣减违规收益 ¥${deductAmount.toFixed(2)}（原因：${safeText(data.deductReason).trim() || remark}），实际入账收益 ¥${finalStaffReward.toFixed(2)} 已结算记入您的收益中心。请在后续履约中规范打卡。`
-          : `您的订单（${order.serviceSummary || order.orderNo}）已由平台管理员核实完成，应得收益 ¥${finalStaffReward.toFixed(2)} 已全额结算记入您的收益中心。`
-        await appendOrderStaffMessage({ ...order, _id: orderId, status: 'completed' }, {
+      if (completedOrder.staffOpenid) {
+        await appendOrderStaffMessage(completedOrder, {
           eventType: 'admin_manual_completed',
           title: deductAmount > 0 ? '订单已核实完单（违规扣减收益通知）' : '订单已由管理员核实完单',
-          detail: staffMsgDetail,
+          detail: `您的订单（${completedOrder.serviceSummary || completedOrder.orderNo}）已由平台管理员核实服务凭证。原本应得收益 ¥${baseReward.toFixed(2)}，扣减违规收益 ¥${deductAmount.toFixed(2)}（原因：${safeText(data.deductReason).trim() || remark}）；${settlementText}。`,
           actorRole: 'admin',
-          idempotencyKey: makeIdempotencyKey('order_staff_message', orderId, 'admin_manual_complete', String(time.getTime()))
+          idempotencyKey: makeIdempotencyKey('order_staff_message', orderId, 'admin_manual_complete')
         })
       }
-
-      await logAdmin(admin, 'order', orderId, 'manualCompleteOrder', {
-        baseReward,
-        deductAmount,
-        finalStaffReward,
-        remark,
-        evidenceImagesCount: evidenceImages.length
-      })
-
-      return {
-        orderId,
-        status: 'completed',
-        baseReward,
-        deductAmount,
-        finalStaffReward,
-        remark
-      }
+      await logAdmin(admin, 'order', orderId, 'manualCompleteOrder', { baseReward, deductAmount, finalStaffReward, remark, evidenceImagesCount: evidenceImages.length, pendingGroup })
+      return { orderId, ...completion, baseReward, deductAmount, finalStaffReward, remark }
     }
     if (action === 'refundOrder') {
       const orderId = safeText(data.id || data.orderId).trim()
@@ -4084,6 +4040,16 @@ module.exports = function createHandler(context) {
       if (!['paid', 'assigned', 'on_the_way', 'day_completed'].includes(order.status)) {
         throw new Error(`当前订单状态（${order.status}）不可转为加急公共抢单，宠托师可能已开始服务或订单状态已变更，请刷新确认`)
       }
+      if (order.groupBuyId || order.source === 'community_groupbuy') {
+        throw new Error('拼单需要整团调整，不能通过单笔订单加急改派拆开同团服务')
+      }
+      if (order.status === 'day_completed' || Number(order.lastCompletedSessionIndex || 0) > 0 ||
+          (order.serviceSessions || []).some(session => ['completed', 'in_service', 'cancelled'].includes(session.status))) {
+        throw new Error('订单存在已履约或取消的服务场次，不可整单重新发布加急')
+      }
+      const originalSessions = Array.isArray(order.serviceSessions) && order.serviceSessions.length
+        ? order.serviceSessions : [{index:1,startTime:order.startTime,endTime:order.endTime,status:'pending'}]
+      const originalFirstSession = originalSessions[0]
 
       const checkinRes = await db.collection('checkin_logs').where({ orderId }).get().catch(() => ({ data: [] }))
       const staffCheckins = (checkinRes.data || []).filter((item) => isActiveCheckin(item) && item.source !== 'admin' && item.eventType !== 'admin_supplement' && (!order.staffOpenid || item.staffOpenid === order.staffOpenid))
@@ -4096,12 +4062,12 @@ module.exports = function createHandler(context) {
       }
 
       const staffReward = Number(data.staffReward)
-      if (isNaN(staffReward) || staffReward <= 0) {
+      if (!Number.isFinite(staffReward) || staffReward <= 0) {
         throw new Error('请设置有效的宠托师加急收益金额')
       }
 
-      const newStartTime = safeText(data.startTime).trim() || order.startTime
-      let newEndTime = safeText(data.endTime).trim() || order.endTime
+      const newStartTime = safeText(data.startTime).trim() || originalFirstSession.startTime
+      let newEndTime = safeText(data.endTime).trim()
       const urgentRemark = safeText(data.urgentRemark || data.remark || data.notes).trim()
 
       if (!newStartTime) {
@@ -4124,15 +4090,27 @@ module.exports = function createHandler(context) {
 
       if (newEndTime) {
         const endTs = toTimeValue(newEndTime)
-        if (endTs && endTs <= startTs) {
+        if (!endTs) throw new Error('加急服务结束时间格式不正确')
+        if (endTs <= startTs) {
           throw new Error('加急服务结束时间必须晚于开始时间')
         }
       } else {
-        const origDurationMs = (toTimeValue(order.endTime) - toTimeValue(order.startTime)) || (Number(order.durationMinutes || 60) * 60000)
+        const origDurationMs = (toTimeValue(originalFirstSession.endTime) - toTimeValue(originalFirstSession.startTime)) || (Number(order.durationMinutes || 60) * 60000)
         const durationMs = origDurationMs > 0 ? origDurationMs : 3600000
-        const endBej = new Date(startTs + durationMs + 8 * 3600 * 1000)
-        newEndTime = `${endBej.getUTCFullYear()}-${String(endBej.getUTCMonth() + 1).padStart(2, '0')}-${String(endBej.getUTCDate()).padStart(2, '0')} ${String(endBej.getUTCHours()).padStart(2, '0')}:${String(endBej.getUTCMinutes()).padStart(2, '0')}`
+        newEndTime = context.formatDateTimeParts(new Date(startTs + durationMs))
       }
+      const serviceSessions = originalSessions.map((session,index) => index === 0
+        ? {...session,date:beijingDateText(newStartTime),startTime:newStartTime,endTime:newEndTime,status:'pending'} : session)
+      for (let index=1; index<serviceSessions.length; index+=1) {
+        if (toTimeValue(serviceSessions[index-1].endTime) > toTimeValue(serviceSessions[index].startTime)) {
+          throw new Error('加急服务时间不能与后续服务场次重叠或打乱场次顺序')
+        }
+      }
+      const finalSession = serviceSessions[serviceSessions.length-1]
+      // Admin rescheduling keeps the original charge for every visit.
+      const sessionPricing = getOrderSessionPricing(order,originalSessions).map((row,index) => ({
+        ...row,date:beijingDateText(serviceSessions[index].startTime),startTime:serviceSessions[index].startTime
+      }))
 
       const prevStaffOpenid = order.staffOpenid || ''
       const prevStaffName = order.staffName || (order.staffContact && order.staffContact.displayName) || ''
@@ -4194,32 +4172,17 @@ module.exports = function createHandler(context) {
         travelEtaMinutes: 0,
         radarProximityNotified: false,
         startTime: newStartTime,
-        endTime: newEndTime,
-        serviceStartDate: newStartTime.slice(0, 10),
-        serviceEndDate: newEndTime ? newEndTime.slice(0, 10) : newStartTime.slice(0, 10),
+        endTime: finalSession.endTime,
+        serviceStartDate: beijingDateText(newStartTime),
+        serviceEndDate: beijingDateText(finalSession.startTime),
+        serviceSessions,
+        priceSnapshot: {...order.priceSnapshot,sessionPricing},
         isStartOverdue: false,
         isFinishOverdue: false,
         staffOverdueStartRemindedSessions: [],
         clientOverdueStartAlertedSessions: [],
         overdueFinishReminded: false,
         updatedAt: time
-      }
-      if (Array.isArray(order.serviceSessions) && order.serviceSessions.length > 0) {
-        updateData.serviceSessions = order.serviceSessions.map((session, idx) => idx === 0 ? {
-          ...session,
-          date: newStartTime.slice(0, 10),
-          startTime: newStartTime,
-          endTime: newEndTime,
-          status: 'pending'
-        } : session)
-      } else {
-        updateData.serviceSessions = [{
-          index: 1,
-          date: newStartTime.slice(0, 10),
-          startTime: newStartTime,
-          endTime: newEndTime,
-          status: 'pending'
-        }]
       }
       if (urgentRemark) {
         updateData.notes = order.notes ? `${order.notes}；【平台加急备注】${urgentRemark}` : `【平台加急备注】${urgentRemark}`
@@ -4258,7 +4221,9 @@ module.exports = function createHandler(context) {
       if (typeof db.runTransaction === 'function') {
         await db.runTransaction(async (tx) => {
           const currentOrder = (await tx.collection('orders').doc(orderId).get()).data
-          if (!currentOrder || currentOrder.status !== order.status) {
+          const terms = row => JSON.stringify([row.staffOpenid,row.serviceSessions,row.startTime,row.endTime,
+            row.payAmount,row.priceSnapshot,row.groupBuyId,row.groupBuyStatus,row.lastCompletedSessionIndex])
+          if (!currentOrder || currentOrder.status !== order.status || terms(currentOrder) !== terms(order)) {
             throw new Error('订单状态已被并发更新或已被宠托师抢先开始，转加急单失败，请刷新确认最新状态')
           }
           if (evidenceDoc) {

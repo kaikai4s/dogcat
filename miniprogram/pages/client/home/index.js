@@ -3,7 +3,7 @@ const { getCachedHeroMedia, resolveHeroMedia } = require('../../../utils/hero-me
 const { loadMessageUnread, startStaffEntryUnread, stopStaffEntryUnread } = require('../../../utils/client-nav')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { safeNavigateTo } = require('../../../utils/nav')
-const { formatDateTime } = require('../../../utils/format')
+const { formatDateTime, formatBeijingDate } = require('../../../utils/format')
 const cloudAssets = require('../../../utils/cloud-assets')
 const getDovlinLogoUrl = (cloudAssets && (cloudAssets.getDovlinLogoSrc || cloudAssets.getDovlinLogoUrl)) || (() => '')
 const applyDovlinLogo = (cloudAssets && cloudAssets.applyDovlinLogo) || (() => {})
@@ -57,11 +57,7 @@ function getCustomServiceCovers() {
 }
 
 function getTodayDateString() {
-  const now = new Date()
-  const y = now.getFullYear()
-  const m = String(now.getMonth() + 1).padStart(2, '0')
-  const d = String(now.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
+  return formatBeijingDate()
 }
 
 function isGroupNoticeDismissedToday() {

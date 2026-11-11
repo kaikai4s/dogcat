@@ -1,4 +1,4 @@
-// Keep the cloud-function and both mini-program subpackage copies aligned; each ships independently.
+// Keep the cloud-function and all mini-program copies aligned; each ships independently.
 const MAX_ACCURACY_M = 50
 const MAX_GAP_MS = 2 * 60 * 1000
 const MAX_SPEED_MPS = 8
@@ -6,9 +6,20 @@ const MAX_SPEED_MPS = 8
 function pointTime(value) {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0
   if (!value) return 0
-  const text = String(value)
-  const local = text.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/)
-  if (local) return Date.UTC(+local[1], +local[2] - 1, +local[3], +local[4] - 8, +local[5], +(local[6] || 0))
+  const text = String(value).trim()
+  if (/^\d{10,13}$/.test(text)) return Number(text) * (text.length === 10 ? 1000 : 1)
+  const calendar = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/)
+  if (calendar) {
+    const [, y, m, d, h = '0', min = '0', sec = '0'] = calendar
+    const day = new Date(Date.UTC(+y, +m - 1, +d))
+    if (day.getUTCFullYear() !== +y || day.getUTCMonth() !== +m - 1 || day.getUTCDate() !== +d ||
+        +h > 23 || +min > 59 || +sec > 59) return 0
+  }
+  const local = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2})(?:\.(\d{1,3}))?)?)?$/)
+  if (local) {
+    const [, y, m, d, h = '0', min = '0', sec = '0', ms = '0'] = local
+    return Date.UTC(+y, +m - 1, +d, +h - 8, +min, +sec, Number(ms.padEnd(3, '0')))
+  }
   const parsed = new Date(value).getTime()
   return Number.isFinite(parsed) ? parsed : 0
 }

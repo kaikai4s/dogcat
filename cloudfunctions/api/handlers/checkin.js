@@ -1,3 +1,7 @@
+const crypto = require('crypto')
+const { readOptionalDocument, readDocuments } = require('../utils/documentPages')
+const { serviceVisit, checkinMatchesVisit, assertServiceVisit } = require('../utils/checkinVisit')
+
 module.exports = function createHandler(context) {
   const {
     CHECKIN_EVENT_TYPES,
@@ -26,6 +30,7 @@ module.exports = function createHandler(context) {
     normalizeCheckinReward,
     normalizeMonthKey,
     now,
+    toTimeValue,
     readScopedDocuments,
     requireStaffOrder,
     safeText,
@@ -223,7 +228,8 @@ module.exports = function createHandler(context) {
         if (existing.data[0]) {
           if (isSanitization && (!isValidSanitization(existing.data[0], order) || existing.data[0].mediaFileId !== data.mediaFileId)) throw new Error('消毒打卡请求已失效，请重新拍照')
           if (isSanitization) await validateSanitizationMedia(data.mediaFileId, data.orderId, openid)
-          return existing.data[0]
+          const photo = existing.data[0]
+          return { ...photo, canDelete: !isSanitization && !photo.deletedAt && checkinMatchesVisit(photo, order) }
         }
       }
       const latitude = Number(data.latitude || 0)
@@ -251,29 +257,57 @@ module.exports = function createHandler(context) {
         const reused = await db.collection('checkin_logs').where({ mediaFileId: data.mediaFileId }).limit(1).get()
         if (reused.data.length) throw new Error('消毒照片已使用，请重新现场拍照')
       }
-      const recordedAt = isSanitization ? time : (data.recordedAt || time)
-      const existingEventPhotos = await readScopedDocuments('checkin_logs', { orderId: data.orderId, eventType: data.eventType })
-      const shouldWriteTimeline = !existingEventPhotos.some(hasCheckinPhoto)
+      if (!isSanitization && data.isBackfilled === true && (order.serviceSessions || []).length > 1 && data.recordedAt == null) throw new Error('补传缺少本次服务打卡时间，请刷新订单后重新打卡')
+      const recordedAt = isSanitization || data.recordedAt == null ? time : data.recordedAt
+      const recordedTimestamp = toTimeValue(recordedAt)
+      const visit = serviceVisit(order)
+      if (!recordedTimestamp || recordedTimestamp > time.getTime() + 60000 ||
+          (!isSanitization && toTimeValue(visit.startedAt) && recordedTimestamp < toTimeValue(visit.startedAt) - 60000)) throw new Error('打卡时间不属于本次服务，请刷新订单后重试')
       const checkin = { orderId: data.orderId, staffUserId: user._id, staffOpenid: openid, clientRequestId, eventType: data.eventType, mediaFileId: data.mediaFileId || '', watermarkedMediaFileId: '', latitude, longitude, distanceKm: distanceKm !== null ? Number(distanceKm.toFixed(3)) : null, serverTime: time, recordedAt, isBackfilled: data.isBackfilled === true, remark: checkinRemark, createdAt: time, updatedAt: time, deletedAt: null, deletedByOpenid: '' }
       checkin.accuracy = Number.isFinite(Number(data.accuracy)) ? Number(data.accuracy) : 0
       checkin.coordinateType = data.coordinateType === 'gcj02' ? 'gcj02' : 'unknown'
       checkin.locationSource = data.locationSource === 'gps' ? 'gps' : 'manual'
       if (isSanitization) {
+        const pending = getNextPendingServiceSession(order)
         checkin.preStart = true
         checkin.sanitizationVersion = 1
+        checkin.serviceSessionIndex = pending.index
+        checkin.serviceSessionScheduledAt = pending.startTime
+      } else {
+        checkin.serviceSessionIndex = visit.index
+        checkin.serviceSessionStartedAt = visit.startedAt
       }
-      const created = await db.collection('checkin_logs').add({ data: checkin })
-      try {
-        const revision = db.command && typeof db.command.inc === 'function'
-          ? db.command.inc(1)
-          : Number(order.checkinRevision || 0) + 1
-        await db.collection('orders').doc(data.orderId).update({ data: { checkinRevision: revision, updatedAt: time } })
-      } catch (revisionError) {
-        // The check-in itself is already durable; a missed revision only
-        // causes the client to refresh one poll later.
-        console.warn('[createCheckin] revision update failed:', revisionError.message)
-      }
-      if (shouldWriteTimeline) await appendOrderTimeline(data.orderId, 'checkin', data.isBackfilled === true ? '服务打卡已补传' : '服务打卡', data.eventType, 'staff')
+      const identity = isSanitization ? ['sanitization', data.mediaFileId] : [data.orderId, clientRequestId]
+      const checkinId = clientRequestId || isSanitization
+        ? `photo_${crypto.createHash('sha256').update(JSON.stringify(identity)).digest('hex').slice(0, 32)}`
+        : `photo_${crypto.randomBytes(16).toString('hex')}`
+      const saved = await db.runTransaction(async tx => {
+        const current = await readOptionalDocument(tx, 'orders', data.orderId)
+        if (!current || current.staffOpenid !== order.staffOpenid) throw new Error('订单归属已变化，请刷新订单')
+        if (isSanitization) {
+          if (![ORDER_STATUS.ASSIGNED, ORDER_STATUS.ON_THE_WAY, ORDER_STATUS.DAY_COMPLETED].includes(current.status)) throw new Error('订单状态已变化，请刷新订单')
+          const before = getNextPendingServiceSession(order)
+          const next = getNextPendingServiceSession(current)
+          if (!next || Number(next.index) !== Number(before?.index) || toTimeValue(next.startTime) !== toTimeValue(before?.startTime) || !await canStartOrderSession(current, next)) throw new Error('服务场次已变化，请刷新订单')
+        } else {
+          if (current.status !== ORDER_STATUS.IN_SERVICE) throw new Error('仅服务中可打卡，订单状态已变化')
+          // Other photos may change during moderation; only the service itself
+          // must still be the one captured before validation began.
+          assertServiceVisit(current, order)
+        }
+        const existing = await readOptionalDocument(tx, 'checkin_logs', checkinId)
+        if (existing) {
+          if (existing.orderId !== data.orderId || (isSanitization && existing.clientRequestId !== clientRequestId)) throw new Error('消毒照片已使用，请重新现场拍照')
+          return { checkin: existing, created: false }
+        }
+        const photos = await readDocuments(tx, db.command, 'checkin_logs', { orderId: data.orderId, eventType: data.eventType })
+        await tx.collection('checkin_logs').doc(checkinId).set({ data: checkin })
+        await tx.collection('orders').doc(data.orderId).update({ data: { checkinRevision: Number(current.checkinRevision || 0) + 1, updatedAt: time } })
+        return { checkin: { _id: checkinId, ...checkin }, created: true, shouldWriteTimeline: !photos.some(hasCheckinPhoto) }
+      })
+      const photoView = { ...saved.checkin, canDelete: !isSanitization && !saved.checkin.deletedAt && checkinMatchesVisit(saved.checkin, order) }
+      if (!saved.created) return photoView
+      if (saved.shouldWriteTimeline) await appendOrderTimeline(data.orderId, 'checkin', data.isBackfilled === true ? '服务打卡已补传' : '服务打卡', data.eventType, 'staff')
 
       const eventNameMap = {
         sanitization: '进门消毒',
@@ -302,40 +336,40 @@ module.exports = function createHandler(context) {
           actionType: data.eventType,
           actorRole: 'staff',
           unreadForClient: true,
-          idempotencyKey: `live_checkin_${created._id}`
+          idempotencyKey: `live_checkin_${checkinId}`
         })
       } catch (liveMsgErr) {
         console.error('[createCheckin] appendOrderClientMessage live_checkin error:', liveMsgErr.message)
       }
 
-      return { _id: created._id, ...checkin }
+      return photoView
     }
     if (action === 'deleteCheckin') {
       const { order } = await requireStaffOrder(openid, data.orderId, '仅订单员工可删除打卡照片')
       if (order.status !== 'in_service') throw new Error('仅服务中可删除打卡照片')
       const checkinId = safeText(data.checkinId).trim()
       if (!checkinId) throw new Error('请选择要删除的照片')
-      const checkinRes = await db.collection('checkin_logs').doc(checkinId).get().catch(() => ({ data: null }))
-      const checkin = checkinRes && checkinRes.data
-      if (!checkin || checkin.orderId !== data.orderId) throw new Error('打卡照片不存在')
-      if (checkin.eventType === 'sanitization') throw new Error('服务前消毒凭证不可删除')
-      if (checkin.deletedAt) return { _id: data.checkinId, deletedAt: checkin.deletedAt }
-      const time = now()
-      await db.collection('checkin_logs').doc(data.checkinId).update({ data: { deletedAt: time, deletedByOpenid: openid, updatedAt: time } })
-      try {
-        const revision = db.command && typeof db.command.inc === 'function'
-          ? db.command.inc(1)
-          : Number(order.checkinRevision || 0) + 1
-        await db.collection('orders').doc(data.orderId).update({ data: { checkinRevision: revision, updatedAt: time } })
-      } catch (revisionError) {
-        console.warn('[deleteCheckin] revision update failed:', revisionError.message)
-      }
-      return { _id: data.checkinId, deletedAt: time }
+      return db.runTransaction(async tx => {
+        const current = await readOptionalDocument(tx, 'orders', data.orderId)
+        if (!current || current.status !== ORDER_STATUS.IN_SERVICE || current.staffOpenid !== order.staffOpenid) throw new Error('订单状态或归属已变化，仅服务中可删除打卡照片')
+        assertServiceVisit(current, order)
+        const checkin = await readOptionalDocument(tx, 'checkin_logs', checkinId)
+        if (!checkin || checkin.orderId !== data.orderId) throw new Error('打卡照片不存在')
+        if (checkin.eventType === 'sanitization') throw new Error('服务前消毒凭证不可删除')
+        if (!checkinMatchesVisit(checkin, current)) throw new Error('仅可删除本次服务场次的打卡照片')
+        if (checkin.deletedAt) return { _id: checkinId, deletedAt: checkin.deletedAt }
+        const time = now()
+        await tx.collection('checkin_logs').doc(checkinId).update({ data: { deletedAt: time, deletedByOpenid: openid, updatedAt: time } })
+        await tx.collection('orders').doc(data.orderId).update({ data: { checkinRevision: Number(current.checkinRevision || 0) + 1, updatedAt: time } })
+        return { _id: checkinId, deletedAt: time }
+      })
     }
     if (action === 'listOrderCheckins') {
-      await getOrderForAccess(openid, data.orderId)
+      const { user, order } = await getOrderForAccess(openid, data.orderId)
       const logs = await readScopedDocuments('checkin_logs', { orderId: data.orderId }, 'recordedAt', 'asc')
-      return logs.filter(isActiveCheckin)
+      const canEdit = user.roles.includes('staff') && (order.staffOpenid === openid || order.staffUserId === user._id) && order.status === ORDER_STATUS.IN_SERVICE
+      return logs.filter(isActiveCheckin).map(item => ({ ...item,
+        canDelete: canEdit && item.eventType !== 'sanitization' && checkinMatchesVisit(item, order) }))
     }
     throw new Error('未知 checkin 操作')
   }

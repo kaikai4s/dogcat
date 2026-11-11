@@ -52,8 +52,8 @@ function buildCalendarCells(monthKey, days, selectedDay) {
   const [yearText, monthText] = String(monthKey || '').split('-')
   const year = Number(yearText)
   const month = Number(monthText)
-  const firstDay = new Date(year, month - 1, 1)
-  const offset = (firstDay.getDay() + 6) % 7
+  const firstDay = new Date(Date.UTC(year, month - 1, 1))
+  const offset = (firstDay.getUTCDay() + 6) % 7
   const cells = []
   for (let i = 0; i < offset; i += 1) cells.push({ empty: true, id: `empty-${i}` })
   days.forEach((item) => {

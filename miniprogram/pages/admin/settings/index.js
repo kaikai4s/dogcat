@@ -1,3 +1,4 @@
+const { formatBeijingDate } = require('../../../utils/format')
 const { callFunction, showError, setCachedSystemSettings, getCloudEnv } = require('../../../utils/cloud')
 const { uploadImage } = require('../../../utils/image-upload')
 const { subscriptionTemplateIssue } = require('../../../utils/subscription-options')
@@ -589,7 +590,7 @@ Page({
     quizEditorId: '',
     requiredItemsText: '',
     sceneReportInfosText: '[]',
-    todayDate: new Date().toISOString().slice(0, 10),
+    todayDate: formatBeijingDate(),
     newDateRule: { date: '', name: '', surcharge: '' },
     newTimeSlotRule: { startTime: '07:00', endTime: '09:00', name: '', surcharge: '' },
     settings: {

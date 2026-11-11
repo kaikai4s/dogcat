@@ -1,5 +1,5 @@
 const { callFunction, showError, ensureLogin } = require('../../../utils/cloud')
-const { formatDateTime } = require('../../../utils/format')
+const { formatDateTime, parseBeijingDate } = require('../../../utils/format')
 const clientNav = require('../../../utils/client-nav')
 const loadMessageUnread = clientNav.loadMessageUnread || (() => Promise.resolve())
 const refreshUnread = clientNav.refreshUnread || (() => Promise.resolve())
@@ -16,8 +16,7 @@ function pageList(result) {
 
 function messageTimeValue(thread = {}) {
   const source = thread.lastMessageAt || thread.updatedAt || thread.createdAt
-  const time = source instanceof Date ? source.getTime() : new Date(source || 0).getTime()
-  return Number.isFinite(time) ? time : 0
+  return parseBeijingDate(source)?.getTime() || 0
 }
 
 function sortThreads(threads = []) {

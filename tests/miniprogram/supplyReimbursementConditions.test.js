@@ -11,6 +11,7 @@ function settingsPage() {
     Page(config) { page = config },
     wx: { showToast() {} },
     require(name) {
+      if (name.endsWith('/format')) return require('../../miniprogram/utils/format')
       if (name.endsWith('/subscription-options')) return require('../../miniprogram/utils/subscription-options')
       if (name.endsWith('/payment-config')) return require('../../miniprogram/pages/admin/settings/payment-config')
       return {

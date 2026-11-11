@@ -84,6 +84,7 @@ test('admin can republish order as urgent with adjusted reward, modified time & 
     orders: [
       {
         _id: 'order_urgent_1',
+        paymentStatus: 'paid',
         orderNo: 'O20260922002',
         serviceType: 'walk',
         serviceSummary: '上门遛狗服务',
@@ -695,6 +696,7 @@ test('admin can republish already-urgent order when 2nd staff defaults, blocking
     orders: [
       {
         _id: 'order_multi_urgent',
+        paymentStatus: 'paid',
         orderNo: 'O20260928009',
         serviceType: 'walk',
         serviceSummary: '上门遛狗服务',

@@ -6,7 +6,7 @@ module.exports = function createService({
     const startText = safeText(data.startDate).trim()
     const endText = safeText(data.endDate).trim()
     const start = startText ? parseDateValue(`${startText} 00:00:00`) : null
-    const end = endText ? parseDateValue(`${endText} 23:59:59`) : null
+    const end = endText ? parseDateValue(`${endText} 23:59:59.999`) : null
     return { start, end, startDate: startText, endDate: endText }
   }
 
@@ -52,7 +52,7 @@ module.exports = function createService({
 
   function messageTimeValue(thread = {}) {
     const source = thread.lastMessageAt || thread.updatedAt || thread.createdAt
-    const time = source instanceof Date ? source.getTime() : new Date(source || 0).getTime()
+    const time = (parseDateValue(source) || new Date(0)).getTime()
     return Number.isFinite(time) ? time : 0
   }
 
