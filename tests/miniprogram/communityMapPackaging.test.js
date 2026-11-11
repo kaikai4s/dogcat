@@ -8,6 +8,15 @@ const manifest = JSON.parse(fs.readFileSync(path.join(root, 'app.json'), 'utf8')
 const packages = manifest.subpackages.map(item => path.resolve(root, item.root)).sort((a, b) => b.length - a.length)
 const owner = file => packages.find(directory => file.startsWith(directory + path.sep)) || root
 
+test('WeChat enables syntax conversion and the reported admin map files avoid unsupported question-mark operators', () => {
+  const config = require('../../project.config.json')
+  assert.equal(config.setting.es6, true)
+  assert.equal(config.setting.enhance, true)
+  for (const name of ['index.js', 'location.js']) {
+    assert.doesNotMatch(fs.readFileSync(path.join(root, 'pages/admin/community-map', name), 'utf8'), /\?\?|\?\./)
+  }
+})
+
 test('map utilities stay out of the main package and static imports respect subpackage boundaries', () => {
   assert.equal(fs.existsSync(path.join(root, 'utils/community-map.js')), false)
   assert.equal(owner(path.join(root, 'pages/common/community-map/utils.js')), path.join(root, 'pages/common/community-map'))

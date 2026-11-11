@@ -1,0 +1,12 @@
+Create a polished eight-frame WALK CYCLE of the reference golden boy, in a 4-column, 2-row sprite sheet. The reference is the character IDENTITY only. Draw all eight NEW complete poses. Maintain his exact body proportions, golden hairstyle, blank luminous face, ivory blouse, loose trousers, gold knee boots, star clasp, cape and neck ribbon. Pale ivory hands with natural fingers and smoothly joined wrists.
+Fixed camera: front three-quarter view, facing diagonally screen lower-left. One full LEFT-RIGHT gait cycle, in place, equal timing. IMPORTANT: frames 1 and 5 must show OPPOSITE leading legs, NOT the same leg bent in all frames. The near leg is the leg on the viewer's RIGHT when standing still.
+Frame 1: NEAR leg extends forward toward lower-left, heel on ground; FAR leg trails to upper-right, toe on ground. NEAR arm swings backward toward screen right; FAR arm forward toward screen left.
+Frame 2: weight settles onto near foot, far heel lifts, knees relaxed.
+Frame 3: near leg supports almost straight, far foot swings through underneath hips with slight clearance.
+Frame 4: far foot reaches forward, near heel starts to rise.
+Frame 5: FAR leg extends forward toward lower-left, heel on ground; NEAR leg trails to upper-right, toe on ground. NEAR arm now swings forward toward screen left; FAR arm swings backward toward screen right. This is the opposite of frame 1.
+Frame 6: weight settles onto far foot, near heel lifts.
+Frame 7: far leg supports almost straight, near foot swings through underneath hips.
+Frame 8: near foot reaches forward toward frame 1, far heel starts to rise.
+Quiet natural short strides, small torso bob, continuous shoulder-elbow-wrist-hand anatomy, soft delayed cape flutter. No high knees, crouching, running, tiptoeing, stiff arms or repeated poses. Hands remain visible, no heavy dark lines. Head and costume remain consistent.
+EXACT layout 4 columns x 2 rows. Each equal cell contains ONE full figure centered on the same pelvis position. Figure height is ONLY 75 percent of cell height, with at least 12 percent empty margin above head and below boots. Uniform scale in all cells, common ground level, no body parts touch cell edges. Fine detailed soft illustration matching reference. Genuine transparent background; no floor, shadows, text, labels, cell borders or checkerboard. A complete freshly drawn coherent cycle, not duplicated copies or cut-and-paste limbs.

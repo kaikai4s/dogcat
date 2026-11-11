@@ -44,9 +44,10 @@ const adminSections = [
     ]
   },
   {
-    title: '宠物庄园',
+    title: '宠物庄园与纪念园',
     desc: '拼单、宠物状态、地面与庄园素材',
     items: [
+      { icon: 'ri-leaf-line', title: '纪念碑申请审核', desc: '建碑申请、审核通过与驳回', url: '/pages/admin/memorial/index' },
       { icon: 'ri-home-heart-line', title: '庄园规则与配置', desc: '拼单优惠、猫狗状态与排泄规则', url: '/pages/admin/playground/index' },
       { icon: 'ri-palette-line', title: '乐园形象定制', desc: '照片申请与专属形象发布', url: '/pages/admin/playground-customizations/index' },
       { icon: 'ri-plant-line', title: '农作物管理', desc: '装饰素材、生长阶段与会员解锁', url: '/pages/admin/playground-crops/index' },
@@ -165,6 +166,7 @@ Page({
     this._dashboardRequest = (this._dashboardRequest || 0) + 1
     this._mallRequest = (this._mallRequest || 0) + 1
     this._communityRequest = (this._communityRequest || 0) + 1
+    this._memorialRequest = (this._memorialRequest || 0) + 1
     this._notificationRequest = (this._notificationRequest || 0) + 1
   },
 
@@ -182,16 +184,25 @@ Page({
       platformFinanceStats: [],
       mallPendingCount: null,
       communityPendingCount: null,
+      memorialPendingCount: 0,
       urgentNotice: null,
       unreadNotificationCount: 0,
       staffAuditTodo: null
     })
     const requests = []
     if (can(access, 'adminMall.listOrders')) requests.push(this.loadMallPending())
+    if (can(access, 'memorial.listAdmin')) requests.push(this.loadMemorialPending())
     if (can(access, 'communityMap.listAdmin')) requests.push(this.loadCommunityPending())
     if (can(access, 'admin.dashboard')) requests.push(this.loadDashboard())
     if (can(access, 'admin.getAdminNotificationBadge')) requests.push(this.loadNotifications())
     return Promise.all(requests)
+  },
+
+  loadMemorialPending() {
+    const version = this._memorialRequest = (this._memorialRequest || 0) + 1
+    return callFunction('memorial', 'listAdmin', { pendingCountsOnly: true }).then(result => {
+      if (version === this._memorialRequest) this.setData({ memorialPendingCount: result.pendingCount })
+    }).catch(error => { if (version === this._memorialRequest) showError(error) })
   },
 
   loadMallPending() {

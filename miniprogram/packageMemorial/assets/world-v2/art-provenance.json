@@ -1,0 +1,62 @@
+{
+  "propsSourceSha256": "2aadfb3daf03ea706f90f006805202c911a78c86a6fac7c301058090a45a6fff",
+  "props": {
+    "tree": {
+      "sourceBox": [
+        0,
+        5,
+        405,
+        416
+      ],
+      "index": 0
+    },
+    "shrub": {
+      "sourceBox": [
+        1,
+        14,
+        416,
+        406
+      ],
+      "index": 1
+    },
+    "fountain": {
+      "sourceBox": [
+        0,
+        7,
+        413,
+        370
+      ],
+      "index": 2
+    },
+    "gazebo": {
+      "sourceBox": [
+        27,
+        0,
+        392,
+        379
+      ],
+      "index": 3
+    },
+    "cottage": {
+      "sourceBox": [
+        14,
+        37,
+        411,
+        381
+      ],
+      "index": 4
+    },
+    "memorial": {
+      "sourceBox": [
+        14,
+        66,
+        404,
+        368
+      ],
+      "index": 5
+    }
+  },
+  "grassSourceSha256": "a14e259f20aae289ca658f46f1cbda457112a36a4b8c660da6b75d9749d19860",
+  "grassMethod": "uniform generated orthographic texture, downsampled, desaturated and mirrored",
+  "prompt": "docs/design/pet-memorial/orthographic-props-prompt.txt"
+}

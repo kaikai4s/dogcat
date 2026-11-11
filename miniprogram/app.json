@@ -161,6 +161,11 @@
       ]
     },
     {
+      "root": "packageMemorial",
+      "name": "memorial",
+      "pages": ["pages/garden"]
+    },
+    {
       "root": "packagePlayground",
       "name": "playground",
       "pages": [
@@ -198,6 +203,7 @@
       "root": "pages/admin",
       "name": "admin",
       "pages": [
+        "memorial/index",
         "community-map/index",
         "home/index",
         "users/list/index",

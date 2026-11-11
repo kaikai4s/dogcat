@@ -78,6 +78,10 @@ Page({
     wx.navigateTo({url:'/packagePlayground/pages/customize'})
   },
 
+  openMemorial() {
+    wx.navigateTo({ url: '/packageMemorial/pages/garden' })
+  },
+
   customizePet() {
     const pet=this.data.selectedPet
     if(pet)wx.navigateTo({url:'/packagePlayground/pages/customize?petId='+encodeURIComponent(pet._id)})

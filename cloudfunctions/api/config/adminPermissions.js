@@ -1,4 +1,5 @@
 const definitions = [
+  ['memorial', '纪念园审核', 'memorial', 'listAdmin:查看建碑申请 review:审核建碑申请'],
   ['communityMap', '小区地图', 'communityMap', 'listAdmin:查看公共小区 saveAdmin:维护公共小区 deleteAdmin:删除公共小区 rejectApplication:驳回新增申请'],
   ['buildings','乐园建筑与土地','playgroundBuilding','list:查看配置 prepareUpload:上传建筑素材 save:保存建筑 remove:删除建筑 savePlotAccess:配置土地等级'],
   ['farm', '农作物管理', 'playgroundFarm', 'list:查看农作物 prepareUpload:上传阶段素材 save:保存及上下架 remove:删除植物'],

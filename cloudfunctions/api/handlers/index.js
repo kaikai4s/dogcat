@@ -1,4 +1,5 @@
 const loaders = {
+  memorial: () => require('./memorial'),
   communityMap: () => require('./communityMap'),
   configMigration: () => require('./configMigration'),
   system: () => require('./system'),

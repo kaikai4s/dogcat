@@ -29,7 +29,7 @@ Page({
     this.setData({ view: e.currentTarget.dataset.view, rows: [], hasMore: false, total: 0 }); return this.load()
   },
   inputKeyword(e) { this._keyword = e.detail.value },
-  search() { this.setData({ keyword: String(this._keyword ?? this.data.keyword).trim(), rows: [], total: 0, hasMore: false }); return this.load() },
+  search() { this.setData({ keyword: String(this._keyword == null ? this.data.keyword : this._keyword).trim(), rows: [], total: 0, hasMore: false }); return this.load() },
   changeCity(e) {
     const values = e.detail.value || []
     const city = !values[1] || values[1] === '市辖区' || values[1] === '县' ? values[0] : values[1]
@@ -53,7 +53,7 @@ Page({
   },
   async editExisting(e) {
     const row = this.data.rows.find(item => item._id === e.currentTarget.dataset.id)
-    if (!row?.existingId || this.data.busy) return
+    if (!row || !row.existingId || this.data.busy) return
     const token = this._editToken = {}
     this.setData({ busy: true })
     try {
@@ -106,7 +106,7 @@ Page({
       if (this._closed || token !== this._formToken) return
       if (!validPoint(point)) throw new Error('请选择有效的小区公共入口')
       const fields = communityLocationFields(point)
-      const rawName = String(point?.name || '').trim()
+      const rawName = String((point && point.name) || '').trim()
       const isGeneric = ['位置', '当前位置', '我的位置', '地图上的点'].includes(rawName)
       const chosenName = form.name || fields.name
       if (isGeneric && !chosenName) {
@@ -121,13 +121,13 @@ Page({
       this.setData({
         'form.latitude': fields.latitude,
         'form.longitude': fields.longitude,
-        'form.name': chosenName || (point?.address ? point.address.split(/[市区县街道路]/).pop() : '') || '未命名小区',
+        'form.name': chosenName || (point && point.address ? point.address.split(/[市区县街道路]/).pop() : '') || '未命名小区',
         'form.city': city,
         'form.district': fields.district || (city === form.city ? form.district : ''),
         'form.confirmPublic': false
       })
     } catch (error) {
-      const msg = String(error?.errMsg || error?.message || '')
+      const msg = String((error && (error.errMsg || error.message)) || '')
       const isCancel = /cancel/i.test(msg) || msg.trim() === 'chooseLocation:fail'
       if (!this._closed && !isCancel) {
         if (/auth deny|permission denied/i.test(msg)) {
@@ -146,11 +146,11 @@ Page({
   },
   async save() {
     const form = this.data.form
-    if (this.data.busy || this.data.choosing || !form?.confirmPublic) return
+    if (this.data.busy || this.data.choosing || !form || !form.confirmPublic) return
     if (!form.name.trim() || !form.city.trim() || !validPoint(form)) { showError(new Error('请选择公共入口，并核对小区名称和城市')); return }
     const payload = { ...form, aliases: form.aliasesText.split(/[\n,，]/).map(v => v.trim()).filter(Boolean) }
     const fingerprint = JSON.stringify(payload)
-    if (fingerprint !== this._saveRequest?.fingerprint) this._saveRequest = { fingerprint, requestId: createClientRequestId('community') }
+    if (!this._saveRequest || fingerprint !== this._saveRequest.fingerprint) this._saveRequest = { fingerprint, requestId: createClientRequestId('community') }
     this.setData({ busy: true })
     try {
       await callFunction('communityMap', 'saveAdmin', { ...payload, requestId: this._saveRequest.requestId })
@@ -159,8 +159,8 @@ Page({
     } catch (error) { if (!this._closed) showError(error) }
     finally { if (!this._closed) this.setData({ busy: false }) }
   },
-  canRejectApplications() { return !!(this.data.adminSuper || this.data.adminPermissions?.communityMap_rejectApplication) },
-  canDeleteCommunity() { return !!(this.data.adminSuper || this.data.adminPermissions?.communityMap_deleteAdmin) },
+  canRejectApplications() { return !!(this.data.adminSuper || (this.data.adminPermissions && this.data.adminPermissions.communityMap_rejectApplication)) },
+  canDeleteCommunity() { return !!(this.data.adminSuper || (this.data.adminPermissions && this.data.adminPermissions.communityMap_deleteAdmin)) },
   async deleteCommunity(e) {
     if (this._closed || this.data.busy || this.data.form || this.data.rejectForm || !this.canDeleteCommunity()) return
     const row = this.data.rows.find(item => item._id === e.currentTarget.dataset.id)
@@ -183,14 +183,14 @@ Page({
   rejectCandidate(e) {
     if (this._closed || this.data.busy || this.data.form || this.data.rejectForm || !this.canRejectApplications()) return
     const row = this.data.rows.find(item => item._id === e.currentTarget.dataset.id)
-    if (this.data.view !== 'pending' || !row?.applicationIds?.length) return
+    if (this.data.view !== 'pending' || !row || !row.applicationIds || !row.applicationIds.length) return
     this.setData({ rejectForm: { name: row.name, applicationIds: [...row.applicationIds], reason: '' } })
   },
   inputRejectReason(e) { if (!this.data.busy && this.data.rejectForm) this.setData({ 'rejectForm.reason': e.detail.value }) },
   closeReject() { if (!this.data.busy) this.setData({ rejectForm: null }) },
   async submitReject() {
     const form = this.data.rejectForm
-    if (this._closed || this.data.busy || !form?.applicationIds?.length || !this.canRejectApplications()) return
+    if (this._closed || this.data.busy || !form || !form.applicationIds || !form.applicationIds.length || !this.canRejectApplications()) return
     const reason = String(form.reason || '').trim()
     if (!reason || reason.length > 200) { showError(new Error('请填写驳回原因，最多200字')); return }
     this.setData({ busy: true })

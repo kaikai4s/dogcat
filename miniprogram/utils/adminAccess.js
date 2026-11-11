@@ -1,4 +1,5 @@
 const routes = {
+  'memorial/index': ['memorial.listAdmin'],
   'community-map/index': ['communityMap.listAdmin'],
   'config-migration/index': ['owner'],
   'playground-buildings/index':['playgroundBuilding.list'],

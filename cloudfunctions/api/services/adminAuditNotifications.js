@@ -20,6 +20,7 @@ async function isAuditTargetHandled(db, auditType, targetId) {
     supply_reimbursement: 'staff_supply_reimbursements',
     deposit_refund: 'staff_deposits',
     community_application: 'platform_configs',
+    memorial_application: 'platform_configs',
     appearance_customization: 'pet_playground_appearance_requests',
     incident: 'order_incidents',
     mall_after_sale: 'mall_orders',
@@ -37,6 +38,7 @@ async function isAuditTargetHandled(db, auditType, targetId) {
   if (auditType === 'withdraw') return doc.status !== 'pending'
   if (auditType === 'supply_reimbursement') return doc.status !== 'pending'
   if (auditType === 'deposit_refund') return doc.refundStatus !== 'requested'
+  if (auditType === 'memorial_application') return doc.status !== 'pending'
   if (auditType === 'community_application') return doc.status !== 'pending'
   if (auditType === 'appearance_customization') return !['pending', 'processing'].includes(doc.status)
   if (auditType === 'incident') return doc.status !== 'open'

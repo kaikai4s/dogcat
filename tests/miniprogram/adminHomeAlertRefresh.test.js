@@ -217,3 +217,17 @@ test('mall-only administrator sees pending mall order badge without the dashboar
   const entry = page.data.adminSections.flatMap(group => group.items).find(item => item.url === '/pages/admin/mall/orders/index')
   assert.equal(entry.pendingCount, 7)
 })
+
+test('memorial pending count coexists with notification refresh and ignores responses after leaving', async () => {
+  const { page, requests } = setup({ superAdmin: false, permissions: ['memorial.listAdmin', 'admin.getAdminNotificationBadge'] })
+  const pending = page.onShow()
+  requests.find(r => r.module === 'memorial').resolve({ pendingCount: 3 })
+  requests.find(r => r.action === 'getAdminNotificationBadge').resolve({ unreadCount: 1 })
+  await pending
+  assert.equal(page.data.memorialPendingCount, 3)
+  const stale = page.loadMemorialPending()
+  page.onHide()
+  requests.at(-1).resolve({ pendingCount: 9 })
+  await stale
+  assert.equal(page.data.memorialPendingCount, 3)
+})
