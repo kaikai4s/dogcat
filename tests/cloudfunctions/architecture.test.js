@@ -71,7 +71,8 @@ test('all business modules resolve explicit dependencies and reject inherited ro
   const registry = createRegistry(checked)
   const directory = path.resolve(__dirname, '../../cloudfunctions/api/handlers')
   const modules = fs.readdirSync(directory).filter(name => name.endsWith('.js') && name !== 'index.js')
-  assert.equal(modules.length, 31)
+  assert.equal(modules.length, 32)
+  assert.ok(modules.includes('memorial.js'))
   for (const file of modules) {
     const name = path.basename(file, '.js')
     assert.equal(typeof registry(name), 'function', name)

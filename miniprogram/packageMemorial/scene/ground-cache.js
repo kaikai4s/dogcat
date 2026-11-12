@@ -1,22 +1,28 @@
 const { drawGround } = require('./terrain')
 const M = require('./world-template')
+function wideView(view, scale) {
+  const cols = Math.max(0, Math.min(M.WIDTH / M.CHUNK, Math.ceil(view.right / M.CHUNK)) - Math.max(0, Math.floor(view.left / M.CHUNK)))
+  const rows = Math.max(0, Math.min(M.HEIGHT / M.CHUNK, Math.ceil(view.bottom / M.CHUNK)) - Math.max(0, Math.floor(view.top / M.CHUNK)))
+  return scale < .5 || cols * rows > 24
+}
 // Render expensive paving once into bounded native offscreen tiles.
 class GroundCache {
   constructor(createCanvas) { this.createCanvas = createCanvas; this.tiles = new Map(); this.overview = null }
   draw(c, view, grass, scale) {
     if (!this.createCanvas) { drawGround(c, view, grass); return }
     try {
-      if (scale < .5) {
+      if (wideView(view, scale)) {
         if (!this.overview) {
-          const canvas = this.createCanvas(1536, 1152), ctx = canvas.getContext('2d')
-          ctx.scale(.5, .5); drawGround(ctx, { left: 0, top: 0, right: M.WIDTH, bottom: M.HEIGHT }, grass)
+          const ratio = Math.min(1536 / M.WIDTH, 1152 / M.HEIGHT)
+          const canvas = this.createCanvas(Math.ceil(M.WIDTH * ratio), Math.ceil(M.HEIGHT * ratio)), ctx = canvas.getContext('2d')
+          ctx.scale(ratio, ratio); drawGround(ctx, { left: 0, top: 0, right: M.WIDTH, bottom: M.HEIGHT }, grass)
           this.overview = canvas
         }
         c.drawImage(this.overview, 0, 0, M.WIDTH, M.HEIGHT); return
       }
       const size = 384, wanted = new Set()
-      for (let y = Math.max(0, Math.floor(view.top / size)); y < Math.min(6, Math.ceil(view.bottom / size)); y++) {
-        for (let x = Math.max(0, Math.floor(view.left / size)); x < Math.min(8, Math.ceil(view.right / size)); x++) {
+      for (let y = Math.max(0, Math.floor(view.top / size)); y < Math.min(Math.ceil(M.HEIGHT / size), Math.ceil(view.bottom / size)); y++) {
+        for (let x = Math.max(0, Math.floor(view.left / size)); x < Math.min(Math.ceil(M.WIDTH / size), Math.ceil(view.right / size)); x++) {
           const key = x + '-' + y; wanted.add(key)
           if (!this.tiles.has(key)) {
             const canvas = this.createCanvas(size, size), ctx = canvas.getContext('2d')
@@ -34,4 +40,4 @@ class GroundCache {
   }
   destroy() { this.tiles.clear(); this.overview = null }
 }
-module.exports = { GroundCache }
+module.exports = { GroundCache, wideView }

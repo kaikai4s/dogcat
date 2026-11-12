@@ -2,10 +2,16 @@ const fs = require('fs')
 const path = require('path')
 const M = require('../../miniprogram/packageMemorial/scene/world-template')
 const G = require('../../miniprogram/packageMemorial/scene/geometry')
-const root = path.resolve(__dirname, '../../miniprogram/packageMemorial/assets/world-v2')
+const base = require('./memorial-world-base-v2.json')
+const root = path.resolve(__dirname, '../../miniprogram/packageMemorial/assets', M.CHUNK_DIRECTORY, '..')
 fs.mkdirSync(path.join(root, 'chunks'), { recursive: true })
-const objects = M.landmarks.map(p => ({ ...p }))
-function add(kind, x, y) { objects.push({ id: kind + ':' + x + ':' + y, kind, x, y }) }
+const objects = base.objects.map(p => ({ ...p }))
+objects.push(...M.landmarks.filter(p => !objects.some(old => old.id === p.id)))
+function add(kind, x, y) {
+  if (x < base.width && y < base.height) return
+  if (objects.some(p => p.kind === kind && p.x === x && p.y === y)) return
+  objects.push({ id: kind + ':' + x + ':' + y, kind, x, y })
+}
 for (let x = 150; x < M.WIDTH - 100; x += 180) { add('tree', x, 140); add('tree', x, M.HEIGHT - 116) }
 for (let y = 320; y < M.HEIGHT - 220; y += 180) { add('tree', 130, y); add('tree', M.WIDTH - 130, y) }
 for (let x = 330; x < M.WIDTH - 200; x += 256) for (let y = 350; y < M.HEIGHT - 220; y += 256) {
@@ -36,3 +42,9 @@ console.log(`Built ${total.length} chunks, ${objects.length} objects, ${cells.le
 const index = { version: M.version, objects, cells: cells.map(c => ({ id: c.id, lawn: M.lawns.find(l => G.inside(c.corners[0], l.polygon)).name, x: c.corners[0].x + 20, y: c.corners[0].y + 16 })) }
 fs.writeFileSync(path.resolve(__dirname, '../../miniprogram/packageMemorial/scene/world-index.js'), 'module.exports = ' + JSON.stringify(index) + '\n')
 fs.writeFileSync(path.resolve(__dirname, '../../cloudfunctions/api/config/memorial-world.json'), JSON.stringify(index))
+
+// Rebuild enlarged application footprints whenever scene obstacles change.
+require('./build-memorial-plots')
+
+// Presence validation uses the same scene boundary as movement.
+fs.writeFileSync(path.resolve(__dirname, '../../cloudfunctions/api/config/memorial-presence.json'), JSON.stringify({ version: M.version, minX: Math.min(...M.boundary.map(p => p.x)), maxX: Math.max(...M.boundary.map(p => p.x)), minY: Math.min(...M.boundary.map(p => p.y)), maxY: Math.max(...M.boundary.map(p => p.y)) }, null, 2) + '\n')

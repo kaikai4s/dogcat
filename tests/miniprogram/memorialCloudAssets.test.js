@@ -18,8 +18,11 @@ function fixture() {
 }
 
 test('versioned runtime keys route to the existing dev/production roots and reject unknown paths', () => {
-  assert.equal(FILES.length, 70)
-  assert.equal(new Set(FILES).size, 70)
+  const world = require('../../miniprogram/packageMemorial/scene/world-template')
+  assert.equal(FILES.filter(key => key.startsWith(world.CHUNK_DIRECTORY + '/')).length, world.WIDTH / world.CHUNK * world.HEIGHT / world.CHUNK)
+  assert.ok(FILES.includes('seasons-v1/foliage.png'))
+  assert.equal(new Set(FILES).size, FILES.length)
+  for (const key of FILES) assert.ok(fs.existsSync(require('node:path').resolve(__dirname, '../../miniprogram/packageMemorial/assets', key)), key)
   const uploadedGarden = 'cloud://cloud1-5gnhqn4t0554c1d9.636c-cloud1-5gnhqn4t0554c1d9-1310870236/memorial-cloud-v1/packageMemorial/v1/garden.jpg'
   assert.equal(fileID('garden.jpg', 'cloud1-5gnhqn4t0554c1d9'), uploadedGarden)
   for (const key of FILES) assert.equal(fileID(key, 'cloud1-5gnhqn4t0554c1d9'), uploadedGarden.replace(/garden\.jpg$/, key))
@@ -125,11 +128,15 @@ test('native page injects the cloud resolver into both images and audio; packer 
   const resolver = () => Promise.resolve('wxfile://cloud')
   resolver.dispose = () => {}
   vm.runInNewContext(fs.readFileSync(require.resolve('../../miniprogram/packageMemorial/pages/garden'), 'utf8'), {
-    Page: definition => { page = definition }, wx: { getStorageSync() {} },
+    setTimeout, clearTimeout, Page: definition => { page = definition }, wx: { getStorageSync() {} },
     require: name => ({
       '../scene/cloud-assets': { createCloudAssets: () => resolver, createCloudChunks: () => () => Promise.resolve({}) },
       '../scene/sound': { GardenSound: class { constructor(create, error, resolve) { soundResolver = resolve } pause() {} configure() {} } },
       '../scene/gestures': { MapGestures: class {} },
+      '../scene/world-index': require('../../miniprogram/packageMemorial/scene/world-index'),
+      '../scene/plot-layout': require('../../miniprogram/packageMemorial/scene/plot-layout'),
+      '../scene/terrain': require('../../miniprogram/packageMemorial/scene/terrain'),
+      '../scene/plot-number': require('../../miniprogram/packageMemorial/scene/plot-number'),
       '../scene/engine': { MemorialScene: class { constructor(canvas, options) { sceneOptions = options }
         load() { return new Promise(() => {}) } } }
     })[name]

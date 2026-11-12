@@ -18,6 +18,7 @@ const sound = new GardenSound(() => {
 })
 function updateView(view) {
   $('overview').textContent = view.overview ? '返回散步 ↘' : '大地图 ↗'
+  if (!view.overview) { $('grid').textContent = '查看时光小筑位置'; $('note').hidden = true }
   $('follow').hidden = view.following || view.overview
   $('mapHelp').hidden = !view.overview
   $('walk').style.visibility = view.overview ? 'hidden' : 'visible'
@@ -29,7 +30,7 @@ const scene = new MemorialScene(canvas, { width: canvas.clientWidth, height: can
   onNavigation: state => { $('navigation').hidden = !state.active && !state.arrived; $('navText').textContent = (state.arrived ? '已到达：' : '跟随箭头：') + state.name },
   dpr: devicePixelRatio, onTravel: distance => sound.travel(distance), onViewChange: updateView,
   loadChunk: async id => {
-    const response = await fetch('/packageMemorial/assets/world-v2/chunks/' + id + '.json')
+    const response = await fetch('/packageMemorial/assets/world-v3/chunks/' + id + '.json')
     if (!response.ok) throw new Error('附近场景暂时无法加载')
     return response.json()
   },
@@ -65,7 +66,7 @@ $('follow').onclick = () => { stop(); scene.followPlayer(); sound.chime() }
 $('grid').onclick = () => {
   if (!scene.overview) scene.toggleOverview()
   scene.showGrid = !scene.showGrid
-  $('grid').textContent = scene.showGrid ? '收起墓位' : '查看可申请墓位'
+  $('grid').textContent = scene.showGrid ? '收起位置' : '查看时光小筑位置'
   $('note').hidden = !scene.showGrid
   scene.draw(); sound.chime()
 }

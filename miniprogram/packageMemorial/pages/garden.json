@@ -5,5 +5,6 @@
   "backgroundColor": "#d9e3d1",
   "disableScroll": true,
   "pageOrientation": "auto",
-  "usingComponents": {}
+  "usingComponents": {},
+  "navigationStyle": "custom"
 }

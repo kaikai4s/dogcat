@@ -10,12 +10,30 @@ const rect = (x, y, w, h) => [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h },
 function canvasFixture() {
   const draws = [], callbacks = new Map(), loads = []
   let id = 0
-  const context = new Proxy({}, { get: (_, key) => (...args) => { if (key === 'drawImage') draws.push(args) }, set: () => true })
+  const context = new Proxy({}, { get: (target, key) => key in target ? target[key] : (...args) => { if (key === 'drawImage') draws.push(args) } })
   const canvas = { getContext: () => context, requestAnimationFrame: fn => { callbacks.set(++id, fn); return id },
     cancelAnimationFrame: id => callbacks.delete(id), createImage() { const img = {}; loads.push(img); return img } }
   return { canvas, draws, callbacks, loads }
 }
 function makeScene() { const f = canvasFixture(); return { ...f, scene: new MemorialScene(f.canvas, { width: 390, height: 740 }) } }
+
+test('portrait anchors in front of its memorial and depth-sorts against the walking avatar', () => {
+  const { scene, draws } = makeScene(), portrait = {}, actor = {}
+  scene.ready = true; scene.player = { x: 1536, y: 1432 }; scene.followPlayer()
+  scene.images['boy/idle-sw.png'] = actor
+  scene.memorials = [{ kind: 'memorial', x: 1536, y: 1430, portrait: { id: 'pet', url: 'signed' } }]
+  scene.portraits.get = () => portrait
+  scene.draw()
+  const image = draws.find(d => d[0] === portrait)
+  assert.deepEqual(image.slice(1), [1492, 1436 - 88 * .88, 88, 88])
+  assert.ok(draws.findIndex(d => d[0] === actor) < draws.findIndex(d => d[0] === portrait))
+  draws.length = 0; scene.player.y = 1440; scene.draw()
+  assert.ok(draws.findIndex(d => d[0] === actor) > draws.findIndex(d => d[0] === portrait))
+  draws.length = 0; scene.memorials[0].legacy = true; scene.draw()
+  const legacy = draws.find(d => d[0] === portrait)
+  assert.deepEqual(legacy.slice(1), [1511, 1433 - 50 * .88, 50, 50])
+  scene.destroy()
+})
 
 test('parallel projection preserves distances and sizes at every ground position', () => {
   for (const y of [0, 150, 450, 899]) for (const x of [-400, 0, 800, 1800]) {
@@ -126,7 +144,7 @@ test('overview disables movement and zoom/camera stay within the painting', () =
   scene.setInput(1, 1)
   assert.deepEqual(scene.input, { x: 0, y: 0 })
   scene.setZoom(100)
-  assert.ok(Math.abs(scene.zoom - 1.8) < 1e-8)
+  assert.ok(Math.abs(scene.overviewZoom - 1.8) < 1e-8)
   for (const p of [{ x: 0, y: 0 }, { x: 2000, y: 900 }]) {
     scene.player = p
     scene.updateCamera(1, true)
@@ -153,8 +171,8 @@ test('page does not start a hidden scene after asynchronous loading, resumes onc
     return q
   } }
   vm.runInNewContext(fs.readFileSync(require.resolve('../../miniprogram/packageMemorial/pages/garden'), 'utf8'), {
-    Page: value => { definition = value }, require: name => name === '../scene/engine' ? { MemorialScene: FakeScene } :
-      require('../../miniprogram/packageMemorial/scene/' + name.split('/').pop()), wx
+    setTimeout, clearTimeout, Page: value => { definition = value }, require: name => name === '../scene/engine' ? { MemorialScene: FakeScene } :
+      require('node:module').createRequire(require.resolve('../../miniprogram/packageMemorial/pages/garden'))(name), wx
   })
   const page = { ...definition, data: structuredClone(definition.data), setData(value) { Object.assign(this.data, value) } }
   page.onLoad(); page.onShow(); page.onReady(); page.onHide()
@@ -178,5 +196,63 @@ test('memorial is a separate package below the size budget with all sixteen atla
     const png = fs.readFileSync(path.join(root, 'assets', gender, action + '-' + dir + '.png'))
     assert.equal(png.readUInt32BE(16), 512)
     assert.equal(png.readUInt32BE(20), 256)
+  }
+})
+
+test('grid rendering keeps animation alive across plot selection, overview and return to walking', () => {
+  const { scene, callbacks } = makeScene()
+  scene.ready = true
+  scene.showGrid = true
+  scene.openOverview(require('../../miniprogram/packageMemorial/scene/world-index').cells[0])
+  scene.start()
+  const tick = time => {
+    const [id, fn] = callbacks.entries().next().value
+    callbacks.delete(id)
+    fn(time)
+    assert.equal(callbacks.size, 1, 'drawing must schedule the next frame')
+  }
+  tick(0); tick(16)
+  scene.followPlayer()
+  assert.equal(scene.showGrid, false)
+  tick(32)
+  scene.openOverview(); tick(48)
+  scene.toggleOverview(); tick(64)
+  assert.equal(scene.overview, false)
+  assert.equal(scene.scale, scene.zoom)
+  scene.destroy()
+  assert.equal(callbacks.size, 0)
+})
+
+test('remote avatars share cached atlases, depth-sort with the player and cull offscreen sprites', () => {
+  const { scene, draws } = makeScene()
+  scene.ready = true
+  for (const gender of ['boy', 'girl']) for (const action of ['walk', 'idle']) for (const dir of ['sw', 'se', 'nw', 'ne']) scene.images[gender + '/' + action + '-' + dir + '.png'] = { gender, action, dir }
+  const original = { ...scene.player }
+  scene.applyVisitors([{ id: 'near', epoch: 1, x: original.x, y: original.y - 20, gender: 'girl', direction: 'ne', moving: false, activity: 'remember' },
+    { id: 'far', epoch: 1, x: 100, y: 100, gender: 'girl', direction: 'ne', moving: false, activity: 'walk' }], [])
+  scene.step(.016); scene.draw()
+  const avatars = draws.filter(call => call[0].gender)
+  assert.equal(avatars.length, 2)
+  assert.equal(avatars[0][0].gender, 'girl')
+  assert.equal(avatars[1][0].gender, 'boy')
+  assert.deepEqual(scene.player, original)
+  scene.applyVisitors([], ['near', 'far']); scene.destroy()
+  assert.equal(scene.visitors.actors.size, 0)
+})
+
+test('low FPS scene frames keep remote playback on network time while local physics stays bounded', () => {
+  const { packet } = require('../fixtures/memorialPresenceSimulation')
+  for (const fps of [5, 10, 15]) {
+    const { scene } = makeScene()
+    let now = 0, next = 0, maxLag = 0
+    scene.visitors.now = () => now
+    for (let frame = 0; frame < fps * 40; frame++) {
+      now = frame * 1000 / fps
+      while (next <= now) { scene.visitors.apply([packet(next).row]); next += 250 }
+      scene.step(1 / fps)
+      if (now > 5000) maxLag = Math.max(maxLag, now - (scene.visitors.actors.get('other').x - 500) / .12)
+    }
+    assert.ok(maxLag < 1000, `${fps} FPS remote playback fell ${maxLag} ms behind`)
+    scene.destroy()
   }
 })

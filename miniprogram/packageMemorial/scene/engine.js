@@ -1,10 +1,19 @@
+const { portraitLayout, drawPortrait } = require('./memorial-portrait-layout')
+const { safePosition } = require('./saved-position')
+const { PortraitImages } = require('./portrait-images')
+const { Visitors } = require('./visitors')
 const G = require('./geometry')
 const layout = require('./layout')
 const { ChunkStream } = require('./chunks')
 const { drawGround, drawProp, propBox, drawPlan } = require('./terrain')
 const worldIndex = require('./world-index')
+const plotLayout = require('./plot-layout')
+const { plotNumber } = require('./plot-number')
 const { findRoute, clearLine } = require('./navigation')
-const { GroundCache } = require('./ground-cache')
+const { GroundCache, wideView } = require('./ground-cache')
+const { GardenEnvironment } = require('./environment')
+const { EnvironmentRenderer } = require('./environment-renderer')
+const { GrassRenderer } = require('./grass')
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n))
 const ASSETS = '/packageMemorial/assets/'
 
@@ -31,11 +40,27 @@ class MemorialScene {
     // Mini-program injects cloud downloads; explicit local adapter is for preview.
     this.resolveAsset = options.resolveAsset || (key => ASSETS + key)
     this.ctx = canvas.getContext('2d')
+    this.portraits = new PortraitImages(async url => {
+      const image = await loadImage(canvas, url)
+      // Keep large source PNGs out of the resident texture cache on supported devices.
+      if (options.createCanvas && !this.destroyed) {
+        const small = options.createCanvas(256, 256)
+        if (small) { small.getContext('2d').drawImage(image, 0, 0, 256, 256); return small }
+      }
+      return image
+    }, () => this.requestDraw(), options.onPortraitError || (() => {}))
     this.ground = new GroundCache(options.createCanvas)
+    this.grass = new GrassRenderer(options.createCanvas)
+    this.environment = new GardenEnvironment({ now: options.now, gardenId: options.gardenId, onChange: options.onEnvironmentChange })
+    this.atmosphere = new EnvironmentRenderer(options.createCanvas, options.gardenId)
+    this.effectsEnabled = options.effectsEnabled !== false
+    this.onEnvironmentAssetError = options.onEnvironmentAssetError || (() => {})
     this.map = layout
     this.cells = []
     this.objects = []
     this.memorials = []
+    this.visitors = new Visitors()
+    this.visitorLoads = {}
     this.route = []
     this.onNavigation = options.onNavigation || (() => {})
     this.onStreamChange = options.onStreamChange || (() => {})
@@ -45,7 +70,7 @@ class MemorialScene {
       this.onStreamChange(this.chunks.status())
       if (this.ready && !this.running) this.requestDraw()
     }) : null
-    this.player = Object.assign({}, layout.spawn)
+    this.player = safePosition(options.position) || Object.assign({}, layout.spawn)
     this.direction = 'sw'
     this.gender = options.gender === 'girl' ? 'girl' : 'boy'
     this.images = {}
@@ -57,9 +82,11 @@ class MemorialScene {
     this.onTravel = options.onTravel || (() => {})
     this.zoom = 1
     this.overview = false
+    this.overviewZoom = null
     this.showGrid = false
     this.walkPhase = 0
     this.idleTime = 0
+    this.waterTime = 0
     this.moving = false
     this.running = false
     this.destroyed = false
@@ -103,12 +130,24 @@ class MemorialScene {
       this.image(gender + '/' + action + '-' + dir + '.png')))))
   }
   async load() {
-    await Promise.all([this.image('world-v2/props.png'), this.image('world-v2/grass.jpg'), this.loadGender(this.gender),
+    await Promise.all([this.image('monuments-v1/atlas.png'), this.image('world-v2/props.png'), this.image('world-v2/grass.jpg'), this.loadGender(this.gender),
       this.chunks ? this.chunks.warm(this.viewBounds()) : Promise.resolve()])
     if (this.destroyed) return
     this.ready = true
+    this.loadEnvironmentAssets()
     this.requestDraw()
   }
+  loadEnvironmentAssets() {
+    if (this._environmentLoad) return this._environmentLoad
+    this._environmentLoad = this.image('seasons-v1/foliage.png').then(() => {
+      if (!this.destroyed) { this.onEnvironmentAssetError(''); this.requestDraw() }
+      return true
+    }).catch(() => { if (!this.destroyed) this.onEnvironmentAssetError('四季草木暂未加载，请重试'); return false })
+      .finally(() => { this._environmentLoad = null })
+    return this._environmentLoad
+  }
+  syncEnvironmentClock(serverTime, sent, received) { this.environment.sync(serverTime, sent, received) }
+  setEffectsEnabled(enabled) { this.effectsEnabled = !!enabled; this.requestDraw() }
   async setGender(gender) {
     if (gender !== 'girl' && gender !== 'boy') return false
     const version = ++this.changeVersion
@@ -128,6 +167,11 @@ class MemorialScene {
   }
   step(seconds) {
     const dt = clamp(seconds, 0, 0.05)
+    this.waterTime = (this.waterTime + dt) % 120
+    this.grass.advance(dt)
+    // Local collision steps are capped at 50 ms; remote playback must still
+    // consume the real frame interval or low FPS accumulates seconds of lag.
+    this.visitors.step(seconds)
     const before = Object.assign({}, this.player)
     const screen = G.project(before)
     const aim = G.unproject({ x: screen.x + this.input.x, y: screen.y + this.input.y })
@@ -189,10 +233,10 @@ class MemorialScene {
   retryChunks() { if (this.chunks) this.chunks.retry() }
   getFrame() { return this.moving ? Math.floor(this.walkPhase) % 8 : Math.floor(this.idleTime / 0.32) % 8 }
   updateCamera(dt, snap) {
-    this.scale = this.overview ? this.minZoom :
+    this.scale = this.overview ? clamp(this.overviewZoom || this.minZoom, this.minZoom, 1.8) :
       this.zoom
     const p = G.project(this.player)
-    const target = this.limitCamera(this.overview ? { x: G.WIDTH / 2, y: G.HEIGHT / 2 } : this.following ? p : this.camera)
+    const target = this.limitCamera(this.overview && !this.overviewZoom ? { x: G.WIDTH / 2, y: G.HEIGHT / 2 } : this.following ? p : this.camera)
     const blend = snap ? 1 : 1 - Math.exp(-dt * 9)
     this.camera.x += (target.x - this.camera.x) * blend
     this.camera.y += (target.y - this.camera.y) * blend
@@ -209,6 +253,9 @@ class MemorialScene {
   followPlayer() {
     if (this.zoom < .5) this.zoom = 1
     this.overview = false
+    this.overviewZoom = null
+    this.showGrid = false
+    this.selectedPoint = null
     this.following = true
     this.updateCamera(1, true)
     this.viewChanged()
@@ -221,8 +268,7 @@ class MemorialScene {
   // Shift the image with the finger. Manual framing persists until explicitly recentered.
   pan(dx, dy) {
     if (this.destroyed) return
-    if (this.overview) return
-    this.overview = false
+    if (this.overview) this.overviewZoom = this.scale
     this.following = false
     this.camera = this.limitCamera({ x: this.camera.x - dx / this.scale, y: this.camera.y - dy / this.scale })
     this.viewChanged()
@@ -234,8 +280,8 @@ class MemorialScene {
     to = to || from
     const anchor = this.screenToMap(from)
     this.scale = clamp(this.scale * factor, this.minZoom, 1.8)
-    this.zoom = this.scale
-    this.overview = false
+    if (this.overview) this.overviewZoom = this.scale
+    else this.zoom = this.scale
     this.following = false
     this.camera = this.limitCamera({ x: anchor.x - (to.x - this.width / 2) / this.scale,
       y: anchor.y - (to.y - this.height / 2) / this.scale })
@@ -244,19 +290,27 @@ class MemorialScene {
   }
   toggleOverview() {
     if (this.overview) { this.followPlayer(); return false }
-    this.overview = !this.overview
+    this.openOverview()
+    return true
+  }
+  openOverview(point) {
+    this.overview = true
+    this.overviewZoom = point ? .9 : null
+    if (point) this.camera = { x: point.x, y: point.y }
     this.following = false
     this.setInput(0, 0)
     this.updateCamera(1, true)
     this.requestDraw()
     this.viewChanged()
-    return this.overview
   }
   setZoom(delta) {
     this.zoomAt(Math.exp(clamp(delta, -10, 10)))
   }
   setMemorials(rows) {
     this.memorials = rows.map(row => ({ ...row, kind: 'memorial' }))
+    this.grass.setMemorials(this.memorials)
+    const safe = safePosition(this.player, rows)
+    if (safe && (safe.x !== this.player.x || safe.y !== this.player.y)) { this.player = safe; this.updateCamera(1, true) }
     if (this.destination) this.navigate(this.destination, this.destination.name)
     this.requestDraw()
   }
@@ -297,6 +351,8 @@ class MemorialScene {
     this.player = Object.assign({}, this.map.spawn)
     this.cancelNavigation()
     this.overview = false
+    this.overviewZoom = null
+    this.showGrid = false
     this.following = true
     this.setInput(0, 0)
     this.direction = 'sw'
@@ -311,22 +367,35 @@ class MemorialScene {
     points.forEach((p, i) => { const q = G.project(p); if (i) c.lineTo(q.x, q.y); else c.moveTo(q.x, q.y) })
     c.closePath()
   }
-  drawPlayer() {
-    const c = this.ctx, p = G.project(this.player), size = 116
+  applyVisitors(rows, removed) {
+    this.visitors.apply(rows, removed)
+    for (const gender of new Set(rows.map(row => row.gender))) {
+      if (this.visitorLoads[gender] || ['walk', 'idle'].every(action => ['sw', 'se', 'nw', 'ne'].every(dir => this.images[gender + '/' + action + '-' + dir + '.png']))) continue
+      this.visitorLoads[gender] = this.loadGender(gender).then(() => this.requestDraw()).catch(() => {}).then(() => { delete this.visitorLoads[gender] })
+    }
+  }
+  drawPlayer(actor) {
+    const c = this.ctx, p = G.project(actor || this.player), size = 116
+    const person = actor || this
     c.fillStyle = 'rgba(42,52,29,0.23)'
     c.beginPath(); c.ellipse(p.x, p.y + 1, 15, 5, 0, 0, Math.PI * 2); c.fill()
-    const frame = this.getFrame()
-    const img = this.images[this.gender + '/' + (this.moving ? 'walk' : 'idle') + '-' + this.direction + '.png']
+    const frame = actor ? Math.floor(actor.moving ? actor.walkPhase : actor.idleTime / .32) % 8 : this.getFrame()
+    const img = this.images[person.gender + '/' + (person.moving ? 'walk' : 'idle') + '-' + person.direction + '.png']
+    if (actor && actor.activity !== 'walk' && this.scale >= .7) {
+      c.textAlign = 'center'; c.font = '12px sans-serif'; c.fillStyle = '#38543d'
+      c.fillText(({ remember: '静静陪伴', select: '挑选小筑', map: '查看地图' })[actor.activity] || '', p.x, p.y - 109)
+    }
     if (img) c.drawImage(img, frame % 4 * 128, Math.floor(frame / 4) * 128, 128, 128,
       p.x - size / 2, p.y - size * 115 / 128, size, size)
   }
   requestDraw() { if (!this.running) this.draw() }
   draw() {
     if (!this.ready || this.destroyed) return
-    const c = this.ctx, view = this.viewBounds()
+    const c = this.ctx, view = this.viewBounds(), environment = this.environment.sample()
+    const broad = wideView(view, this.scale)
     if (this.chunks && !this.overview) {
       // Full-map rendering uses compact metadata; stream only near the actor at low zoom.
-      const streamView = this.scale < .5 ? { left: this.player.x - 380, right: this.player.x + 380, top: this.player.y - 380, bottom: this.player.y + 380 } : view
+      const streamView = broad ? { left: this.player.x - 380, right: this.player.x + 380, top: this.player.y - 380, bottom: this.player.y + 380 } : view
       const key = [streamView.left, streamView.top, streamView.right, streamView.bottom].map(v => Math.floor(v / layout.CHUNK)).join(':')
       if (key !== this._chunkView) {
         this._chunkView = key
@@ -335,35 +404,67 @@ class MemorialScene {
         this.onStreamChange(this.chunks.status())
       }
     }
+    const scenery = this.overview || broad ? worldIndex.objects : this.objects
+    this.grass.prepare(this, view, environment, this.environment.time())
     c.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
     c.fillStyle = '#e1e7d6'; c.fillRect(0, 0, this.width, this.height)
     c.save(); c.translate(this.width / 2, this.height / 2); c.scale(this.scale, this.scale)
     c.translate(-this.camera.x, -this.camera.y)
     {
       this.ground.draw(c, view, this.images['world-v2/grass.jpg'], this.scale)
+      this.atmosphere.ground(c, view, environment, scenery, this.scale)
+      this.grass.draw(c)
       if (this.showGrid) {
-        c.lineWidth = 1; c.strokeStyle = 'rgba(255,250,219,.68)'; c.fillStyle = 'rgba(255,244,197,.08)'
-        (this.overview ? worldIndex.cells.map(p => ({ id: p.id, corners: layout.rect(p.x - 20, p.y - 16, 40, 32) })) : this.cells).forEach(cell => {
+        c.lineWidth = 1 / this.scale
+        const cells = this.overview ? worldIndex.cells.filter(p => plotLayout.ids.includes(p.id) || this.occupiedPlots && this.occupiedPlots.has(p.id)).map(p => ({ id: p.id, corners: layout.rect(p.x - 20, p.y - 16, 40, 32) })) : this.cells
+        cells.filter(cell => plotLayout.ids.includes(cell.id) || this.occupiedPlots && this.occupiedPlots.has(cell.id)).forEach(cell => {
           const p = cell.corners[0]
           if (p.x < view.left - 64 || p.x > view.right || p.y < view.top - 64 || p.y > view.bottom) return
-          c.fillStyle = this.occupiedPlots && this.occupiedPlots.has(cell.id) ? '#a18973' : '#d5edab'
+          const occupied = this.occupiedPlots && this.occupiedPlots.has(cell.id)
+          const selected = this.selectedPoint && this.selectedPoint.plotId === cell.id
+          c.fillStyle = occupied ? '#a18973' : selected ? '#ffdc80' : '#d5edab'
+          c.strokeStyle = selected ? '#8a5d17' : occupied ? '#796757' : '#46704b'
           this.path(cell.corners); c.fill(); c.stroke()
+          if (this.scale >= .7) {
+            c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = (10 / this.scale) + 'px sans-serif'
+            c.fillStyle = occupied ? '#fff' : '#254632'
+            c.fillText(occupied ? '已占用' : plotNumber(cell.id), p.x + 20, p.y + 16)
+          }
         })
       }
-      const visible = (this.overview || this.scale < .5 ? worldIndex.objects : this.objects).concat(this.memorials).filter(o => {
+      const visible = scenery.concat(this.memorials).filter(o => {
         const box = propBox(o)
-        return box.x + box.width >= view.left && box.x <= view.right && box.y + box.height >= view.top && box.y <= view.bottom
+        return box.x + box.width >= view.left && box.x <= view.right && Math.max(box.y + box.height, o.portrait ? o.y + 46 : 0) >= view.top && box.y <= view.bottom
       })
       // Sort by ground anchor so tree canopies and buildings naturally occlude the character.
       const drawables = visible.map(o => ({ y: o.y, object: o }))
+      const portraits = this.scale >= .5 ? visible.filter(o => o.portrait).sort((a, b) =>
+        Math.hypot(a.x - this.camera.x, a.y - this.camera.y) - Math.hypot(b.x - this.camera.x, b.y - this.camera.y)).slice(0, 24) : []
+      for (const o of portraits) {
+        const image = this.portraits.get(o.portrait)
+        // The stone sprite's lawn ends near y + 20. Keep paws on that lawn;
+        // older, smaller plots need a proportionally smaller companion.
+        if (image) drawables.push({ y: portraitLayout(o).groundY, portrait: o, image })
+      }
+      for (const actor of this.visitors.actors.values()) {
+        if (actor.x + 58 >= view.left && actor.x - 58 <= view.right && actor.y + 14 >= view.top && actor.y - 116 <= view.bottom) drawables.push({ y: actor.y, actor })
+      }
       drawables.push({ y: this.player.y, player: true })
       drawables.sort((a, b) => a.y - b.y).forEach(item => {
-        if (item.player) this.drawPlayer()
-        else drawProp(c, item.object, this.images['world-v2/props.png'])
+        if (item.portrait) {
+          drawPortrait(c, item.image, item.portrait)
+        }
+        else if (item.actor) { this.drawPlayer(item.actor); this.grass.feet(c, item.actor) }
+        else if (item.player) { this.drawPlayer(); this.grass.feet(c, this.player) }
+        else drawProp(c, item.object, this.images['world-v2/props.png'], this.waterTime, this.images['monuments-v1/atlas.png'], this.images['seasons-v1/foliage.png'], environment)
       })
-      this.drawRoute()
-      if (this.overview || this.scale < .5) this.drawMapLabels()
     }
+    c.restore()
+    this.atmosphere.screen(c, this, environment, this.environment.time())
+    // Navigation and map labels remain above weather/lighting for readability.
+    c.save(); c.translate(this.width / 2, this.height / 2); c.scale(this.scale, this.scale); c.translate(-this.camera.x, -this.camera.y)
+    this.drawRoute()
+    if (this.overview || this.scale < .5) this.drawMapLabels()
     c.restore()
     if (!this.overview && this.width > 300 && this.height >= 400) this.drawMiniMap()
   }
@@ -397,7 +498,7 @@ class MemorialScene {
     c.beginPath(); c.arc(end.x, end.y, 6 / s, 0, Math.PI * 2); c.fillStyle = '#b86838'; c.fill()
   }
   drawMiniMap() {
-    const c = this.ctx, w = 104, h = w * G.HEIGHT / G.WIDTH, x = this.width - w - 16, y = 92
+    const c = this.ctx, w = 104, h = w * G.HEIGHT / G.WIDTH, x = this.width - w - 16, y = this.hudTop || 92
     c.save(); c.fillStyle = '#fffbea'; c.fillRect(x - 3, y - 3, w + 6, h + 6)
     c.translate(x, y); c.scale(w / G.WIDTH, h / G.HEIGHT); drawPlan(c); c.restore()
     c.save(); c.strokeStyle = '#fff'; c.lineWidth = 1
@@ -428,13 +529,18 @@ class MemorialScene {
     this.raf = undefined
     this.lastTime = null
     this.setInput(0, 0)
+    this.grass.resetMotion()
   }
   destroy() {
     this.pause()
     this.destroyed = true
     this.changeVersion++
     this.images = {}
+    this.portraits.destroy()
+    this.visitors.actors.clear()
     this.ground.destroy()
+    this.grass.destroy()
+    this.atmosphere.destroy()
     if (this.chunks) this.chunks.destroy()
   }
 }

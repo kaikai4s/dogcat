@@ -11,8 +11,10 @@ OUT = ROOT / 'output/memorial-world-v2-upload'
 OUT.mkdir(parents=True, exist_ok=True)
 config = json.loads(subprocess.check_output(['node', '-e', """
 const a=require('./miniprogram/packageMemorial/scene/cloud-assets');
-const files=a.FILES.filter(k=>k.startsWith('world-v2/'));
-console.log(JSON.stringify(files.map(key=>({key,fileID:a.fileID(key,'cloud1-5gnhqn4t0554c1d9')}))));
+const files=['world-v2/props.png','world-v2/grass.jpg'];
+for(let y=0;y<6;y++)for(let x=0;x<8;x++)files.push('world-v2/chunks/'+x+'-'+y+'.json');
+const {memorialAssetID}=require('./miniprogram/packageMemorial/scene/memorial-asset-path');
+console.log(JSON.stringify(files.map(key=>({key,fileID:memorialAssetID(key,'cloud1-5gnhqn4t0554c1d9')}))));
 """], cwd=ROOT, encoding='utf-8'))
 with zipfile.ZipFile(OUT / 'memorial-world-v2.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
     for record in config:

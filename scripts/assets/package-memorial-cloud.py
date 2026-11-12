@@ -14,8 +14,8 @@ def main():
     config = json.loads(subprocess.check_output(['node', '-e', """
 const a=require('./miniprogram/packageMemorial/scene/cloud-assets');
 const {CLOUD_STORAGE_ROOTS}=require('./miniprogram/utils/cloud-assets');
-console.log(JSON.stringify({directory:a.DIRECTORY,environmentDirectories:a.ENV_DIRECTORIES,files:a.FILES.filter(key=>!key.startsWith('world-v2/')),
-  environments:Object.fromEntries(Object.keys(CLOUD_STORAGE_ROOTS).map(env=>[env,Object.fromEntries(a.FILES.filter(key=>!key.startsWith('world-v2/')).map(key=>[key,a.fileID(key,env)]))]))}));
+console.log(JSON.stringify({directory:a.DIRECTORY,environmentDirectories:a.ENV_DIRECTORIES,files:a.FILES.filter(key=>/^(garden\.jpg$|boy\/|girl\/|audio\/)/.test(key)),
+  environments:Object.fromEntries(Object.keys(CLOUD_STORAGE_ROOTS).map(env=>[env,Object.fromEntries(a.FILES.filter(key=>/^(garden\.jpg$|boy\/|girl\/|audio\/)/.test(key)).map(key=>[key,a.fileID(key,env)]))]))}));
 """], cwd=ROOT, text=True, encoding='utf-8'))
     OUT.mkdir(parents=True, exist_ok=True)
     records = []

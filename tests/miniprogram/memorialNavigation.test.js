@@ -6,7 +6,7 @@ const world = require('../../miniprogram/packageMemorial/scene/world-template')
 const { GroundCache } = require('../../miniprogram/packageMemorial/scene/ground-cache')
 const { GardenSound } = require('../../miniprogram/packageMemorial/scene/sound')
 test('routes reach both sides of the garden and avoid scenery along every segment', () => {
-  for (const target of [...world.landmarks, { x: 2700, y: 2100 }, { x: 300, y: 300 }]) {
+  for (const target of [...world.landmarks, { x: 4400, y: 2800 }, { x: 300, y: 2800 }, { x: 4400, y: 350 }, { x: 300, y: 300 }]) {
     const route = findRoute(world.spawn, target)
     assert.ok(route.length > 1)
     for (let i = 1; i < route.length; i++) assert.ok(clearLine(route[i - 1], route[i], index.objects))
@@ -18,7 +18,7 @@ test('approved memorials block navigation and client/server catalogs remain iden
   const route = findRoute(world.spawn, { x: world.spawn.x, y: world.spawn.y - 220 }, [memorial])
   for (let i = 1; i < route.length; i++) assert.ok(clearLine(route[i - 1], route[i], index.objects.concat(memorial)))
   assert.deepEqual(index, require('../../cloudfunctions/api/config/memorial-world.json'))
-  assert.equal(new Set(index.cells.map(p => p.id)).size, 492)
+  assert.equal(new Set(index.cells.map(p => p.id)).size, index.cells.length)
 })
 test('ground cache paints paving once then uses drawImage while panning over cached tiles', () => {
   let paints = 0, images = 0
@@ -33,10 +33,11 @@ test('ground cache paints paving once then uses drawImage while panning over cac
   cache.destroy(); assert.equal(cache.tiles.size, 0)
 })
 test('native audio never seeks before decoding; replay can seek after canplay', () => {
-  let canplay, seeks = 0, plays = 0
-  const sound = new GardenSound(() => ({ onError() {}, onCanplay(fn) { canplay = fn }, seek() { seeks++ }, play() { plays++ }, pause() {}, destroy() {} }))
-  sound.toggle('effects'); assert.equal(seeks, 0); assert.equal(plays, 1)
-  canplay(); sound.chime(); assert.equal(seeks, 1); assert.equal(plays, 2)
+  let canplay, ended, seeks = 0, plays = 0
+  const sound = new GardenSound(() => ({ onError() {}, onCanplay(fn) { canplay = fn }, onEnded(fn) { ended = fn }, seek() { seeks++ }, play() { plays++ }, pause() {}, destroy() {} }))
+  sound.toggle('effects'); assert.equal(seeks, 0); assert.equal(plays, 0)
+  canplay(); assert.equal(plays, 1); sound.chime(); assert.equal(plays, 1); assert.equal(seeks, 0)
+  ended(); sound.chime(); assert.equal(seeks, 1); assert.equal(plays, 2)
   sound.destroy()
 })
 

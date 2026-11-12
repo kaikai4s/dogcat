@@ -1,0 +1,60 @@
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
+const base = require('../../scripts/assets/memorial-world-base-v2.json')
+const world = require('../../miniprogram/packageMemorial/scene/world-index')
+const M = require('../../miniprogram/packageMemorial/scene/world-template')
+const G = require('../../miniprogram/packageMemorial/scene/geometry')
+const plots = require('../../miniprogram/packageMemorial/scene/plot-layout')
+const { GroundCache } = require('../../miniprogram/packageMemorial/scene/ground-cache')
+const { idsFor } = require('../../miniprogram/packageMemorial/scene/chunks')
+
+test('expansion doubles total area while retaining every old plot identity, position, scenery object and buildable footprint', () => {
+  assert.equal(M.WIDTH * M.HEIGHT, base.width * base.height * 2)
+  assert.equal(world.version, base.version)
+  for (const cell of base.cells) assert.deepEqual(world.cells.find(p => p.id === cell.id), cell)
+  for (const obj of base.objects) assert.deepEqual(world.objects.find(p => p.id === obj.id), obj)
+  const obstacles = base.objects.map(o => Array.from({ length: 16 }, (_, i) => ({ x: o.x + M.PROPS[o.kind].clearance * Math.cos(i * Math.PI / 8), y: o.y + M.PROPS[o.kind].clearance * Math.sin(i * Math.PI / 8) })))
+  const oldPlots = base.cells.filter(p => G.validCell(M.rect(p.x - 56, p.y - 48, 112, 96), { ...M, lawns: M.lawns.slice(0, 16), obstacles }))
+  assert.equal(oldPlots.length, 95)
+  for (const cell of oldPlots) assert.ok(plots.ids.includes(cell.id), cell.id)
+  assert.ok(plots.ids.some(id => world.cells.find(c => c.id === id).x > base.width))
+  assert.ok(plots.ids.some(id => world.cells.find(c => c.id === id).y > base.height))
+  assert.deepEqual(plots, require('../../cloudfunctions/api/config/memorial-plots.json'))
+  const presence = require('../../cloudfunctions/api/config/memorial-presence.json')
+  assert.equal(presence.maxX, M.WIDTH - 64)
+  assert.equal(presence.maxY, M.HEIGHT - 64)
+})
+
+test('expanded chunk ownership, world map and compact server metadata describe the same cells and objects', () => {
+  const ids = idsFor({ left: 0, top: 0, right: M.WIDTH, bottom: M.HEIGHT }, 1)
+  const chunks = ids.map(id => JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../miniprogram/packageMemorial/assets', M.CHUNK_DIRECTORY, id + '.json'))))
+  assert.equal(ids.length, 96)
+  assert.deepEqual(new Set(chunks.flatMap(c => c.objects.map(o => o.id))), new Set(world.objects.map(o => o.id)))
+  assert.deepEqual(new Set(chunks.flatMap(c => c.cells.map(o => o.id))), new Set(world.cells.map(o => o.id)))
+  const far = idsFor({ left: 4300, right: 4700, top: 2800, bottom: 3200 }, 1)
+  assert.ok(far.includes('11-7'))
+  assert.ok(far.every(id => { const [x, y] = id.split('-').map(Number); return x < 12 && y < 8 }))
+})
+
+test('expanded ground renders to the edge, retains the tile budget and caps the full-map texture', () => {
+  const created = [], draws = []
+  const ctx = new Proxy({}, { get: () => () => {} })
+  const cache = new GroundCache((width, height) => { const canvas = { width, height, getContext: () => ctx }; created.push(canvas); return canvas })
+  const main = { drawImage: (...args) => draws.push(args) }
+  for (let y = 100; y < M.HEIGHT; y += 500) for (let x = 100; x < M.WIDTH; x += 500) {
+    cache.draw(main, { left: x - 200, right: x + 200, top: y - 300, bottom: y + 300 }, {}, 1)
+    assert.ok(cache.tiles.size <= 24)
+  }
+  cache.draw(main, { left: 4300, right: M.WIDTH, top: 2800, bottom: M.HEIGHT }, {}, 1)
+  assert.ok(draws.some(d => d[1] === 11 * M.CHUNK && d[2] === 7 * M.CHUNK))
+  cache.draw(main, { left: 0, right: M.WIDTH, top: 0, bottom: M.HEIGHT }, {}, .1)
+  assert.deepEqual([cache.overview.width, cache.overview.height], [1536, 1024])
+  assert.deepEqual(draws.at(-1).slice(1), [0, 0, M.WIDTH, M.HEIGHT])
+  const count = created.length
+  cache.draw(main, { left: 0, right: M.WIDTH, top: 0, bottom: M.HEIGHT }, {}, .5)
+  assert.equal(created.length, count)
+  assert.ok(cache.tiles.size <= 24)
+  cache.destroy(); assert.equal(cache.tiles.size, 0)
+})

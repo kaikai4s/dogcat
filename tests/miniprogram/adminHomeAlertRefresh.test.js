@@ -231,3 +231,24 @@ test('memorial pending count coexists with notification refresh and ignores resp
   await stale
   assert.equal(page.data.memorialPendingCount, 3)
 })
+
+test('memorial pending badge survives other dashboard responses and clears after review', async () => {
+  const { page, requests } = setup()
+  const entry = () => page.data.adminSections.flatMap(section => section.items).find(item => item.url === '/pages/admin/memorial/index')
+  const refresh = page.onShow()
+  const memorial = requests.find(r => r.module === 'memorial')
+  memorial.resolve({ pendingCount: 2 })
+  requests.find(r => r.action === 'listMemoriesAdmin').resolve({ pendingCount: 1 })
+  requests.find(r => r.action === 'listPortraitsAdmin').resolve({ pendingCount: 4 })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(entry().pendingCount, 7)
+  answer(requests.filter(r => r !== memorial))
+  await refresh
+  assert.equal(entry().pendingCount, 7)
+  const clear = page.loadMemorialPending()
+  requests.at(-3).resolve({ pendingCount: 0 })
+  requests.at(-2).resolve({ pendingCount: 0 })
+  requests.at(-1).resolve({ pendingCount: 0 })
+  await clear
+  assert.equal(entry().pendingCount, 0)
+})

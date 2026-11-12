@@ -9,7 +9,7 @@ const catalog = {
   serviceStart: ['服务开始通知', '宠托师正式开始服务后，及时接收提醒'],
   serviceProgress: ['服务进度通知', '接收提前开始申请、即将到达及超时等提醒'],
   serviceFinish: ['服务完成通知', '服务完成后，及时查看服务报告'],
-  adminPendingAudit: ['业务待审核通知', '有新宠托师入驻、提现申请、资质认证等新待办时，提醒管理员及时处理'],
+  adminPendingAudit: ['业务待审核通知', '有时光小筑申请、宠托师入驻、提现申请等新待办时，提醒管理员及时处理'],
   adminMallOrderPaid: ['商城新订单待发货', '商城订单支付成功后，提醒管理员及时发货'],
   orderPaid: ['支付成功通知', '订单支付成功后接收确认消息'],
   orderAssigned: ['订单派单通知', '平台为订单安排宠托师时通知你'],
@@ -47,7 +47,7 @@ Page({
     this.setData({ loading: true, loadFailed: false, ready: false })
     this._loadingSettings = ensureLogin({ content: '登录后可管理订阅消息通知。' })
       .then(async () => {
-        if (this.data.role === 'admin') await callFunction('adminMall', 'listOrders', { pendingCountsOnly: true })
+        if (this.data.role === 'admin') await callFunction('admin', 'getMyAdminAccess')
         return Promise.all([
         callFunction('system', 'getSettings'),
         callFunction('system', 'getSubscriptionSummary').catch(() => ({ items: null }))

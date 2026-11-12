@@ -764,3 +764,11 @@ pet_playground_entities idx_entity_owner_pet P1    [ ]      ____-__-__
 **文档创建时间**：2026-09-21  
 **适用环境**：微信云开发控制台  
 **维护状态**：活跃
+
+### 纪念园访客实时同步
+
+新增 `pet_memorial_live` 集合与 `idx_memorial_live_scene` 非唯一索引（`kind: 1, sceneId: 1`），数据库初始化已登记。必须单独应用 `database-rules/pet_memorial_live.json`：登录用户仅读取 scene 文档，所有客户端写入和 session 文档读取均禁止。64 个场景分片存匿名人物状态，world 文档存地图变更序号，session 文档存服务端凭据。部署步骤、50/100 人容量条件和真机验收见 `docs/design/pet-memorial/presence-release.md`。
+
+纪念园业务另需 `platform_configs` 的非唯一索引 `idx_memorial_catalog`（`key:1, _id:1`）和 `idx_memorial_owner`（`key:1, ownerOpenid:1, _id:1`）。三种审核列表复用 `idx_map_application_pending`（`key:1, status:1, _id:1`）。字段顺序必须一致；同结构已有索引无需再建。具体控制台步骤、环境选择与规则见 `docs/design/pet-memorial/presence-release.md`。
+
+多纪念园另需 `platform_configs` 的非唯一复合索引 `idx_memorial_garden_plots`，字段顺序为 `key:1, gardenId:1, _id:1`。在当前使用的云环境中创建并等待索引可用。原园区无需迁移文档，新园区由后台管理页创建；普通用户、档案及审核查询仍复用上述索引。
