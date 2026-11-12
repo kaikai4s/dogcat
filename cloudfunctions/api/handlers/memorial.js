@@ -22,7 +22,7 @@ module.exports = function createHandler(context) {
     if (['listGardens', 'listGardensAdmin', 'createGarden', 'updateGarden'].includes(action)) return gardens.handle(openid, action, data)
     if (action === 'getMemorialAdmin') return memory(openid, action, data, user)
     if (['portraitDetail', 'submitPortrait', 'listPortraitsAdmin', 'preparePortraitAsset', 'reviewPortrait'].includes(action)) return portrait(openid, action, data, user)
-    if (['detail', 'entrance', 'prepareMedia', 'finishMedia', 'saveMemory', 'listMemoriesAdmin', 'reviewMemory'].includes(action)) return memory(openid, action, data, user)
+    if (['detail', 'entrance', 'prepareMedia', 'finishMedia', 'saveMemory', 'updateMemoryMedia', 'listMemoriesAdmin', 'reviewMemory'].includes(action)) return memory(openid, action, data, user)
     if (action === 'world') {
       const garden = await gardens.get(data.gardenId || DEFAULT)
       const plots = await gardens.plots(garden._id)

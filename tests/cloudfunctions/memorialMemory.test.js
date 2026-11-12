@@ -83,10 +83,14 @@ test('multiple video/image tickets and one music ticket retain ordered content f
     else media[kind === 'image' ? 'images' : 'videos'].push(ticket.uploadId)
   }
   await f.save(0, media)
+  const pending = f.db.state.platform_configs.find(r => r.key === 'memorial_memory')
+  assert.equal(pending.publicContent, null)
+  const snapshot = structuredClone(pending.draft)
   const list = await f.call('admin', 'listMemoriesAdmin')
   assert.equal(list.list[0].memory.videos.length, 2)
   const row = list.list[0]
   await f.call('admin', 'reviewMemory', { id: row._id, revision: row.revision, status: 'approved' })
+  assert.deepEqual(f.db.state.platform_configs.find(r => r._id === row._id).publicContent, snapshot)
   const detail = await f.call('visitor', 'detail', { id: 'app' })
   assert.deepEqual(detail.story.images.map(m => m.uploadId), media.images)
   assert.equal(detail.story.videos.length, 2); assert.ok(detail.story.music.url)
@@ -341,6 +345,112 @@ test('entrance selection validates membership, type and duplicates and participa
   assert.deepEqual(await f.save(0,{images:['image1'],entranceImages:['image1']}),saved)
   await assert.rejects(f.save(0,{images:['image1'],entranceImages:[]}), /其他页面/)
   await assert.rejects(f.call('visitor','entrance',{id:'missing'}), /暂不可查看/)
+})
+
+async function memoryWithMedia(f, isPublic = true) {
+  for (const [id,kind] of [['photo-a','image'],['photo-b','image'],['video-a','video'],['video-b','video']]) {
+    f.db.state.platform_configs.push({_id:id,key:'memorial_media',ownerOpenid:'owner',applicationId:'app',status:'ready',kind,fileId:'cloud://test.bucket/'+id})
+  }
+  await f.save(0,{isPublic,images:['photo-a','photo-b'],videos:['video-a','video-b'],entranceImages:['photo-a'],entranceVideos:['video-a']})
+  const row=f.db.state.platform_configs.find(r=>r.key==='memorial_memory')
+  if(isPublic)await f.call('admin','reviewMemory',{id:row._id,revision:1,status:'approved'})
+  return row._id
+}
+const mediaChange = (mediaRevision, extra = {}) => ({id:'app',revision:1,mediaRevision,kind:'images',operation:'entrance',uploadId:'photo-a',enabled:false,...extra})
+
+test('entrance toggles immediately update approved media without a new review; identical retries are idempotent', async () => {
+  const f=fixture(),id=await memoryWithMedia(f)
+  const notices=f.db.state.admin_notifications.length, decisions=f.db.state.system_notifications.length
+  const off=mediaChange(0)
+  const result=await f.call('owner','updateMemoryMedia',off)
+  assert.deepEqual(await f.call('owner','updateMemoryMedia',off),result)
+  assert.equal(result.revision,1);assert.equal(result.mediaRevision,1);assert.equal(result.reviewStatus,'approved')
+  assert.deepEqual((await f.call('visitor','entrance',{id:'app'})).images,[])
+  assert.equal((await f.call('owner','detail',{id:'app'})).draft.images[0].entrance,false)
+  await f.call('owner','updateMemoryMedia',mediaChange(1,{enabled:true}))
+  assert.deepEqual((await f.call('visitor','entrance',{id:'app'})).images.map(m=>m.uploadId),['photo-a'])
+  const row=f.db.state.platform_configs.find(r=>r._id===id)
+  assert.equal(row.revision,1);assert.equal(row.status,'approved');assert.equal(row.mediaRevision,2)
+  assert.equal(f.db.state.admin_notifications.length,notices);assert.equal(f.db.state.system_notifications.length,decisions)
+  assert.equal((await f.call('admin','listMemoriesAdmin',{pendingCountsOnly:true})).pendingCount,0)
+  assert.equal(f.db.state.pet_memorial_live[0].revision,3) // approval + two real changes, no retry event
+})
+
+test('photo and video removal immediately disappear from public detail, entrance and draft without review', async () => {
+  const f=fixture();await memoryWithMedia(f)
+  const change=mediaChange(0,{operation:'remove'})
+  const removed=await f.call('owner','updateMemoryMedia',change)
+  assert.deepEqual(await f.call('owner','updateMemoryMedia',change),removed)
+  await f.call('owner','updateMemoryMedia',mediaChange(1,{kind:'videos',uploadId:'video-a',operation:'remove'}))
+  const owner=await f.call('owner','detail',{id:'app'}), visitor=await f.call('visitor','detail',{id:'app'})
+  for(const snapshot of [owner.draft,owner.story,visitor.story]) {
+    assert.deepEqual(snapshot.images.map(m=>m.uploadId),['photo-b'])
+    assert.deepEqual(snapshot.videos.map(m=>m.uploadId),['video-b'])
+  }
+  assert.deepEqual(await f.call('visitor','entrance',{id:'app'}),{images:[],videos:[]})
+  assert.equal(owner.reviewStatus,'approved');assert.equal(owner.revision,1);assert.equal(owner.mediaRevision,2)
+  assert.equal(f.db.state.admin_notifications.length,1)
+  await assert.rejects(f.save(1,{images:['photo-a','photo-b'],videos:['video-a','video-b']}),/展示设置或照片已更新/)
+  await assert.rejects(f.save(0,{images:['photo-a','photo-b'],videos:['video-a','video-b'],entranceImages:['photo-a'],entranceVideos:['video-a']}),/展示设置或照片已更新/)
+  await f.save(1,{mediaRevision:2,text:'真正新增的故事',images:['photo-b'],videos:['video-b']})
+  assert.equal((await f.call('visitor','detail',{id:'app'})).story.text,'它喜欢晒太阳')
+  assert.equal((await f.call('owner','detail',{id:'app'})).reviewStatus,'pending')
+})
+
+test('immediate operations never publish pending text or new uploads and an old reviewer cannot restore deleted media', async () => {
+  const f=fixture(),id=await memoryWithMedia(f)
+  f.db.state.platform_configs.push({_id:'new-photo',key:'memorial_media',ownerOpenid:'owner',applicationId:'app',status:'ready',kind:'image',fileId:'cloud://test.bucket/new-photo'})
+  await f.save(1,{text:'尚未审核的新故事',images:['photo-a','photo-b','new-photo'],videos:['video-a'],entranceImages:['photo-a']})
+  await f.call('owner','updateMemoryMedia',mediaChange(0,{revision:2,uploadId:'new-photo',enabled:true}))
+  let visitor=await f.call('visitor','detail',{id:'app'})
+  assert.equal(visitor.story.text,'它喜欢晒太阳');assert.equal(visitor.story.images.some(m=>m.uploadId==='new-photo'),false)
+  const listed=(await f.call('admin','listMemoriesAdmin')).list[0]
+  await f.call('owner','updateMemoryMedia',mediaChange(1,{revision:2,operation:'remove'}))
+  visitor=await f.call('visitor','detail',{id:'app'})
+  assert.deepEqual(visitor.story.images.map(m=>m.uploadId),['photo-b'])
+  assert.equal((await f.call('owner','detail',{id:'app'})).reviewStatus,'pending')
+  assert.equal(f.db.state.admin_notifications.length,2)
+  await f.call('admin','reviewMemory',{id,revision:listed.revision,status:'approved'})
+  visitor=await f.call('visitor','detail',{id:'app'})
+  assert.equal(visitor.story.text,'尚未审核的新故事')
+  assert.deepEqual(visitor.story.images.map(m=>m.uploadId),['photo-b','new-photo'])
+  assert.deepEqual((await f.call('visitor','entrance',{id:'app'})).images.map(m=>m.uploadId),['new-photo'])
+})
+
+test('private or first pending memory mutations preserve a null public snapshot and reject foreign or invalid operations', async () => {
+  const f=fixture();await memoryWithMedia(f,false)
+  await f.call('owner','updateMemoryMedia',mediaChange(0))
+  await f.call('owner','updateMemoryMedia',mediaChange(1,{operation:'remove'}))
+  const row=f.db.state.platform_configs.find(r=>r.key==='memorial_memory')
+  assert.equal(row.publicContent,null);assert.equal(row.status,'private')
+  assert.equal((await f.call('visitor','detail',{id:'app'})).story,null)
+  await assert.rejects(f.call('visitor','updateMemoryMedia',mediaChange(2)),/只有主人/)
+  await assert.rejects(f.call('owner','updateMemoryMedia',mediaChange(2,{uploadId:'foreign'})),/已被移除/)
+  for(const extra of [{kind:'music'},{kind:'__proto__'},{operation:'replace'},{enabled:'true'},{mediaRevision:-1},{revision:NaN}]) {
+    await assert.rejects(f.call('owner','updateMemoryMedia',mediaChange(2,extra)),/操作无效/)
+  }
+  await assert.rejects(f.call('owner','updateMemoryMedia',mediaChange(0,{uploadId:'photo-b'})),/展示设置或照片已更新/)
+  await assert.rejects(f.call('owner','updateMemoryMedia',mediaChange(2,{revision:0})),/其他页面更新/)
+  const pending=fixture();const pendingId=await memoryWithMedia(pending,false)
+  await pending.save(1,{images:['photo-a']})
+  await pending.call('owner','updateMemoryMedia',mediaChange(0,{revision:2,enabled:true}))
+  assert.equal(pending.db.state.platform_configs.find(r=>r._id===pendingId).publicContent,null)
+  assert.deepEqual(await pending.call('visitor','entrance',{id:'app'}),{images:[],videos:[]})
+})
+
+test('immediate removal rolls back both snapshots when the scene notification write fails', async () => {
+  const f=fixture(),id=await memoryWithMedia(f)
+  const before=structuredClone(f.db.state.platform_configs.find(r=>r._id===id)),transaction=f.db.runTransaction
+  f.db.runTransaction=fn=>transaction(async tx=>{
+    const collection=tx.collection
+    tx.collection=name=>{
+      if(name==='pet_memorial_live')throw new Error('simulated notification failure')
+      return collection(name)
+    }
+    return fn(tx)
+  })
+  await assert.rejects(f.call('owner','updateMemoryMedia',mediaChange(0,{operation:'remove'})),/simulated notification failure/)
+  assert.deepEqual(f.db.state.platform_configs.find(r=>r._id===id),before)
 })
 test('user archive reads private draft only behind explicit admin permission', async () => {
   const f=fixture(); await f.save(0,{isPublic:false,text:'私密故事'})

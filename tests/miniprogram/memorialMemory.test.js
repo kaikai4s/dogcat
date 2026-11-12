@@ -1,9 +1,22 @@
 const test = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm')
 function fixture(owner = true, overrides = {}) {
   let page; const calls = [], toasts = []
-  const detail = { owner, revision: 4, isPublic: false, draft: { text: '一起看夕阳', images: [{ uploadId: 'photo1', url: 'local-photo' }], videos: [{ uploadId: 'video1' }, { uploadId: 'video2' }], music: { uploadId: 'song1' } }, story: null, reviewStatus: 'private' }
+  const detail = { owner, revision: 4, mediaRevision: 0, isPublic: false, draft: { text: '一起看夕阳', images: [{ uploadId: 'photo1', url: 'local-photo' }], videos: [{ uploadId: 'video1' }, { uploadId: 'video2' }], music: { uploadId: 'song1' } }, story: null, reviewStatus: 'private' }
+  async function api(_, action, data) {
+    calls.push({ action, data })
+    if (action === 'detail') return structuredClone(detail)
+    if (overrides.api) return overrides.api(action, data)
+    if (action === 'updateMemoryMedia') {
+      for (const snapshot of [detail.draft, detail.story]) if (snapshot) snapshot[data.kind] = data.operation === 'remove'
+        ? snapshot[data.kind].filter(m => m.uploadId !== data.uploadId)
+        : snapshot[data.kind].map(m => m.uploadId === data.uploadId ? { ...m, entrance: data.enabled } : m)
+      detail.mediaRevision++
+      return structuredClone({ revision: detail.revision, mediaRevision: detail.mediaRevision, reviewStatus: detail.reviewStatus, story: detail.story, hasPublicStory: !!detail.story })
+    }
+    return {}
+  }
   vm.runInNewContext(fs.readFileSync(require.resolve('../../miniprogram/packageMemorial/pages/memory'), 'utf8'), {
-    Page: def => { page = def }, require: name => name.endsWith('/cloud') ? { callFunction: async (_, action, data) => { calls.push({ action, data }); return action === 'detail' ? detail : overrides.api ? overrides.api(action, data) : {} } } : name.endsWith('/image-upload') ? { prepareImage: overrides.prepareImage } : name.endsWith('/memorial-portrait-layout') ? require('../../miniprogram/packageMemorial/scene/memorial-portrait-layout') : name.endsWith('/plot-number') ? { plotNumber: () => '01-01' } : {},
+    Page: def => { page = def }, require: name => name.endsWith('/cloud') ? { callFunction: api } : name.endsWith('/image-upload') ? { prepareImage: overrides.prepareImage } : name.endsWith('/memorial-portrait-layout') ? require('../../miniprogram/packageMemorial/scene/memorial-portrait-layout') : name.endsWith('/plot-number') ? { plotNumber: () => '01-01' } : {},
     wx: { showToast: v => toasts.push(v.title), ...overrides.wx }
   })
   page.setData = values => Object.entries(values).forEach(([key, value]) => { const parts = key.split('.'); let object = page.data; for (const part of parts.slice(0,-1)) object = object[part]; object[parts.at(-1)] = value })
@@ -89,16 +102,81 @@ test('owner submits the two distinct portrait photos and current request revisio
   page.data.portrait.status = 'pending'; page.openPortrait(); assert.equal(page.data.portraitForm, false)
 })
 
-test('entrance selections save with their media and removal cannot leave a stale selection', async () => {
+test('entrance selections and media removal persist immediately without submitting another review', async () => {
   const { page, calls }=fixture(); await page.load(); page.edit()
   const ev=(kind,id)=>({currentTarget:{dataset:{kind,id}}})
-  page.toggleEntrance(ev('images','photo1')); page.toggleEntrance(ev('videos','video1')); page.toggleEntrance(ev('videos','video2'))
-  page.remove({currentTarget:{dataset:{kind:'videos',index:0}}})
+  await page.toggleEntrance(ev('images','photo1')); await page.toggleEntrance(ev('videos','video1')); await page.toggleEntrance(ev('videos','video2'))
+  await page.remove({currentTarget:{dataset:{kind:'videos',index:0}}})
   await page.save()
-  const data=calls.find(c=>c.action==='saveMemory').data
-  assert.deepEqual(Array.from(data.entranceImages),['photo1']); assert.deepEqual(Array.from(data.entranceVideos),['video2'])
+  assert.equal(calls.some(c=>c.action==='saveMemory'),false)
+  assert.equal(calls.filter(c=>c.action==='updateMemoryMedia').length,4)
+  assert.equal(page.data.detail.mediaRevision,4); assert.equal(page.data.hasUnsavedChanges,false)
+  assert.equal(page.data.draft.images[0].entrance,true)
+  assert.deepEqual(Array.from(page.data.draft.videos,m=>m.uploadId),['video2'])
+  await page.load(); assert.equal(page.data.draft.images[0].entrance,true)
+  assert.deepEqual(Array.from(page.data.draft.videos,m=>m.uploadId),['video2'])
   const visitor=fixture(false); await visitor.page.load(); visitor.page.toggleEntrance(ev('images','photo1'))
   assert.equal(visitor.page.data.draft.images[0].entrance,undefined)
+})
+
+test('immediate changes preserve unsaved text and uploads and visitor preview reflects the published removal', async () => {
+  const { page,calls,detail }=fixture()
+  detail.isPublic=true;detail.reviewStatus='approved';detail.story=structuredClone(detail.draft)
+  await page.load();page.edit()
+  page.input({detail:{value:'尚未保存的长故事🐾'}})
+  page.data.draft.images.push({uploadId:'unsaved-photo',url:'new-local'})
+  await page.remove({currentTarget:{dataset:{kind:'images',index:0}}})
+  assert.equal(page.data.draft.text,'尚未保存的长故事🐾')
+  assert.equal(page.data.textCount,9);assert.equal(page.data.detail.draft.text,'一起看夕阳')
+  assert.deepEqual(Array.from(page.data.draft.images,m=>m.uploadId),['unsaved-photo'])
+  assert.equal(page.data.hasUnsavedChanges,true)
+  page.preview();assert.equal(page.data.story.text,'一起看夕阳');assert.equal(page.data.story.images.length,0)
+  page.edit();await page.save()
+  const data=calls.find(c=>c.action==='saveMemory').data
+  assert.equal(data.text,'尚未保存的长故事🐾');assert.equal(data.mediaRevision,1)
+  assert.deepEqual(Array.from(data.images),['unsaved-photo'])
+})
+
+test('unsaved uploads can be selected or removed without publishing or requesting immediate updates', async () => {
+  const { page,calls }=fixture();await page.load();page.edit()
+  page.data.draft.images.push({uploadId:'new-photo',url:'local'})
+  await page.toggleEntrance({currentTarget:{dataset:{kind:'images',id:'new-photo'}}})
+  assert.equal(page.data.draft.images[1].entrance,true);assert.equal(page.data.hasUnsavedChanges,true)
+  assert.equal(calls.some(c=>c.action==='updateMemoryMedia'),false)
+  await page.remove({currentTarget:{dataset:{kind:'images',index:1}}})
+  assert.equal(page.data.hasUnsavedChanges,false);assert.equal(page.data.detail.mediaRevision,0)
+})
+
+test('failed immediate updates leave the selection unchanged and permit retry', async () => {
+  let fail=true
+  const { page,calls,toasts }=fixture(true,{api:async(action,data)=>{
+    if(action!=='updateMemoryMedia')return {}
+    if(fail)throw new Error('网络中断，请重试')
+    return {revision:data.revision,mediaRevision:data.mediaRevision+1,reviewStatus:'private',story:null}
+  }})
+  await page.load();page.edit()
+  const event={currentTarget:{dataset:{kind:'images',id:'photo1'}}}
+  await page.toggleEntrance(event)
+  assert.equal(page.data.draft.images[0].entrance,undefined);assert.equal(page.data.mediaSaving,false)
+  assert.match(toasts.at(-1),/网络中断/);assert.match(page.data.mediaSaveError,/网络中断/)
+  fail=false;await page.toggleEntrance(event)
+  const mutations=calls.filter(c=>c.action==='updateMemoryMedia')
+  assert.deepEqual(mutations[0].data,mutations[1].data)
+  assert.equal(page.data.draft.images[0].entrance,true);assert.equal(page.data.mediaSaveError,'')
+})
+
+test('in-flight immediate writes prevent duplicate taps, uploads and saves; closed pages ignore responses', async () => {
+  let finish
+  const {page,calls}=fixture(true,{api:async action=>action==='updateMemoryMedia'?new Promise(resolve=>{finish=resolve}):{}})
+  await page.load();page.edit()
+  const event={currentTarget:{dataset:{kind:'images',id:'photo1'}}}
+  const writing=page.toggleEntrance(event)
+  await page.toggleEntrance(event);await page.remove({currentTarget:{dataset:{kind:'videos',index:0}}})
+  await page.addMedia({currentTarget:{dataset:{kind:'image'}}});await page.save()
+  assert.equal(calls.filter(c=>c.action==='updateMemoryMedia').length,1)
+  assert.equal(calls.some(c=>['prepareMedia','saveMemory'].includes(c.action)),false)
+  page.onUnload();finish({revision:4,mediaRevision:1,reviewStatus:'private',story:null});await writing
+  assert.equal(page.data.draft.images[0].entrance,undefined)
 })
 
 test('portrait pose defaults for old requests, restores sleeping, and is locked while submitting', async () => {

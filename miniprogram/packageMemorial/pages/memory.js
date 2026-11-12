@@ -3,8 +3,17 @@ const { callFunction } = require('../../utils/cloud')
 const { prepareImage } = require('../../utils/image-upload')
 const { plotNumber } = require('../scene/plot-number')
 const native = (name, options) => new Promise((resolve, reject) => wx[name]({ ...options, success: resolve, fail: reject }))
+const reviewLabel = status => ({ pending: '公开回忆待审核', private: '仅自己可见', approved: '回忆已公开', rejected: '请调整后重新提交', empty: '尚未整理回忆' }[status] || '')
+const copyContent = value => ({ ...(value || {}), text: value && value.text || '', images: (value && value.images || []).map(m => ({ ...m })),
+  videos: (value && value.videos || []).map(m => ({ ...m })), music: value && value.music ? { ...value.music } : null })
+const contentKey = (value, isPublic) => JSON.stringify([!!isPublic, value && value.text || '',
+  ...['images', 'videos'].map(kind => (value && value[kind] || []).map(m => [m.uploadId, !!m.entrance])), value && value.music && value.music.uploadId || null])
+const changeContent = (value, change) => !value ? value : { ...value, [change.kind]: change.operation === 'remove'
+  ? (value[change.kind] || []).filter(m => m.uploadId !== change.uploadId)
+  : (value[change.kind] || []).map(m => m.uploadId === change.uploadId ? { ...m, entrance: change.enabled } : m) }
 Page({
   data: { loading: true, saving: false, uploading: false, error: '', detail: null, editing: false, previewing: false,
+    mediaSaving: false, mediaSavingId: '', mediaSaveError: '', hasUnsavedChanges: false,
     textCount: 0, portrait: null, portraitForm: false, portraitPhotos: {}, portraitNote: '', portraitPose: 'sitting',
     draft: { text: '', images: [], videos: [], music: null }, isPublic: false, playing: false, uploadTip: '' },
   onLoad(options = {}) { this._alive = true; this.id = options.id || ''; this.load() },
@@ -17,32 +26,67 @@ Page({
       const detail = await this.api('detail')
       if (!this._alive) return
       if (detail.owner) this.loadPortrait()
-      this.setData({ detail, plotNumber: plotNumber(detail.plotId), draft: detail.draft || { text: '', images: [], videos: [], music: null }, isPublic: detail.isPublic,
-        textCount: Array.from(detail.draft && detail.draft.text || '').length, story: detail.story, reviewLabel: { pending: '公开回忆待审核', private: '仅自己可见', approved: '回忆已公开', rejected: '请调整后重新提交', empty: '尚未整理回忆' }[detail.reviewStatus] || '' })
+      this.setData({ detail, plotNumber: plotNumber(detail.plotId), draft: copyContent(detail.draft), isPublic: detail.isPublic,
+        hasUnsavedChanges: false, mediaSaveError: '', textCount: Array.from(detail.draft && detail.draft.text || '').length, story: detail.story, reviewLabel: reviewLabel(detail.reviewStatus) })
     } catch (error) { if (this._alive) this.setData({ error: error.message || '回忆加载失败，请重试' }) }
     finally { if (this._alive) this.setData({ loading: false }) }
   },
-  edit() { if (this.data.detail && this.data.detail.owner && !this.data.saving) { this.stopMusic(); this.setData({ editing: true, previewing: false }) } },
-  finishEditing() { if (!this.data.saving && !this.data.uploading) this.setData({ editing: false }) },
+  edit() { if (this.data.detail && this.data.detail.owner && !this.data.saving && !this.data.mediaSaving) { this.stopMusic(); this.setData({ editing: true, previewing: false }) } },
+  finishEditing() { if (!this.data.saving && !this.data.uploading && !this.data.mediaSaving) this.setData({ editing: false }) },
   preview() { this.stopMusic(); this.setData({ editing: false, previewing: true, story: this.data.detail.story }) },
   closePreview() { this.stopMusic(); this.setData({ previewing: false }) },
-  input(e) { if (!this.data.saving) this.setData({ 'draft.text': e.detail.value, textCount: Array.from(e.detail.value).length }) },
-  privacy(e) { if (!this.data.saving) this.setData({ isPublic: e.detail.value }) },
-  toggleEntrance(e) {
-    if (this.data.saving || this.data.uploading || !this.data.detail || !this.data.detail.owner) return
+  updateDirty() {
+    const detail = this.data.detail
+    this.setData({ hasUnsavedChanges: !!detail && contentKey(this.data.draft, this.data.isPublic) !== contentKey(detail.draft, detail.isPublic) })
+  },
+  input(e) { if (!this.data.saving) { this.setData({ 'draft.text': e.detail.value, textCount: Array.from(e.detail.value).length }); this.updateDirty() } },
+  privacy(e) { if (!this.data.saving) { this.setData({ isPublic: e.detail.value }); this.updateDirty() } },
+  async toggleEntrance(e) {
+    if (!this._alive || this.data.saving || this.data.uploading || this.data.mediaSaving || !this.data.detail || !this.data.detail.owner) return
     const { kind, id } = e.currentTarget.dataset
     if (!['images', 'videos'].includes(kind)) return
-    this.setData({ ['draft.' + kind]: this.data.draft[kind].map(m => m.uploadId === id ? { ...m, entrance: !m.entrance } : m) })
+    const item = this.data.draft[kind].find(m => m.uploadId === id)
+    if (item) await this.updateMedia({ kind, uploadId: id, operation: 'entrance', enabled: !item.entrance })
   },
-  remove(e) {
-    if (this.data.saving || this.data.uploading) return
+  async remove(e) {
+    if (!this._alive || this.data.saving || this.data.uploading || this.data.mediaSaving || !this.data.detail || !this.data.detail.owner) return
     this.stopMusic()
     const { kind, index } = e.currentTarget.dataset
-    if (kind === 'music') this.setData({ 'draft.music': null })
-    else if (['images', 'videos'].includes(kind)) this.setData({ ['draft.' + kind]: this.data.draft[kind].filter((_, i) => i !== Number(index)) })
+    if (kind === 'music') { this.setData({ 'draft.music': null }); this.updateDirty() }
+    else if (['images', 'videos'].includes(kind)) {
+      const item = this.data.draft[kind][Number(index)]
+      if (item) await this.updateMedia({ kind, uploadId: item.uploadId, operation: 'remove' })
+    }
+  },
+  async updateMedia(change) {
+    if (!this._alive || this.data.saving || this.data.uploading || this.data.mediaSaving || !this.data.detail || !this.data.detail.owner) return
+    const detail = this.data.detail
+    const saved = (detail.draft && detail.draft[change.kind] || []).some(m => m.uploadId === change.uploadId)
+    if (!saved) {
+      // Newly uploaded files belong only to this unsaved edit. Selection must
+      // not publish them; removal simply discards them from the pending edit.
+      this.setData({ draft: changeContent(this.data.draft, change), mediaSaveError: '' }); this.updateDirty()
+      wx.showToast({ title: change.operation === 'remove' ? '已移除' : change.enabled ? '提交并审核通过后展示' : '已取消入口展示', icon: 'none' })
+      return
+    }
+    this.setData({ mediaSaving: true, mediaSavingId: change.uploadId, mediaSaveError: '' })
+    try {
+      const result = await this.api('updateMemoryMedia', { ...change, revision: detail.revision, mediaRevision: detail.mediaRevision || 0 })
+      if (!this._alive) return
+      // Merge the single acknowledged operation without replacing unsaved text,
+      // uploads or privacy edits with a freshly fetched server draft.
+      this.setData({ draft: changeContent(this.data.draft, change),
+        detail: { ...detail, ...result, draft: changeContent(detail.draft, change) }, story: result.story,
+        reviewLabel: reviewLabel(result.reviewStatus) })
+      this.updateDirty()
+      const shown = result.story && (result.story[change.kind] || []).some(m => m.uploadId === change.uploadId && m.entrance)
+      wx.showToast({ title: change.operation === 'remove' ? '已移除，立即生效' : !change.enabled ? '已取消入口展示' : shown ? '已在入口展示' : '设置已保存，公开审核通过后展示', icon: 'none' })
+    } catch (error) {
+      if (this._alive) { this.setData({ mediaSaveError: error.message || '操作未确认，请重试' }); wx.showToast({ title: error.message || '操作未确认，请重试', icon: 'none' }) }
+    } finally { if (this._alive) this.setData({ mediaSaving: false, mediaSavingId: '' }) }
   },
   async addMedia(e) {
-    if (!this._alive || this.data.uploading || this.data.saving || !this.data.detail || !this.data.detail.owner) return
+    if (!this._alive || this.data.uploading || this.data.saving || this.data.mediaSaving || !this.data.detail || !this.data.detail.owner) return
     const kind = e.currentTarget.dataset.kind
     if (!['image', 'video', 'music'].includes(kind)) return
     const field = kind === 'image' ? 'images' : 'videos', max = kind === 'image' ? 12 : 6
@@ -74,16 +118,20 @@ Page({
         const item = { ...media, url: path }
         if (kind === 'music') this.setData({ 'draft.music': item })
         else this.setData({ ['draft.' + field]: this.data.draft[field].concat(item) })
+        this.updateDirty()
       }
     } catch (error) { if (this._alive && !/cancel/.test(error.errMsg || '')) wx.showToast({ title: error.message || error.errMsg || '上传失败，请重试', icon: 'none' }) }
     finally { if (this._alive) this.setData({ uploading: false, uploadTip: '' }); this._uploadTask = null }
   },
   async save() {
-    if (!this._alive || this.data.saving || this.data.uploading || !this.data.detail || !this.data.detail.owner) return
+    if (!this._alive || this.data.saving || this.data.uploading || this.data.mediaSaving || !this.data.detail || !this.data.detail.owner) return
+    if (contentKey(this.data.draft, this.data.isPublic) === contentKey(this.data.detail.draft, this.data.detail.isPublic)) {
+      wx.showToast({ title: '没有需要保存的修改', icon: 'none' }); return
+    }
     this.setData({ saving: true })
     const draft = this.data.draft
     try {
-      await this.api('saveMemory', { revision: this.data.detail.revision, text: draft.text, isPublic: this.data.isPublic,
+      await this.api('saveMemory', { revision: this.data.detail.revision, mediaRevision: this.data.detail.mediaRevision || 0, text: draft.text, isPublic: this.data.isPublic,
         images: draft.images.map(m => m.uploadId), videos: draft.videos.map(m => m.uploadId), music: draft.music && draft.music.uploadId,
         entranceImages: draft.images.filter(m => m.entrance).map(m => m.uploadId), entranceVideos: draft.videos.filter(m => m.entrance).map(m => m.uploadId) })
       if (!this._alive) return

@@ -53,6 +53,11 @@
  if(channel)channel.onmessage=notifyPresence;
  window.addEventListener('storage',e=>{if(e.key?.startsWith(presenceKey))notifyPresence()});
  function publishPresence(){notifyPresence();channel?.postMessage('change')}
+ const memoryDemo=new URLSearchParams(location.search).get('memoryDemo')==='1';
+ const demoStory={text:'它喜欢趴在阳光照到的地板上。每次听见钥匙的声音，就会跑到门口等我。\n\n谢谢你，把平凡的日子变成了值得珍藏的回忆。',images:[{uploadId:'image-demo',entrance:true,url:memoryDemo?'/portrait-demo.png':'/packageMemorial/assets/monuments-v1/arch.png'}],videos:[],music:{uploadId:'music-demo',url:'/packageMemorial/assets/audio/music.wav',name:'陪伴的旋律.wav'}};
+ if(memoryDemo){demoStory.images.push({uploadId:'image-second',entrance:false,url:'/portrait-demo.png'});demoStory.videos.push({uploadId:'video-demo',entrance:true,url:''},{uploadId:'video-second',entrance:false,url:''})}
+ let memoryState={revision:1,mediaRevision:0,reviewStatus:'approved',isPublic:true,draft:structuredClone(demoStory),story:structuredClone(demoStory)};
+ if(memoryDemo){try{memoryState=JSON.parse(localStorage.getItem('memorial-preview-memory'))||memoryState}catch(_){}}
  const cloud={callFunction:async(module,action,data={})=>{
   // Local-only network rehearsal: serialize the real sync client behind a slow
   // response, preserving the position's original sampledAt before the delay.
@@ -63,10 +68,16 @@
   if(action==='listGardens'||action==='listGardensAdmin')return{list:[previewGarden,extraGarden],hasMore:false};
   if(action==='createGarden'||action==='updateGarden')return{...previewGarden,...data,id:data.id||extraGarden.id,revision:1};
   if(action==='world')return{serverTime:Date.now(),garden:data.gardenId===extraGarden.id?extraGarden:previewGarden,occupied:['garden-ortho-v2:23:21'],memorials:[{id:'garden-ortho-v2:23:21',applicationId:sample._id,x:1376,y:1504,name:sample.petName,epitaph:sample.epitaph,date:sample.date,style:'arch',...(new URLSearchParams(location.search).get('portraitDemo')==='1'?{portrait:{id:'shiba-demo',url:'/portrait-demo.png',...demoArt}}:{})}]};
-  const story={text:'它喜欢趴在阳光照到的地板上。每次听见钥匙的声音，就会跑到门口等我。\n\n谢谢你，把平凡的日子变成了值得珍藏的回忆。',images:[{uploadId:'image-demo',entrance:true,url:'/packageMemorial/assets/monuments-v1/arch.png'}],videos:[],music:{uploadId:'music-demo',url:'/packageMemorial/assets/audio/music.wav',name:'陪伴的旋律.wav'}};
-  if(action==='entrance')return{images:story.images.filter(m=>m.entrance),videos:[]};
+  const story=memoryState.story;
+  if(action==='entrance')return memoryState.isPublic?{images:story.images.filter(m=>m.entrance),videos:story.videos.filter(m=>m.entrance)}:{images:[],videos:[]};
   if(action==='getMemorialAdmin')return{...sample,id:sample._id,reviewStatus:'approved',isPublic:true,draft:story,story,portrait:{status:'empty',photos:[]}};
-  if(action==='detail')return{gardenId:sample.gardenId,gardenName:sample.gardenName,id:sample._id,petName:sample.petName,date:sample.date,epitaph:sample.epitaph,lawn:sample.lawn,plotId:sample.plotId,owner:new URLSearchParams(location.search).get('role')!=='visitor',isPublic:true,hasPublicStory:true,revision:1,reviewStatus:'approved',draft:story,story};
+  if(action==='detail')return{gardenId:sample.gardenId,gardenName:sample.gardenName,id:sample._id,petName:sample.petName,date:sample.date,epitaph:sample.epitaph,lawn:sample.lawn,plotId:sample.plotId,owner:new URLSearchParams(location.search).get('role')!=='visitor',hasPublicStory:memoryState.isPublic,...structuredClone(memoryState),story:memoryState.isPublic?structuredClone(story):null};
+  if(action==='updateMemoryMedia'){
+   if(data.mediaRevision!==memoryState.mediaRevision||data.revision!==memoryState.revision)throw new Error('回忆已更新，请重新打开');
+   for(const snapshot of [memoryState.draft,memoryState.story])snapshot[data.kind]=data.operation==='remove'?snapshot[data.kind].filter(m=>m.uploadId!==data.uploadId):snapshot[data.kind].map(m=>m.uploadId===data.uploadId?{...m,entrance:data.enabled}:m);
+   memoryState.mediaRevision++;if(memoryDemo)localStorage.setItem('memorial-preview-memory',JSON.stringify(memoryState));
+   return{revision:memoryState.revision,mediaRevision:memoryState.mediaRevision,reviewStatus:memoryState.reviewStatus,story:memoryState.isPublic?structuredClone(memoryState.story):null,hasPublicStory:memoryState.isPublic};
+  }
   if(action==='listMemoriesAdmin')return{list:[{...sample,_id:'demo-memory',status:'pending',revision:2,memory:story}],hasMore:false};
   if(action==='portraitDetail')return{revision:0,status:'empty',photos:[]};
   if(action==='preparePortraitAsset')return data.uploadId ? demoArt : {uploadId:'demo-art',cloudPath:'portrait-demo.png'};

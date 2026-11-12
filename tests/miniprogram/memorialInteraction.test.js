@@ -164,6 +164,20 @@ function pageFixture(saved = {}, windowInfo = {}) {
   return { page, events, nodes: audio.nodes, resizes: () => resized }
 }
 
+test('scene changes refresh an already open memorial entrance once without another tap', { timeout: 2500 }, async () => {
+  const { page } = pageFixture()
+  let worlds = 0, entrances = 0, refreshed
+  const done = new Promise(resolve => { refreshed = resolve })
+  page.data.memorialCard = { applicationId: 'app' }
+  page.refreshMemorials = async () => { worlds++ }
+  page.loadEntrance = async () => { entrances++; refreshed() }
+  page.queueWorldRefresh(); page.queueWorldRefresh()
+  await done
+  assert.equal(worlds, 1); assert.equal(entrances, 1)
+  assert.equal(page._worldRefreshTimer, null)
+  page._alive = false
+})
+
 test('native map touch coordinates exclude navigation offset and other controls', () => {
   const { page } = pageFixture()
   const touch = (identifier, clientX, clientY) => ({ identifier, clientX, clientY })

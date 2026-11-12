@@ -375,6 +375,7 @@ Page({
       if (!this._visible || !this._alive) return
       if (this._worldLoading) { this.queueWorldRefresh(); return }
       await this.refreshMemorials()
+      if (this._alive && this._visible && this.data.memorialCard) await this.loadEntrance()
       if (this.data.applicationError) this.queueWorldRefresh()
     }, this.data.applicationError ? 4000 : 600)
   },

@@ -6,6 +6,7 @@ const LIMITS = { image: 1024 * 1024, video: 30 * 1024 * 1024, music: 10 * 1024 *
 module.exports = context => {
   const { db, cloud, now, checkTextSecurity, checkImageSecurity } = context
   const gardens = require('./memorialGardens')(context)
+  const presence = require('./memorialPresence')(context)
   const { gardenId } = require('./memorialGardens')
   const read = (store, id) => readOptionalDocument(store, 'platform_configs', id)
   const put = (store, id, data) => store.collection('platform_configs').doc(id).set({ data })
@@ -59,7 +60,39 @@ module.exports = context => {
       return { id: app._id, gardenId: garden._id, gardenName: garden.name, petName: app.petName, epitaph: app.epitaph, date: app.date, lawn: app.lawn, plotId: app.plotId,
         style: app.style || 'arch', owner, isPublic: !!(row && row.isPublic), hasPublicStory: visible,
         story: visible ? await hydrate(row.publicContent) : null,
-        ...(owner ? { revision: row && row.revision || 0, reviewStatus: row && row.status || 'empty', reason: row && row.reason || '', draft: await hydrate(row && row.draft) } : {}) }
+        ...(owner ? { revision: row && row.revision || 0, mediaRevision: row && row.mediaRevision || 0, reviewStatus: row && row.status || 'empty', reason: row && row.reason || '', draft: await hydrate(row && row.draft) } : {}) }
+    }
+    if (action === 'updateMemoryMedia') {
+      const app = await application(data.id, openid, true)
+      const { kind, operation, uploadId, enabled, revision, mediaRevision } = data
+      if (!['images', 'videos'].includes(kind) || !['entrance', 'remove'].includes(operation) ||
+        typeof uploadId !== 'string' || !uploadId || !Number.isSafeInteger(revision) || revision < 0 ||
+        !Number.isSafeInteger(mediaRevision) || mediaRevision < 0 || operation === 'entrance' && typeof enabled !== 'boolean') throw new Error('照片或视频操作无效')
+      const fingerprint = digest(JSON.stringify([revision, mediaRevision, kind, operation, uploadId, operation === 'entrance' ? enabled : null]))
+      const row = await db.runTransaction(async tx => {
+        const current = await read(tx, memoryId(app._id))
+        if (!current || current.key !== 'memorial_memory' || current.ownerOpenid !== openid) throw new Error('这份回忆尚未保存，请先提交新内容')
+        if (current.revision !== revision) throw new Error('回忆已在其他页面更新，请重新打开后编辑')
+        const version = current.mediaRevision || 0
+        if (version === mediaRevision + 1 && current.lastMediaMutation === fingerprint) return current
+        if (version !== mediaRevision) throw new Error('展示设置或照片已更新，请重新打开回忆后再操作')
+        const contains = snapshot => (snapshot && snapshot[kind] || []).some(m => m.uploadId === uploadId)
+        if (!contains(current.draft) && !contains(current.publicContent)) throw new Error('这张照片或视频已被移除，请重新打开回忆')
+        // Apply only a visibility change or removal to each existing snapshot.
+        // Never copy draft text or unreviewed media into the public snapshot.
+        const change = snapshot => !snapshot ? snapshot : { ...snapshot, [kind]: operation === 'remove'
+          ? (snapshot[kind] || []).filter(m => m.uploadId !== uploadId)
+          : (snapshot[kind] || []).map(m => m.uploadId === uploadId ? { ...m, entrance: enabled } : m) }
+        const draft = change(current.draft), publicContent = change(current.publicContent)
+        const publicChanged = current.isPublic && JSON.stringify(publicContent) !== JSON.stringify(current.publicContent)
+        const patch = { draft, publicContent, mediaRevision: version + 1, lastMediaMutation: fingerprint, mediaUpdatedAt: now() }
+        await tx.collection('platform_configs').doc(current._id).update({ data: { ...patch,
+          draft: db.command.set(draft), publicContent: db.command.set(publicContent) } })
+        if (publicChanged) await presence.changed(tx, gardenId(app))
+        return { ...current, ...patch }
+      })
+      return { revision: row.revision, mediaRevision: row.mediaRevision || 0, reviewStatus: row.status, reason: row.reason || '',
+        hasPublicStory: !!(row.isPublic && row.publicContent), story: row.isPublic && row.publicContent ? await hydrate(row.publicContent) : null }
     }
     if (action === 'prepareMedia') {
       const app = await application(data.id, openid, true), kind = clean(data.kind)
@@ -106,6 +139,8 @@ module.exports = context => {
     if (action === 'saveMemory') {
       const app = await application(data.id, openid, true), story = typeof data.text === 'string' ? data.text : ''
       if (typeof data.isPublic !== 'boolean' || !Number.isInteger(data.revision) || data.revision < 0) throw new Error('回忆版本或公开设置无效')
+      const mediaRevision = data.mediaRevision === undefined ? 0 : data.mediaRevision
+      if (!Number.isSafeInteger(mediaRevision) || mediaRevision < 0) throw new Error('照片版本无效，请重新打开回忆')
       if (!Array.isArray(data.images) || data.images.length > 12 || !Array.isArray(data.videos) || data.videos.length > 6) throw new Error('最多上传 12 张图片和 6 个视频')
       const ids = data.images.concat(data.videos, data.music ? [data.music] : [])
       if (ids.some(id => typeof id !== 'string') || new Set(ids).size !== ids.length) throw new Error('媒体列表重复或无效')
@@ -142,6 +177,8 @@ module.exports = context => {
       }
       return db.runTransaction(async tx => {
         const id = memoryId(app._id), previous = await read(tx, id)
+        // Old editors must not restore media removed immediately in another view.
+        if ((previous && previous.mediaRevision || 0) !== mediaRevision) throw new Error('展示设置或照片已更新，请重新打开回忆后再保存')
         if (previous && previous.revision === data.revision + 1 && previous.saveFingerprint === saveFingerprint) {
           return { revision: previous.revision, status: previous.status }
         }
@@ -153,8 +190,9 @@ module.exports = context => {
         const revision = data.revision + 1
         await put(tx, id, { key: 'memorial_memory', gardenId: gardenId(app), applicationId: app._id, ownerOpenid: openid,
           petName: app.petName, applicant: user.nickname || '用户', lawn: app.lawn, plotId: app.plotId,
-          revision, saveFingerprint, draft, isPublic: data.isPublic, status: data.isPublic ? 'pending' : 'private', reason: '',
+          revision, mediaRevision, saveFingerprint, draft, isPublic: data.isPublic, status: data.isPublic ? 'pending' : 'private', reason: '',
           publicContent: previous && previous.publicContent || null, createdAt: previous && previous.createdAt || now(), updatedAt: now() })
+        if (previous && previous.isPublic && !data.isPublic && previous.publicContent) await presence.changed(tx, gardenId(app))
         if (data.isPublic) await context.enqueueAdminAuditNotification(tx, { auditType: 'memorial_memory', targetId: id + ':' + revision,
           applicant: user.nickname || '用户', type: '纪念回忆审核', reason: app.petName, page: 'pages/admin/memorial/index?mode=memories' })
         return { revision, status: data.isPublic ? 'pending' : 'private' }
@@ -182,6 +220,7 @@ module.exports = context => {
         await tx.collection('platform_configs').doc(row._id).update({ data: { status: data.status, reason, reviewedBy: openid, updatedAt: now(),
           // Published content is an immutable full snapshot, initially null.
           ...(data.status === 'approved' ? { publicContent: db.command.set(row.draft) } : {}) } })
+        if (data.status === 'approved') await presence.changed(tx, gardenId(row))
         const noticeId = 'admin_audit_memorial_memory_' + row._id + ':' + row.revision
         if (await readOptionalDocument(tx, 'admin_notifications', noticeId)) await tx.collection('admin_notifications').doc(noticeId).update({ data: { resolved: true, resolvedAt: now() } })
         const stamp = now(), time = stamp instanceof Date ? stamp.toISOString() : String(stamp)
