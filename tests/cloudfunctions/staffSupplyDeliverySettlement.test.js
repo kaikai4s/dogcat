@@ -275,3 +275,26 @@ test('refund preview marks an already requested deposit as unavailable for anoth
   assert.equal(result.data.canRequestRefund, false)
   assert.equal(result.data.status, 'refund_requested')
 })
+
+test('a small top-up preserves the original unshipped supply agreement and address record', async () => {
+  const f = setup()
+  const originalId = await paid(f)
+  const changed = await f.admin.main({ module: 'admin', action: 'setStaffDepositStandard', data: { staffProfileId: 'profile', amount: '501' } })
+  assert.equal(changed.ok, true, changed.message)
+  f.db.state.platform_configs[0].value.staffSupplies.supplyFeeAmount = 180
+  const topup = await f.staff.main({ module: 'staff', action: 'createDepositPayment', data: { agreed: true } })
+  assert.equal(topup.ok, true, topup.message)
+  assert.notEqual(topup.data.depositId, originalId)
+  const state = await f.staff.main({ module: 'staff', action: 'getDepositStatus' })
+  assert.equal(state.data.deposit.amount, 1)
+  assert.equal(state.data.supplyDeposit._id, originalId)
+  assert.equal(state.data.checkoutSupplyFeeAmount, 120)
+  assert.equal(state.data.supplyConsentRequired, false)
+  const nextAddress = { ...address, detail: '新地址 20 号' }
+  const confirmation = await f.staff.main({ module: 'staff', action: 'confirmSupplyDelivery', data: { acceptSupplyPolicy: true, supplyAddress: nextAddress } })
+  assert.equal(confirmation.ok, true, confirmation.message)
+  assert.equal(confirmation.data.depositId, originalId)
+  assert.equal(f.db.state.staff_deposits.find(row => row._id === originalId).supplyAddress.detail, nextAddress.detail)
+  assert.equal(f.db.state.staff_deposits.find(row => row._id === topup.data.depositId).supplyPolicyAcceptedAt, undefined)
+  await ship(f, originalId)
+})

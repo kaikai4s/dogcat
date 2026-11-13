@@ -35,6 +35,177 @@ function harness(route, callFunction) {
   return { page, originalLoad, wx, storage, errors, toasts, modals, navigations, helpers }
 }
 
+test('resetting the sitter list clears selections from the previous deposit filter', async () => {
+  const h = harness('admin/sitters/list', async () => ({ list: [{ _id: 'visible', depositStandardAmount: 100, depositBalance: 50 }], page: 1, hasMore: false, total: 1 }))
+  h.page.load = h.originalLoad
+  Object.assign(h.page.data, { profiles: [{ _id: 'hidden', selected: true }], selectedIds: ['hidden'], minDeposit: '40', maxDeposit: '60' })
+  await h.page.load({ reset: true })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(h.page.data.selectedIds.length, 0)
+  assert.equal(h.page.data.profiles[0]._id, 'visible')
+  assert.equal(h.page.data.profiles[0].selected, false)
+})
+
+test('batch repayment submits exactly the sitter IDs reviewed in its preview', async () => {
+  const calls = []
+  const h = harness('admin/sitters/list', async (_, action, data) => { calls.push({ action, data }); return { count: 1 } })
+  Object.assign(h.page.data, { profiles: [{ _id: 'visible', depositTopUpAmount: 50 }], selectedIds: ['hidden', 'visible'] })
+  h.page.openRepayModal()
+  assert.equal(h.page.data.selectedProfiles.length, 1)
+  // Later selection changes cannot alter an already displayed confirmation.
+  h.page.data.selectedIds = ['hidden', 'different']
+  await h.page.confirmBatchRepay()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(calls.length, 1)
+  assert.deepEqual(Array.from(calls[0].data.staffProfileIds), ['visible'])
+})
+
+test('a newer balance filter replaces an in-flight list request and ignores its late response', async () => {
+  const requests = []
+  const h = harness('admin/sitters/list', (_, action, data) => new Promise(resolve => requests.push({ data, resolve })))
+  h.page.load = h.originalLoad
+  const old = h.page.load({ reset: true })
+  h.page.data.minDeposit = '50'
+  const latest = h.page.load({ reset: true })
+  assert.equal(requests.length, 2)
+  requests[1].resolve({ list: [{ _id: 'matching' }], page: 1, hasMore: false, total: 1 })
+  await latest
+  requests[0].resolve({ list: [{ _id: 'obsolete' }], page: 1, hasMore: false, total: 1 })
+  await old
+  assert.equal(requests[1].data.minDeposit, '50')
+  assert.equal(h.page.data.profiles[0]._id, 'matching')
+  assert.equal(h.page.data.loading, false)
+})
+
+test('failed sitter pagination retries the same page and keeps the applied deposit filter', async () => {
+  const requests = []
+  let fail = true
+  const h = harness('admin/sitters/list', async (_, action, data) => {
+    requests.push({ ...data })
+    if (data.page === 2 && fail) { fail = false; throw new Error('network error') }
+    return { list: [{ _id: `page-${data.page}` }], page: data.page, hasMore: true, total: 40 }
+  })
+  h.page.load = h.originalLoad
+  h.page.data.minDeposit = '50'
+  await h.page.load({ reset: true })
+  await new Promise(resolve => setImmediate(resolve))
+  h.page.data.minDeposit = '100'
+  await h.page.loadMore()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(h.page.data.page, 1)
+  await h.page.loadMore()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(requests.map(row => row.page), [1, 2, 2])
+  assert.deepEqual(requests.map(row => row.minDeposit), ['50', '50', '50'])
+  assert.deepEqual(Array.from(h.page.data.profiles, row => row._id), ['page-1', 'page-2'])
+})
+
+test('batch repayment remains locked during submission and keeps its reviewed IDs across list refreshes', async () => {
+  let finish
+  const calls = []
+  const h = harness('admin/sitters/list', (_, action, data) => {
+    calls.push({ action, data })
+    if (action === 'batchRequireDepositRepay') return new Promise(resolve => { finish = resolve })
+    return Promise.resolve({ list: [{ _id: 'new', depositTopUpAmount: 20 }], page: 1, hasMore: false, total: 1 })
+  })
+  h.page.load = h.originalLoad
+  Object.assign(h.page.data, { profiles: [{ _id: 'reviewed', depositTopUpAmount: 50 }], selectedIds: ['reviewed'] })
+  h.page.openRepayModal()
+  const pending = h.page.confirmBatchRepay()
+  h.page.closeRepayModal()
+  assert.equal(h.page.data.showRepayModal, true)
+  assert.equal(h.page.data.submittingRepay, true)
+  await h.page.load({ reset: true })
+  h.page.data.selectedIds = ['new']
+  h.page.openRepayModal()
+  await h.page.confirmBatchRepay()
+  assert.deepEqual(Array.from(h.page.data.selectedProfiles, p => p._id), ['reviewed'])
+  assert.equal(calls.filter(c => c.action === 'batchRequireDepositRepay').length, 1)
+  finish({ count: 1 })
+  await pending
+  assert.equal(h.page.data.showRepayModal, false)
+  assert.equal(h.page.data.submittingRepay, false)
+})
+
+test('an obsolete list failure does not clear the newer request loading state or display an error', async () => {
+  const requests = []
+  const h = harness('admin/sitters/list', () => new Promise((resolve, reject) => requests.push({ resolve, reject })))
+  h.page.load = h.originalLoad
+  const old = h.page.load({ reset: true })
+  const current = h.page.load({ reset: true })
+  requests[0].reject(new Error('obsolete failure'))
+  await old
+  assert.equal(h.page.data.loading, true)
+  assert.equal(h.errors.length, 0)
+  requests[1].resolve({ list: [{ _id: 'current' }], page: 1, total: 1, hasMore: false })
+  await current
+  assert.equal(h.page.data.loading, false)
+  assert.equal(h.page.data.profiles[0]._id, 'current')
+})
+
+test('unloaded sitter pages ignore pending list and batch repayment responses', async () => {
+  for (const action of ['listStaffProfiles', 'batchRequireDepositRepay']) {
+    let finish
+    const h = harness('admin/sitters/list', () => new Promise(resolve => { finish = resolve }))
+    h.page.load = h.originalLoad
+    Object.assign(h.page.data, { profiles: [{ _id: 'reviewed', depositTopUpAmount: 50 }], selectedIds: ['reviewed'] })
+    h.page.openRepayModal()
+    const pending = action === 'listStaffProfiles' ? h.page.load({ reset: true }) : h.page.confirmBatchRepay()
+    h.page.onUnload()
+    h.page.setData = () => assert.fail('Must not update an unloaded page')
+    finish(action === 'listStaffProfiles' ? { list: [], page: 1, hasMore: false, total: 0 } : { count: 1 })
+    await pending
+    assert.equal(h.toasts.length, 0)
+    assert.equal(h.errors.length, 0)
+  }
+})
+
+test('top-up reuses the original supply address and skips renewed supply consent while delivery edits still require it', async () => {
+  const calls = []
+  const address = { name: '原收件人', phone: '13900001111', province: '上海市', city: '上海市', district: '浦东新区', detail: '原地址 18 号' }
+  const state = { canPay: true, topUpAmount: 1, supplyDeliveryRequired: true, supplyConsentRequired: false,
+    deposit: { _id: 'topup', status: 'unpaid' }, supplyDeposit: { _id: 'original', status: 'paid', supplyPolicyAcceptedAt: '2026-11-01', supplyAddress: address } }
+  const h = harness('staff/training', async (_, action, data) => {
+    calls.push({ action, data })
+    if (action === 'getDepositStatus') return structuredClone(state)
+    if (action === 'createDepositPayment') {
+      state.canPay = false
+      state.deposit.status = 'paid'
+      return { paid: true }
+    }
+    throw new Error(action)
+  })
+  await h.page.loadDeposit()
+  assert.equal(h.page.data.supplyAddress.detail, address.detail)
+  await h.page.payDeposit()
+  h.page.agreeDeposit({ detail: { value: ['agreed'] } })
+  await h.page.continueDepositRules()
+  const payments = calls.filter(call => call.action === 'createDepositPayment')
+  assert.equal(payments.length, 1)
+  assert.equal(payments[0].data.acceptSupplyPolicy, false)
+  assert.equal(h.page.data.depositModal, '')
+  h.page.openSupplyDelivery()
+  await h.page.loadDeposit({ preserveCheckout: true })
+  h.page.agreeDeposit({ detail: { value: ['agreed'] } })
+  await h.page.continueDepositRules()
+  assert.equal(h.page.data.depositModal, 'rules')
+  h.page.agreeSupply({ detail: { value: ['agreed'] } })
+  await h.page.continueDepositRules()
+  assert.equal(h.page.data.depositModal, 'address')
+  assert.equal(h.page.data.supplyAddress.detail, address.detail)
+})
+
+test('checkout amount labels show the shortfall for payment and combined balance for address editing', () => {
+  const template = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/staff/training/deposit-checkout.wxml'), 'utf8')
+  const amounts = [...template.matchAll(/¥\{\{([^}]+)\}\}/g)].map(match => match[1]).filter(expression => !expression.includes('checkoutSupplyFeeAmount'))
+  assert.equal(amounts.length, 2)
+  for (const [standard, balance] of [[99, 50], [100, 50], [501, 500]]) {
+    const depositState = { config: { amount: standard }, topUpAmount: standard - balance, depositBalance: balance, deposit: { paidAmount: 1 } }
+    for (const expression of amounts) assert.equal(vm.runInNewContext(expression, { depositState, depositIntent: 'payment' }), standard - balance)
+    assert.equal(vm.runInNewContext(amounts[0], { depositState, depositIntent: 'delivery' }), balance)
+  }
+})
+
 test('training quiz stays closed while locked and toggles after videos complete', () => {
   const { page } = harness('staff/training', async () => {})
   page.data.quiz = { unlocked: false }

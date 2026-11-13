@@ -107,6 +107,15 @@
 .commission-input { display: flex; align-items: center; gap: 12rpx; border: 1rpx solid #d1d5db; border-radius: 8rpx; padding: 0 18rpx; }
 .commission-input input { flex: 1; min-width: 0; height: 80rpx; margin: 0; }
 .commission-input text { flex-shrink: 0; }
+.deposit-standard-input { display: flex; align-items: center; gap: 12rpx; padding: 0 18rpx; border: 1rpx solid #d1d5db; border-radius: 8rpx; color: #64748b; }
+.deposit-standard-input input { flex: 1; min-width: 0; height: 80rpx; margin: 0; color: #1f2937; }
+.repay-amount-box { margin: 10rpx 0; padding: 16rpx; border: 1rpx solid #fed7aa; border-radius: 12rpx; background: #fff7ed; color: #9a3412; }
+.repay-amount-total { display: flex; align-items: baseline; justify-content: space-between; font-size: 25rpx; font-weight: 750; }
+.repay-amount-total text { color: #ea580c; font-size: 32rpx; font-weight: 950; }
+.repay-preview-list { max-height: 32vh; margin: 14rpx 0; border: 1rpx solid #e5e7eb; border-radius: 8rpx; }
+.repay-preview-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10rpx 18rpx; padding: 14rpx 16rpx; border-bottom: 1rpx solid #eef0f2; color: #64748b; font-size: 22rpx; }
+.repay-preview-name { min-width: 100%; color: #1f2937; font-size: 24rpx; font-weight: 700; }
+.repay-preview-due { color: #c2410c; font-weight: 800; }
 
 .openid-box {
   margin-top: 12rpx;

@@ -1,3 +1,4 @@
+const depositPolicy = require('../utils/staffDepositPolicy')
 const { beijingDateText } = require('../utils/time')
 const { createHash } = require('crypto')
 const trainingQuizVersion = training => createHash('sha256').update(JSON.stringify([training.passScore, training.quiz])).digest('hex')
@@ -153,6 +154,20 @@ module.exports = function createHandler(context) {
       cursor = page[page.length - 1]._id
     }
     return rows
+  }
+  const staffDepositStandard = depositPolicy.standardAmount
+  const staffDepositBalance = depositPolicy.balanceAmount
+  async function ensureStaffDepositStandard(profile, fallbackAmount) {
+    if (!profile || !profile._id) return profile
+    return db.runTransaction(async tx => {
+      const current = (await tx.collection('staff_profiles').doc(profile._id).get()).data
+      if (depositPolicy.hasStandard(current)) return { ...profile, ...current }
+      const amount = staffDepositStandard(current, fallbackAmount)
+      const patch = { depositStandardAmount: amount, depositEntryStandardAmount: amount,
+        depositStandardAssignedAt: current.createdAt || now(), depositStandardSource: 'legacy_current_config' }
+      await tx.collection('staff_profiles').doc(profile._id).update({ data: patch })
+      return { ...profile, ...current, ...patch }
+    })
   }
   async function queryCandidateSitters(whereCondition = {}, maxLimit = 300) {
     const rows = []
@@ -563,32 +578,36 @@ module.exports = function createHandler(context) {
       if (!profile) return null
       const settings = await getSystemSettings()
       const depositConfig = settings.staffDeposit || normalizeStaffDepositConfig()
+      const currentProfile = await ensureStaffDepositStandard(profile, depositConfig.amount)
+      const personalDepositConfig = { ...depositConfig, amount: staffDepositStandard(currentProfile, depositConfig.amount) }
       const zhimaConfig = normalizeStaffZhimaConfig(settings.staffZhima)
-      const ability = validateStaffTakeOrderAbility(profile, depositConfig)
-      const depositSatisfied = staffDepositSatisfied(profile, depositConfig)
+      const ability = validateStaffTakeOrderAbility(currentProfile, personalDepositConfig)
+      const depositSatisfied = staffDepositSatisfied(currentProfile, personalDepositConfig)
+      const depositBalance = depositSatisfied ? 0 : staffDepositBalance(await depositPolicy.readDeposits(db, openid))
+      const depositTopUpAmount = Math.max(0, Math.round((personalDepositConfig.amount - depositBalance) * 100) / 100)
       return {
-        ...profile,
-        weeklySchedule: normalizeWeeklySchedule(profile.weeklySchedule),
-        weeklyScheduleText: formatWeeklyScheduleText(profile.weeklySchedule),
-        vaccineServicePolicyText: profile.rejectUnvaccinatedPets === true ? '仅服务已接种认证宠物' : '可服务未认证宠物',
-        certificationLocked: isStaffProfileLocked(profile),
+        ...currentProfile,
+        weeklySchedule: normalizeWeeklySchedule(currentProfile.weeklySchedule),
+        weeklyScheduleText: formatWeeklyScheduleText(currentProfile.weeklySchedule),
+        vaccineServicePolicyText: currentProfile.rejectUnvaccinatedPets === true ? '仅服务已接种认证宠物' : '可服务未认证宠物',
+        certificationLocked: isStaffProfileLocked(currentProfile),
         depositConfig: {
-          enabled: depositConfig.enabled,
-          amount: depositConfig.amount
+          enabled: personalDepositConfig.enabled,
+          amount: personalDepositConfig.amount
         },
         zhimaConfig,
         canTakeOrders: ability.can,
         cannotTakeOrderReason: ability.can ? '' : ability.reason,
         cannotTakeOrderMessage: ability.can ? '' : ability.message,
-        depositNotice: (!depositSatisfied && depositConfig.enabled && depositConfig.amount > 0) ? {
+        depositNotice: (!depositSatisfied && (personalDepositConfig.enabled || currentProfile.requireDepositRepay === true) && personalDepositConfig.amount > 0) ? {
           needDeposit: true,
-          isRepay: Boolean(profile.requireDepositRepay === true || profile.depositStatus === 'supplement_required' || profile.depositStatus === 'forfeited'),
-          amount: depositConfig.amount,
-          title: (profile.requireDepositRepay === true || profile.depositStatus === 'supplement_required' || profile.depositStatus === 'forfeited') ? '要求重新足额缴纳保证金' : '未缴纳履约保证金',
-          reason: profile.requireDepositRepayReason || '',
-          repayReason: profile.requireDepositRepayReason || '',
-          message: (profile.requireDepositRepay === true || profile.depositStatus === 'supplement_required' || profile.depositStatus === 'forfeited')
-            ? `平台要求重新足额缴纳履约保证金，足额缴纳后即可恢复接单资格。`
+          isRepay: Boolean(currentProfile.requireDepositRepay === true || currentProfile.depositStatus === 'supplement_required' || currentProfile.depositStatus === 'forfeited'),
+          amount: depositTopUpAmount,
+          title: (currentProfile.requireDepositRepay === true || currentProfile.depositStatus === 'supplement_required' || currentProfile.depositStatus === 'forfeited') ? '要求补足履约保证金' : '未缴纳履约保证金',
+          reason: currentProfile.requireDepositRepayReason || '',
+          repayReason: currentProfile.requireDepositRepayReason || '',
+          message: (currentProfile.requireDepositRepay === true || currentProfile.depositStatus === 'supplement_required' || currentProfile.depositStatus === 'forfeited')
+            ? `需补缴 ¥${depositTopUpAmount.toFixed(2)}，补足个人标准后即可恢复接单资格。`
             : `平台已开启宠托师履约保证金，请先完成缴纳后再开始抢单/接单。`
         } : null
       }
@@ -958,12 +977,24 @@ module.exports = function createHandler(context) {
         faceVerifyRequestId: ''
       }
       const isReapplicationAfterRemoval = existingProfile && (existingProfile.auditStatus === 'revoked' || canReapplyAfterRoleRemoval)
+      const depositConfig = settings.staffDeposit || normalizeStaffDepositConfig()
+      const depositStandardAmount = isReapplicationAfterRemoval
+        ? Number(depositConfig.amount || 0)
+        : staffDepositStandard(existingProfile, depositConfig.amount)
       const depositReset = isReapplicationAfterRemoval ? {
         depositStatus: 'unpaid',
+        depositRequired: depositStandardAmount > 0,
         depositPaidAt: null,
         depositPaidAmount: 0,
-        requireDepositRepay: true,
-        requireDepositRepayReason: '重新申请宠托师需重新缴纳履约保证金'
+        requireDepositRepay: depositStandardAmount > 0,
+        requireDepositRepayReason: depositStandardAmount > 0 ? '重新申请宠托师需重新缴纳履约保证金' : '',
+        requireDepositRepayAt: null,
+        exitStatus: 'none',
+        exitRefundPaid: false,
+        depositStandardAmount,
+        depositStandardAssignedAt: time,
+        depositEntryStandardAmount: depositStandardAmount,
+        depositStandardSource: 'reapplication'
       } : {}
 
       const profile = {
@@ -1001,6 +1032,10 @@ module.exports = function createHandler(context) {
         faceVerifyRequestId: identitySummary.faceVerifyRequestId,
         auditStatus: 'pending',
         auditRemark: '',
+        depositStandardAmount,
+        depositEntryStandardAmount: existingProfile?.depositEntryStandardAmount ?? depositStandardAmount,
+        depositStandardAssignedAt: existingProfile?.depositStandardAssignedAt || time,
+        depositStandardSource: existingProfile?.depositStandardSource || 'application',
         certificationLockedAt: null,
         staffLevel: 'applicant',
         onboardingStatus: 'application_pending',
@@ -1050,6 +1085,19 @@ module.exports = function createHandler(context) {
           const canUpdateRemovedStaffProfile = current && !userHasStaffRole && current.auditStatus === 'approved'
           if (isStaffProfileLocked(current) && !canUpdateRemovedStaffProfile) throw new Error('认证资料已锁定，如需更正请联系平台审核')
           const setOp = (val) => (db.command && typeof db.command.set === 'function' ? db.command.set(val) : val)
+          if (isReapplicationAfterRemoval) {
+            const previousDeposits = await depositPolicy.readDeposits(db, openid, tx)
+            if (['requested', 'approved'].includes(current.exitStatus) || depositPolicy.refundPending(previousDeposits) ||
+                staffDepositBalance(previousDeposits) > 0 || previousDeposits.some(row => row.status === 'unpaid')) {
+              throw new Error('上次保证金尚未结清，请完成退出结算后重新申请')
+            }
+          }
+          if (!isReapplicationAfterRemoval) {
+            profile.depositStandardAmount = staffDepositStandard(current, depositConfig.amount)
+            profile.depositEntryStandardAmount = current.depositEntryStandardAmount ?? profile.depositStandardAmount
+            profile.depositStandardAssignedAt = current.depositStandardAssignedAt || current.createdAt || time
+            profile.depositStandardSource = current.depositStandardSource || 'legacy_current_config'
+          }
           const txPayload = {
             ...profile,
             ...(profile.weeklySchedule !== undefined ? { weeklySchedule: setOp(profile.weeklySchedule) } : {}),
@@ -1888,17 +1936,22 @@ module.exports = function createHandler(context) {
     if (action === 'getDepositStatus') {
       await getUser(openid)
       const synced = await syncWechatStaffDeposit(await getStaffProfileByOpenid(openid))
-      const profile = synced.profile
       const settings = await getSystemSettings()
       const config = settings.staffDeposit || normalizeStaffDepositConfig()
       const supplies = settings.staffSupplies || normalizeStaffSuppliesConfig()
+      const profile = await ensureStaffDepositStandard(synced.profile, config.amount)
       const deposit = synced.deposit ? { ...synced.deposit } : null
-      const firstSupplyDeposit = profile?.supplyShipmentDepositId && profile.supplyShipmentDepositId !== deposit?._id
-        ? (await db.collection('staff_deposits').doc(profile.supplyShipmentDepositId).get().catch(() => ({ data: null }))).data : null
-      const firstSupplyShipment = firstSupplyDeposit?.staffOpenid === openid ? firstSupplyDeposit.supplyShipment || null : deposit?.supplyShipment || null
-      const confirmedSupplyTerms = firstSupplyDeposit?.staffOpenid === openid
-        ? firstSupplyDeposit.supplyReimbursementTerms
-        : deposit?.supplyPolicyAcceptedAt ? deposit.supplyReimbursementTerms : null
+      const deposits = await depositPolicy.readDeposits(db, openid)
+      const depositBalance = staffDepositBalance(deposits)
+      const requiredDepositAmount = staffDepositStandard(profile, config.amount)
+      const topUpAmount = Math.max(0, Math.round((requiredDepositAmount - depositBalance) * 100) / 100)
+      const personalDepositConfig = { ...config, amount: requiredDepositAmount }
+      const firstSupplyDeposit = depositPolicy.supplyPolicyDeposit(profile, deposits)
+      const firstSupplyShipment = firstSupplyDeposit?.supplyShipment || null
+      const confirmedSupplyTerms = firstSupplyDeposit?.supplyReimbursementTerms
+      const supplyDeposit = firstSupplyDeposit ? Object.fromEntries(
+        ['_id', 'status', 'supplyPolicyAcceptedAt', 'supplyAddress', 'supplyFeeAmount'].map(field => [field, firstSupplyDeposit[field]])
+      ) : null
       if (deposit) {
         delete deposit.lastForfeitImages
         delete deposit.evidenceImages
@@ -1907,10 +1960,13 @@ module.exports = function createHandler(context) {
       }
       const auditApproved = profile && profile.auditStatus === 'approved'
       const isRefunded = Boolean((profile && profile.depositStatus === 'refunded') || (deposit && deposit.status === 'refunded'))
-      const needsRepay = Boolean(profile && (profile.requireDepositRepay === true || profile.depositStatus === 'supplement_required' || profile.depositStatus === 'forfeited' || (deposit && deposit.status === 'forfeited') || isRefunded))
-      const canPay = Boolean(!synced.paymentSyncPending && config.enabled && config.amount > 0 && auditApproved && (!deposit || deposit.status === 'unpaid' || needsRepay))
-      const supplyQualification = getSupplyReimbursementQualification(canPay ? supplies : confirmedSupplyTerms || supplies, 0, 0)
-      const canRequestRefund = Boolean(deposit && ['paid', 'partially_refunded'].includes(deposit.status) && (deposit.availableRefundAmount || 0) > 0 && deposit.refundStatus !== 'requested')
+      const needsRepay = topUpAmount > 0 && Boolean(profile && (profile.requireDepositRepay === true || profile.depositStatus === 'supplement_required' || profile.depositStatus === 'forfeited' || (deposit && deposit.status === 'forfeited') || isRefunded))
+      const canPay = Boolean(!synced.paymentSyncPending && !depositPolicy.refundPending(deposits) && !['requested', 'approved'].includes(profile?.exitStatus) && (config.enabled || needsRepay) && requiredDepositAmount > 0 && topUpAmount > 0 && auditApproved && (!deposit || deposit.status === 'unpaid' || needsRepay))
+      const supplyQualification = getSupplyReimbursementQualification(confirmedSupplyTerms || supplies, 0, 0)
+      const refundableDeposits = deposits.filter(row => ['paid', 'partially_refunded'].includes(row.status) && Number(row.availableRefundAmount || 0) > 0)
+        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+      const refundDeposit = refundableDeposits[0] || null
+      const canRequestRefund = Boolean(refundDeposit && !depositPolicy.refundPending(deposits))
 
       const eventsRes = await readScopedDocuments('staff_deposit_events', { staffOpenid: openid }, 'createdAt', 'desc').catch(() => [])
       const eventTypeMap = {
@@ -1931,23 +1987,31 @@ module.exports = function createHandler(context) {
         operatorRole: e.operatorRole || '',
         createdAt: e.createdAt || ''
       }))
-      const supplyRefundPreview = deposit?.supplyShipment
-        ? await context.getStaffDepositRefundPreview(deposit._id) : null
+      const supplyRefundPreview = refundDeposit?.supplyShipment
+        ? await context.getStaffDepositRefundPreview(refundDeposit._id) : null
       const supplyFeeDue = supplyRefundPreview?.supplyFeeDue || 0
 
       return {
-        config,
+        config: personalDepositConfig,
         supplies,
-        checkoutPolicyKey: checkoutPolicyKey(config, supplies),
+        checkoutPolicyKey: checkoutPolicyKey(personalDepositConfig, supplies),
         supplyDeliveryRequired: supplies.shippingEnabled && !profile?.supplyShipmentDepositId,
+        supplyConsentRequired: supplies.shippingEnabled && !profile?.supplyShipmentDepositId && !firstSupplyDeposit,
+        supplyDeposit,
         firstSupplyShipment,
-        firstSupplyFeeAmount: firstSupplyDeposit?.staffOpenid === openid ? firstSupplyDeposit.supplyFeeAmount : deposit?.supplyFeeAmount,
+        firstSupplyFeeAmount: firstSupplyDeposit?.supplyFeeAmount,
         supplyQualification: { mode: supplyQualification.mode, conditions: supplyQualification.conditions },
-        checkoutSupplyFeeAmount: canPay ? supplies.supplyFeeAmount : (deposit?.supplyPolicyAcceptedAt ? deposit.supplyFeeAmount : supplies.supplyFeeAmount),
+        checkoutSupplyFeeAmount: firstSupplyDeposit ? firstSupplyDeposit.supplyFeeAmount : supplies.supplyFeeAmount,
         deposit,
         profile,
+        depositStandardAmount: requiredDepositAmount,
+        depositBalance,
+        depositTotals: Object.fromEntries(['paidAmount', 'forfeitedAmount', 'refundedAmount', 'supplyFeeDeductedAmount'].map(field => [field, deposits.reduce((sum, row) => sum + Math.round(Number(row[field] || 0) * 100), 0) / 100])),
+        topUpAmount,
         canPay,
         canRequestRefund,
+        refundDepositAmount: Number(refundDeposit?.availableRefundAmount || 0),
+        refundableDepositCount: refundableDeposits.length,
         needsRepay,
         paymentSyncPending: synced.paymentSyncPending === true,
         repayReason: profile && profile.requireDepositRepayReason || '',
@@ -1960,7 +2024,9 @@ module.exports = function createHandler(context) {
       await getUser(openid)
       const settings = await getSystemSettings()
       if (!settings.staffSupplies?.shippingEnabled) throw new Error('平台首次用品寄送尚未开放')
-      assertCheckoutPolicy(data, settings.staffDeposit || normalizeStaffDepositConfig(), settings.staffSupplies)
+      const config = settings.staffDeposit || normalizeStaffDepositConfig()
+      const profile = await ensureStaffDepositStandard(await getStaffProfileByOpenid(openid), config.amount)
+      assertCheckoutPolicy(data, { ...config, amount: staffDepositStandard(profile, config.amount) }, settings.staffSupplies)
       const fee = Number(settings.staffSupplies.supplyFeeAmount)
       if (!Number.isFinite(fee) || fee <= 0) throw new Error('用品费用尚未配置')
       if (data.acceptSupplyPolicy !== true) throw new Error('请先确认用品费用及退出结算规则')
@@ -1984,22 +2050,35 @@ module.exports = function createHandler(context) {
       if (!profile || profile.auditStatus !== 'approved') throw new Error('资料审核通过后方可缴纳保证金')
       const settings = await getSystemSettings({ includeSecrets: true })
       const config = settings.staffDeposit || normalizeStaffDepositConfig()
-      if (!config.enabled || !config.amount || config.amount <= 0) throw new Error('保证金缴纳当前未开放')
       const supplies = settings.staffSupplies || normalizeStaffSuppliesConfig()
-      assertCheckoutPolicy(data, config, supplies)
+      const synced = await syncWechatStaffDeposit(profile)
+      const currentProfile = await ensureStaffDepositStandard(synced.profile, config.amount)
+      const hasRepayRequirement = currentProfile.requireDepositRepay === true || currentProfile.depositStatus === 'supplement_required' || currentProfile.depositStatus === 'forfeited' || currentProfile.depositStatus === 'refunded'
+      if ((!config.enabled && !hasRepayRequirement) || !staffDepositStandard(currentProfile, config.amount)) throw new Error('保证金缴纳当前未开放')
+      const requiredAmount = staffDepositStandard(currentProfile, config.amount)
+      const deposits = await depositPolicy.readDeposits(db, openid)
+      const hasPendingRefund = ['requested', 'approved'].includes(currentProfile.exitStatus) || depositPolicy.refundPending(deposits)
+      if (hasPendingRefund) throw new Error('保证金退还流程处理中，暂不可缴纳保证金')
+      const balance = staffDepositBalance(deposits)
+      const amountDue = Math.max(0, Math.round((requiredAmount - balance) * 100) / 100)
+      if (amountDue <= 0) {
+        if (synced.deposit?.status === 'paid') return { paid: true, depositId: synced.deposit._id }
+        throw new Error('保证金余额已达到个人标准，无需补缴')
+      }
+      const personalConfig = { ...config, amount: requiredAmount }
+      assertCheckoutPolicy(data, personalConfig, supplies)
       let supplyConsent = null
-      if (supplies.shippingEnabled && !profile.supplyShipmentDepositId) {
+      if (supplies.shippingEnabled && !currentProfile.supplyShipmentDepositId && !depositPolicy.supplyPolicyDeposit(currentProfile, deposits)) {
         if (data.acceptSupplyPolicy !== true) throw new Error('请先确认用品费用及退出结算规则')
         const feeAmount = Number(supplies.supplyFeeAmount)
-        if (!Number.isFinite(feeAmount) || feeAmount <= 0 || feeAmount >= Number(config.amount)) throw new Error('用品费用须小于保证金，请联系平台')
+        if (!Number.isFinite(feeAmount) || feeAmount <= 0 || feeAmount >= requiredAmount) throw new Error('用品费用须小于保证金，请联系平台')
         supplyConsent = { address: supplyAddress(data.supplyAddress), feeAmount, reimbursementTerms: supplyTerms(supplies) }
       }
       const clientRequestId = getClientRequestId(data)
       const paymentMode = (settings.payment && settings.payment.mode) || 'mock'
       assertPaymentModeAllowed({ ...settings.payment, mode: paymentMode })
-      const synced = await syncWechatStaffDeposit(profile)
-      if (synced.reconciled && synced.deposit.status === 'paid') return { paid: true, depositId: synced.deposit._id }
-      const { deposit, payment: paymentRecord } = await reserveStaffDepositPayment(user, synced.profile, config.amount, paymentMode, clientRequestId, supplyConsent)
+      await context.closeChangedStaffDepositPayment({ ...currentProfile, currentDepositId: synced.deposit?._id }, amountDue, paymentMode)
+      const { deposit, payment: paymentRecord } = await reserveStaffDepositPayment(user, currentProfile, amountDue, paymentMode, clientRequestId, supplyConsent)
       const amount = deposit.amount
       if (deposit.status === 'paid') return { paid: true, depositId: deposit._id }
       if (paymentMode === 'mock') {
@@ -2007,9 +2086,30 @@ module.exports = function createHandler(context) {
         return { paid: true, depositId: deposit._id, isMock: true }
       } else {
         const configWechat = getWechatPayConfig(settings)
+        async function confirmCurrentPrepay(prepayId, response = null) {
+          await db.runTransaction(async tx => {
+            const current = (await tx.collection('payments').doc(paymentRecord._id).get()).data
+            if (current.paymentNo !== paymentRecord.paymentNo || current.status !== 'pending' || (!response && current.prepayId !== prepayId)) {
+              throw new Error('保证金支付订单已更新，请刷新后重试')
+            }
+            const freshProfile = (await tx.collection('staff_profiles').doc(currentProfile._id).get()).data
+            const currentDeposits = await depositPolicy.readDeposits(db, openid, tx)
+            const freshStandard = staffDepositStandard(freshProfile, config.amount)
+            const freshDue = Math.max(0, Math.round((freshStandard - staffDepositBalance(currentDeposits)) * 100))
+            if (!freshProfile || freshProfile.auditStatus !== 'approved' || ['requested', 'approved', 'exited'].includes(freshProfile.exitStatus) ||
+                freshProfile.currentDepositId !== deposit._id || depositPolicy.refundPending(currentDeposits) ||
+                freshStandard !== requiredAmount || freshDue !== Math.round(amount * 100)) {
+              throw new Error('保证金标准、余额或入驻状态已变化，请刷新后重新缴纳')
+            }
+            if (response) await tx.collection('payments').doc(paymentRecord._id).update({ data: {
+              prepayId, rawRequest: sanitizeWechatPayload(requestBody), rawResponse: sanitizeWechatPayload(response), updatedAt: now()
+            } })
+          })
+        }
         const PREPAY_TTL_MS = 90 * 60 * 1000
         const isPrepayExpired = paymentRecord.updatedAt && (Date.now() - new Date(paymentRecord.updatedAt).getTime() > PREPAY_TTL_MS)
         if (paymentRecord.prepayId && !isPrepayExpired) {
+          await confirmCurrentPrepay(paymentRecord.prepayId)
           return {
             paid: false,
             depositId: deposit._id,
@@ -2029,14 +2129,7 @@ module.exports = function createHandler(context) {
         try {
           const response = await wechatPayRequest('POST', '/v3/pay/transactions/jsapi', requestBody, configWechat)
           if (!response.prepay_id) throw new Error('微信支付未返回 prepay_id')
-          await db.collection('payments').doc(paymentRecord._id).update({
-            data: {
-              prepayId: response.prepay_id,
-              rawRequest: sanitizeWechatPayload(requestBody),
-              rawResponse: sanitizeWechatPayload(response),
-              updatedAt: now()
-            }
-          })
+          await confirmCurrentPrepay(response.prepay_id, response)
           return {
             paid: false,
             depositId: deposit._id,
@@ -2056,10 +2149,11 @@ module.exports = function createHandler(context) {
         await checkTextSecurity(openid, reason, { scene: 2, label: '保证金退款原因' })
       }
       await getUser(openid)
-      const res = await db.collection('staff_deposits').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').get().catch(() => ({ data: [] }))
-      const deposits = (res && res.data) || []
-      const deposit = deposits.find((d) => Number(d.availableRefundAmount || 0) > 0 && ['paid', 'partially_refunded'].includes(d.status)) || deposits[0]
+      const deposits = (await depositPolicy.readDeposits(db, openid)).sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+      if (depositPolicy.refundPending(deposits)) throw new Error('已有保证金退款处理中，请待处理完成后再申请')
+      const deposit = deposits.find((d) => Number(d.availableRefundAmount || 0) > 0 && ['paid', 'partially_refunded'].includes(d.status))
       if (!deposit) throw new Error('暂无可退还保证金')
+      await context.prepareStaffDepositRefund(openid, deposit._id)
       return requestStaffDepositRefund(openid, deposit._id, reason)
     }
     if (action === 'getSupplyReimbursementStatus') {

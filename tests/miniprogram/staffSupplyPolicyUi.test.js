@@ -11,7 +11,17 @@ test('deposit policy is next to a required checkbox and reimbursement shows the 
   const reimbursement = fs.readFileSync(pagePath('supplies/reimbursement/index.wxml'), 'utf8')
   assert.match(training, /policy-summary[\s\S]*?bindchange="agreeDeposit"[\s\S]*?（必选）/)
   assert.match(training, /bindchange="agreeSupply"[\s\S]*?（必选）/)
-  assert.match(training, /disabled="\{\{!depositAgreed \|\| \(depositState\.supplyDeliveryRequired && !supplyAgreed\)/)
+  const disabledExpression = training.match(/bindtap="continueDepositRules" disabled="\{\{([^}]+)\}\}"/)[1]
+  const checkout = { depositAgreed: true, supplyAgreed: false, depositBusy: false, depositLoading: false,
+    depositState: { supplyConsentRequired: true }, depositIntent: 'payment' }
+  assert.equal(vm.runInNewContext(disabledExpression, checkout), true)
+  checkout.supplyAgreed = true
+  assert.equal(vm.runInNewContext(disabledExpression, checkout), false)
+  checkout.supplyAgreed = false
+  checkout.depositState.supplyConsentRequired = false
+  assert.equal(vm.runInNewContext(disabledExpression, checkout), false)
+  checkout.depositIntent = 'delivery'
+  assert.equal(vm.runInNewContext(disabledExpression, checkout), true)
   assert.match(training, /supplyQualification\.mode === 'either' \? '以下两项满足任意一项'/)
   assert.match(reimbursement, /qualification\.mode === 'either' \? '以下两项满足任意一项即可申请'/)
   assert.match(reimbursement, /wx:for="\{\{qualification\.conditions\}\}"/)

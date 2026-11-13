@@ -18,6 +18,95 @@ function setup() {
 }
 const forfeit = (amount, clientRequestId = 'f') => ({ id: 'd', amount, clientRequestId, reason: '违规核实' })
 const proof = { paymentConfirmed: true, paymentReference: 'bank-001' }
+
+test('a sitter can only request one deposit refund at a time', async () => {
+  const { db, service } = setup()
+  db.state.staff_deposits.push({ ...db.state.staff_deposits[0], _id: 'topup' })
+  await service.requestStaffDepositRefund('staff', 'd', '退出')
+  await assert.rejects(service.requestStaffDepositRefund('staff', 'topup', '退出'), /退款.*处理中/)
+  assert.equal(db.state.staff_deposits.find(row => row._id === 'topup').status, 'paid')
+})
+
+test('simultaneous refund requests for different deposits serialize on the sitter profile', async () => {
+  const { db, service } = setup()
+  db.state.staff_deposits.push({ ...db.state.staff_deposits[0], _id: 'topup' })
+  const retries = optimistic(db)
+  const results = await Promise.allSettled([
+    service.requestStaffDepositRefund('staff', 'd', '退出'),
+    service.requestStaffDepositRefund('staff', 'topup', '退出')
+  ])
+  assert.equal(results.filter(result => result.status === 'fulfilled').length, 1)
+  assert.ok(retries() > 0)
+  assert.equal(db.state.staff_deposits.filter(row => row.refundStatus === 'requested').length, 1)
+})
+
+test('rejecting the first exit request restores eligibility while preserving an existing repayment restriction', async () => {
+  for (const requiresRepayment of [false, true]) {
+    const { db, service } = setup()
+    Object.assign(db.state.staff_profiles[0], { exitStatus: 'none', requireDepositRepay: requiresRepayment,
+      depositStatus: requiresRepayment ? 'supplement_required' : 'paid' })
+    await service.requestStaffDepositRefund('staff', 'd', '退出')
+    await service.settleStaffDeposit(admin, 'auditDepositRefund', { id: 'd', approved: false, reason: '撤回退出' })
+    assert.equal(db.state.staff_profiles[0].exitStatus, 'none')
+    assert.equal(service.canTakeOrders(db.state.staff_profiles[0]), !requiresRepayment)
+  }
+})
+
+test('rejecting a historical parallel refund keeps an outstanding refund blocked from taking orders', async () => {
+  const { db, service } = setup()
+  db.state.staff_deposits.push({ ...db.state.staff_deposits[0], _id: 'other', status: 'refunding', refundStatus: 'processing' })
+  Object.assign(db.state.staff_deposits[0], { status: 'refund_requested', refundStatus: 'requested', refundRevision: 1 })
+  db.state.staff_profiles[0].exitStatus = 'requested'
+  await service.settleStaffDeposit(admin, 'auditDepositRefund', { id: 'd', approved: false, reason: '驳回这一笔' })
+  assert.equal(service.canTakeOrders(db.state.staff_profiles[0]), false)
+  assert.equal(db.state.staff_profiles[0].exitStatus, 'approved')
+})
+
+test('rejecting all parallel admin requests restores orders when no refund has been paid', async () => {
+  const { db, service } = setup()
+  db.state.staff_deposits.push({ ...db.state.staff_deposits[0], _id: 'topup' })
+  // A prior completed exit must not affect this new exit attempt.
+  db.state.staff_profiles[0].exitRefundPaid = true
+  await service.requestStaffDepositRefund('staff', 'd', '退出', admin)
+  await service.requestStaffDepositRefund('staff', 'topup', '退出', admin)
+  await service.settleStaffDeposit(admin, 'auditDepositRefund', { id: 'd', approved: false, reason: '撤回退出' })
+  assert.equal(service.canTakeOrders(db.state.staff_profiles[0]), false)
+  await service.settleStaffDeposit(admin, 'auditDepositRefund', { id: 'topup', approved: false, reason: '撤回退出' })
+  assert.equal(db.state.staff_profiles[0].exitStatus, 'none')
+  assert.equal(service.canTakeOrders(db.state.staff_profiles[0]), true)
+})
+
+test('a refund paid after another request was opened still prevents that rejection from reopening orders', async () => {
+  const { db, service } = setup()
+  db.state.staff_deposits.push({ ...db.state.staff_deposits[0], _id: 'topup' })
+  await service.requestStaffDepositRefund('staff', 'd', '退出', admin)
+  await service.requestStaffDepositRefund('staff', 'topup', '退出', admin)
+  await service.settleStaffDeposit(admin, 'auditDepositRefund', { id: 'd', approved: true })
+  await service.settleStaffDeposit(admin, 'confirmDepositRefund', { id: 'd', ...proof })
+  await service.settleStaffDeposit(admin, 'auditDepositRefund', { id: 'topup', approved: false, reason: '补充资料' })
+  assert.equal(db.state.staff_profiles[0].exitStatus, 'approved')
+  assert.equal(service.canTakeOrders(db.state.staff_profiles[0]), false)
+})
+
+test('rejecting the remaining refund after a partial exit does not reopen order taking', async () => {
+  const { db, service } = setup()
+  db.state.staff_profiles[0].depositStandardAmount = 600
+  db.state.staff_deposits.push({ ...db.state.staff_deposits[0], _id: 'topup', amount: 100, paidAmount: 100, availableRefundAmount: 100 })
+  await service.requestStaffDepositRefund('staff', 'topup', '退出')
+  await service.settleStaffDeposit(admin, 'auditDepositRefund', { id: 'topup', approved: true })
+  await service.settleStaffDeposit(admin, 'confirmDepositRefund', { id: 'topup', ...proof })
+  assert.equal(db.state.staff_profiles[0].exitStatus, 'approved')
+  await service.requestStaffDepositRefund('staff', 'd', '退还剩余余额')
+  await service.settleStaffDeposit(admin, 'auditDepositRefund', { id: 'd', approved: false, reason: '需补充退出资料' })
+  assert.equal(service.canTakeOrders(db.state.staff_profiles[0]), false)
+  assert.equal(db.state.staff_profiles[0].exitStatus, 'approved')
+  const retry = await service.requestStaffDepositRefund('staff', 'd', '已补充资料')
+  assert.equal(retry.success, true)
+  await service.settleStaffDeposit(admin, 'auditDepositRefund', { id: 'd', approved: true })
+  await service.settleStaffDeposit(admin, 'confirmDepositRefund', { id: 'd', ...proof })
+  assert.equal(db.state.staff_profiles[0].exitStatus, 'exited')
+  assert.equal(db.state.staff_profiles[0].auditStatus, 'revoked')
+})
 async function approveRefund(service) {
   await service.requestStaffDepositRefund('staff', 'd', '退出')
   await service.settleStaffDeposit(admin, 'auditDepositRefund', { id: 'd', approved: true })

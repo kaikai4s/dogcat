@@ -1,3 +1,4 @@
+const depositPolicy = require('../utils/staffDepositPolicy')
 module.exports = function createService(context) {
   const { db, crypto, now, safeText } = context
   const key = (...parts) => crypto.createHash('sha256').update(JSON.stringify(parts)).digest('hex').slice(0, 32)
@@ -33,7 +34,8 @@ module.exports = function createService(context) {
       if (!deposit && candidates[0]) deposit = await optional(tx, 'staff_deposits', candidates[0]._id)
       if (deposit && deposit.staffOpenid !== user.openid) throw new Error('保证金归属不匹配')
 
-      const isExitPending = ['requested', 'approved'].includes(profile.exitStatus) && deposit && ['refund_requested', 'refund_approved'].includes(deposit.status)
+      const allDeposits = await depositPolicy.readDeposits(db, user.openid, tx)
+      const isExitPending = ['requested', 'approved'].includes(profile.exitStatus) || depositPolicy.refundPending(allDeposits)
       if (isExitPending) throw new Error('保证金退还流程处理中，暂不可缴纳保证金')
 
       for (const candidate of candidates) {
@@ -50,6 +52,23 @@ module.exports = function createService(context) {
         }
       }
       const repeat = deposit && clientRequestId && deposit.clientRequestId === clientRequestId
+      if (depositPolicy.hasStandard(profile) && !(repeat && deposit?.status === 'paid')) {
+        const due = Math.max(0, Math.round((depositPolicy.standardAmount(profile) - depositPolicy.balanceAmount(allDeposits)) * 100))
+        if (depositPolicy.standardAmount(profile) !== depositPolicy.standardAmount(snapshot) || due !== money(requestedAmount, true)) {
+          throw new Error('保证金标准或余额已变化，请刷新后重新缴纳')
+        }
+      }
+      // A submitted WeChat order keeps its amount until the gateway confirms closure.
+      if (deposit?.status === 'unpaid') {
+        const pending = (await db.collection('payments').where({ orderId: deposit._id, targetType: 'staff_deposit' }).limit(2).get()).data || []
+        for (const row of pending) {
+          const payment = await optional(tx, 'payments', row._id)
+          if (payment?.status === 'pending' && payment.channel === 'wechat' &&
+              (payment.channel !== channel || money(payment.amount, true) !== money(requestedAmount, true))) {
+            throw new Error('原保证金支付订单尚未关闭，请刷新后重试')
+          }
+        }
+      }
       const isRefunded = profile.depositStatus === 'refunded' || deposit?.status === 'refunded'
       const needsRepay = profile.requireDepositRepay === true ||
         ['supplement_required', 'forfeited', 'refunded'].includes(profile.depositStatus) ||
@@ -91,6 +110,8 @@ module.exports = function createService(context) {
         }
       }
       let payment = payments[0] ? await optional(tx, 'payments', payments[0]._id) : null
+      const paymentId = payment?._id || key('deposit_payment', deposit._id)
+      const previousPaymentNos = payment ? [...(payment.previousPaymentNos || []), payment.paymentNo].filter(Boolean) : []
       if (payment && payment.status === 'pending' && (payment.channel !== channel || money(payment.amount, true) !== money(deposit.amount, true))) {
         payment.channel = channel
         payment.amount = deposit.amount
@@ -102,8 +123,8 @@ module.exports = function createService(context) {
         payment = null
       }
       if (!payment) {
-        payment = { _id: key('deposit_payment', deposit._id), orderId: deposit._id, depositId: deposit._id,
-          targetType: 'staff_deposit', openid: user.openid, paymentNo: `P${crypto.randomBytes(15).toString('hex')}`,
+        payment = { _id: paymentId, orderId: deposit._id, depositId: deposit._id,
+          previousPaymentNos, targetType: 'staff_deposit', openid: user.openid, paymentNo: `P${crypto.randomBytes(15).toString('hex')}`,
           prepayId: '', wxTransactionId: '', amount: deposit.amount, currency: 'CNY', status: 'pending', channel,
           clientRequestId, createdAt: time, updatedAt: time }
         const { _id, ...value } = payment
@@ -134,8 +155,12 @@ module.exports = function createService(context) {
   }
   async function confirmStaffSupplyPolicy(openid, address, feeAmount, reimbursementTerms) {
     return db.runTransaction(async tx => {
-      const candidates = (await db.collection('staff_deposits').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').limit(2).get()).data
-      const deposit = candidates.find(row => row.status === 'paid' || row.status === 'partially_refunded')
+      const profile = await profileFor(tx, { staffOpenid: openid })
+      if (profile.supplyShipmentDepositId) throw new Error('用品已经发货，收货地址不可修改')
+      const candidates = await depositPolicy.readDeposits(db, openid, tx)
+      if (['requested', 'approved', 'exited'].includes(profile.exitStatus) || depositPolicy.refundPending(candidates)) throw new Error('退出退款处理中，不可修改用品地址')
+      const deposit = depositPolicy.supplyPolicyDeposit(profile, candidates) || candidates.find(row =>
+        ['paid', 'partially_refunded'].includes(row.status) && balances(row).available > money(feeAmount, true))
       if (!deposit) throw new Error('请先完成保证金支付')
       const current = await optional(tx, 'staff_deposits', deposit._id)
       if (current.supplyShipment) throw new Error('用品已经发货，收货地址不可修改')
@@ -149,6 +174,7 @@ module.exports = function createService(context) {
         supplyPolicyAcceptedAt: current.supplyPolicyAcceptedAt || time,
         supplyPolicyVersion: 1, updatedAt: time
       } })
+      await tx.collection('staff_profiles').doc(profile._id).update({ data: { updatedAt: time } })
       return { depositId: current._id, acceptedAt: current.supplyPolicyAcceptedAt || time }
     })
   }
@@ -235,6 +261,20 @@ module.exports = function createService(context) {
       const preview = await supplyRefundBreakdown(tx, deposit)
       if (admin && preview.blocked) throw new Error(preview.blockedReason)
       const profile = await profileFor(tx, deposit)
+      const deposits = await depositPolicy.readDeposits(db, openid, tx)
+      if (!admin && depositPolicy.refundPending(deposits.filter(row => row._id !== depositId))) throw new Error('已有保证金退款正在处理中，请待处理完成后再申请')
+      for (const unpaid of deposits.filter(row => row.status === 'unpaid')) {
+        const rows = (await db.collection('payments').where({ orderId: unpaid._id, targetType: 'staff_deposit' }).limit(2).get()).data
+        if (rows.length > 1) throw new Error('保证金支付记录重复，请联系平台对账')
+        const payment = rows[0] ? (await tx.collection('payments').doc(rows[0]._id).get()).data : null
+        if (payment && !(payment.status === 'closed' || (payment.channel === 'mock' && payment.status === 'pending'))) {
+          throw new Error('尚有补缴支付未关闭，请刷新保证金状态后重试退出')
+        }
+        if (Number(unpaid.paidAmount || 0) > 0 || depositPolicy.balanceAmount([unpaid]) > 0) throw new Error('补缴支付记录与余额不一致，请先核对')
+        const cancelledAt = now()
+        if (payment && payment.status !== 'closed') await tx.collection('payments').doc(payment._id).update({ data: { status: 'closed', prepayId: '', updatedAt: cancelledAt } })
+        await tx.collection('staff_deposits').doc(unpaid._id).update({ data: { status: 'cancelled', statusText: '退出时已取消未支付补缴', updatedAt: cancelledAt } })
+      }
       const staffUserId = deposit.staffUserId || (profile && profile.userId)
       let user = null
       if (staffUserId) {
@@ -251,9 +291,14 @@ module.exports = function createService(context) {
       await tx.collection('users').doc(user._id).update({ data: { staffAssignmentRevision: crypto.randomBytes(16).toString('hex') } })
       await tx.collection('staff_deposits').doc(depositId).update({ data: {
         status: 'refund_requested', statusText: '退款审核中', refundStatus: 'requested', refundReason: reason,
+        exitStatusBeforeRefund: profile.exitStatus || 'none',
         refundRevision: revision, refundRequestedAt: time, updatedAt: time
       } })
-      await tx.collection('staff_profiles').doc(profile._id).update({ data: { exitStatus: 'requested', depositStatus: 'refund_requested', updatedAt: time } })
+      await tx.collection('staff_profiles').doc(profile._id).update({ data: {
+        exitStatus: 'requested', depositStatus: 'refund_requested',
+        ...(!['requested', 'approved', 'exited'].includes(profile.exitStatus) ? { exitRefundPaid: false } : {}),
+        updatedAt: time
+      } })
       await depositEvent(tx, key(depositId, 'request', revision), deposit, admin ? admin.openid : openid, 'refund_request', deposit.availableRefundAmount, reason, time, admin ? { operatorRole: 'admin' } : {})
       if (admin) await tx.collection('admin_operation_logs').doc(key(depositId, 'admin_request', revision)).set({ data: {
         adminUserId: admin._id, adminOpenid: admin.openid, action: 'requestStaffDepositRefund', targetType: 'staff_deposit', targetId: depositId,
@@ -292,13 +337,91 @@ module.exports = function createService(context) {
       roles: roles.length ? roles : ['client'], ...(staffUser.activeRole === 'staff' ? { activeRole: 'client' } : {}), updatedAt: time
     } })
   }
+  async function forfeitStaffDepositBalance(admin, data) {
+    const amount = money(data.amount, true)
+    const reason = safeText(data.reason).trim()
+    const requestId = safeText(data.clientRequestId).trim()
+    if (!requestId || !reason) throw new Error('请提供操作请求号和没收原因')
+    return db.runTransaction(async tx => {
+      const anchor = await optional(tx, 'staff_deposits', safeText(data.id).trim())
+      if (!anchor || (data.staffOpenid && anchor.staffOpenid !== data.staffOpenid)) throw new Error('保证金归属不匹配')
+      const profile = await profileFor(tx, anchor)
+      const operationId = key('forfeit_balance', profile.openid, requestId)
+      const request = JSON.stringify([amount, reason, data.selectedEvidences || [], data.evidenceIds || [], data.evidenceId || '', data.actualDeductAmount ?? null, data.evidenceImages || []])
+      const previous = await optional(tx, 'admin_operation_logs', operationId)
+      if (previous?.result) {
+        if (previous.request !== request) throw new Error('重复请求参数不一致')
+        return previous.result
+      }
+      const deposits = await depositPolicy.readDeposits(db, profile.openid, tx)
+      if (depositPolicy.refundPending(deposits) || ['requested', 'approved', 'exited'].includes(profile.exitStatus)) throw new Error('请先处理退出退款流程，再扣除保证金')
+      const openingBalance = Math.round(depositPolicy.balanceAmount(deposits) * 100)
+      const candidates = deposits.filter(row => ['paid', 'partially_refunded'].includes(row.status))
+        .sort((a, b) => a._id === anchor._id ? -1 : b._id === anchor._id ? 1 : String(a._id).localeCompare(String(b._id)))
+        .map(row => ({ row, capacity: Math.max(0, balances(row).available - (row.supplyShipment && !row.supplyFeeSettledAt ? money(row.supplyFeeAmount, true) + 1 : 0)) }))
+      if (amount > candidates.reduce((sum, item) => sum + item.capacity, 0)) throw new Error('扣除金额超过可扣保证金，请保留用品结算所需余额')
+      const selected = Array.isArray(data.selectedEvidences) && data.selectedEvidences.length ? data.selectedEvidences
+        : Array.isArray(data.evidenceIds) && data.evidenceIds.length ? data.evidenceIds
+        : data.evidenceId ? [{ evidenceId: data.evidenceId, actualDeductAmount: data.actualDeductAmount }] : []
+      const evidences = []
+      for (const item of selected) {
+        const id = typeof item === 'string' ? item : item.evidenceId || item.id || item._id
+        if (!id || evidences.some(row => row.id === id)) continue
+        const evidence = await optional(tx, 'staff_deposit_evidences', id)
+        if (!evidence || (evidence.staffOpenid || evidence.openid) !== profile.openid) throw new Error('扣罚证据归属不匹配')
+        if (['forfeited', 'dismissed'].includes(evidence.status)) throw new Error('扣罚事项已处理，请刷新后重试')
+        const deduction = typeof item === 'object' && item.actualDeductAmount !== undefined ? item.actualDeductAmount : evidence.deductAmount
+        evidences.push({ id, cents: money(deduction ?? amount / 100, true) })
+      }
+      if (evidences.length && evidences.reduce((sum, row) => sum + row.cents, 0) !== amount) throw new Error('所选事项的实际扣除金额合计须与本次扣除总金额一致')
+      let remaining = amount
+      const results = []
+      for (const { row, capacity } of candidates) {
+        const deduction = Math.min(remaining, capacity)
+        if (!deduction) continue
+        results.push(await settleStaffDeposit(admin, 'forfeitStaffDeposit', {
+          ...data, id: row._id, amount: deduction / 100, allDeposits: false,
+          selectedEvidences: [], evidenceIds: [], evidenceId: ''
+        }, { tx }))
+        remaining -= deduction
+        if (!remaining) break
+      }
+      const time = now()
+      const depositIds = results.map(row => row.id)
+      if (results.some(row => row.status === 'forfeited')) {
+        const settings = !depositPolicy.hasStandard(profile) && typeof context.getSystemSettings === 'function' ? await context.getSystemSettings() : null
+        const standard = depositPolicy.standardAmount(profile, settings?.staffDeposit?.amount ?? anchor.amount)
+        const finalBalance = openingBalance - amount
+        const requiresRepay = finalBalance < Math.round(standard * 100)
+        await tx.collection('staff_profiles').doc(profile._id).update({ data: {
+          depositStatus: requiresRepay ? (finalBalance > 0 ? 'supplement_required' : 'forfeited') : 'paid',
+          requireDepositRepay: requiresRepay,
+          requireDepositRepayReason: requiresRepay ? `保证金余额不足，请补足个人标准 ¥${standard.toFixed(2)} 后继续接单` : '',
+          requireDepositRepayAt: requiresRepay ? time : '', updatedAt: time
+        } })
+      }
+      for (const evidence of evidences) {
+        await tx.collection('staff_deposit_evidences').doc(evidence.id).update({ data: {
+          status: 'forfeited', actualDeductAmount: evidence.cents / 100, forfeitedAmount: evidence.cents / 100,
+          forfeitedAt: time, forfeitedBy: admin.openid, forfeitDepositId: depositIds[0], forfeitDepositIds: depositIds, updatedAt: time
+        } })
+      }
+      const result = { id: anchor._id, amount: amount / 100, depositResults: results,
+        availableRefundAmount: (openingBalance - amount) / 100 }
+      await log(tx, operationId, admin, 'forfeitStaffDepositBalance', 'staff_profile', profile._id, anchor, { amount: amount / 100, reason, depositIds }, time)
+      await tx.collection('admin_operation_logs').doc(operationId).update({ data: { request, result } })
+      return result
+    })
+  }
   async function settleStaffDeposit(admin, action, data, internal = {}) {
+    if (action === 'forfeitStaffDeposit' && data.allDeposits === true && !internal.tx) return forfeitStaffDepositBalance(admin, data)
     const reason = safeText(data.reason || data.auditRemark).trim()
     const requestId = safeText(data.clientRequestId).trim()
     const proof = safeText(data.paymentReference).trim()
     if (action === 'forfeitStaffDeposit' && (!requestId || !reason)) throw new Error('请提供操作请求号和没收原因')
     if (action === 'confirmDepositRefund' && (!proof || data.paymentConfirmed !== true)) throw new Error('请确认实际退款完成并提供付款凭证号')
-    return db.runTransaction(async tx => {
+    const runTransaction = internal.tx ? callback => callback(internal.tx) : callback => db.runTransaction(callback)
+    return runTransaction(async tx => {
       let deposit = null
       let depositId = safeText(data.id).trim()
       if (depositId) {
@@ -340,9 +463,16 @@ module.exports = function createService(context) {
           status: available === 0 ? 'forfeited' : deposit.status, statusText: available === 0 ? '已全额没收' : `部分没收（余¥${available}）`,
           lastForfeitReason: reason, lastForfeitedAt: time, lastForfeitedBy: admin.openid, lastForfeitImages: evidenceImages }
         if (!available) {
-          profilePatch.depositStatus = 'forfeited'
-          profilePatch.requireDepositRepay = true
-          profilePatch.requireDepositRepayReason = '履约保证金已被全额扣除，需重新足额缴纳后方可继续接单'
+          const deposits = await depositPolicy.readDeposits(db, profile.openid, tx)
+          const remaining = depositPolicy.balanceAmount(deposits.filter(row => row._id !== targetDepositId))
+          const settings = !depositPolicy.hasStandard(profile) && typeof context.getSystemSettings === 'function'
+            ? await context.getSystemSettings() : null
+          const standard = depositPolicy.standardAmount(profile, settings?.staffDeposit?.amount ?? deposit.amount)
+          const requiresRepay = Math.round(remaining * 100) < Math.round(standard * 100)
+          profilePatch.depositStatus = requiresRepay ? (remaining > 0 ? 'supplement_required' : 'forfeited') : 'paid'
+          profilePatch.requireDepositRepay = requiresRepay
+          profilePatch.requireDepositRepayReason = requiresRepay ? `保证金余额不足，请补足个人标准 ¥${standard.toFixed(2)} 后继续接单` : ''
+          profilePatch.requireDepositRepayAt = requiresRepay ? time : ''
         }
         financeAction = 'deposit_forfeited'; delta = 0
       } else if (action === 'auditDepositRefund') {
@@ -368,7 +498,20 @@ module.exports = function createService(context) {
         } else {
           if (!reason) throw new Error('请填写驳回原因')
           patch = { status: balance.refunded ? 'partially_refunded' : 'paid', statusText: '退款已驳回', refundStatus: 'rejected', refundRejectReason: reason }
-          profilePatch = { exitStatus: 'none', depositStatus: 'paid' }
+          const deposits = await depositPolicy.readDeposits(db, deposit.staffOpenid, tx)
+          const pending = deposits.filter(row => row._id !== targetDepositId && depositPolicy.refundPending([row]))
+          const approvedPending = pending.some(row => ['refund_approved', 'refunding'].includes(row.status) || ['approved', 'processing'].includes(row.refundStatus))
+          const priorExit = deposit.exitStatusBeforeRefund
+          const exitPaid = profile.exitRefundPaid === true || (profile.exitRefundPaid == null && priorExit === 'approved')
+          if (!pending.length && priorExit === 'exited') {
+            profilePatch = { exitStatus: 'exited', depositStatus: 'refunded' }
+          } else if (approvedPending || (!pending.length && exitPaid)) {
+            profilePatch = { exitStatus: 'approved', depositStatus: 'refund_approved' }
+          } else if (pending.length) {
+            profilePatch = { exitStatus: 'requested', depositStatus: 'refund_requested' }
+          } else {
+            profilePatch = { exitStatus: 'none', depositStatus: profile.requireDepositRepay ? 'supplement_required' : 'paid' }
+          }
         }
         Object.assign(patch, { refundAuditedAt: time, refundAuditedBy: admin.openid, refundAuditRemark: reason })
       } else if (action === 'confirmDepositRefund') {
@@ -405,6 +548,7 @@ module.exports = function createService(context) {
         profilePatch = patch.refundExitPending
           ? { exitStatus: 'approved', depositStatus: 'refund_approved' }
           : { exitStatus: 'exited', depositStatus: 'refunded', auditStatus: 'revoked' }
+        profilePatch.exitRefundPaid = true
         financeAction = 'deposit_refunded'; delta = -amount / 100
       } else throw new Error('未知保证金操作')
       const result = { id: targetDepositId, status: patch.status, refundStatus: patch.refundStatus || deposit.refundStatus,
@@ -563,6 +707,17 @@ module.exports = function createService(context) {
       }
       const amount = money(deposit.amount, true) / 100
       const profile = await profileFor(tx, deposit)
+      const standardPatch = {}
+      if (!depositPolicy.hasStandard(profile)) {
+        const settings = typeof context.getSystemSettings === 'function' ? await context.getSystemSettings() : null
+        const standard = depositPolicy.standardAmount(profile, settings?.staffDeposit?.amount ?? deposit.amount)
+        Object.assign(standardPatch, {
+          depositStandardAmount: standard,
+          depositEntryStandardAmount: standard,
+          depositStandardAssignedAt: profile.createdAt || now(),
+          depositStandardSource: 'legacy_current_config'
+        })
+      }
       const candidates = (await db.collection('payments').where({ orderId: depositId, targetType: 'staff_deposit' }).limit(2).get()).data
       if (candidates.length > 1) throw new Error('保证金支付记录重复，请核对')
       const payment = candidates[0] ? (await tx.collection('payments').doc(candidates[0]._id).get().catch(() => ({ data: null }))).data : null
@@ -574,27 +729,38 @@ module.exports = function createService(context) {
         paidAmount: amount, availableRefundAmount: amount, status: 'paid', statusText: '已缴纳',
         paymentNo, paymentChannel: payload.channel || 'mock', wxTransactionId: payload.wxTransactionId || '', paidAt: time, updatedAt: time
       } })
-      if (!profile.currentDepositId || profile.currentDepositId === depositId) await tx.collection('staff_profiles').doc(profile._id).update({ data: {
-        depositStatus: 'paid',
-        depositRequired: true,
-        exitStatus: 'none',
-        requireDepositRepay: false,
-        requireDepositRepayReason: '',
-        requireDepositRepayAt: '',
-        updatedAt: time
-      } })
+      if (!profile.currentDepositId || profile.currentDepositId === depositId) {
+        const relatedDeposits = await depositPolicy.readDeposits(db, profile.openid, tx)
+        const currentBalance = depositPolicy.balanceAmount(relatedDeposits.filter(row => row._id !== depositId)) + amount
+        const standard = depositPolicy.standardAmount({ ...profile, ...standardPatch }, deposit.amount)
+        const isFullyFunded = standard <= 0 || Math.round(currentBalance * 100) >= Math.round(standard * 100)
+        const standardText = standard > 0 ? standard.toFixed(2) : ''
+        await tx.collection('staff_profiles').doc(profile._id).update({ data: {
+          ...standardPatch,
+          depositStatus: isFullyFunded ? 'paid' : 'supplement_required',
+          depositRequired: true,
+          exitStatus: ['requested', 'approved'].includes(profile.exitStatus) || profile.auditStatus !== 'approved' ? profile.exitStatus || 'none' : 'none',
+          requireDepositRepay: !isFullyFunded,
+          requireDepositRepayReason: isFullyFunded ? '' : (profile.requireDepositRepayReason || `保证金仍未达到个人标准 ¥${standardText}，请继续补足后恢复接单`),
+          requireDepositRepayAt: isFullyFunded ? '' : (profile.requireDepositRepayAt || time),
+          updatedAt: time
+        } })
+      }
+      if (profile.currentDepositId && profile.currentDepositId !== depositId && Object.keys(standardPatch).length) {
+        await tx.collection('staff_profiles').doc(profile._id).update({ data: { ...standardPatch, updatedAt: time } })
+      }
       const staffUserId = deposit.staffUserId || profile.userId
       if (staffUserId) {
         const staffUser = (await tx.collection('users').doc(staffUserId).get().catch(() => ({ data: null }))).data
         if (staffUser) {
           const roles = Array.isArray(staffUser.roles) ? [...staffUser.roles] : ['client']
-          if (!roles.includes('staff')) {
+          if (profile.auditStatus === 'approved' && !roles.includes('staff')) {
             roles.push('staff')
             await tx.collection('users').doc(staffUser._id).update({ data: { roles, updatedAt: time } })
           }
         }
       }
-      await depositEvent(tx, key(depositId, 'paid'), deposit, deposit.staffOpenid, 'pay', amount, '缴纳宠托师入驻保证金', time)
+      await depositEvent(tx, key(depositId, 'paid'), deposit, deposit.staffOpenid, 'pay', amount, '缴纳/补足宠托师履约保证金', time)
       await tx.collection('finance_logs').doc(key(depositId, 'paid')).set({ data: {
         action: 'deposit_paid', targetType: 'staff_deposit', targetId: depositId, staffOpenid: deposit.staffOpenid,
         amountDelta: amount, detail: { paymentNo, channel: payload.channel || 'mock' }, createdAt: time
@@ -746,8 +912,8 @@ module.exports = function createService(context) {
       }
 
       const profilePatch = otherDepositsPending
-        ? { exitStatus: 'approved', depositStatus: 'refund_approved', updatedAt: time }
-        : { exitStatus: 'exited', depositStatus: 'refunded', auditStatus: 'revoked', updatedAt: time }
+        ? { exitStatus: 'approved', depositStatus: 'refund_approved', exitRefundPaid: true, updatedAt: time }
+        : { exitStatus: 'exited', depositStatus: 'refunded', auditStatus: 'revoked', exitRefundPaid: true, updatedAt: time }
 
       await tx.collection('staff_deposits').doc(depositId).update({ data: patch })
       await tx.collection('staff_profiles').doc(profile._id).update({ data: profilePatch })

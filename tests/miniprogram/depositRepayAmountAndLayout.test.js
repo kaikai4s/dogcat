@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 
-test('admin sitters list repay modal: z-index elevated above bottom-nav, safe-area padding included, and displays required deposit amount', () => {
+test('admin sitters list repay modal: z-index elevated above bottom-nav, safe-area padding included, and displays each personal deposit shortfall', () => {
   const wxssPath = path.join(__dirname, '../../miniprogram/pages/admin/sitters/list/index.wxss')
   const wxmlPath = path.join(__dirname, '../../miniprogram/pages/admin/sitters/list/index.wxml')
   const jsPath = path.join(__dirname, '../../miniprogram/pages/admin/sitters/list/index.js')
@@ -19,13 +19,14 @@ test('admin sitters list repay modal: z-index elevated above bottom-nav, safe-ar
   assert.ok(wxss.includes('z-index: 10001'), 'modal-mask must have z-index: 10001 to stay above bottom-nav')
   assert.ok(wxss.includes('env(safe-area-inset-bottom)'), 'modal-card must include safe-area padding')
 
-  // 2. 验证 WXML 中展示了标准应缴保证金和宠托师余额
-  assert.ok(wxml.includes('standardDepositAmount'), 'WXML must bind standardDepositAmount')
-  assert.ok(wxml.includes('平台标准应缴保证金'), 'WXML must display label for platform standard deposit')
+  // 2. 验证 WXML 展示每位宠托师的余额、个人标准及应补差额
+  assert.ok(wxml.includes('depositStandardAmountText'), 'WXML must display each sitter personal standard')
+  assert.ok(wxml.includes('depositTopUpAmountText'), 'WXML must display each sitter shortfall')
+  assert.ok(wxml.includes('预计补缴总额'), 'WXML must display the batch repayment total')
 
-  // 3. 验证 JS 中加载系统保证金配置与当前已选宠托师
-  assert.ok(js.includes('loadDepositConfig'), 'JS must implement loadDepositConfig')
-  assert.ok(js.includes('standardDepositAmount'), 'JS must hold standardDepositAmount in data')
+  // 3. 验证 JS 按个人标准计算差额，并汇总所选宠托师的补缴金额
+  assert.ok(js.includes('depositTopUpAmount'), 'JS must calculate each sitter shortfall')
+  assert.ok(js.includes('repayTotalTopUpAmount'), 'JS must hold the batch repayment total')
 })
 
 test('staff home deposit notice card layout: button.notice-btn width is not 100%, flex does not collapse text vertically, and amount is presented', () => {

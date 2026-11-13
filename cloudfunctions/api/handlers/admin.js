@@ -1,3 +1,4 @@
+const depositPolicy = require('../utils/staffDepositPolicy')
 const { userAssetExpiryDate } = require('../utils/userAssetExpiry')
 const { beijingDateText, parseDateValue: parseBeijingDateValue } = require('../utils/time')
 const { DEFAULT_STAFF_TRAINING_QUIZ } = require('../config/constants')
@@ -182,6 +183,31 @@ module.exports = function createHandler(context) {
       cursor = page[page.length - 1]._id
     }
     return rows
+  }
+  const depositBalanceAmount = depositPolicy.balanceAmount
+  const profileDepositStandard = depositPolicy.standardAmount
+  async function freezeLegacyDepositStandards(amount) {
+    const count = Number((await db.collection('staff_profiles').count()).total || 0)
+    if (count > 2000) throw new Error('宠托师资料超过2000条，暂不能安全固定旧保证金标准')
+    const profiles = await readAll('staff_profiles', {}, Math.max(count, 1))
+    const time = now()
+    for (const profile of profiles) {
+      await db.runTransaction(async tx => {
+        const current = (await tx.collection('staff_profiles').doc(profile._id).get()).data
+        if (depositPolicy.hasStandard(current)) return
+        const standard = profileDepositStandard(current, amount)
+        await tx.collection('staff_profiles').doc(profile._id).update({ data: {
+          depositStandardAmount: standard,
+          depositEntryStandardAmount: standard,
+          depositStandardAssignedAt: current.createdAt || time,
+          depositStandardSource: 'legacy_current_config',
+          updatedAt: time
+        } })
+      })
+    }
+  }
+  async function staffDepositRecords(openid, tx) {
+    return depositPolicy.readDeposits(db, openid, tx)
   }
 
   async function fetchFinanceRowsByOpenids(collectionName, openids = []) {
@@ -1107,6 +1133,14 @@ module.exports = function createHandler(context) {
     }
     if (action === 'saveSystemSettings') {
       const payload = (data && data.settings && typeof data.settings === 'object') ? data.settings : data
+      if (payload && payload.staffDeposit && payload.staffDeposit.amount !== undefined) {
+        const current = await getSystemSettings()
+        const currentAmount = Number(current.staffDeposit && current.staffDeposit.amount || 0)
+        const nextAmount = Number(payload.staffDeposit.amount)
+        if (Number.isFinite(nextAmount) && Math.abs(nextAmount - currentAmount) >= 0.005) {
+          await freezeLegacyDepositStandards(currentAmount)
+        }
+      }
       const saved = await saveSystemSettings(payload)
       const publicValue = normalizeSystemSettings(saved.value)
       await logAdmin(admin, 'platform_config', 'system_settings', 'saveSystemSettings', publicValue)
@@ -1678,7 +1712,9 @@ module.exports = function createHandler(context) {
     }
     if (action === 'listStaffProfiles') {
       await refreshStaffEarnings()
-      const defaultCommissionRate = Number((await getSystemSettings()).settlement?.staffCommissionRate ?? 0.7)
+      const settings = await getSystemSettings()
+      const defaultCommissionRate = Number(settings.settlement?.staffCommissionRate ?? 0.7)
+      const defaultDepositStandard = Number(settings.staffDeposit?.amount || 0)
       const rawAuditStatus = safeText(data.auditStatus).trim()
       const isCanRevokeAuditStatus = rawAuditStatus === 'can_revoke'
       const auditStatus = isCanRevokeAuditStatus ? 'approved' : rawAuditStatus
@@ -1709,18 +1745,11 @@ module.exports = function createHandler(context) {
         const chunkSize = 50
         for (let i = 0; i < cleanOpenids.length; i += chunkSize) {
           const chunk = cleanOpenids.slice(i, i + chunkSize)
-          try {
-            const condition = {
-              [fieldName]: db.command && typeof db.command.in === 'function' ? db.command.in(chunk) : chunk
-            }
-            const res = await db.collection(collectionName).where(condition).get()
-            results.push(...(res.data || []))
-          } catch (e) {
+          if (db.command && typeof db.command.in === 'function') {
+            results.push(...await readAll(collectionName, { [fieldName]: db.command.in(chunk) }, Infinity))
+          } else {
             for (const id of chunk) {
-              try {
-                const single = await db.collection(collectionName).where({ [fieldName]: id }).get()
-                results.push(...(single.data || []))
-              } catch (_) {}
+              results.push(...await readAll(collectionName, { [fieldName]: id }, Infinity))
             }
           }
         }
@@ -1799,6 +1828,8 @@ module.exports = function createHandler(context) {
           const primaryDeposit = unsettledDeposit || staffDeposits[0] || null
           const depositPaidAmount = staffDeposits.reduce((sum, d) => sum + Number(d.paidAmount || 0), 0)
           const depositForfeitedAmount = staffDeposits.reduce((sum, d) => sum + Number(d.forfeitedAmount || 0), 0)
+          const depositStandardAmount = profileDepositStandard(profile, defaultDepositStandard)
+          const depositTopUpAmount = Math.max(0, Math.round((depositStandardAmount - depositBalance) * 100) / 100)
           const depositStatus = profile.depositStatus || (primaryDeposit ? primaryDeposit.status : 'unpaid')
           const requireDepositRepay = profile.requireDepositRepay === true
           const finance = financeSummary[profile.openid] || { available: 0, withdrawn: 0, withdrawHistory: [], withdrawCount: 0, hasUnsettledEarning: false, hasPendingWithdraw: false }
@@ -1849,6 +1880,9 @@ module.exports = function createHandler(context) {
             pendingPenaltyCount: staffEvidences.filter((e) => e.status === 'pending').length,
             problemOrders,
             depositBalance,
+            depositStandardAmount,
+            depositEntryStandardAmount: profile.depositEntryStandardAmount ?? depositStandardAmount,
+            depositTopUpAmount,
             depositPaidAmount,
             depositForfeitedAmount,
             depositStatus,
@@ -1943,36 +1977,101 @@ module.exports = function createHandler(context) {
       const openids = Array.isArray(data.staffOpenids) ? data.staffOpenids.filter(Boolean) : (data.staffOpenid ? [data.staffOpenid] : [])
       const reason = safeText(data.reason).trim() || '保证金余额不足或存在违规出险记录，平台要求重新足额缴纳履约保证金后方可继续接单'
       const time = now()
-      let count = 0
+      const config = (await getSystemSettings()).staffDeposit || { amount: 0 }
+      const targets = new Map()
       for (const id of ids) {
-        await db.collection('staff_profiles').doc(id).update({
-          data: {
-            requireDepositRepay: true,
-            requireDepositRepayReason: reason,
-            requireDepositRepayAt: time,
-            depositStatus: 'supplement_required',
-            updatedAt: time
-          }
-        })
-        count++
+        const profile = (await db.collection('staff_profiles').doc(id).get().catch(() => ({ data: null }))).data
+        if (profile) targets.set(profile._id, profile)
       }
       for (const staffOpenid of openids) {
         const pRes = await db.collection('staff_profiles').where({ openid: staffOpenid }).limit(1).get().catch(() => ({ data: [] }))
-        if (pRes.data && pRes.data[0]) {
-          await db.collection('staff_profiles').doc(pRes.data[0]._id).update({
-            data: {
-              requireDepositRepay: true,
-              requireDepositRepayReason: reason,
-              requireDepositRepayAt: time,
-              depositStatus: 'supplement_required',
-              updatedAt: time
-            }
-          })
-          count++
-        }
+        if (pRes.data && pRes.data[0]) targets.set(pRes.data[0]._id, pRes.data[0])
       }
-      await logAdmin(admin, 'staff_profile', 'batch', 'batchRequireDepositRepay', { count, reason, ids, openids })
-      return { success: true, count, reason }
+      let count = 0
+      let skippedCount = 0
+      let totalTopUpAmount = 0
+      for (const target of targets.values()) {
+        const result = await db.runTransaction(async tx => {
+          const profile = (await tx.collection('staff_profiles').doc(target._id).get()).data
+          if (!profile || profile.auditStatus !== 'approved' || ['requested', 'approved', 'exited'].includes(profile.exitStatus)) return null
+          const deposits = await staffDepositRecords(profile.openid, tx)
+          if (depositPolicy.refundPending(deposits)) return null
+          const standard = profileDepositStandard(profile, config.amount)
+          const balance = depositBalanceAmount(deposits)
+          const topUpAmount = Math.max(0, Math.round((standard - balance) * 100) / 100)
+          const patch = {
+            depositStandardAmount: standard,
+            depositEntryStandardAmount: profile.depositEntryStandardAmount ?? standard,
+            depositStandardAssignedAt: profile.depositStandardAssignedAt || profile.createdAt || time,
+            depositStandardSource: profile.depositStandardSource || 'legacy_current_config',
+            updatedAt: time
+          }
+          if (topUpAmount > 0) Object.assign(patch, {
+            requireDepositRepay: true, requireDepositRepayReason: reason,
+            requireDepositRepayAt: time, depositStatus: 'supplement_required'
+          })
+          else if (profile.requireDepositRepay === true || ['supplement_required', 'forfeited'].includes(profile.depositStatus)) Object.assign(patch, {
+            requireDepositRepay: false, requireDepositRepayReason: '', requireDepositRepayAt: '', depositStatus: 'paid'
+          })
+          await tx.collection('staff_profiles').doc(profile._id).update({ data: patch })
+          return { topUpAmount }
+        })
+        if (!result || result.topUpAmount <= 0) skippedCount++
+        else { count++; totalTopUpAmount += result.topUpAmount }
+      }
+      totalTopUpAmount = Math.round(totalTopUpAmount * 100) / 100
+      await logAdmin(admin, 'staff_profile', 'batch', 'batchRequireDepositRepay', { count, skippedCount, totalTopUpAmount, reason, ids, openids })
+      return { success: true, count, skippedCount, totalTopUpAmount, reason }
+    }
+    if (action === 'setStaffDepositStandard') {
+      const staffProfileId = safeText(data.staffProfileId).trim()
+      const amountText = safeText(data.amount).trim()
+      if (!staffProfileId) throw new Error('请选择宠托师')
+      if (!/^\d+(?:\.\d{1,2})?$/.test(amountText)) throw new Error('个人保证金标准须为正数，最多两位小数')
+      const standard = Number(amountText)
+      if (!Number.isFinite(standard) || standard <= 0 || !Number.isSafeInteger(Math.round(standard * 100))) throw new Error('个人保证金标准须为正数，最多两位小数')
+      const depositConfig = (await getSystemSettings()).staffDeposit || { amount: 0 }
+      const result = await db.runTransaction(async tx => {
+        const profile = (await tx.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))).data
+        if (!profile) throw new Error('宠托师资料不存在')
+        if (['requested', 'approved', 'exited'].includes(profile.exitStatus)) throw new Error('退出退款流程中的宠托师不可修改保证金标准')
+        const deposits = await staffDepositRecords(profile.openid, tx)
+        if (deposits.some((deposit) => ['refund_requested', 'refund_approved', 'refunding'].includes(deposit.status) || ['requested', 'approved', 'processing'].includes(deposit.refundStatus))) {
+          throw new Error('保证金退款处理中，暂不可修改个人标准')
+        }
+        const balance = depositBalanceAmount(deposits)
+        const topUpAmount = Math.max(0, Math.round((standard - balance) * 100) / 100)
+        const time = now()
+        const patch = {
+          depositStandardAmount: standard,
+          depositEntryStandardAmount: profile.depositEntryStandardAmount ?? profileDepositStandard(profile, depositConfig.amount),
+          depositStandardAssignedAt: profile.depositStandardAssignedAt || profile.createdAt || time,
+          depositStandardUpdatedAt: time,
+          depositStandardUpdatedBy: admin.openid || '',
+          depositStandardSource: 'admin'
+        }
+        if (topUpAmount > 0) Object.assign(patch, {
+          requireDepositRepay: true,
+          requireDepositRepayReason: `个人保证金标准已调整为 ¥${standard.toFixed(2)}，请补足至标准后恢复接单`,
+          requireDepositRepayAt: time,
+          depositStatus: 'supplement_required'
+        })
+        else if (profile.requireDepositRepay === true || profile.depositStatus === 'supplement_required' || profile.depositStatus === 'forfeited') Object.assign(patch, {
+          requireDepositRepay: false,
+          requireDepositRepayReason: '',
+          requireDepositRepayAt: '',
+          depositStatus: 'paid'
+        })
+        patch.updatedAt = time
+        await tx.collection('staff_profiles').doc(staffProfileId).update({ data: patch })
+        return { staffProfileId, depositStandardAmount: standard,
+          depositEntryStandardAmount: patch.depositEntryStandardAmount,
+          depositBalance: balance, topUpAmount, requiresRepayment: topUpAmount > 0,
+          depositStatus: patch.depositStatus || profile.depositStatus,
+          previousStandard: profileDepositStandard(profile, depositConfig.amount) }
+      })
+      await logAdmin(admin, 'staff_profile', staffProfileId, 'setStaffDepositStandard', result)
+      return result
     }
     if (action === 'getStaffDepositRefundPreview') {
       const id = safeText(data.id).trim()
@@ -3915,6 +4014,7 @@ module.exports = function createHandler(context) {
       if (typeof checkTextSecurity === 'function') await checkTextSecurity(openid, reason, { scene: 2, label: '管理员退还保证金原因' })
       const deposit = (await db.collection('staff_deposits').doc(id).get()).data
       if (!deposit) throw new Error('保证金记录不存在')
+      await context.prepareStaffDepositRefund(deposit.staffOpenid, id)
       return context.requestStaffDepositRefund(deposit.staffOpenid, id, reason, { ...admin, openid })
     }
     if (action === 'auditDepositRefund') {

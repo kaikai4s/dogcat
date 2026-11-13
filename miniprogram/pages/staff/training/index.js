@@ -39,6 +39,10 @@ function normalizeDeposit(deposit) {
   }
 }
 
+function needsSupplyConsent(state) {
+  return state.supplyConsentRequired ?? state.supplyDeliveryRequired
+}
+
 function supplyAddressIssues(address = {}) {
   const errors = {}
   if (!address.name || address.name.length > 40) errors.name = '请填写收件人姓名，最多40字'
@@ -153,12 +157,16 @@ Page({
       if (depositState && depositState.deposit) {
         depositState.deposit = normalizeDeposit(depositState.deposit)
       }
+      if (depositState) {
+        depositState.supplyConsentRequired = Boolean(needsSupplyConsent(depositState))
+        depositState.supplyDeposit = depositState.supplyDeposit || depositState.deposit
+      }
       if (version !== this._depositLoadVersion || this._unloaded) return null
-      const supplyAddress = this._supplyAddressDraftEdited ? this.data.supplyAddress : depositState?.deposit?.supplyAddress || this.data.supplyAddress
+      const supplyAddress = this._supplyAddressDraftEdited ? this.data.supplyAddress : depositState?.supplyDeposit?.supplyAddress || this.data.supplyAddress
       const patch = { depositState, supplyAddress, supplyRegion: [supplyAddress.province, supplyAddress.city, supplyAddress.district], checkoutNeedsRefresh: false }
       if (preserveCheckout && this.data.depositModal) {
         const canContinue = this.data.depositIntent === 'payment' ? depositState?.canPay
-          : depositState?.supplyDeliveryRequired && ['paid', 'partially_refunded'].includes(depositState.deposit?.status)
+          : depositState?.supplyDeliveryRequired && ['paid', 'partially_refunded'].includes(depositState.supplyDeposit?.status)
         if (!canContinue) patch.depositModal = ''
         else if (previousKey && depositState.checkoutPolicyKey && previousKey !== depositState.checkoutPolicyKey) {
           Object.assign(patch, { depositModal: 'rules', depositAgreed: false, supplyAgreed: false, checkoutError: '规则已更新，请重新阅读并确认后继续' })
@@ -296,11 +304,11 @@ Page({
   async continueDepositRules() {
     const state = this.data.depositState
     if (this.data.depositBusy || this.data.depositLoading || this.data.checkoutNeedsRefresh || !state || this.data.depositModal !== 'rules') return
-    if (!this.data.depositAgreed || ((state.supplyDeliveryRequired || this.data.depositIntent === 'delivery') && !this.data.supplyAgreed)) {
+    if (!this.data.depositAgreed || ((needsSupplyConsent(state) || this.data.depositIntent === 'delivery') && !this.data.supplyAgreed)) {
       wx.showToast({ title: '请阅读并勾选规则', icon: 'none' })
       return
     }
-    if (state.supplyDeliveryRequired || this.data.depositIntent === 'delivery') {
+    if (needsSupplyConsent(state) || this.data.depositIntent === 'delivery') {
       this.setData({ depositModal: 'address' })
       return
     }
@@ -336,17 +344,17 @@ Page({
       wx.showToast({ title: '请先阅读并勾选保证金缴纳规则', icon: 'none' })
       return
     }
-    if (state.supplyDeliveryRequired && (!this.data.supplyAgreed || this.data.depositModal !== 'address')) {
+    if (needsSupplyConsent(state) && (!this.data.supplyAgreed || this.data.depositModal !== 'address')) {
       wx.showToast({ title: '请确认首次用品规则及地址', icon: 'none' })
       return
     }
-    if (state.supplyDeliveryRequired && !this.validateSupplyAddress()) return
+    if (needsSupplyConsent(state) && !this.validateSupplyAddress()) return
     this.setData({ depositBusy: true, checkoutError: '' })
     let paymentSubmitted = false
     wx.showLoading({ title: '创建支付...', mask: true })
     try {
       const result = await callFunction('staff', 'createDepositPayment', { agreed: true,
-        acceptSupplyPolicy: state.supplyDeliveryRequired === true, supplyAddress: this.data.supplyAddress, checkoutPolicyKey: state.checkoutPolicyKey })
+        acceptSupplyPolicy: needsSupplyConsent(state) === true, supplyAddress: this.data.supplyAddress, checkoutPolicyKey: state.checkoutPolicyKey })
       wx.hideLoading()
       if (this._unloaded) return
       if (result.paid) {
@@ -395,9 +403,7 @@ Page({
     }
     wx.showModal({
       title: '申请退出并退还保证金',
-      content: state.deposit?.supplyShipment && state.deposit?.supplyPolicyAcceptedAt
-        ? `可退押金 ¥${state.deposit.availableRefundAmount}；预计用品费用 ¥${state.supplyFeeDue || 0}（减免申请待审时先不结算）。审核通过后按结算明细退款，是否提交？`
-        : '未确认并收取首次用品，不扣用品费用；其他有效扣除按记录结算。是否提交？',
+      content: `本次申请退还 ¥${state.refundDepositAmount}，预计用品费用 ¥${state.supplyFeeDue || 0}，最终以审核结算为准。${state.refundableDepositCount > 1 ? `保证金分 ${state.refundableDepositCount} 笔缴纳，本笔退还后可继续申请剩余余额。` : ''}是否提交？`,
       success: async (res) => {
         if (!res.confirm || this._unloaded || this.data.depositBusy) return
         this.setData({ depositBusy: true })

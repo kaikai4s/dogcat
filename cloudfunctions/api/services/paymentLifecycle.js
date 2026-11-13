@@ -2,7 +2,7 @@ module.exports = function createService({
   db, getStaffProfileByOpenid, recordStaffDepositPayment, reserveOrderPayment, settleOrderPayment, requestOrderRefund,
   appendOrderClientMessage, createPaymentNo, notifyOrder,
   getSystemSettings, getWechatPayConfig, wechatPayRequest, appendPaymentEvent,
-  sanitizeWechatPayload, validatePaymentCallbackPayload, getPayableOrder, readScopedDocuments, syncStaffDepositRefund
+  sanitizeWechatPayload, validatePaymentCallbackPayload, getPayableOrder, readScopedDocuments, syncStaffDepositRefund, now
 }) {
   function buildMallOrderItemSnapshot(product, sku, quantity) {
     return { productId: product._id, skuId: sku.skuId, name: product.name, coverFileId: sku.imageFileId || product.coverFileId || '', price: Number(sku.price || 0), quantity, specText: sku.specText || '', specs: sku.specs || {}, shippingFee: Number(product.shippingFee || 0), skuSnapshot: { skuId: sku.skuId, specs: sku.specs || {}, specText: sku.specText || '', price: Number(sku.price || 0), originalPrice: Number(sku.originalPrice || 0), imageFileId: sku.imageFileId || '' } }
@@ -72,7 +72,23 @@ module.exports = function createService({
     } catch (error) {
       console.error('[deposit-payment-query]', { depositId: deposit._id, message: error.message })
       const fresh = await freshSnapshot()
+      if (error.code === 'ORDER_NOT_EXIST') return fresh
       return { ...fresh, paymentSyncPending: fresh.deposit?.status === 'unpaid' }
+    }
+    if (['CLOSED', 'REVOKED', 'PAYERROR'].includes(response.trade_state)) {
+      await db.runTransaction(async tx => {
+        const current = (await tx.collection('payments').doc(payment._id).get()).data
+        if (current.paymentNo !== payment.paymentNo || current.status !== 'pending') return
+        const currentDeposit = (await tx.collection('staff_deposits').doc(deposit._id).get()).data
+        if (currentDeposit.status !== 'unpaid') return
+        const currentProfile = (await tx.collection('staff_profiles').doc(profile._id).get()).data
+        const time = now()
+        await tx.collection('payments').doc(payment._id).update({ data: { status: 'closed', prepayId: '', updatedAt: time } })
+        await tx.collection('staff_profiles').doc(profile._id).update({ data: {
+          depositPaymentRevision: Number(currentProfile.depositPaymentRevision || 0) + 1, updatedAt: time
+        } })
+      })
+      return freshSnapshot()
     }
     if (response.trade_state !== 'SUCCESS') return freshSnapshot()
     validatePaymentCallbackPayload(response, { payAmount: deposit.amount }, payment, config)
@@ -139,6 +155,56 @@ module.exports = function createService({
     return (fresh && fresh.order) || order
   }
 
+  async function closeChangedStaffDepositPayment(profile, amount, channel) {
+    if (!profile.currentDepositId) return
+    const rows = (await db.collection('payments').where({ orderId: profile.currentDepositId, targetType: 'staff_deposit' }).limit(2).get()).data || []
+    if (rows.length > 1) throw new Error('保证金支付记录重复，请联系平台对账')
+    const payment = rows[0]
+    if (!payment || payment.status !== 'pending' || payment.channel !== 'wechat' ||
+        (Number(payment.amount) === Number(amount) && payment.channel === channel)) return
+    const config = getWechatPayConfig(await getSystemSettings({ includeSecrets: true }))
+    const path = `/v3/pay/transactions/out-trade-no/${encodeURIComponent(payment.paymentNo)}`
+    let response
+    try {
+      response = await wechatPayRequest('GET', `${path}?mchid=${encodeURIComponent(config.mchId)}`, null, config)
+    } catch (error) {
+      // No payment parameters were issued. A late prepay response is rejected by
+      // the payment-number/status check before it can reach the client.
+      if (error.code !== 'ORDER_NOT_EXIST' || payment.prepayId) throw error
+      response = { trade_state: 'CLOSED' }
+    }
+    if (response.trade_state === 'SUCCESS') {
+      await syncWechatStaffDeposit(profile)
+      throw new Error('原保证金支付已到账，请刷新后查看剩余补缴金额')
+    }
+    if (['NOTPAY', 'USERPAYING'].includes(response.trade_state)) {
+      await wechatPayRequest('POST', `${path}/close`, { mchid: config.mchId }, config)
+    } else if (!['CLOSED', 'REVOKED', 'PAYERROR'].includes(response.trade_state)) {
+      throw new Error('原保证金支付状态确认中，请稍后重试')
+    }
+    await db.runTransaction(async tx => {
+      const current = (await tx.collection('payments').doc(payment._id).get()).data
+      if (current.paymentNo !== payment.paymentNo || current.status !== 'pending') return
+      const staff = (await tx.collection('staff_profiles').doc(profile._id).get()).data
+      const time = now()
+      await tx.collection('payments').doc(payment._id).update({ data: { status: 'closed', prepayId: '', updatedAt: time } })
+      await tx.collection('staff_profiles').doc(profile._id).update({ data: { depositPaymentRevision: Number(staff.depositPaymentRevision || 0) + 1, updatedAt: time } })
+    })
+  }
+
+  async function prepareStaffDepositRefund(openid, depositId) {
+    const target = (await db.collection('staff_deposits').doc(depositId).get()).data
+    if (!target || target.staffOpenid !== openid) throw new Error('保证金归属不匹配')
+    if (!['paid', 'partially_refunded', 'refund_requested'].includes(target.status) || Number(target.availableRefundAmount || 0) <= 0) throw new Error('暂无可退还保证金')
+    const profile = await getStaffProfileByOpenid(openid)
+    if (!profile) throw new Error('宠托师资料不存在')
+    const deposits = await require('../utils/staffDepositPolicy').readDeposits(db, openid)
+    for (const deposit of deposits) {
+      if (deposit.status !== 'unpaid') continue
+      await closeChangedStaffDepositPayment({ ...profile, currentDepositId: deposit._id }, 0, 'wechat')
+    }
+  }
+
   return {
     buildMallOrderItemSnapshot,
     markMallOrderPaid,
@@ -147,6 +213,8 @@ module.exports = function createService({
     markStaffDepositPaid,
     createRefundForOrder,
     syncWechatPaidOrder,
-    syncWechatStaffDeposit
+    syncWechatStaffDeposit,
+    closeChangedStaffDepositPayment,
+    prepareStaffDepositRefund
   }
 }

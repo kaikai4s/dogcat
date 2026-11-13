@@ -23,6 +23,155 @@ function depositService(f, reply) {
 }
 const paidReply = { appid: 'APP', mchid: 'MCH', out_trade_no: 'PAY', transaction_id: 'WX', amount: { total: 50000 }, trade_state: 'SUCCESS' }
 
+test('standard, balance or eligibility changes during WeChat prepay cannot return obsolete payment parameters', async () => {
+  for (const change of ['raise', 'lower', 'balance', 'revoke', 'exit']) {
+  for (const useCachedPrepay of [false, true]) {
+    const f = fixture()
+    f.db.state.staff_profiles[0].depositStandardAmount = 500
+    if (useCachedPrepay) f.db.state.payments[0].prepayId = 'CACHED_PREPAY'
+    const changeStandard = () => {
+      if (change === 'balance') f.db.state.staff_deposits.push({ _id: 'received', staffOpenid: 'staff', status: 'paid', paidAmount: 50, availableRefundAmount: 50 })
+      else f.db.state.staff_profiles[0] = { ...f.db.state.staff_profiles[0],
+        ...(change === 'revoke' ? { auditStatus: 'revoked' } : change === 'exit' ? { exitStatus: 'requested' } : { depositStandardAmount: change === 'raise' ? 600 : 450 }) }
+    }
+    Object.assign(f.context, depositService(f, () => ({ trade_state: 'NOTPAY' })), {
+      getSystemSettings: async () => ({ staffDeposit: { enabled: true, amount: 500 }, payment: { mode: 'wechat' } }),
+      assertPaymentModeAllowed: () => {},
+      getWechatPayConfig: () => { if (useCachedPrepay) changeStandard(); return { appId: 'APP', mchId: 'MCH' } },
+      buildMiniProgramPayParams: id => ({ package: `prepay_id=${id}` }),
+      wechatPayRequest: async () => { changeStandard(); return { prepay_id: 'OBSOLETE_PREPAY' } }
+    })
+    const handler = require('../../cloudfunctions/api/handlers/staff')(f.context)
+    await assert.rejects(handler('staff', 'createDepositPayment', { agreed: true }), /保证金.*变化/)
+    assert.notEqual(f.db.state.payments[0].prepayId, 'OBSOLETE_PREPAY')
+    assert.equal(f.db.state.staff_deposits[0].paidAmount, 0)
+  }
+  }
+})
+
+test('unchanged WeChat checkouts return new and cached payment parameters', async () => {
+  for (const cached of [false, true]) {
+    const f = fixture()
+    f.db.state.staff_profiles[0].depositStandardAmount = 500
+    if (cached) f.db.state.payments[0].prepayId = 'VALID_PREPAY'
+    let requests = 0
+    Object.assign(f.context, depositService(f, () => ({ trade_state: 'NOTPAY' })), {
+      getSystemSettings: async () => ({ staffDeposit: { enabled: true, amount: 500 }, payment: { mode: 'wechat' } }),
+      assertPaymentModeAllowed: () => {}, getWechatPayConfig: () => ({ appId: 'APP', mchId: 'MCH' }),
+      buildMiniProgramPayParams: id => ({ package: `prepay_id=${id}` }),
+      wechatPayRequest: async () => { requests++; return { prepay_id: 'VALID_PREPAY' } }
+    })
+    const result = await require('../../cloudfunctions/api/handlers/staff')(f.context)('staff', 'createDepositPayment', { agreed: true })
+    assert.equal(result.payParams.package, 'prepay_id=VALID_PREPAY')
+    assert.equal(requests, cached ? 0 : 1)
+    assert.equal(f.db.state.payments[0].prepayId, 'VALID_PREPAY')
+  }
+})
+
+test('a missing unissued WeChat order can be replaced after the personal standard changes', async () => {
+  const f = fixture()
+  const service = depositService(f, () => { throw Object.assign(new Error('订单不存在'), { code: 'ORDER_NOT_EXIST' }) })
+  f.db.state.staff_profiles[0].depositStandardAmount = 99
+  await service.closeChangedStaffDepositPayment(f.db.state.staff_profiles[0], 99, 'wechat')
+  const result = await f.context.reserveStaffDepositPayment(f.db.state.users[0], f.db.state.staff_profiles[0], 99, 'wechat')
+  assert.equal(result.deposit.amount, 99)
+  assert.notEqual(result.payment.paymentNo, 'PAY')
+})
+
+test('abandoned WeChat top-ups are closed before refunding the remaining paid balance', async () => {
+  for (const viaAdmin of [false, true]) {
+    const f = fixture(), calls = []
+    Object.assign(f.context, depositService(f, (method, path) => {
+      calls.push({ method, path })
+      return method === 'GET' ? { trade_state: 'NOTPAY' } : {}
+    }))
+    f.db.state.staff_deposits.push({ _id: 'older', staffOpenid: 'staff', staffUserId: 'u', staffProfileId: 'sp',
+      status: 'paid', amount: 50, paidAmount: 50, refundedAmount: 0, forfeitedAmount: 0, availableRefundAmount: 50 })
+    const handler = require(`../../cloudfunctions/api/handlers/${viaAdmin ? 'admin' : 'staff'}`)(f.context)
+    await handler(viaAdmin ? 'admin' : 'staff', viaAdmin ? 'requestStaffDepositRefund' : 'requestDepositRefund', { id: 'older', reason: '退出服务' })
+    assert.ok(calls.some(call => call.method === 'POST' && call.path.endsWith('/close')))
+    assert.equal(f.db.state.payments[0].status, 'closed')
+    assert.equal(f.db.state.staff_deposits.find(row => row._id === 'd').status, 'cancelled')
+    await f.context.settleStaffDeposit({ _id: 'a', openid: 'admin' }, 'auditDepositRefund', { id: 'older', approved: true })
+    const result = await f.context.settleStaffDeposit({ _id: 'a', openid: 'admin' }, 'confirmDepositRefund', {
+      id: 'older', paymentConfirmed: true, paymentReference: 'bank-older'
+    })
+    assert.equal(result.exitCompleted, true)
+    assert.equal(f.db.state.staff_profiles[0].exitStatus, 'exited')
+    assert.deepEqual(f.db.state.users[0].roles, ['client'])
+  }
+})
+
+test('failed gateway closure leaves the paid balance and refund state untouched', async () => {
+  const f = fixture()
+  Object.assign(f.context, depositService(f, method => {
+    if (method === 'GET') return { trade_state: 'NOTPAY' }
+    throw new Error('关单失败')
+  }))
+  f.db.state.staff_deposits.push({ _id: 'older', staffOpenid: 'staff', staffUserId: 'u', staffProfileId: 'sp',
+    status: 'paid', amount: 50, paidAmount: 50, refundedAmount: 0, forfeitedAmount: 0, availableRefundAmount: 50 })
+  const handler = require('../../cloudfunctions/api/handlers/staff')(f.context)
+  await assert.rejects(handler('staff', 'requestDepositRefund', { reason: '退出服务' }), /关单失败/)
+  assert.equal(f.db.state.staff_deposits.find(row => row._id === 'older').status, 'paid')
+  assert.equal(f.db.state.payments[0].status, 'pending')
+})
+
+test('a payment arriving during exit preparation is credited before retrying the refund', async () => {
+  const f = fixture()
+  Object.assign(f.context, depositService(f, () => paidReply))
+  f.db.state.staff_deposits.push({ _id: 'older', staffOpenid: 'staff', staffUserId: 'u', staffProfileId: 'sp',
+    status: 'paid', amount: 50, paidAmount: 50, refundedAmount: 0, forfeitedAmount: 0, availableRefundAmount: 50 })
+  const handler = require('../../cloudfunctions/api/handlers/staff')(f.context)
+  await assert.rejects(handler('staff', 'requestDepositRefund', { reason: '退出' }), /已到账/)
+  assert.equal(f.db.state.staff_deposits.find(row => row._id === 'd').availableRefundAmount, 500)
+  assert.equal(f.db.state.staff_deposits.find(row => row._id === 'older').status, 'paid')
+  assert.equal(f.db.state.payments[0].status, 'success')
+})
+
+test('a top-up recreated between gateway closure and refund reservation blocks exit until it is closed', async () => {
+  const f = fixture()
+  f.db.state.staff_profiles[0].depositStandardAmount = 550
+  Object.assign(f.context, depositService(f, method => method === 'GET' ? { trade_state: 'NOTPAY' } : {}))
+  f.db.state.staff_deposits.push({ _id: 'older', staffOpenid: 'staff', staffUserId: 'u', staffProfileId: 'sp',
+    status: 'paid', amount: 50, paidAmount: 50, refundedAmount: 0, forfeitedAmount: 0, availableRefundAmount: 50 })
+  const prepare = f.context.prepareStaffDepositRefund
+  f.context.prepareStaffDepositRefund = async (...args) => {
+    await prepare(...args)
+    await f.context.reserveStaffDepositPayment(f.db.state.users[0], f.db.state.staff_profiles[0], 500, 'wechat')
+  }
+  const handler = require('../../cloudfunctions/api/handlers/staff')(f.context)
+  await assert.rejects(handler('staff', 'requestDepositRefund', { reason: '退出' }), /补缴支付未关闭/)
+  assert.equal(f.db.state.staff_deposits.find(row => row._id === 'older').status, 'paid')
+  assert.equal(f.db.state.payments[0].status, 'pending')
+})
+
+test('missing gateway orders with already issued prepay parameters are not silently replaced', async () => {
+  const f = fixture()
+  f.db.state.payments[0].prepayId = 'ISSUED'
+  const service = depositService(f, () => { throw Object.assign(new Error('订单不存在'), { code: 'ORDER_NOT_EXIST' }) })
+  await assert.rejects(service.closeChangedStaffDepositPayment(f.db.state.staff_profiles[0], 99, 'wechat'), /订单不存在/)
+  assert.equal(f.db.state.payments[0].status, 'pending')
+  assert.equal(f.db.state.payments[0].paymentNo, 'PAY')
+})
+
+test('after exit rejection a cancelled mock top-up can be replaced and replenished normally', async () => {
+  const f = fixture()
+  f.db.state.payments[0].channel = 'mock'
+  f.db.state.staff_profiles[0].depositStandardAmount = 550
+  f.db.state.staff_deposits.push({ _id: 'older', staffOpenid: 'staff', staffUserId: 'u', staffProfileId: 'sp',
+    status: 'paid', amount: 50, paidAmount: 50, refundedAmount: 0, forfeitedAmount: 0, availableRefundAmount: 50 })
+  const handler = require('../../cloudfunctions/api/handlers/staff')(f.context)
+  await handler('staff', 'requestDepositRefund', { reason: '退出' })
+  assert.equal(f.db.state.staff_deposits.find(row => row._id === 'd').status, 'cancelled')
+  assert.equal(f.db.state.payments[0].status, 'closed')
+  await f.context.settleStaffDeposit({ _id: 'a', openid: 'admin' }, 'auditDepositRefund', { id: 'older', approved: false, reason: '撤回退出' })
+  const reserved = await f.context.reserveStaffDepositPayment(f.db.state.users[0], f.db.state.staff_profiles[0], 500, 'mock')
+  assert.notEqual(reserved.deposit._id, 'd')
+  await f.context.recordStaffDepositPayment(reserved.deposit._id, { channel: 'mock', paymentNo: reserved.payment.paymentNo })
+  assert.equal(f.db.state.staff_profiles[0].depositStatus, 'paid')
+  assert.equal(f.db.state.staff_profiles[0].requireDepositRepay, false)
+})
+
 test('deposit lost callback is repaired by an authoritative query, exactly once', async () => {
   const f = fixture(), calls = []
   const service = depositService(f, (...args) => { calls.push(args); return paidReply })
@@ -392,4 +541,148 @@ test('targeted finance lists include all historical records for the selected sta
     assert.equal(result.length, 105)
     assert.ok(result.every(row => row.staffOpenid === 'staff'))
   }
+})
+
+test('deposit checkout returns success after repairing a lost payment callback', async () => {
+  const f = fixture()
+  f.db.state.staff_profiles[0].depositStandardAmount = 500
+  Object.assign(f.context, depositService(f, () => paidReply), {
+    getSystemSettings: async () => ({ staffDeposit: { enabled: true, amount: 500 } })
+  })
+  const handler = require('../../cloudfunctions/api/handlers/staff')(f.context)
+  const result = await handler('staff', 'createDepositPayment', { agreed: true })
+  assert.equal(result.paid, true)
+  assert.equal(f.db.state.staff_profiles[0].requireDepositRepay, false)
+})
+
+test('payment reservation rejects stale standards and balances without changing payment records', async () => {
+  const f = fixture()
+  const snapshot = { ...f.db.state.staff_profiles[0], depositStandardAmount: 99 }
+  Object.assign(f.db.state.staff_profiles[0], { depositStandardAmount: 100 })
+  await assert.rejects(f.context.reserveStaffDepositPayment(f.db.state.users[0], snapshot, 99, 'mock'), /标准或余额已变化/)
+  assert.equal(f.db.state.staff_deposits[0].amount, 500)
+  assert.equal(f.db.state.payments[0].amount, 500)
+  Object.assign(snapshot, { depositStandardAmount: 100 })
+  f.db.state.staff_deposits.push({ _id: 'old', staffOpenid: 'staff', availableRefundAmount: 50 })
+  await assert.rejects(f.context.reserveStaffDepositPayment(f.db.state.users[0], snapshot, 100, 'mock'), /标准或余额已变化/)
+})
+
+test('deposit callback totals more than one page without transaction collection queries', async () => {
+  const f = fixture()
+  f.db.state.staff_profiles[0].depositStandardAmount = 650
+  for (let i = 0; i < 150; i++) f.db.state.staff_deposits.push({ _id: `old_${String(i).padStart(3, '0')}`, staffOpenid: 'staff', availableRefundAmount: 1, status: 'paid' })
+  const runTransaction = f.db.runTransaction
+  f.db.runTransaction = callback => runTransaction(tx => callback({ collection: name => ({ doc: id => tx.collection(name).doc(id) }) }))
+  await f.context.recordStaffDepositPayment('d', { paymentNo: 'PAY', channel: 'wechat' })
+  assert.equal(f.db.state.staff_profiles[0].depositStatus, 'paid')
+  assert.equal(f.db.state.staff_profiles[0].requireDepositRepay, false)
+})
+
+test('changing a pending WeChat amount closes the original order before issuing a new number', async () => {
+  const f = fixture(), calls = []
+  const service = depositService(f, (method, path) => { calls.push([method, path]); return method === 'GET' ? { trade_state: 'NOTPAY' } : {} })
+  f.db.state.staff_profiles[0].depositStandardAmount = 99
+  await service.closeChangedStaffDepositPayment(f.db.state.staff_profiles[0], 99, 'wechat')
+  assert.equal(f.db.state.payments[0].status, 'closed')
+  assert.equal(calls[1][0], 'POST')
+  assert.match(calls[1][1], /out-trade-no\/PAY\/close$/)
+  const result = await f.context.reserveStaffDepositPayment(f.db.state.users[0], f.db.state.staff_profiles[0], 99, 'wechat')
+  assert.equal(result.deposit.amount, 99)
+  assert.notEqual(result.payment.paymentNo, 'PAY')
+  assert.deepEqual(result.payment.previousPaymentNos, ['PAY'])
+  assert.equal(f.db.state.payments.length, 1)
+  await f.context.recordStaffDepositPayment('d', { paymentNo: result.payment.paymentNo, channel: 'wechat' })
+  assert.equal(f.db.state.staff_profiles[0].depositStatus, 'paid')
+  assert.equal(f.db.state.staff_deposits[0].availableRefundAmount, 99)
+})
+
+test('a failed WeChat close preserves the original bill and blocks amount replacement', async () => {
+  const f = fixture()
+  const service = depositService(f, method => {
+    if (method === 'GET') return { trade_state: 'NOTPAY' }
+    throw new Error('关单失败')
+  })
+  await assert.rejects(service.closeChangedStaffDepositPayment(f.db.state.staff_profiles[0], 99, 'wechat'), /关单失败/)
+  assert.equal(f.db.state.payments[0].status, 'pending')
+  await assert.rejects(f.context.reserveStaffDepositPayment(f.db.state.users[0], f.db.state.staff_profiles[0], 99, 'wechat'), /尚未关闭/)
+  assert.equal(f.db.state.staff_deposits[0].amount, 500)
+  assert.equal(f.db.state.payments[0].paymentNo, 'PAY')
+})
+
+test('reconciling an older payment still collects the remainder of a raised standard', async () => {
+  const f = fixture()
+  f.db.state.staff_profiles[0].depositStandardAmount = 600
+  Object.assign(f.context, depositService(f, () => paidReply), {
+    getSystemSettings: async () => ({ staffDeposit: { enabled: true, amount: 600 }, payment: { mode: 'mock' } }),
+    assertPaymentModeAllowed: () => {}
+  })
+  const handler = require('../../cloudfunctions/api/handlers/staff')(f.context)
+  const result = await handler('staff', 'createDepositPayment', { agreed: true })
+  assert.equal(result.paid, true)
+  assert.notEqual(result.depositId, 'd')
+  assert.equal(f.db.state.staff_deposits.find(row => row._id === result.depositId).paidAmount, 100)
+  assert.equal(f.db.state.staff_profiles[0].requireDepositRepay, false)
+})
+
+test('a late prepay response cannot overwrite a replacement payment order', async () => {
+  const f = fixture()
+  f.db.state.staff_profiles[0].depositStandardAmount = 500
+  Object.assign(f.context, depositService(f, () => ({ trade_state: 'NOTPAY' })), {
+    getSystemSettings: async () => ({ staffDeposit: { enabled: true, amount: 500 }, payment: { mode: 'wechat' } }),
+    assertPaymentModeAllowed: () => {},
+    getWechatPayConfig: () => ({ appId: 'APP', mchId: 'MCH' }),
+    wechatPayRequest: async () => {
+      f.db.state.payments[0] = { ...f.db.state.payments[0], paymentNo: 'REPLACEMENT', prepayId: 'NEW_PREPAY' }
+      return { prepay_id: 'OLD_PREPAY' }
+    }
+  })
+  const handler = require('../../cloudfunctions/api/handlers/staff')(f.context)
+  await assert.rejects(handler('staff', 'createDepositPayment', { agreed: true }), /支付订单已更新/)
+  assert.equal(f.db.state.payments[0].paymentNo, 'REPLACEMENT')
+  assert.equal(f.db.state.payments[0].prepayId, 'NEW_PREPAY')
+})
+
+test('legacy payment callbacks use the current platform standard rather than the old bill amount', async () => {
+  const f = fixture()
+  f.db.state.staff_deposits[0].amount = 99
+  f.db.state.payments[0].amount = 99
+  f.context.getSystemSettings = async () => ({ staffDeposit: { enabled: true, amount: 100 } })
+  await f.context.recordStaffDepositPayment('d', { paymentNo: 'PAY', channel: 'wechat' })
+  const profile = f.db.state.staff_profiles[0]
+  assert.equal(profile.depositStandardAmount, 100)
+  assert.equal(profile.depositEntryStandardAmount, 100)
+  assert.equal(profile.requireDepositRepay, true)
+  assert.equal(profile.depositStatus, 'supplement_required')
+})
+
+test('closed gateway deposit orders rotate payment number even when the amount stays the same', async () => {
+  const f = fixture()
+  f.db.state.staff_profiles[0].depositStandardAmount = 500
+  f.db.state.payments[0].prepayId = 'CLOSED_PREPAY'
+  const service = depositService(f, () => ({ trade_state: 'CLOSED' }))
+  const synced = await service.syncWechatStaffDeposit(f.db.state.staff_profiles[0])
+  const reserved = await f.context.reserveStaffDepositPayment(f.db.state.users[0], synced.profile, 500, 'wechat')
+  assert.notEqual(reserved.payment.paymentNo, 'PAY')
+  assert.equal(reserved.payment.prepayId, '')
+  assert.equal(reserved.deposit.amount, 500)
+})
+
+test('a confirmed missing gateway order allows retrying the same deposit payment', async () => {
+  const f = fixture()
+  const service = depositService(f, () => { throw Object.assign(new Error('订单不存在'), { code: 'ORDER_NOT_EXIST' }) })
+  const synced = await service.syncWechatStaffDeposit(f.db.state.staff_profiles[0])
+  assert.notEqual(synced.paymentSyncPending, true)
+  assert.equal(f.db.state.payments[0].paymentNo, 'PAY')
+  assert.equal(f.db.state.staff_deposits[0].status, 'unpaid')
+})
+
+test('late payment records funds without restoring a revoked sitter role or reopening exit', async () => {
+  const f = fixture()
+  Object.assign(f.db.state.staff_profiles[0], { auditStatus: 'revoked', exitStatus: 'exited', depositStandardAmount: 500 })
+  f.db.state.users[0].roles = ['client']
+  await f.context.recordStaffDepositPayment('d', { paymentNo: 'PAY', channel: 'wechat' })
+  assert.equal(f.db.state.staff_deposits[0].paidAmount, 500)
+  assert.deepEqual(f.db.state.users[0].roles, ['client'])
+  assert.equal(f.db.state.staff_profiles[0].exitStatus, 'exited')
+  assert.equal(f.db.state.staff_profiles[0].auditStatus, 'revoked')
 })

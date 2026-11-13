@@ -31,8 +31,10 @@ test('global bugfixes: requestStaffDepositRefund falls back to profile.userId an
     command: { in: (arr) => arr },
     collection: (name) => ({
       where: (query) => ({
+        orderBy() { return this },
         limit: () => ({
           get: async () => {
+            if (name === 'staff_deposits') return { data: mockDeposits.filter(row => row.staffOpenid === query.staffOpenid) }
             if (name === 'orders') return { data: [] }
             if (name === 'order_incidents') return { data: [] }
             if (name === 'users' && query.openid) {
@@ -170,7 +172,7 @@ test('global bugfixes: exitCheck intercepts pending_staff_confirm, service_suspe
         const txDb = {
           command: { in: (arr) => arr },
           collection: (cname) => ({
-            where: () => ({ limit: () => ({ get: async () => ({ data: cname === 'orders' ? [{ _id: 'o1', status: st }] : [] }) }) }),
+            where: () => ({ orderBy() { return this }, limit: () => ({ get: async () => ({ data: cname === 'orders' ? [{ _id: 'o1', status: st }] : cname === 'staff_deposits' ? mockDeposits : [] }) }) }),
             doc: (id) => ({
               get: async () => {
                 if (cname === 'staff_deposits') return { data: mockDeposits[0] }

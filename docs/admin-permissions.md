@@ -24,7 +24,7 @@
 
 ## 业务权限目录
 
-共 25 类、158 项。
+共 25 类、159 项。
 
 ### 乐园建筑与土地
 
@@ -179,6 +179,8 @@
 - **保证金详情**（查看）`admin.getStaffDepositDetail`：保证金与扣罚：保证金详情。仅授予该项数据查看，不包含编辑、审核或删除。
   关联查看：保证金列表（admin.listStaffDeposits）。
 - **要求补缴**（操作；敏感）`admin.batchRequireDepositRepay`：保证金与扣罚：要求补缴。仅授予该项操作，其他管理操作需单独选择。
+  关联查看：宠托师列表（admin.listStaffProfiles）。
+- **调整个人保证金标准**（操作；敏感）`admin.setStaffDepositStandard`：保证金与扣罚：调整个人保证金标准。仅授予该项操作，其他管理操作需单独选择。
   关联查看：宠托师列表（admin.listStaffProfiles）。
 - **审核保证金退款**（操作；敏感）`admin.auditDepositRefund`：保证金与扣罚：审核保证金退款。仅授予该项操作，其他管理操作需单独选择。
   关联查看：保证金列表（admin.listStaffDeposits）。

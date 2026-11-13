@@ -23,6 +23,10 @@ function withdrawalHistoryStatus(history) {
 function withDisplay(profile, selectedIds = []) {
   const reviewCount = Number(profile.reviewCount || 0)
   const depositBalance = profile.depositBalance != null ? Number(profile.depositBalance) : 0
+  const depositStandardAmount = profile.depositStandardAmount != null ? Number(profile.depositStandardAmount) : 0
+  const depositTopUpAmount = profile.depositTopUpAmount != null
+    ? Number(profile.depositTopUpAmount)
+    : Math.max(0, Math.round((depositStandardAmount - depositBalance) * 100) / 100)
   const canRevokeStaff = profile.canRevokeStaff !== undefined
     ? Boolean(profile.canRevokeStaff)
     : (profile.auditStatus === 'approved' && depositBalance <= 0)
@@ -31,8 +35,13 @@ function withDisplay(profile, selectedIds = []) {
     depositId: profile.depositId || '',
     reviewCount,
     ratingText: reviewCount ? `${Number(profile.ratingAverage || 0)}分 / ${reviewCount}条评价` : '暂无评分',
+    depositEntryStandardAmountText: `¥${Number(profile.depositEntryStandardAmount ?? depositStandardAmount).toFixed(2)}`,
     depositBalance,
     depositBalanceText: `¥${depositBalance.toFixed(2)}`,
+    depositStandardAmount,
+    depositStandardAmountText: `¥${depositStandardAmount.toFixed(2)}`,
+    depositTopUpAmount,
+    depositTopUpAmountText: `¥${depositTopUpAmount.toFixed(2)}`,
     withdrawableAmount: Number(profile.withdrawableAmount || 0),
     withdrawableAmountText: `¥${Number(profile.withdrawableAmount || 0).toFixed(2)}`,
     withdrawnAmountText: `¥${Number(profile.withdrawnAmount || 0).toFixed(2)}`,
@@ -69,7 +78,6 @@ Page({
     showFilterPanel: false,
     selectedIds: [],
     selectedProfiles: [],
-    standardDepositAmount: '500.00',
     defaultCommissionPercent: 70,
     commissionStaff: null,
     commissionUseDefault: true,
@@ -77,7 +85,12 @@ Page({
     commissionSaving: false,
     showRepayModal: false,
     repayReasonInput: '',
+    repayEligibleCount: 0,
+    repayTotalTopUpAmount: '0.00',
     submittingRepay: false,
+    depositStandardStaff: null,
+    depositStandardInput: '',
+    savingDepositStandard: false,
     showForfeitModal: false,
     forfeiting: false,
     forfeitStaff: null,
@@ -105,32 +118,19 @@ Page({
     depositRefundStaff: null
   },
 
-    onPullDownRefresh() {
-    Promise.all([
-      Promise.resolve(this.load({ reset: true })),
-      Promise.resolve(this.loadDepositConfig())
-    ]).finally(() => wx.stopPullDownRefresh())
+  onPullDownRefresh() {
+    Promise.resolve(this.load({ reset: true })).finally(() => wx.stopPullDownRefresh())
   },
 
   onShow() {
     this._settlementPageUnloaded = false
     this.load({ reset: true })
-    this.loadDepositConfig()
   },
 
   onUnload() {
     this._settlementPageUnloaded = true
+    this._staffListLoadVersion = (this._staffListLoadVersion || 0) + 1
     this._depositRefundPreviewVersion = (this._depositRefundPreviewVersion || 0) + 1
-  },
-
-  loadDepositConfig() {
-    optionalAdminRead(this, 'admin', 'getSystemSettings')
-      .then((res) => {
-        if (res && res.staffDeposit && res.staffDeposit.amount != null) {
-          this.setData({ standardDepositAmount: Number(res.staffDeposit.amount).toFixed(2) })
-        }
-      })
-      .catch(() => {})
   },
 
   onReachBottom() {
@@ -138,22 +138,34 @@ Page({
   },
 
   load(options = {}) {
-    if (this.data.loading) return
     const reset = options.reset === true
-    const page = reset ? 1 : this.data.page
-    this.setData({ loading: true })
-    callFunction('admin', 'listStaffProfiles', {
-      keyword: this.data.keyword,
-      auditStatus: this.data.auditStatus,
-      canRevoke: this.data.canRevokeStatus,
-      minDeposit: this.data.minDeposit,
-      maxDeposit: this.data.maxDeposit,
-      hasViolations: this.data.hasViolations,
-      requireRepayStatus: this.data.requireRepayStatus,
+    if (this._settlementPageUnloaded || (this.data.loading && !reset)) return
+    const version = this._staffListLoadVersion = (this._staffListLoadVersion || 0) + 1
+    const isCurrent = () => !this._settlementPageUnloaded && version === this._staffListLoadVersion
+    const page = reset ? 1 : (options.page || this.data.page)
+    if (reset || !this._staffListQuery) {
+      this._staffListQuery = {
+        keyword: this.data.keyword,
+        auditStatus: this.data.auditStatus,
+        canRevoke: this.data.canRevokeStatus,
+        minDeposit: this.data.minDeposit,
+        maxDeposit: this.data.maxDeposit,
+        hasViolations: this.data.hasViolations,
+        requireRepayStatus: this.data.requireRepayStatus,
+        pageSize: this.data.pageSize
+      }
+    }
+    this.setData({
+      loading: true,
+      ...(reset ? { profiles: [], selectedIds: [], page: 1, total: 0, hasMore: false } : {}),
+      ...(reset && !this.data.submittingRepay ? { showRepayModal: false, selectedProfiles: [] } : {})
+    })
+    return callFunction('admin', 'listStaffProfiles', {
+      ...this._staffListQuery,
       page,
-      pageSize: this.data.pageSize
     })
       .then((result) => {
+        if (!isCurrent()) return
         const pageData = pageList(result)
         const profiles = pageData.list.map((p) => withDisplay(p, this.data.selectedIds))
         this.setData({
@@ -166,6 +178,7 @@ Page({
         })
       })
       .catch((err) => {
+        if (!isCurrent()) return
         this.setData({ loading: false })
         showError(err)
       })
@@ -173,7 +186,7 @@ Page({
 
   loadMore() {
     if (!this.data.hasMore || this.data.loading) return
-    this.setData({ page: this.data.page + 1 }, () => this.load())
+    return this.load({ page: this.data.page + 1 })
   },
 
   inputKeyword(e) {
@@ -181,12 +194,12 @@ Page({
   },
 
   search() {
-    this.load({ reset: true })
+    return this.load({ reset: true })
   },
 
   switchStatus(e) {
     this.setData({ auditStatus: e.currentTarget.dataset.value || '' })
-    this.load({ reset: true })
+    return this.load({ reset: true })
   },
 
   toggleFilterPanel() {
@@ -224,11 +237,11 @@ Page({
       requireRepayStatus: '',
       canRevokeStatus: ''
     })
-    this.load({ reset: true })
+    return this.load({ reset: true })
   },
 
   applyFilter() {
-    this.load({ reset: true })
+    return this.load({ reset: true })
   },
 
   toggleSelect(e) {
@@ -255,20 +268,27 @@ Page({
   },
 
   openRepayModal() {
-    if (!this.data.selectedIds.length) {
+    if (this.data.loading || this.data.submittingRepay) return
+    const selectedProfiles = this.data.profiles.filter(p => this.data.selectedIds.includes(p._id))
+    this.setData({ selectedIds: selectedProfiles.map(p => p._id) })
+    if (!selectedProfiles.length) {
       wx.showToast({ title: '请至少勾选一位宠托师', icon: 'none' })
       return
     }
-    const selectedProfiles = this.data.profiles.filter(p => this.data.selectedIds.includes(p._id))
+    const repayEligibleCount = selectedProfiles.filter((profile) => profile.depositTopUpAmount > 0).length
+    const repayTotalTopUpAmount = selectedProfiles.reduce((sum, profile) => sum + profile.depositTopUpAmount, 0)
     this.setData({
       showRepayModal: true,
       selectedProfiles,
-      repayReasonInput: '保证金余额过低且存在服务违规出险记录，平台要求重新足额缴纳履约保证金后方可继续接单'
+      repayEligibleCount,
+      repayTotalTopUpAmount: repayTotalTopUpAmount.toFixed(2),
+      repayReasonInput: '平台要求补足个人履约保证金标准，补足前暂不可接单'
     })
   },
 
   closeRepayModal() {
-    this.setData({ showRepayModal: false, submittingRepay: false })
+    if (this.data.submittingRepay) return
+    this.setData({ showRepayModal: false, selectedProfiles: [] })
   },
 
   inputRepayReason(e) {
@@ -276,22 +296,23 @@ Page({
   },
 
   confirmBatchRepay() {
-    const ids = this.data.selectedIds
+    if (this._settlementPageUnloaded || this.data.submittingRepay || !this.data.showRepayModal) return
+    const ids = this.data.selectedProfiles.map(p => p._id)
     const reason = String(this.data.repayReasonInput || '').trim()
     if (!ids.length) return
     this.setData({ submittingRepay: true })
-    callFunction('admin', 'batchRequireDepositRepay', {
+    return callFunction('admin', 'batchRequireDepositRepay', {
       staffProfileIds: ids,
       reason
     })
       .then((res) => {
-        wx.showToast({ title: `已成功标记 ${res.count || ids.length} 位宠托师` })
-        this.closeRepayModal()
-        this.setData({ selectedIds: [] })
-        this.load({ reset: true })
+        if (this._settlementPageUnloaded) return
+        wx.showToast({ title: res.count ? `已要求 ${res.count} 位补足保证金` : '未新增补缴要求，请核对余额及审核、退出状态', icon: res.count ? 'success' : 'none' })
+        this.setData({ showRepayModal: false, selectedIds: [], selectedProfiles: [] })
+        return this.load({ reset: true })
       })
-      .catch(showError)
-      .finally(() => this.setData({ submittingRepay: false }))
+      .catch(err => { if (!this._settlementPageUnloaded) showError(err) })
+      .finally(() => { if (!this._settlementPageUnloaded) this.setData({ submittingRepay: false }) })
   },
 
   toggleDetails(e) {
@@ -338,6 +359,52 @@ Page({
       wx.showToast({ title: '提成比例已更新', icon: 'success' })
     } catch (error) { showError(error) }
     finally { this.setData({ commissionSaving: false }) }
+  },
+
+  openDepositStandardEditor(e) {
+    const staff = this.data.profiles.find((profile) => profile._id === e.currentTarget.dataset.id)
+    if (!staff) return
+    this.setData({ depositStandardStaff: staff, depositStandardInput: staff.depositStandardAmount.toFixed(2) })
+  },
+
+  inputDepositStandard(e) {
+    this.setData({ depositStandardInput: e.detail.value })
+  },
+
+  closeDepositStandardEditor() {
+    if (!this.data.savingDepositStandard) this.setData({ depositStandardStaff: null })
+  },
+
+  async saveDepositStandard() {
+    const staff = this.data.depositStandardStaff
+    const text = String(this.data.depositStandardInput || '').trim()
+    const amount = Number(text)
+    if (!staff || this.data.savingDepositStandard) return
+    if (!/^\d+(?:\.\d{1,2})?$/.test(text) || !Number.isFinite(amount) || amount <= 0) {
+      return showError(new Error('请输入正数保证金标准，最多两位小数'))
+    }
+    this.setData({ savingDepositStandard: true })
+    try {
+      const result = await callFunction('admin', 'setStaffDepositStandard', { staffProfileId: staff._id, amount: text })
+      const selectedIds = this.data.selectedIds
+      this.setData({
+        profiles: this.data.profiles.map((profile) => profile._id !== staff._id ? profile : withDisplay({
+          ...profile,
+          depositStandardAmount: result.depositStandardAmount,
+          depositBalance: result.depositBalance,
+          depositTopUpAmount: result.topUpAmount,
+          requireDepositRepay: result.requiresRepayment,
+          depositStatus: result.depositStatus,
+          depositEntryStandardAmount: result.depositEntryStandardAmount,
+          requireDepositRepayReason: result.requiresRepayment
+            ? `个人保证金标准已调整为 ¥${Number(result.depositStandardAmount).toFixed(2)}，请补足至标准后恢复接单`
+            : ''
+        }, selectedIds)),
+        depositStandardStaff: null
+      })
+      wx.showToast({ title: result.requiresRepayment ? `标准已更新，需补 ¥${Number(result.topUpAmount).toFixed(2)}` : '个人保证金标准已更新', icon: 'success' })
+    } catch (error) { showError(error) }
+    finally { this.setData({ savingDepositStandard: false }) }
   },
 
   detail(e) {
@@ -545,6 +612,7 @@ Page({
       const clientRequestId = `forfeit_${Date.now()}_${Math.random().toString(36).slice(2)}`
       const payload = {
         id: this.data.forfeitDepositId,
+        allDeposits: true,
         staffOpenid: staff.openid,
         amount,
         reason,

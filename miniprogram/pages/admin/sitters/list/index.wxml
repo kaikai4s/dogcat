@@ -75,7 +75,7 @@
       <text class="batch-label">全选 (已选 {{selectedIds.length}}/{{profiles.length}})</text>
     </view>
     <button wx:if="{{adminSuper || adminPermissions.admin_batchRequireDepositRepay}}" class="mini-btn danger-mini batch-repay-btn" disabled="{{!selectedIds.length}}" bindtap="openRepayModal">
-      <text class="remix-icon ri-shield-cross-fill"></text>要求重新缴纳保证金
+      <text class="remix-icon ri-shield-cross-fill"></text>要求补足至个人标准
     </button>
   </view>
 
@@ -100,7 +100,10 @@
         <view class="meta-chip-row compact-meta-row">
           <view class="meta-chip chip-primary">{{item.staffLevelText || '申请人'}}</view>
           <view class="meta-chip">{{item.ratingText}}</view>
-          <view class="meta-chip deposit-chip {{item.depositBalance < 100 ? 'danger-chip' : ''}}">保证金: {{item.depositBalanceText}}</view>
+          <view class="meta-chip deposit-chip {{item.depositTopUpAmount > 0 ? 'danger-chip' : ''}}">余额 {{item.depositBalanceText}}</view>
+          <view class="meta-chip">当前标准 {{item.depositStandardAmountText}}</view>
+          <view class="meta-chip">入驻标准 {{item.depositEntryStandardAmountText}}</view>
+          <view class="meta-chip danger-chip" wx:if="{{item.depositTopUpAmount > 0}}">待补 {{item.depositTopUpAmountText}}</view>
           <view class="meta-chip withdraw-chip">可提现: {{item.withdrawableAmountText}}</view>
           <view class="meta-chip">{{item.commissionPercentText}}</view>
           <view class="meta-chip can-revoke-chip" wx:if="{{item.canRevokeStaff && item.auditStatus === 'approved'}}">可移除身份</view>
@@ -114,6 +117,7 @@
     <view class="admin-summary-row sitter-action-row">
       <button wx:if="{{adminSuper || adminPermissions.admin_listStaffAudits}}" class="mini-btn" data-id="{{item._id}}" bindtap="detail">{{item.actionText}}</button>
       <button wx:if="{{adminSuper || adminPermissions.admin_setStaffCommissionRate}}" class="mini-btn ghost-mini" data-id="{{item._id}}" bindtap="openCommissionEditor"><text class="remix-icon ri-equalizer-line"></text>设置提成</button>
+      <button wx:if="{{adminSuper || adminPermissions.admin_setStaffDepositStandard}}" class="mini-btn ghost-mini" data-id="{{item._id}}" bindtap="openDepositStandardEditor"><text class="remix-icon ri-equalizer-line"></text>调整保证金标准</button>
       <button class="mini-btn" wx:if="{{adminSuper || adminPermissions.admin_settleStaffEarningsByWechat}}" data-id="{{item._id}}" bindtap="settleEarnings" disabled="{{settlementBusy}}" loading="{{settlementBusy && settlementStaffId === item._id}}">收益转账结清</button>
       <button class="mini-btn ghost-mini" wx:if="{{adminSuper || adminPermissions.admin_createStaffManualTailSettlement}}" data-id="{{item._id}}" bindtap="settleManualTail" disabled="{{settlementBusy}}">小额尾款人工结清</button>
       <button class="mini-btn ghost-mini" wx:if="{{item.depositBalance > 0 && (adminSuper || adminPermissions.admin_requestStaffDepositRefund)}}" data-item="{{item}}" bindtap="refundDeposit" disabled="{{depositRefundBusy}}">退还保证金</button>
@@ -203,32 +207,50 @@
     </view>
   </view>
 
-  <!-- 批量要求重新缴纳保证金弹窗 -->
+  <view class="modal-mask" wx:if="{{depositStandardStaff}}">
+    <view class="modal-card commission-modal">
+      <view class="modal-title">调整个人保证金标准</view>
+      <view class="modal-summary">
+        <view class="strong">{{depositStandardStaff.realName || depositStandardStaff.userNickname}}</view>
+        <view class="muted commission-hint">当前余额 {{depositStandardStaff.depositBalanceText}}。新标准高于余额时，会立即暂停接单，补足差额后恢复。</view>
+      </view>
+      <view class="form-section">
+        <view class="form-label">个人标准（元）</view>
+        <view class="deposit-standard-input"><text>¥</text><input type="digit" value="{{depositStandardInput}}" placeholder="例如 100" bindinput="inputDepositStandard" disabled="{{savingDepositStandard}}" /></view>
+      </view>
+      <view class="modal-actions"><button class="ghost-btn" bindtap="closeDepositStandardEditor" disabled="{{savingDepositStandard}}">取消</button><button class="primary-btn" bindtap="saveDepositStandard" loading="{{savingDepositStandard}}" disabled="{{savingDepositStandard}}">保存</button></view>
+    </view>
+  </view>
+
+  <!-- 批量要求补足个人保证金标准 -->
   <view class="modal-mask" wx:if="{{showRepayModal}}">
     <view class="modal-card">
       <view class="modal-title">
         <text class="remix-icon ri-shield-cross-fill" style="color: #ef4444; margin-right: 8rpx;"></text>
-        <text>要求重新足额缴纳保证金</text>
+        <text>要求补足至个人标准</text>
       </view>
       <view class="modal-summary">
-        <view class="strong small" style="color: #dc2626;">已选 {{selectedIds.length}} 位宠托师</view>
-        <view class="repay-amount-box" style="margin: 10rpx 0; padding: 12rpx 16rpx; background: #fff7ed; border-radius: 12rpx; border: 1rpx solid #fed7aa;">
-          <view style="display: flex; justify-content: space-between; align-items: center;">
-            <text style="color: #9a3412; font-weight: 850; font-size: 24rpx;">平台标准应缴保证金：</text>
-            <text style="color: #ea580c; font-weight: 950; font-size: 32rpx;">¥{{standardDepositAmount}}</text>
-          </view>
-          <view wx:if="{{selectedProfiles && selectedProfiles.length === 1}}" style="margin-top: 8rpx; font-size: 22rpx; color: #78350f; border-top: 1rpx dashed #fed7aa; padding-top: 8rpx;">
-            宠托师：<text class="strong">{{selectedProfiles[0].realName || selectedProfiles[0].userNickname}}</text> | 当前余额：<text style="color: #dc2626; font-weight: bold;">{{selectedProfiles[0].depositBalanceText}}</text>
-          </view>
+        <view class="strong small" style="color: #dc2626;">已选 {{selectedProfiles.length}} 位宠托师</view>
+        <view class="repay-amount-box">
+          <view class="repay-amount-total">预计补缴总额 <text>¥{{repayTotalTopUpAmount}}</text></view>
+          <view class="muted">{{repayEligibleCount}} 位宠托师余额低于个人标准</view>
         </view>
-        <view class="muted">被标记后，所选宠托师将被系统强制限制接单与抢单资格，直到其在小程序足额缴纳履约保证金（¥{{standardDepositAmount}}）为止。</view>
+        <scroll-view class="repay-preview-list" scroll-y wx:if="{{selectedProfiles.length}}">
+          <view class="repay-preview-row" wx:for="{{selectedProfiles}}" wx:key="_id">
+            <text class="repay-preview-name">{{item.realName || item.userNickname}}</text>
+            <text>余额 {{item.depositBalanceText}}</text>
+            <text>标准 {{item.depositStandardAmountText}}</text>
+            <text class="repay-preview-due">补 {{item.depositTopUpAmountText}}</text>
+          </view>
+        </scroll-view>
+        <view class="muted">确认后，余额不足的宠托师将暂停接单，补足各自差额后恢复。</view>
       </view>
       <view class="form-section">
         <view class="form-label">管控说明 / 要求重新缴纳原因</view>
-        <textarea placeholder="例如：保证金余额过低且存在服务违规留证，平台要求重新足额缴纳保证金后方可继续接单" value="{{repayReasonInput}}" bindinput="inputRepayReason" />
+        <textarea placeholder="填写要求补足保证金的原因" value="{{repayReasonInput}}" bindinput="inputRepayReason" />
       </view>
       <view class="modal-actions">
-        <button class="ghost-btn" bindtap="closeRepayModal">取消</button>
+        <button class="ghost-btn" bindtap="closeRepayModal" disabled="{{submittingRepay}}">取消</button>
         <button wx:if="{{adminSuper || adminPermissions.admin_batchRequireDepositRepay}}" class="danger-btn" loading="{{submittingRepay}}" disabled="{{submittingRepay}}" bindtap="confirmBatchRepay">确认并执行管控</button>
       </view>
     </view>

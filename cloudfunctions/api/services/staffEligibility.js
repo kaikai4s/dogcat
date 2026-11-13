@@ -1,3 +1,4 @@
+const { standardAmount } = require('../utils/staffDepositPolicy')
 module.exports = function createService({
   enabledTrainingVideos,
   isTrainingVideoWatched,
@@ -38,7 +39,7 @@ module.exports = function createService({
     if (profile.requireDepositRepay === true || profile.depositStatus === 'supplement_required' || profile.depositStatus === 'forfeited') {
       return false
     }
-    if (depositConfig && depositConfig.enabled === true && Number(depositConfig.amount) > 0) {
+    if (depositConfig && depositConfig.enabled === true && standardAmount(profile, depositConfig.amount) > 0) {
       return profile.depositStatus === 'paid'
     }
     if (profile.depositRequired === true) {
@@ -71,10 +72,11 @@ module.exports = function createService({
       return { can: false, reason: 'exited', message: '当前宠托师账号已申请退出或已退出，无法接单' }
     }
     if (p.requireDepositRepay === true || p.depositStatus === 'supplement_required') {
-      const amountTip = depositConfig && depositConfig.amount ? `（需足额缴纳¥${depositConfig.amount}）` : ''
+      const requiredAmount = standardAmount(p, depositConfig && depositConfig.amount)
+      const amountTip = requiredAmount > 0 ? `（需补足至¥${requiredAmount.toFixed(2)}）` : ''
       const defaultReason = `平台管理员已要求您重新足额缴纳保证金${amountTip}后方可继续接单，请先完成缴纳`
       const message = p.requireDepositRepayReason
-        ? `${p.requireDepositRepayReason}${amountTip ? `，需足额缴纳履约保证金¥${depositConfig.amount}后方可恢复接单` : ''}`
+        ? `${p.requireDepositRepayReason}${amountTip ? `，需补足至履约保证金标准¥${requiredAmount.toFixed(2)}后方可恢复接单` : ''}`
         : defaultReason
       return {
         can: false,
@@ -83,7 +85,8 @@ module.exports = function createService({
       }
     }
     if (!staffDepositSatisfied(p, depositConfig)) {
-      const amountTip = depositConfig && depositConfig.amount ? `（需缴纳¥${depositConfig.amount}）` : ''
+      const requiredAmount = standardAmount(p, depositConfig && depositConfig.amount)
+      const amountTip = requiredAmount > 0 ? `（需缴纳¥${requiredAmount.toFixed(2)}）` : ''
       return { can: false, reason: 'deposit_unpaid', message: `未缴纳宠托师履约保证金${amountTip}，暂不可抢单或接单，请先缴纳保证金` }
     }
     return { can: true }
