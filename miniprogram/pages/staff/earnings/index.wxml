@@ -6,8 +6,9 @@
       <text class="remix-icon ri-wallet-3-fill hero-icon"></text>
       <text>收益中心</text>
     </view>
-    <view class="hero-title">我的收益与提现</view>
-    <view class="hero-desc">服务完成后按平台分成生成收益，到达结算期即可申请提现到微信零钱。</view>
+    <view class="hero-title">{{balance.manualRedemption ? '我的预估收益' : '我的收益'}}</view>
+    <view class="hero-desc" wx:if="{{balance.manualRedemption}}">预估收益为待结算与可用收益之和，平台登记兑换后更新剩余金额。</view>
+    <view class="hero-desc" wx:elif="{{balance}}">服务完成后按平台分成生成收益，到达结算期即可申请提现到微信零钱。</view>
   </view>
 
   <view class="card revenue-card" wx:if="{{balance}}">
@@ -17,8 +18,8 @@
     </view>
     <view class="stats-grid">
       <view class="stat-card primary-stat">
-        <view class="stat-number">¥{{balance.availableText}}</view>
-        <view class="stat-label">可提现余额</view>
+        <view class="stat-number">¥{{balance.manualRedemption ? balance.estimatedText : balance.availableText}}</view>
+        <view class="stat-label">{{balance.manualRedemption ? '预估收益' : '可提现余额'}}</view>
       </view>
       <view class="stat-card">
         <view class="stat-number">¥{{balance.pendingText}}</view>
@@ -32,12 +33,16 @@
         <view class="stat-number">¥{{balance.withdrawnText}}</view>
         <view class="stat-label">已提现总额</view>
       </view>
+      <view class="stat-card" wx:if="{{balance.manualRedemption || balance.redeemed > 0}}"><view class="stat-number">¥{{balance.redeemedText}}</view><view class="stat-label">已兑换总额</view></view>
     </view>
+    <block wx:if="{{!balance.manualRedemption}}">
     <view class="withdraw-limit-tip">💡 微信零钱单笔金额：¥0.10～¥200.00；平台最低提现金额：¥{{balance.minWithdrawAmountText}}</view>
     <view class="withdraw-limit-tip" wx:if="{{balance.wechatTransferQuota}}" style="margin-top: 8rpx; color: #9a5a00;">今日平台剩余额度：{{balance.wechatTransferQuota.platformDailyRemainingAmount === null ? '不限' : '¥' + balance.wechatTransferQuota.platformDailyRemainingAmount}}</view>
     <view class="withdraw-limit-tip" style="margin-top: 8rpx; color: #78716c;">⏳ 平台结算保护期：订单完成后收益先进入【待结算】，到达缓冲期且无未决售后纠纷后自动转入【可提现余额】。</view>
+    </block>
+    <view class="withdraw-limit-tip" wx:if="{{balance.manualRedemption}}">已结算收益由平台兑换，实际兑换后可在发放记录中查看金额和转账截图。</view>
     <view class="withdraw-limit-tip" wx:if="{{balance.hasMockEarnings}}" style="margin-top: 8rpx; color: #d97706;">🧪 模拟测试收益：¥{{balance.mockTotalText}}（模拟支付订单未发生真实微信支付交易，不计入可提现余额与对账结算）。</view>
-    <view class="withdraw-rules-card" wx:if="{{balance.withdrawalRules}}">
+    <view class="withdraw-rules-card" wx:if="{{!balance.manualRedemption && balance.withdrawalRules}}">
       <view class="withdraw-rules-title"><view><text class="remix-icon ri-file-list-3-line"></text><text>提现规则</text></view><text class="withdraw-rules-caption">提交前请先阅读</text></view>
       <view class="withdraw-rule-metrics">
         <view class="withdraw-rule-metric"><text class="metric-value">{{balance.withdrawalRules.minAmountText}} - {{balance.withdrawalRules.singleMaxAmountText}}</text><text class="metric-label">单笔金额</text></view>
@@ -51,13 +56,13 @@
       <view class="withdraw-rule-note">{{balance.withdrawalRules.settlementText}}</view>
     </view>
   </view>
-  <view class="card revenue-card" wx:if="{{balance.assetSummary}}">
+  <view class="card revenue-card" wx:if="{{!balance.manualRedemption && balance.assetSummary}}">
     <view class="card-subtitle"><text class="remix-icon ri-user-add-line sub-icon"></text><text>邀请收益（独立资金来源）</text></view>
     <view class="stats-grid"><view class="stat-card primary-stat"><view class="stat-number">¥{{balance.assetSummary.availableAmountText}}</view><view class="stat-label">可提现邀请收益</view></view><view class="stat-card"><view class="stat-number">¥{{balance.assetSummary.totalAmountText}}</view><view class="stat-label">累计邀请收益</view></view></view>
     <view class="withdraw-limit-tip">邀请绑定收益和宠托师订单收益分别记账，提现审核时会标明收益来源。</view>
   </view>
 
-  <view class="card form-card">
+  <view class="card form-card" wx:if="{{balance && balance.withdrawalEnabled !== false && !balance.manualRedemption}}">
     <view class="card-subtitle">
       <text class="remix-icon ri-hand-coin-line sub-icon"></text>
       <text>申请提现到微信零钱</text>
@@ -86,7 +91,7 @@
     </view>
     <view class="segmented-tab {{activeTab === 'withdraws' ? 'active' : ''}}" data-tab="withdraws" bindtap="switchTab">
       <text class="remix-icon ri-history-line tab-icon"></text>
-      <text>提现记录</text>
+      <text>发放记录</text>
       <text class="tab-count" wx:if="{{withdraws.length}}">{{withdraws.length}}</text>
     </view>
   </view>
@@ -97,13 +102,13 @@
         全部 ({{earnings.length}})
       </view>
       <view class="sub-tab {{earningFilterStatus === 'available' ? 'active' : ''}}" data-status="available" bindtap="filterEarnings">
-        可提现 ({{availableEarningsCount}})
+        {{balance.manualRedemption ? '已结算' : '可提现'}} ({{availableEarningsCount}})
       </view>
       <view class="sub-tab {{earningFilterStatus === 'pending' ? 'active' : ''}}" data-status="pending" bindtap="filterEarnings">
         待结算 ({{pendingEarningsCount}})
       </view>
       <view class="sub-tab {{earningFilterStatus === 'settled' ? 'active' : ''}}" data-status="settled" bindtap="filterEarnings">
-        已结算/已提现
+        已发放
       </view>
     </view>
 
@@ -130,11 +135,14 @@
           <view class="value" style="color: #ef4444;">{{item.deductReasonText}}</view>
         </view>
         <view class="info-row">
-          <view class="label">实际到手收益</view>
+          <view class="label">{{item.status === 'withdrawn' ? '本单提现金额' : (balance.manualRedemption || item.redeemedAmount > 0 ? '本单剩余收益' : '实际到手收益')}}</view>
           <view class="value price-highlight">¥{{item.amountText}}</view>
         </view>
+        <view class="info-row" wx:if="{{item.redeemedAmount > 0}}"><view class="label">本单已兑换</view><view class="value">¥{{item.redeemedAmountText}}</view></view>
+        <view class="info-row" wx:if="{{item.deductedAmount > 0}}"><view class="label">退款/售后扣减</view><view class="value">-¥{{item.adjustmentAmountText}}</view></view>
+        <view class="info-row" wx:if="{{item.overpaidDebtAmount > 0}}"><view class="label">已发放收益待追回</view><view class="value">¥{{item.debtAmountText}}</view></view>
         <view class="info-row" wx:if="{{!item.isMock}}">
-          <view class="label">可提现时间</view>
+          <view class="label">{{balance.manualRedemption ? '结算时间' : '可提现时间'}}</view>
           <view class="value muted">{{beijingTime.format(item.availableAt)}}</view>
         </view>
         <view class="info-row" wx:else>
@@ -156,9 +164,10 @@
     </view>
     <view class="card record-card" wx:for="{{withdraws}}" wx:key="_id">
       <view class="record-head">
-        <view class="record-title">提现金额：¥{{item.amountText}}</view>
+        <view class="record-title">{{item.source === 'admin_earning_redemption' ? '已兑换' : '提现金额'}}：¥{{item.amountText}}</view>
         <view class="badge {{item.status === 'paid' ? 'green' : (item.status === 'transfer_failed' || item.status === 'rejected' ? 'gray' : 'pink')}}">{{item.statusText || '审核中'}}</view>
       </view>
+      <button wx:if="{{item.paymentProofImage}}" class="ghost-btn full-btn" data-url="{{item.paymentProofImage}}" bindtap="previewPaymentProof">查看转账截图</button>
       <button class="primary-btn confirm-transfer-btn" 
               wx:if="{{item.canConfirmTransfer}}" 
               disabled="{{transferBusy || confirmingId === item._id}}" 
@@ -230,7 +239,7 @@
     </view>
     <view class="empty-state" wx:if="{{!withdraws.length}}">
       <text class="remix-icon ri-history-line empty-icon"></text>
-      <view class="empty-text">暂无提现记录</view>
+      <view class="empty-text">暂无发放记录</view>
     </view>
   </block>
 </view>

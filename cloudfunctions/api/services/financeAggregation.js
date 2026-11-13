@@ -39,11 +39,17 @@ module.exports = function createService({ db, safeText }) {
     async function summarize(collection, fields, amountField, filter, amountFilter) {
       let pipeline = dated(collection, fields)
       if (filter) pipeline = pipeline.match(db.command.expr(filter))
-      const amount = `$${amountField}`
-      const valid = $.and([$.in([{ $type: amount }, ['int', 'long', 'double', 'decimal']]),
-        $.gte([amount, 0]), $.lt([amount, 90071992547409])])
+      const amounts = collection === 'staff_earnings'
+        ? [`$${amountField}`, $.ifNull(['$redeemedAmount', 0])]
+        : [`$${amountField}`]
+      const valid = $.and(amounts.map(amount => $.and([
+        $.in([{ $type: amount }, ['int', 'long', 'double', 'decimal']]),
+        $.gte([amount, 0]), $.lt([amount, 90071992547409])
+      ])))
       const included = amountFilter || $.literal(true)
-      const cents = $.floor($.add([$.multiply([amount, 100]), 0.5]))
+      // Validate each component before arithmetic so an invalid remaining
+      // balance cannot be hidden by an already redeemed amount.
+      const cents = $.add(amounts.map(amount => $.floor($.add([$.multiply([amount, 100]), 0.5]))))
       const result = await pipeline.group({
         _id: $.ifNull(['$status', 'unknown']), count: $.sum(1),
         cents: $.sum($.cond([included, $.cond([valid, cents, 0]), 0])),

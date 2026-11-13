@@ -1,4 +1,5 @@
 const { documentPages } = require('../utils/documentPages')
+const { readManualRedemption } = require('../utils/staffEarningsMode')
 const { WECHAT_MIN_TRANSFER_CENTS, WECHAT_MAX_TRANSFER_CENTS } = require('../utils/wechatTransferLimits')
 
 module.exports = function createService(context) {
@@ -79,6 +80,7 @@ module.exports = function createService(context) {
     const targetCents = requestedCents === null ? Infinity : requestedCents
     await refreshStaffEarnings(openid)
     const settings = await getSystemSettings()
+    if (!internal.adminSettlementId && await readManualRedemption(db, settings)) throw new Error('当前收益由平台登记兑换，已关闭自主提现')
     const selected = []
     let totalCents = 0
     if (internal.adminSettlementId) {
@@ -94,10 +96,9 @@ module.exports = function createService(context) {
     selectEarnings: for await (const earnings of documentPages(db, db.command, 'staff_earnings', { staffOpenid: openid, status: 'available' })) {
       for (const earning of earnings) {
         if (earning.isMock === true || earning.paymentChannel === 'mock' || earning.status === 'mock_settled' || earning.pendingRefundIds?.length || earning.frozenIncidentId) continue
-        if (earning.withdrawRequestId) {
-          const boundReq = (await db.collection('withdraw_requests').doc(earning.withdrawRequestId).get().catch(() => ({ data: null }))).data
-          if (boundReq && boundReq.status === 'pending') continue
-        }
+        // Refresh already clears confirmed stale bindings. Any remaining
+        // request still occupies this earning, including approved payouts.
+        if (earning.withdrawRequestId) continue
         if (totalCents >= targetCents || selected.length > maxEarnings) break selectEarnings
         selected.push(earning)
         totalCents += cents(earning.amount)
@@ -115,6 +116,7 @@ module.exports = function createService(context) {
     return db.runTransaction(async transaction => {
       const existing = await readRequest(transaction, id)
       if (existing) return validateInternalRequest({ ...existing, _id: id })
+      if (!internal.adminSettlementId && await readManualRedemption(transaction, settings)) throw new Error('当前收益由平台登记兑换，已关闭自主提现')
       if (!selected.length) throw new Error('暂无可提现收益')
       if (selected.length > maxEarnings) throw new Error('单次提现最多包含50笔收益，请减少提现金额后分批申请')
       if (payoutChannel === 'wechat_wallet') {
@@ -154,15 +156,9 @@ module.exports = function createService(context) {
         if (cents(current.amount) !== cents(earning.amount)) {
           throw new Error(`收益状态已变化或包含不可提现的模拟测试收益: 收益金额已变动（ID: ${earning._id}）`)
         }
-        // 并发防抢占：如果该收益在事务开启前没有被占用，而在进入事务后被其他并发请求写入了新的 withdrawRequestId
-        if (current.withdrawRequestId && current.withdrawRequestId !== earning.withdrawRequestId) {
-          throw new Error(`收益状态已变化或包含不可提现的模拟测试收益: 收益已被其他提现申请锁定（ID: ${earning._id}）`)
-        }
+        // Revalidate the binding for both self withdrawals and admin settlements.
         if (current.withdrawRequestId) {
-          const activeReq = (await db.collection('withdraw_requests').doc(current.withdrawRequestId).get().catch(() => ({ data: null }))).data
-          if (activeReq && activeReq.status === 'pending') {
-            throw new Error(`收益状态已变化或包含不可提现的模拟测试收益: 收益正处于提现审核排队中（申请单号: ${current.withdrawRequestId}）`)
-          }
+          throw new Error(`收益状态已变化或包含不可提现的模拟测试收益: 收益已被其他提现申请锁定（ID: ${earning._id}）`)
         }
       }
       const request = {

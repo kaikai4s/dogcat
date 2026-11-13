@@ -288,6 +288,7 @@ module.exports = function createService({
         [key, (value.maintenance?.[key] ?? existingSettings.maintenance?.[key]) === true])),
       payment: normalizePaymentConfig(payment, existingPayment, includeSecrets),
       settlement: {
+        staffEarningsMode: (settlement.staffEarningsMode ?? existingSettings.settlement?.staffEarningsMode) === 'manual_redemption' ? 'manual_redemption' : 'withdrawal',
         staffCommissionRate: Math.min(Math.max(Number(settlement.staffCommissionRate ?? 0.7), 0), 1),
         settlementDelayDays: Math.max(Math.round(Number(settlement.settlementDelayDays ?? 1)), 0),
         minWithdrawAmount: Math.round(Math.max(Number(settlement.minWithdrawAmount ?? 10), 0) * 100) / 100,
@@ -412,6 +413,7 @@ module.exports = function createService({
       }
     }
     if (settings.settlement) {
+      if (settings.settlement.staffEarningsMode !== undefined && !['withdrawal', 'manual_redemption'].includes(settings.settlement.staffEarningsMode)) throw new Error('【结算设置】收益方式无效')
       const commissionRate = Number(settings.settlement.staffCommissionRate ?? 0.7)
       const settlementDelayDays = Number(settings.settlement.settlementDelayDays ?? 1)
       const minWithdrawAmount = Number(settings.settlement.minWithdrawAmount ?? 10)

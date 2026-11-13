@@ -694,6 +694,8 @@
         </view>
 
         <view wx:if="{{activeSettingPanel === 'settlementReliability'}}" class="setting-modal-section">
+          <view class="compact-toggle-row"><view class="compact-toggle-main"><view class="strong">后台兑换收益</view><view class="muted">开启后，宠托师查看预估收益，由后台登记已兑换金额和转账截图。</view></view><switch checked="{{settings.settlement.staffEarningsMode === 'manual_redemption'}}" bindchange="toggleStaffEarningsMode" /></view>
+          <view class="notice">仅已结算收益可兑换；已有提现继续处理。关闭后恢复自主提现，已兑换金额保留扣减。</view>
           <view class="field-item"><text class="label">宠托师订单默认收益分成比例</text><input class="input" type="digit" value="{{settings.settlement.staffCommissionRate}}" data-field="staffCommissionRate" bindinput="settlementInput" placeholder="例如 0.70 表示 70%" /></view>
           <view class="muted">单独设置的个人提成比例在“宠托师管理”中维护；未设置时使用此默认比例。</view>
           <view class="notice">订单完成后按此比例生成宠托师收益；输入 0-1 之间的小数，最多两位小数。</view>

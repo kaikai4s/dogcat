@@ -258,7 +258,10 @@
       <view class="info-row"><view class="label">宠托师</view><view class="value">{{item.staffRealName || item.staffNickname || item.staffOpenid}}</view></view>
       <view class="info-row" wx:if="{{item.accountPhone || item.staffPhone}}"><view class="label">宠托师手机号</view><view class="value">{{item.accountPhone || item.staffPhone}}</view></view>
       <view class="info-row"><view class="label">订单</view><view class="value">{{item.orderId}}</view></view>
-      <view class="info-row"><view class="label">收益</view><view class="price">¥{{item.amountText}}</view></view>
+      <view class="info-row"><view class="label">{{item.redeemedAmount > 0 ? (item.status === 'withdrawn' ? '已提现部分' : '剩余收益') : '收益'}}</view><view class="price">¥{{item.amountText}}</view></view>
+      <view class="info-row" wx:if="{{item.redeemedAmount > 0}}"><view class="label">已兑换部分</view><view class="price">¥{{item.redeemedAmountText}}</view></view>
+      <view class="info-row" wx:if="{{item.deductedAmount > 0}}"><view class="label">退款/售后扣减</view><view class="price">-¥{{item.adjustmentAmountText}}</view></view>
+      <view class="info-row" wx:if="{{item.overpaidDebtAmount > 0}}"><view class="label">已发放收益待追回</view><view class="price">¥{{item.debtAmountText}}</view></view>
       <view class="info-row"><view class="label">可提现时间</view><view class="value">{{beijingTime.format(item.availableAt)}}</view></view>
     </view>
     <view class="empty-state" wx:if="{{!earnings.length}}">{{appliedKeyword ? '暂无与“' + appliedKeyword + '”匹配的收益明细。' : '暂无收益明细。'}}</view>

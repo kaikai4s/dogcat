@@ -256,6 +256,7 @@ function normalizePaymentConfig(payment = {}) {
 function normalizeSettlementConfig(settlement = {}) {
   return {
     ...settlement,
+    staffEarningsMode: settlement.staffEarningsMode === 'manual_redemption' ? 'manual_redemption' : 'withdrawal',
     staffCommissionRate: Number(settlement.staffCommissionRate === undefined ? 0.7 : settlement.staffCommissionRate),
     settlementDelayDays: Number(settlement.settlementDelayDays === undefined ? 1 : settlement.settlementDelayDays),
     minWithdrawAmount: Number(settlement.minWithdrawAmount === undefined ? 10 : settlement.minWithdrawAmount),
@@ -559,7 +560,7 @@ function buildSettingSummary(settings = {}) {
     generalShare: generalShare.imageUrl ? '已配置通用封面' : '使用默认封面',
     noticeTicker: `${noticeTicker.enabled ? '展示中' : '已关闭'} · ${noticeTicker.items.length} 条消息`,
     maintenance: ['petRanking', 'booking', 'invitation'].filter(key => settings.maintenance?.[key] === true).length + '/3 项维护中',
-    settlementReliability: `分成 ${Math.round(Number(settlement.staffCommissionRate || 0) * 100)}% · 完单 ${settlement.settlementDelayDays} 天后可提现 · 最低 ¥${Number(settlement.minWithdrawAmount || 0).toFixed(2)}`,
+    settlementReliability: `${settlement.staffEarningsMode === 'manual_redemption' ? '后台兑换' : '自主提现'} · 分成 ${Math.round(Number(settlement.staffCommissionRate || 0) * 100)}% · 完单 ${settlement.settlementDelayDays} 天后可提现 · 最低 ¥${Number(settlement.minWithdrawAmount || 0).toFixed(2)}`,
     carousel: `${carousel.enabled ? '轮播已启用' : '轮播已关闭'} · ${enabledCarouselCount}/${carouselItems.length} 个素材启用`,
     homePage: `${enabledModuleCount}/${homeModuleOptions.length} 个模块启用 · ${homePage.ctaTitle || '未配置标题'}`,
     petBeautyContest: `${petBeautyContest.enabled === false ? '即将开始 · 无现金奖金' : '已开启 · 月度冠军 ¥' + petBeautyContest.firstPrizeAmount} · ${petBeautyContest.enableFrontendDisqualify !== false ? '前台下架开启' : '前台下架关闭'} · ${petBeautyContest.posterUrl ? '已配海报' : '默认海报'}`,
@@ -1008,6 +1009,10 @@ Page({
   paymentInput(e) {
     const field = e.currentTarget.dataset.field
     this.setData({ [`settings.payment.${field}`]: e.detail.value })
+  },
+
+  toggleStaffEarningsMode(e) {
+    this.setData({ 'settings.settlement.staffEarningsMode': e.detail.value ? 'manual_redemption' : 'withdrawal' })
   },
 
   settlementInput(e) {

@@ -115,6 +115,7 @@ function getInitialStaffProfileData() {
       balanceData = {
         ...balance,
         availableText: Number(balance.available || 0).toFixed(2),
+        estimatedText: Number(balance.estimated || 0).toFixed(2),
         pendingText: Number(balance.pending || 0).toFixed(2),
         withdrawnText: Number(balance.withdrawn || 0).toFixed(2)
       }
@@ -170,17 +171,26 @@ function getInitialStaffProfileData() {
 Page({
   data: getInitialStaffProfileData(),
 
-    onPullDownRefresh() {
-    Promise.resolve(this.loadProfile()).finally(() => {
+  onPullDownRefresh() {
+    return Promise.resolve(this.loadProfile()).finally(() => {
+      if (this._profileUnloaded) return
       loadMessageUnread(this, "staff")
       wx.stopPullDownRefresh()
     })
   },
 
   onShow() {
+    this._profileUnloaded = false
     this.applyCurrentTheme()
     this.loadProfile()
     loadMessageUnread(this, 'staff')
+  },
+
+  onUnload() {
+    this._profileUnloaded = true
+    this._profileLoadVersion = (this._profileLoadVersion || 0) + 1
+    clearTimeout(this._certificationRedirectTimer)
+    this._certificationRedirectTimer = null
   },
 
   applyCurrentTheme() {
@@ -189,18 +199,26 @@ Page({
   },
 
   loadProfile() {
+    if (this._profileUnloaded) return
+    const version = this._profileLoadVersion = (this._profileLoadVersion || 0) + 1
+    const isCurrent = () => !this._profileUnloaded && version === this._profileLoadVersion
+    clearTimeout(this._certificationRedirectTimer)
+    this._certificationRedirectTimer = null
     return Promise.all([
       callFunction('auth', 'me'),
       callFunction('staff', 'getStaffProfile'),
       callFunction('finance', 'getStaffBalance').catch(() => null)
     ])
       .then(([user, profile, balance]) => {
+        if (!isCurrent()) return
         const isStaffActive = user && Array.isArray(user.roles) && user.roles.includes('staff')
         const isProfileValid = profile && (profile.auditStatus === 'approved' || profile.auditStatus === 'intern' || profile.videoAuditStatus === 'approved')
         if (!profile || (!isStaffActive && !isProfileValid)) {
           this.setData({ loadingProfile: false })
           wx.showToast({ title: '未通过宠托师认证，即将返回', icon: 'none' })
-          setTimeout(() => {
+          this._certificationRedirectTimer = setTimeout(() => {
+            if (!isCurrent()) return
+            this._certificationRedirectTimer = null
             wx.redirectTo({ url: '/pages/staff/certification/index' })
           }, 1200)
           return
@@ -215,6 +233,7 @@ Page({
         const balanceData = balance ? {
           ...balance,
           availableText: Number(balance.available || 0).toFixed(2),
+          estimatedText: Number(balance.estimated || 0).toFixed(2),
           pendingText: Number(balance.pending || 0).toFixed(2),
           withdrawnText: Number(balance.withdrawn || 0).toFixed(2)
         } : null
@@ -240,6 +259,7 @@ Page({
         })
       })
       .catch(err => {
+        if (!isCurrent()) return
         this.setData({ loadingProfile: false })
         showError(err)
       })

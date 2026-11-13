@@ -31,6 +31,33 @@ function setup(permissions, respond = async () => []) {
   page.setData({ adminAccess: { superAdmin: false, permissions } })
   return { page, calls, errors, loadingEvents }
 }
+test('finance displays redeemed earnings and redemption logs with their recorded amounts', async () => {
+  const { page } = setup(['admin.listStaffEarnings', 'admin.listFinanceLogs', 'admin.listWithdrawRequests'], async action => {
+    if (action === 'listStaffEarnings') return [{ _id: 'e', status: 'redeemed', amount: 0, redeemedAmount: 30 }]
+    if (action === 'listFinanceLogs') return [{ action: 'staff_earning_redeemed', targetType: 'withdraw_request', amountDelta: -30 }]
+    if (action === 'listWithdrawRequests') return [{ _id: 'w', source: 'admin_earning_redemption', status: 'paid', amount: 30 }]
+    return []
+  })
+  await page.load()
+  assert.equal(page.data.earnings[0].statusText, '已兑换')
+  assert.equal(page.data.earnings[0].redeemedAmountText, '30.00')
+  assert.equal(page.data.logs[0].actionText, '宠托师收益已兑换')
+  assert.equal(page.data.requests[0].statusText, '已兑换')
+})
+
+test('finance earnings show refund adjustments and outstanding paid debt separately from redeemed totals', async () => {
+  const { page } = setup(['admin.listStaffEarnings'], async () => [
+    { _id: 'e', status: 'redeemed', amount: 0, redeemedAmount: 60, deductedAmount: 40, overpaidDebtAmount: 60 }
+  ])
+  await page.load()
+  assert.equal(page.data.earnings[0].redeemedAmountText, '60.00')
+  assert.equal(page.data.earnings[0].adjustmentAmountText, '40.00')
+  assert.equal(page.data.earnings[0].debtAmountText, '60.00')
+  const template = fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/admin/finance/index.wxml'), 'utf8')
+  assert.match(template, /item.adjustmentAmountText/)
+  assert.match(template, /item.debtAmountText/)
+})
+
 test('user-asset-only financial administrator can enter finance and fetch no staff or other financial data', async () => {
   const grants = ['admin.listUserAssetWithdrawals']
   const { page, calls } = setup(grants, async () => [{ _id: 'w', assetType: 'user', amount: 30 }])

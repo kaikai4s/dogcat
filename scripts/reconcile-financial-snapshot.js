@@ -50,7 +50,7 @@ function reconcile(snapshot, statement, costs = {}) {
       const time = timeOf(row, dates)
       if (!Number.isFinite(time)) { add('MISSING_ACCOUNTING_DATE', collection, row._id); continue }
       if (!inPeriod(time)) continue
-      const amount = yuanToFen(row[amountField])
+      const amount = yuanToFen(row[amountField]) + (collection === 'staff_earnings' ? yuanToFen(row.redeemedAmount ?? 0) : 0)
       if (!validFen(amount)) { add('INVALID_AMOUNT', collection, row._id); continue }
       const target = day(time), key = classify ? classify(row) : metric
       target[key] += amount

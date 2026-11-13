@@ -16,6 +16,27 @@ function fixture() {
   return { snapshot, statement }
 }
 
+test('partial and full redemptions preserve earning costs in local reconciliation', () => {
+  for (const redeemedAmount of [20, 50]) {
+    const { snapshot, statement } = fixture()
+    snapshot.staff_earnings[0].amount = 50 - redeemedAmount
+    snapshot.staff_earnings[0].redeemedAmount = redeemedAmount
+    const report = reconcile(snapshot, statement)
+    assert.equal(report.daily[0].staffEarningFen, 5000)
+    assert.equal(report.daily[0].remainingAfterStaffFen, 5000)
+  }
+})
+
+test('invalid redeemed amounts fail reconciliation rather than lowering costs', () => {
+  for (const redeemedAmount of [-1, '20', 0.001]) {
+    const { snapshot, statement } = fixture()
+    snapshot.staff_earnings[0].redeemedAmount = redeemedAmount
+    const report = reconcile(snapshot, statement)
+    assert.equal(report.reconciliationPassed, false)
+    assert.ok(report.findings.some(row => row.code === 'INVALID_AMOUNT' && row.id === 'e'))
+  }
+})
+
 test('local reconciliation matches references and Beijing success dates without counting withdrawals twice', () => {
   const { snapshot, statement } = fixture()
   const report = reconcile(snapshot, statement)

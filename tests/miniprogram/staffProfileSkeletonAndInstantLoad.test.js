@@ -10,16 +10,19 @@ function createStaffProfilePage(options = {}) {
   const {
     cachedUser = null,
     storageData = {},
-    callFunctionMock = async () => ({})
+    callFunctionMock = async () => ({}),
+    setTimeoutMock = (fn) => setTimeout(fn, 0),
+    clearTimeoutMock = (id) => clearTimeout(id)
   } = options
 
   let pageConfig = null
   const storage = new Map(Object.entries(storageData))
+  const errors = [], toasts = [], redirects = []
 
   const cloudMock = {
     getCachedUser: () => cachedUser,
     callFunction: callFunctionMock,
-    showError: () => {},
+    showError: error => errors.push(error),
     showLoading: () => {},
     hideLoading: () => {},
     chooseSelectedLocation: async () => ({})
@@ -46,13 +49,13 @@ function createStaffProfilePage(options = {}) {
     wx: {
       getStorageSync: key => storage.get(key),
       setStorageSync: (key, val) => storage.set(key, val),
-      showToast: () => {},
-      redirectTo: () => {},
+      showToast: options => toasts.push(options),
+      redirectTo: options => redirects.push(options),
       stopPullDownRefresh: () => {}
     },
     getApp: () => ({ globalData: {} }),
-    setTimeout: (fn) => setTimeout(fn, 0),
-    clearTimeout: (id) => clearTimeout(id)
+    setTimeout: setTimeoutMock,
+    clearTimeout: clearTimeoutMock
   })
 
   const page = { ...pageConfig, data: { ...pageConfig.data } }
@@ -75,8 +78,91 @@ function createStaffProfilePage(options = {}) {
     }
     if (cb) cb()
   }
-  return { page, setDataLog, storage }
+  return { page, setDataLog, storage, errors, toasts, redirects }
 }
+
+test('older profile responses cannot replace the latest earnings mode or cached remaining balance', async () => {
+  const pending = []
+  const { page, storage } = createStaffProfilePage({ callFunctionMock: async (_, action) => {
+    if (action === 'me') return { _id: 'u', nickname: '宠托师', roles: ['staff'] }
+    if (action === 'getStaffProfile') return { _id: 'sp', auditStatus: 'approved', staffLevel: 'certified' }
+    return new Promise(resolve => pending.push(resolve))
+  } })
+  const old = page.loadProfile(), latest = page.loadProfile()
+  pending[1]({ manualRedemption: true, available: 70, pending: 20, estimated: 90, redeemed: 30 })
+  await latest
+  pending[0]({ manualRedemption: false, available: 100, pending: 20, estimated: 120 })
+  await old
+  assert.equal(page.data.balance.manualRedemption, true)
+  assert.equal(page.data.balance.availableText, '70.00')
+  assert.equal(page.data.balance.estimatedText, '90.00')
+  const cached = storage.get('staff_profile_display_cache_v1')
+  assert.equal(cached.balance.manualRedemption, true)
+  assert.equal(cached.balance.estimated, 90)
+})
+
+test('profile responses after unload cannot change display, cache, or show errors', async () => {
+  for (const outcome of ['success', 'error']) {
+    let resolveProfile, rejectProfile
+    const h = createStaffProfilePage({ callFunctionMock: async (_, action) => {
+      if (action === 'me') return { _id: 'u', roles: ['staff'] }
+      if (action === 'getStaffProfile') return new Promise((resolve, reject) => { resolveProfile = resolve; rejectProfile = reject })
+      return { manualRedemption: true, estimated: 70 }
+    } })
+    const loading = h.page.loadProfile()
+    h.page.onUnload()
+    if (outcome === 'success') resolveProfile({ auditStatus: 'approved' })
+    else rejectProfile(new Error('late profile error'))
+    await loading
+    assert.equal(h.setDataLog.length, 0)
+    assert.equal(h.storage.size, 0)
+    assert.equal(h.errors.length, 0)
+    assert.equal(h.toasts.length, 0)
+    assert.equal(h.redirects.length, 0)
+  }
+})
+
+test('a stale profile failure cannot show an error after a successful refresh', async () => {
+  const pending = []
+  const h = createStaffProfilePage({ callFunctionMock: async (_, action) => {
+    if (action === 'me') return { _id: 'u', roles: ['staff'] }
+    if (action === 'getStaffProfile') return new Promise((resolve, reject) => pending.push({ resolve, reject }))
+    return { manualRedemption: true, estimated: 70 }
+  } })
+  const old = h.page.loadProfile(), latest = h.page.loadProfile()
+  pending[1].resolve({ auditStatus: 'approved' })
+  await latest
+  pending[0].reject(new Error('stale profile error'))
+  await old
+  assert.equal(h.errors.length, 0)
+  assert.equal(h.page.data.balance.estimatedText, '70.00')
+})
+
+test('profile certification redirects are cancelled after a new refresh or unloading', async () => {
+  for (const action of ['refresh', 'unload']) {
+    const timers = new Map()
+    let valid = false, timerId = 0
+    const h = createStaffProfilePage({
+      setTimeoutMock: callback => { timers.set(++timerId, callback); return timerId },
+      clearTimeoutMock: id => timers.delete(id),
+      callFunctionMock: async (_, name) => {
+        if (name === 'me') return { _id: 'u', roles: ['staff'] }
+        if (name === 'getStaffProfile') return valid ? { auditStatus: 'approved' } : null
+        return { manualRedemption: true, estimated: 70 }
+      }
+    })
+    await h.page.loadProfile()
+    assert.equal(timers.size, 1)
+    const queuedCallback = [...timers.values()][0]
+    if (action === 'refresh') {
+      valid = true
+      await h.page.loadProfile()
+    } else h.page.onUnload()
+    assert.equal(timers.size, 0)
+    queuedCallback()
+    assert.equal(h.redirects.length, 0)
+  }
+})
 
 test('staff profile instant load: pre-populates certified status from cache with zero "未入驻" flash', () => {
   const cachedUser = {

@@ -35,6 +35,221 @@ function harness(route, callFunction) {
   return { page, originalLoad, wx, storage, errors, toasts, modals, navigations, helpers }
 }
 
+test('manual redemption retries the saved operation after a timeout and locks its reviewed amount', async () => {
+  const submitted = []
+  const h = harness('admin/sitters/list', async (_, action, data) => {
+    if (action === 'getStaffRedemptionPreview') return { enabled: true, available: 100, estimated: 120 }
+    submitted.push(structuredClone(data))
+    if (submitted.length === 1) throw new Error('network timeout')
+    return { status: 'paid' }
+  })
+  h.page.data.profiles = [{ _id: 'sp', realName: '小李' }]
+  const event = { currentTarget: { dataset: { id: 'sp' } } }
+  await h.page.openRedemption(event)
+  Object.assign(h.page.data, { redemptionAmount: '30.25', redemptionImage: 'cloud://test.bucket/proof.png', redemptionConfirmed: true })
+  await h.page.submitRedemption()
+  assert.equal(h.page.data.redemptionLocked, true)
+  h.page.redemptionInput({ currentTarget: { dataset: { field: 'redemptionAmount' } }, detail: { value: '50' } })
+  assert.equal(h.page.data.redemptionAmount, '30.25')
+  h.page.closeRedemption()
+  await h.page.openRedemption(event)
+  await h.page.submitRedemption()
+  assert.deepEqual(submitted[1], submitted[0])
+  assert.equal(submitted[0].amount, 30.25)
+  assert.equal(h.storage.size, 0)
+  assert.equal(h.page.data.redemptionStaff, null)
+})
+
+test('a redemption result arriving after leaving the page remains available for confirmation', async () => {
+  for (const rejected of [false, true]) {
+    let finish
+    const h = harness('admin/sitters/list', (_, action) => action === 'getStaffRedemptionPreview'
+      ? Promise.resolve({ enabled: true, available: 100, estimated: 100 })
+      : new Promise((resolve, reject) => { finish = rejected ? reject : resolve }))
+    h.page.data.profiles = [{ _id: 'sp' }]
+    await h.page.openRedemption({ currentTarget: { dataset: { id: 'sp' } } })
+    Object.assign(h.page.data, { redemptionAmount: '30', redemptionImage: 'cloud://test.bucket/proof.png', redemptionConfirmed: true })
+    const pending = h.page.submitRedemption()
+    const key = 'admin_staff_redemption_test-env_sp'
+    const operation = structuredClone(h.storage.get(key))
+    h.page.onUnload()
+    h.page.setData = () => assert.fail('An unloaded page cannot update its view')
+    finish(rejected ? Object.assign(new Error('请重新核对'), { code: 'STAFF_REDEMPTION_REVIEW_REQUIRED' }) : { status: 'paid' })
+    await pending
+    assert.deepEqual(h.storage.get(key), operation)
+    assert.equal(h.toasts.length, 0)
+    assert.equal(h.errors.length, 0)
+  }
+})
+
+test('a late redemption response cannot erase a newer pending operation stored by another page', async () => {
+  for (const rejected of [false, true]) {
+    let finish
+    const h = harness('admin/sitters/list', (_, action) => action === 'getStaffRedemptionPreview'
+      ? Promise.resolve({ enabled: true, available: 100, estimated: 100 })
+      : new Promise((resolve, reject) => { finish = rejected ? reject : resolve }))
+    h.page.data.profiles = [{ _id: 'sp' }]
+    await h.page.openRedemption({ currentTarget: { dataset: { id: 'sp' } } })
+    Object.assign(h.page.data, { redemptionAmount: '30', redemptionImage: 'cloud://test.bucket/proof.png', redemptionConfirmed: true })
+    const pending = h.page.submitRedemption()
+    const key = 'admin_staff_redemption_test-env_sp'
+    const newer = { ...structuredClone(h.storage.get(key)), clientRequestId: 'next-operation', amount: 20 }
+    h.storage.set(key, newer)
+    finish(rejected ? Object.assign(new Error('请重新核对'), { code: 'STAFF_REDEMPTION_REVIEW_REQUIRED' }) : { status: 'paid' })
+    await pending
+    assert.deepEqual(h.storage.get(key), newer)
+    assert.equal(h.page.data.redemptionStaff, null)
+    await h.page.openRedemption({ currentTarget: { dataset: { id: 'sp' } } })
+    assert.equal(h.page.data.redemptionLocked, true)
+    assert.equal(h.page.data.redemptionAmount, '20')
+    assert.equal(h.page._redemptionOperation.clientRequestId, 'next-operation')
+  }
+})
+
+test('manual redemption requires proof and payment confirmation and prevents duplicate clicks', async () => {
+  let finish
+  const calls = []
+  const h = harness('admin/sitters/list', (_, action, data) => new Promise(resolve => { calls.push({ action, data }); finish = resolve }))
+  Object.assign(h.page.data, { redemptionStaff: { _id: 'sp' }, redemptionPreview: { enabled: true, available: 100 }, redemptionAmount: '30' })
+  await h.page.submitRedemption()
+  assert.equal(calls.length, 0)
+  h.page.data.redemptionImage = 'cloud://test.bucket/proof.png'
+  await h.page.submitRedemption()
+  assert.equal(calls.length, 0)
+  h.page.data.redemptionConfirmed = true
+  const first = h.page.submitRedemption()
+  await h.page.submitRedemption()
+  h.page.closeRedemption()
+  assert.equal(calls.length, 1)
+  assert.equal(h.page.data.redemptionStaff._id, 'sp')
+  finish({ status: 'paid' })
+  await first
+  assert.equal(h.page.data.redemptionBusy, false)
+})
+
+test('redemption form displays and enforces the current batch limit before submitting', async () => {
+  const submissions = []
+  const h = harness('admin/sitters/list', async (_, action, data) => {
+    if (action === 'getStaffRedemptionPreview') return { enabled: true, available: 105, estimated: 105, maxRedemptionAmount: 50 }
+    submissions.push(data)
+    return { status: 'paid' }
+  })
+  h.page.data.profiles = [{ _id: 'sp' }]
+  await h.page.openRedemption({ currentTarget: { dataset: { id: 'sp' } } })
+  assert.equal(h.page.data.redemptionPreview.maxRedemptionAmountText, '50.00')
+  Object.assign(h.page.data, { redemptionAmount: '60', redemptionImage: 'cloud://test.bucket/proof.png', redemptionConfirmed: true })
+  await h.page.submitRedemption()
+  assert.equal(submissions.length, 0)
+  assert.match(h.errors[0].message, /本次.*50.00/)
+  assert.equal(h.storage.size, 0)
+  h.page.data.redemptionAmount = '50'
+  await h.page.submitRedemption()
+  assert.equal(submissions.length, 1)
+  assert.equal(submissions[0].amount, 50)
+})
+
+test('a late redemption preview cannot reopen a closed modal', async () => {
+  let finish
+  const h = harness('admin/sitters/list', () => new Promise(resolve => { finish = resolve }))
+  h.page.data.profiles = [{ _id: 'sp' }]
+  const pending = h.page.openRedemption({ currentTarget: { dataset: { id: 'sp' } } })
+  h.page.closeRedemption()
+  h.page.setData = () => assert.fail('Closed modal must ignore the late preview')
+  finish({ enabled: true, available: 100, estimated: 120 })
+  await pending
+})
+
+test('staff earnings in manual mode shows the remaining estimate and cannot invoke withdrawal', async () => {
+  const calls = []
+  const h = harness('staff/earnings', async (_, action) => {
+    calls.push(action)
+    if (action === 'getStaffBalance') return { manualRedemption: true, withdrawalEnabled: false, estimated: 90, available: 70, pending: 20, redeemed: 30 }
+    if (action === 'listStaffEarnings') return [{ _id: 'e', status: 'available', amount: 70, redeemedAmount: 30 }]
+    if (action === 'listMyWithdraws') return [{ _id: 'w', status: 'paid', source: 'admin_earning_redemption', amount: 30 }]
+    throw new Error(action)
+  })
+  h.page.load = h.originalLoad
+  await h.page.load()
+  assert.equal(h.page.data.balance.estimatedText, '90.00')
+  assert.equal(h.page.data.earnings[0].statusText, '已结算')
+  assert.equal(h.page.data.withdraws[0].statusText, '已兑换')
+  h.page.data.amount = '70'
+  await h.page.withdraw()
+  assert.equal(calls.length, 3)
+})
+
+test('pending redemption remains accessible after its mode is disabled', async () => {
+  const h = harness('admin/sitters/list', async () => ({ list: [{ _id: 'sp', manualRedemption: false }], page: 1, hasMore: false, total: 1 }))
+  h.storage.set('admin_staff_redemption_test-env_sp', { staffProfileId: 'sp', clientRequestId: 'saved' })
+  h.page.load = h.originalLoad
+  await h.page.load({ reset: true })
+  assert.equal(h.page.data.profiles[0].redemptionPending, true)
+  const source = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/admin/sitters/list/index.wxml'), 'utf8')
+  assert.match(source, /item.manualRedemption \|\| item.redemptionPending/)
+})
+
+test('held earnings do not appear in the available list or count in either earnings mode', async () => {
+  for (const manualRedemption of [true, false]) {
+    const h = harness('staff/earnings', async (_, action) => {
+      if (action === 'getStaffBalance') return { manualRedemption, available: 10 }
+      if (action === 'listStaffEarnings') return [
+        { _id: 'free', status: 'available', amount: 10 },
+        { _id: 'refund', status: 'available', amount: 20, pendingRefundIds: ['r'] },
+        { _id: 'incident', status: 'available', amount: 30, frozenIncidentId: 'i' },
+        { _id: 'withdraw', status: 'available', amount: 40, withdrawRequestId: 'w' }
+      ]
+      return []
+    })
+    h.page.load = h.originalLoad
+    h.page.data.earningFilterStatus = 'available'
+    await h.page.load()
+    assert.equal(h.page.data.availableEarningsCount, 1)
+    assert.deepEqual(Array.from(h.page.data.filteredEarnings, e => e._id), ['free'])
+    assert.deepEqual(Array.from(h.page.data.earnings.slice(1), e => e.statusText), ['退款处理中', '已冻结', '提现处理中'])
+    h.page.filterEarnings({ currentTarget: { dataset: { status: '' } } })
+    assert.equal(h.page.data.filteredEarnings.length, 4)
+    h.page.filterEarnings({ currentTarget: { dataset: { status: 'available' } } })
+    assert.deepEqual(Array.from(h.page.data.filteredEarnings, e => e._id), ['free'])
+  }
+})
+
+test('stale staff balance responses cannot overwrite a newer manual mode or update after unload', async () => {
+  const pending = []
+  const h = harness('staff/earnings', (_, action) => action === 'getStaffBalance'
+    ? new Promise(resolve => pending.push(resolve)) : Promise.resolve([]))
+  h.page.load = h.originalLoad
+  const old = h.page.load(), latest = h.page.load()
+  pending[1]({ manualRedemption: true, withdrawalEnabled: false, estimated: 70 })
+  await latest
+  pending[0]({ manualRedemption: false, withdrawalEnabled: true, available: 100 })
+  await old
+  assert.equal(h.page.data.balance.manualRedemption, true)
+  assert.equal(h.page.data.balance.estimatedText, '70.00')
+  const unloading = h.page.load()
+  h.page.onUnload()
+  h.page.setData = () => assert.fail('No updates after unload')
+  pending[2]({ available: 200 })
+  await unloading
+})
+
+test('a rejected redemption refreshes the reviewed balance while retaining proof and entered amount', async () => {
+  let previews = 0
+  const h = harness('admin/sitters/list', async (_, action) => {
+    if (action === 'getStaffRedemptionPreview') return { enabled: true, available: ++previews === 1 ? 100 : 20, estimated: 20 }
+    throw Object.assign(new Error('兑换金额超过当前可兑换收益，请刷新后核对'), { code: 'STAFF_REDEMPTION_REVIEW_REQUIRED' })
+  })
+  h.page.data.profiles = [{ _id: 'sp' }]
+  await h.page.openRedemption({ currentTarget: { dataset: { id: 'sp' } } })
+  Object.assign(h.page.data, { redemptionAmount: '30', redemptionImage: 'cloud://test.bucket/proof.png', redemptionConfirmed: true })
+  await h.page.submitRedemption()
+  assert.equal(h.page.data.redemptionPreview.available, 20)
+  assert.equal(h.page.data.redemptionAmount, '30')
+  assert.equal(h.page.data.redemptionImage, 'cloud://test.bucket/proof.png')
+  assert.equal(h.page.data.redemptionConfirmed, false)
+  assert.equal(h.page.data.redemptionLocked, false)
+  assert.equal(h.storage.size, 0)
+})
+
 test('resetting the sitter list clears selections from the previous deposit filter', async () => {
   const h = harness('admin/sitters/list', async () => ({ list: [{ _id: 'visible', depositStandardAmount: 100, depositBalance: 50 }], page: 1, hasMore: false, total: 1 }))
   h.page.load = h.originalLoad

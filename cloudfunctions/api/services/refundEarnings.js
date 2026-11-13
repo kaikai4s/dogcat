@@ -91,6 +91,31 @@ module.exports = function createService({ db, now, parseDateValue, releaseWechat
         const amount = cents(earning.amount)
         const base = cents(earning.originalAmount ?? earning.amount)
         const full = cumulativeCents === payCents
+        // Partial manual redemptions leave the unpaid amount on this original
+        // order ledger. Refunds consume it first, then track already-paid debt.
+        const redeemed = cents(earning.redeemedAmount || 0)
+        if (redeemed > 0) {
+          const priorDebt = cents(earning.overpaidDebtAmount || 0)
+          const deduction = Math.min(Math.max(0, amount + redeemed - priorDebt), full ? amount + redeemed :
+            proportionalDeduction(base, cumulativeCents) - proportionalDeduction(base, previousCents))
+          const unpaidDeduction = earning.status === 'withdrawn' ? 0 : Math.min(amount, deduction)
+          const debt = priorDebt + deduction - unpaidDeduction
+          const time = now()
+          await tx.collection('staff_earnings').doc(earning._id).update({ data: {
+            amount: (amount - unpaidDeduction) / 100,
+            deductedAmount: (cents(earning.deductedAmount || 0) + unpaidDeduction) / 100,
+            status: amount === unpaidDeduction && earning.status !== 'withdrawn' && earning.status !== 'frozen' ? 'redeemed' : earning.status,
+            hasOverpaidDebt: debt > 0, overpaidDebtAmount: debt / 100,
+            pendingRefundIds: remainingHolds, refundVoidReason: reason || '订单退款，已兑换部分待追缴', updatedAt: time
+          } })
+          const action = debt > priorDebt ? 'staff_earning_withdrawn_debt' : 'staff_earning_partially_refunded'
+          if (deduction) await tx.collection('finance_logs').doc(`refund_earning_${earning._id}_${refundId || time.getTime()}`).set({ data: {
+            action, targetType: 'staff_earning', targetId: earning._id, orderId, staffOpenid: earning.staffOpenid,
+            amountDelta: -deduction / 100, detail: { refundId, refundAmount, totalPayAmount, reason, unpaidDeduction: unpaidDeduction / 100, debtAdded: (deduction - unpaidDeduction) / 100 }, createdAt: time
+          } })
+          results.push({ _id: earning._id, action, delta: deduction / 100 })
+          continue
+        }
         const priorDebt = earning.status === 'withdrawn' ? cents(earning.overpaidDebtAmount || 0) : 0
         const deduction = Math.min(Math.max(0, amount - priorDebt), full ? amount :
           proportionalDeduction(base, cumulativeCents) - proportionalDeduction(base, previousCents))

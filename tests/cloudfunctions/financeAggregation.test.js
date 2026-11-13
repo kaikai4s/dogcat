@@ -99,6 +99,18 @@ test('status group output is not truncated at 100 statuses', async () => {
   assert.equal(Object.keys(result.counts.refundStatus).length, 151)
 })
 
+test('staff finance validates remaining and redeemed amounts independently', async () => {
+  for (const amounts of [
+    { amount: -10, redeemedAmount: 30 },
+    { amount: 30, redeemedAmount: -10 },
+    { amount: '20', redeemedAmount: 30 },
+    { amount: 20, redeemedAmount: '30' },
+    { amount: 20, redeemedAmount: Infinity }
+  ]) {
+    await assert.rejects(report({ staff_earnings: [{ status: 'available', ...amounts }] }), /财务数据金额异常.*staff_earnings/)
+  }
+})
+
 test('finance dashboard still requires administrator permission', async () => {
   const db = createCollectionStore({ users: [{ openid: 'client', roles: ['client'], status: 'active' }] })
   const result = await loadCloudFunction('api', db, 'client').main({ module: 'admin', action: 'financeDashboard', data: {} })

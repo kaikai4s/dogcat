@@ -61,7 +61,7 @@
     </view>
     <view class="action-card" data-url="/pages/staff/earnings/index" bindtap="go">
       <view class="icon-box"><text class="remix-icon ri-wallet-3-line action-icon"></text></view>
-      <view class="action-title">收益提现</view>
+      <view class="action-title">我的收益</view>
       <view class="action-sub">钱包与明细</view>
     </view>
   </view>

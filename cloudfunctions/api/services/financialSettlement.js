@@ -345,11 +345,14 @@ module.exports = function createService({ db, now, parseDateValue, safeText, enq
         const amount = cents(earning.amount)
         const taken = Math.min(amount, remaining)
         remaining -= taken
-        const patch = { status: cents(earning.amount) === 0 ? 'refunded_void' : releasedStatus(earning, time), frozenIncidentId: '', frozenFromStatus: '', frozenResolvedAt: time, frozenResolveRemark: remark, updatedAt: time }
+        // Exhausting the unpaid remainder must preserve the completed payout
+        // state; deductions and refund debt remain recorded separately.
+        const exhaustedStatus = cents(earning.redeemedAmount || 0) > 0 ? 'redeemed' : decision === 'deduct' ? 'deducted' : 'refunded_void'
+        const patch = { status: amount > taken ? releasedStatus(earning, time) : exhaustedStatus, frozenIncidentId: '', frozenFromStatus: '', frozenResolvedAt: time, frozenResolveRemark: remark, updatedAt: time }
         if (decision === 'deduct') {
           const accumulated = cents(earning.deductedAmount || 0) + taken
           if (!Number.isSafeInteger(accumulated)) throw new Error('金额不正确')
-          Object.assign(patch, { amount: (amount - taken) / 100, deductedAmount: accumulated / 100, status: amount > taken ? patch.status : 'deducted' })
+          Object.assign(patch, { amount: (amount - taken) / 100, deductedAmount: accumulated / 100 })
         }
         await tx.collection('staff_earnings').doc(earning._id).update({ data: patch })
       }

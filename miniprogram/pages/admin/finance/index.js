@@ -39,6 +39,7 @@ const wechatTransferStateText = {
 }
 
 const earningStatusText = {
+  redeemed: '已兑换',
   pending: '待结算', available: '可提现', withdrawing: '提现中', withdrawn: '已提现',
   frozen: '已冻结', deducted: '已扣减', refunded_void: '退款已作废', mock_settled: '模拟收益（不可提现）'
 }
@@ -49,6 +50,7 @@ const depositStatusText = {
 }
 const supplyStatusText = { pending: '待审核', approved: '审核通过，等待打款', rejected: '审核驳回', paid: '已人工确认打款' }
 const financeActionText = {
+  staff_earning_redeemed: '宠托师收益已兑换',
   order_paid: '订单支付', mall_order_paid: '商城订单支付', refund_success: '退款成功',
   withdraw_requested: '申请提现', withdraw_approved: '提现审核通过', withdraw_rejected: '提现已驳回',
   withdraw_paid: '提现已到账', withdraw_transfer_failed: '提现转账失败', withdraw_released: '提现已退回余额',
@@ -76,6 +78,7 @@ function enumText(labels, value, fallback) {
 
 function withdrawalStatus(item) {
   const status = normalizeCode(item.status)
+  if (item.source === 'admin_earning_redemption' && status === 'paid') return '已兑换'
   if (item.payoutChannel !== 'wechat_wallet' && status === 'approved') return '待人工付款'
   if (item.source === 'admin_manual_tail_settlement' && status === 'paid') return '已人工结清'
   return enumText(withdrawStatusText, status, '提现状态待核实')
@@ -93,7 +96,8 @@ function decorateFinanceRecord(item, field) {
     ? formatPaymentStatus(({ success: 'paid', pending: 'unpaid', superseded: 'closed' })[status] || status) || '支付状态待核实'
     : field === 'refunds' ? formatRefundStatus(status) || '退款状态待核实'
       : enumText(earningStatusText, status, '收益状态待核实')
-  return { ...item, amountText: money(item.amount), statusText,
+  return { ...item, amountText: money(item.amount), redeemedAmountText: money(item.redeemedAmount),
+    adjustmentAmountText: money(item.deductedAmount), debtAmountText: money(item.overpaidDebtAmount), statusText,
     channelText: enumText({ wechat: '微信支付', mock: '模拟支付' }, item.channel, '支付渠道待核实') }
 }
 

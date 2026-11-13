@@ -251,7 +251,9 @@ module.exports = function createHandler(context) {
       const openid = earning.staffOpenid
       if (!openid || earning.isMock === true || earning.paymentChannel === 'mock') continue
       const target = ensure(openid)
-      if (earning.status === 'available') target.available += Number(earning.amount || 0)
+      if (earning.status === 'available' && !earning.withdrawRequestId && !earning.frozenIncidentId && !earning.pendingRefundIds?.length) target.available += Number(earning.amount || 0)
+      if (earning.status === 'pending') target.pending = (target.pending || 0) + Number(earning.amount || 0)
+      target.redeemed = (target.redeemed || 0) + Number(earning.redeemedAmount || 0)
       if (unsettledEarningStatuses.has(safeText(earning.status).trim()) && Math.round(Number(earning.amount || 0) * 100) > 0) {
         target.hasUnsettledEarning = true
       }
@@ -272,6 +274,7 @@ module.exports = function createHandler(context) {
         status: request.status || '',
         payoutChannel: request.payoutChannel || '',
         source: request.source || '',
+        paymentProofImage: request.paymentProofImage || '',
         createdAt: request.createdAt || '',
         paidAt: request.paidAt || ''
       })
@@ -1044,6 +1047,8 @@ module.exports = function createHandler(context) {
       const { groups, ...preview } = result
       return preview
     }
+    if (action === 'getStaffRedemptionPreview') return context.getStaffRedemptionPreview(safeText(data.staffProfileId).trim())
+    if (action === 'recordStaffEarningRedemption') return context.recordStaffEarningRedemption({ ...admin, openid }, data)
     if (action === 'settleStaffEarningsByWechat') {
       return context.settleStaffEarningsByWechat({ ...admin, openid }, data)
     }
@@ -1891,6 +1896,9 @@ module.exports = function createHandler(context) {
             requireDepositRepay,
             requireDepositRepayReason: profile.requireDepositRepayReason || '',
             requireDepositRepayAt: profile.requireDepositRepayAt || '',
+            manualRedemption: settings.settlement?.staffEarningsMode === 'manual_redemption',
+            estimatedEarnings: Math.round((Number(finance.pending || 0) + withdrawableAmount) * 100) / 100,
+            redeemedAmount: Math.round(Number(finance.redeemed || 0) * 100) / 100,
             withdrawableAmount,
             withdrawnAmount: Math.round(Number(finance.withdrawn || 0) * 100) / 100,
             withdrawCount: Number(finance.withdrawCount || 0),

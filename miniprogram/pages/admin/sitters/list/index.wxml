@@ -104,7 +104,8 @@
           <view class="meta-chip">当前标准 {{item.depositStandardAmountText}}</view>
           <view class="meta-chip">入驻标准 {{item.depositEntryStandardAmountText}}</view>
           <view class="meta-chip danger-chip" wx:if="{{item.depositTopUpAmount > 0}}">待补 {{item.depositTopUpAmountText}}</view>
-          <view class="meta-chip withdraw-chip">可提现: {{item.withdrawableAmountText}}</view>
+          <view class="meta-chip withdraw-chip">{{item.manualRedemption ? '预估收益: ' + item.estimatedEarningsText : '可提现: ' + item.withdrawableAmountText}}</view>
+          <view class="meta-chip" wx:if="{{item.manualRedemption || item.redeemedAmount > 0}}">已兑换 {{item.redeemedAmountText}}</view>
           <view class="meta-chip">{{item.commissionPercentText}}</view>
           <view class="meta-chip can-revoke-chip" wx:if="{{item.canRevokeStaff && item.auditStatus === 'approved'}}">可移除身份</view>
           <view class="meta-chip danger-chip" wx:if="{{item.requireDepositRepay}}">需重新缴纳保证金</view>
@@ -118,8 +119,9 @@
       <button wx:if="{{adminSuper || adminPermissions.admin_listStaffAudits}}" class="mini-btn" data-id="{{item._id}}" bindtap="detail">{{item.actionText}}</button>
       <button wx:if="{{adminSuper || adminPermissions.admin_setStaffCommissionRate}}" class="mini-btn ghost-mini" data-id="{{item._id}}" bindtap="openCommissionEditor"><text class="remix-icon ri-equalizer-line"></text>设置提成</button>
       <button wx:if="{{adminSuper || adminPermissions.admin_setStaffDepositStandard}}" class="mini-btn ghost-mini" data-id="{{item._id}}" bindtap="openDepositStandardEditor"><text class="remix-icon ri-equalizer-line"></text>调整保证金标准</button>
-      <button class="mini-btn" wx:if="{{adminSuper || adminPermissions.admin_settleStaffEarningsByWechat}}" data-id="{{item._id}}" bindtap="settleEarnings" disabled="{{settlementBusy}}" loading="{{settlementBusy && settlementStaffId === item._id}}">收益转账结清</button>
-      <button class="mini-btn ghost-mini" wx:if="{{adminSuper || adminPermissions.admin_createStaffManualTailSettlement}}" data-id="{{item._id}}" bindtap="settleManualTail" disabled="{{settlementBusy}}">小额尾款人工结清</button>
+      <button class="mini-btn" wx:if="{{(item.manualRedemption || item.redemptionPending) && (adminSuper || adminPermissions.admin_recordStaffEarningRedemption)}}" data-id="{{item._id}}" bindtap="openRedemption" disabled="{{redemptionBusy}}">{{item.redemptionPending ? '核对上次兑换登记' : '登记已兑换收益'}}</button>
+      <button class="mini-btn" wx:if="{{!item.manualRedemption && (adminSuper || adminPermissions.admin_settleStaffEarningsByWechat)}}" data-id="{{item._id}}" bindtap="settleEarnings" disabled="{{settlementBusy}}" loading="{{settlementBusy && settlementStaffId === item._id}}">收益转账结清</button>
+      <button class="mini-btn ghost-mini" wx:if="{{!item.manualRedemption && (adminSuper || adminPermissions.admin_createStaffManualTailSettlement)}}" data-id="{{item._id}}" bindtap="settleManualTail" disabled="{{settlementBusy}}">小额尾款人工结清</button>
       <button class="mini-btn ghost-mini" wx:if="{{item.depositBalance > 0 && (adminSuper || adminPermissions.admin_requestStaffDepositRefund)}}" data-item="{{item}}" bindtap="refundDeposit" disabled="{{depositRefundBusy}}">退还保证金</button>
       <button class="mini-btn ghost-mini" wx:if="{{adminSuper || adminPermissions.admin_listWithdrawRequests}}" data-openid="{{item.openid}}" bindtap="viewStaffFinance">查看转账</button>
       <button class="mini-btn danger-mini" wx:if="{{item.auditStatus === 'approved' && item.depositBalance > 0}}" data-item="{{item}}" bindtap="openForfeitModal">扣除保证金</button>
@@ -136,8 +138,8 @@
         <view class="compact-info-item"><view class="compact-info-label">绑定账号</view><view class="compact-info-value">{{item.userNickname}}</view></view>
         <view class="compact-info-item"><view class="compact-info-label">服务区域</view><view class="compact-info-value">{{item.serviceAreas || '未填写'}}</view></view>
         <view class="compact-info-item"><view class="compact-info-label">保证金可用余额</view><view class="compact-info-value strong" style="color: #ea580c;">{{item.depositBalanceText}}</view></view>
-        <view class="compact-info-item"><view class="compact-info-label">当前可提现额度</view><view class="compact-info-value strong" style="color: #16a34a;">{{item.withdrawableAmountText}}</view></view>
-        <view class="compact-info-item"><view class="compact-info-label">历史已提现</view><view class="compact-info-value">{{item.withdrawnAmountText}}（{{item.withdrawCount || 0}}笔）</view></view>
+        <view class="compact-info-item"><view class="compact-info-label">{{item.manualRedemption ? '已结算收益' : '当前可提现额度'}}</view><view class="compact-info-value strong" style="color: #16a34a;">{{item.withdrawableAmountText}}</view></view>
+        <view class="compact-info-item"><view class="compact-info-label">历史已发放</view><view class="compact-info-value">{{item.withdrawnAmountText}}（{{item.withdrawCount || 0}}笔）</view></view>
         <view class="compact-info-item"><view class="compact-info-label">保证金管控状态</view><view class="compact-info-value {{item.requireDepositRepay ? 'danger-text' : ''}}">{{item.requireDepositRepay ? '被要求重新缴纳(不可接单)' : (item.depositStatus === 'paid' ? '正常' : item.depositStatus)}}</view></view>
         <view class="compact-info-item"><view class="compact-info-label">培训状态</view><view class="compact-info-value">{{item.onboardingStatusText || '-'}}</view></view>
         <view class="compact-info-item"><view class="compact-info-label">晋升状态</view><view class="compact-info-value">{{item.promotionStatusText || '-'}}</view></view>
@@ -145,11 +147,13 @@
         <view class="compact-info-item"><view class="compact-info-label">账号状态</view><view class="compact-info-value">{{item.userStatus || '未知'}}</view></view>
       </view>
 
-      <view class="settlement-note">收益结清通过商家微信转账发放；不足 ¥0.10 的全部尾款可发起人工结清，实际付款并登记凭证后计为已提现。待结算、冻结和在途资金须处理完成后才能移除身份。</view>
+      <view class="settlement-note" wx:if="{{item.manualRedemption}}">登记实际已转账的兑换金额并上传截图后，扣减对应已结算收益。预估收益包含待结算和可用收益。</view>
+      <view class="settlement-note" wx:else>收益结清通过商家微信转账发放；不足 ¥0.10 的全部尾款可发起人工结清，实际付款并登记凭证后计为已提现。待结算、冻结和在途资金须处理完成后才能移除身份。</view>
       <view class="withdraw-history" wx:if="{{item.withdrawHistory.length}}">
-        <view class="withdraw-history-title">最近提现记录</view>
+        <view class="withdraw-history-title">最近收益发放记录</view>
         <view class="withdraw-history-item" wx:for="{{item.withdrawHistory}}" wx:for-item="history" wx:key="_id">
           <text>{{history.amountText}}</text><text>{{history.statusText}}</text><text>{{beijingTime.format(history.paidAt || history.createdAt)}}</text>
+          <button wx:if="{{history.paymentProofImage}}" class="mini-btn ghost-mini" data-url="{{history.paymentProofImage}}" bindtap="previewPaymentProof">转账截图</button>
         </view>
       </view>
 
@@ -219,6 +223,21 @@
         <view class="deposit-standard-input"><text>¥</text><input type="digit" value="{{depositStandardInput}}" placeholder="例如 100" bindinput="inputDepositStandard" disabled="{{savingDepositStandard}}" /></view>
       </view>
       <view class="modal-actions"><button class="ghost-btn" bindtap="closeDepositStandardEditor" disabled="{{savingDepositStandard}}">取消</button><button class="primary-btn" bindtap="saveDepositStandard" loading="{{savingDepositStandard}}" disabled="{{savingDepositStandard}}">保存</button></view>
+    </view>
+  </view>
+
+  <view class="modal-mask" wx:if="{{redemptionStaff}}">
+    <view class="modal-card redemption-card">
+      <view class="modal-title">登记已兑换收益 · {{redemptionStaff.realName || redemptionStaff.userNickname}}</view>
+      <view wx:if="{{redemptionLoading}}" class="muted">正在核对收益…</view>
+      <view class="repay-amount-box" wx:if="{{redemptionPreview}}"><view>预估收益 ¥{{redemptionPreview.estimatedText}}</view><view class="repay-amount-total">可兑换 <text>¥{{redemptionPreview.availableText}}</text></view><view class="muted">仅已结算且未冻结、未被提现占用的收益可兑换。</view></view>
+      <view class="settlement-note" wx:if="{{redemptionPreview.maxRedemptionAmount < redemptionPreview.available}}">本次最多可登记 ¥{{redemptionPreview.maxRedemptionAmountText}}，超过此金额请分次登记。</view>
+      <view class="muted" wx:if="{{redemptionLocked}}">上次登记结果待确认，请点击“核对上次登记”继续。</view>
+      <view class="form-section"><view class="form-label">已兑换金额（元）</view><input class="input" type="digit" value="{{redemptionAmount}}" data-field="redemptionAmount" bindinput="redemptionInput" disabled="{{redemptionBusy || redemptionLocked}}" placeholder="填写本次实际转账金额" /></view>
+      <view class="form-section"><view class="form-label">转账截图（必填，JPG / PNG）</view><image wx:if="{{redemptionImage}}" class="redemption-proof" src="{{redemptionImage}}" mode="aspectFit" data-url="{{redemptionImage}}" bindtap="previewPaymentProof" /><button class="ghost-btn" bindtap="chooseRedemptionImage" disabled="{{redemptionBusy || redemptionLocked}}">{{redemptionImage ? '更换截图' : '上传转账截图'}}</button></view>
+      <view class="form-section"><view class="form-label">备注（选填）</view><textarea maxlength="500" value="{{redemptionRemark}}" data-field="redemptionRemark" bindinput="redemptionInput" disabled="{{redemptionBusy || redemptionLocked}}" placeholder="例如：本月服务收益兑换" /></view>
+      <checkbox-group bindchange="confirmRedemptionPayment"><label class="redemption-confirm"><checkbox value="confirmed" checked="{{redemptionConfirmed}}" disabled="{{redemptionBusy || redemptionLocked}}" />我已完成转账，确认扣减对应收益</label></checkbox-group>
+      <view class="modal-actions"><button class="ghost-btn" bindtap="closeRedemption" disabled="{{redemptionBusy}}">关闭</button><button class="primary-btn" bindtap="submitRedemption" loading="{{redemptionBusy}}" disabled="{{redemptionBusy || (!redemptionLocked && (redemptionLoading || !redemptionPreview.enabled || !redemptionConfirmed))}}">{{redemptionLocked ? '核对上次登记' : '确认登记并扣减'}}</button></view>
     </view>
   </view>
 

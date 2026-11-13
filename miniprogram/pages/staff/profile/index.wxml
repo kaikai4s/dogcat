@@ -117,14 +117,14 @@
         <text>我的收益钱包</text>
       </view>
       <view class="wallet-link">
-        <text>去提现 / 明细</text>
+        <text>查看收益明细</text>
         <text class="remix-icon ri-arrow-right-s-line"></text>
       </view>
     </view>
     <view class="wallet-stats">
       <view class="wallet-stat-item">
-        <view class="wallet-stat-num">¥{{balance ? balance.availableText : '0.00'}}</view>
-        <view class="wallet-stat-label">可提现余额</view>
+        <view class="wallet-stat-num">¥{{balance ? (balance.manualRedemption ? balance.estimatedText : balance.availableText) : '0.00'}}</view>
+        <view class="wallet-stat-label">{{balance.manualRedemption ? '预估收益' : '可提现余额'}}</view>
       </view>
       <view class="wallet-stat-item">
         <view class="wallet-stat-num">¥{{balance ? balance.pendingText : '0.00'}}</view>
@@ -188,9 +188,9 @@
     <view class="menu-item" wx:if="{{profile && (profile.auditStatus === 'approved' || profile.auditStatus === 'intern' || profile.videoAuditStatus === 'approved' || (balance && (balance.available > 0 || balance.pending > 0)))}}" data-url="/pages/staff/earnings/index" bindtap="go">
       <view class="menu-left">
         <text class="remix-icon ri-wallet-3-line menu-icon active" style="color: #e9672f;"></text>
-        <text>我的收益与提现</text>
+        <text>我的收益</text>
       </view>
-      <view class="badge orange" wx:if="{{balance && balance.available > 0}}">可提 ¥{{balance.availableText}}</view>
+      <view class="badge orange" wx:if="{{balance && (balance.manualRedemption ? balance.estimated > 0 : balance.available > 0)}}">{{balance.manualRedemption ? '预估 ¥' + balance.estimatedText : '可提 ¥' + balance.availableText}}</view>
       <text class="remix-icon ri-arrow-right-s-line arrow-icon" wx:else></text>
     </view>
     <view class="menu-item" bindtap="openConfigModal">

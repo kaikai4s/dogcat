@@ -239,19 +239,24 @@ module.exports = function createService({
 
           // 清理历史已驳回、已释放、转账失败或不存在提现单在 available 收益上残留的无效 withdrawRequestId
           if (earning.withdrawRequestId) {
-            try {
-              const req = (await db.collection('withdraw_requests').doc(earning.withdrawRequestId).get().catch(() => ({ data: null }))).data
-              const isTerminalOrFailed = !req ||
-                ['rejected', 'paid', 'transfer_failed', 'failed', 'cancelled'].includes(req.status) ||
+            await db.runTransaction(async tx => {
+              const current = await readOptionalDocument(tx, 'staff_earnings', earning._id)
+              if (!current || current.status !== 'available' || current.withdrawRequestId !== earning.withdrawRequestId) return
+              // Lookup failures must not be treated as missing requests. Read
+              // the request and update the earning atomically with withdrawals.
+              const req = await readOptionalDocument(tx, 'withdraw_requests', current.withdrawRequestId)
+              // A paid request is evidence of payout, never a releasable hold.
+              const isTerminalOrFailed = req?.status !== 'paid' && (!req ||
+                ['rejected', 'transfer_failed', 'failed', 'cancelled'].includes(req.status) ||
                 req.transferStatus === 'released' ||
                 req.transferStatus === 'failed' ||
-                (Array.isArray(req.earningIds) && !req.earningIds.includes(earning._id))
+                (Array.isArray(req.earningIds) && !req.earningIds.includes(earning._id)))
               if (isTerminalOrFailed) {
-                await db.collection('staff_earnings').doc(earning._id).update({
+                await tx.collection('staff_earnings').doc(earning._id).update({
                   data: { withdrawRequestId: '', updatedAt: time }
-                }).catch(() => {})
+                })
               }
-            } catch (_) {}
+            })
           }
         }
         if (availableRows.length < 100) break
@@ -293,13 +298,17 @@ module.exports = function createService({
         return summary
       }
       summary.total = Math.round((summary.total + amount) * 100) / 100
+      const redeemed = Number(earning.redeemedAmount || 0)
+      summary.total = Math.round((summary.total + redeemed) * 100) / 100
+      summary.redeemed = Math.round((summary.redeemed + redeemed) * 100) / 100
       if (earning.status === 'pending') summary.pending = Math.round((summary.pending + amount) * 100) / 100
-      if (earning.status === 'available') summary.available = Math.round((summary.available + amount) * 100) / 100
+      const availableHeld = earning.status === 'available' && Boolean(earning.withdrawRequestId || earning.frozenIncidentId || earning.pendingRefundIds?.length)
+      if (earning.status === 'available' && !availableHeld) summary.available = Math.round((summary.available + amount) * 100) / 100
       if (earning.status === 'withdrawing') summary.withdrawing = Math.round((summary.withdrawing + amount) * 100) / 100
       if (earning.status === 'withdrawn') summary.withdrawn = Math.round((summary.withdrawn + amount) * 100) / 100
-      if (earning.status === 'frozen') summary.frozen = Math.round((summary.frozen + amount) * 100) / 100
+      if (earning.status === 'frozen' || availableHeld) summary.frozen = Math.round((summary.frozen + amount) * 100) / 100
       return summary
-    }, { total: 0, pending: 0, available: 0, withdrawing: 0, withdrawn: 0, frozen: 0, mockTotal: 0 })
+    }, { total: 0, pending: 0, available: 0, withdrawing: 0, withdrawn: 0, frozen: 0, mockTotal: 0, redeemed: 0 })
   }
 
   const { adjustStaffEarningsForRefund } = require('./refundEarnings')({ db, now, parseDateValue, releaseWechatTransferQuota })
@@ -361,7 +370,11 @@ module.exports = function createService({
       }
     }
 
-    if (!isRefunding && netPayAmount <= 0 && refundAmount >= payAmount) {
+    const isFullyRefunded = !isRefunding && netPayAmount <= 0 && refundAmount >= payAmount
+    const actualStaffReward = actualEarning && typeof actualEarning.amount === 'number'
+      ? Math.round((actualEarning.amount + Number(actualEarning.redeemedAmount || 0)) * 100) / 100
+      : null
+    if (isFullyRefunded && !actualStaffReward) {
       return {
         hasPayment: true,
         payAmount,
@@ -388,8 +401,8 @@ module.exports = function createService({
     const isUrgent = Boolean(order.isUrgent && Number(order.urgentStaffReward) > 0)
     const isFixedUrgentReward = isUrgent && order.completionType !== 'admin_manual'
 
-    if (actualEarning && typeof actualEarning.amount === 'number') {
-      staffReward = Number(actualEarning.amount)
+    if (actualStaffReward !== null) {
+      staffReward = actualStaffReward
       deductAmount = Number(actualEarning.deductAmount || 0)
       if (isFixedUrgentReward) {
         commissionText = '加急补贴一口价'
@@ -434,6 +447,9 @@ module.exports = function createService({
     if (isRefunding) {
       settlementStatus = 'refunding'
       settlementStatusText = '退款处理中，收益待确认'
+    } else if (isFullyRefunded) {
+      settlementStatus = 'refunded'
+      settlementStatusText = '已全额退款'
     }
 
     return {

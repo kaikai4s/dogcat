@@ -14,6 +14,7 @@ const statusTabs = [
 
 function withdrawalHistoryStatus(history) {
   const status = String(history.status || '').trim().toLowerCase()
+  if (history.source === 'admin_earning_redemption') return '已兑换'
   if (history.payoutChannel === 'manual' && status === 'approved') return '待人工付款'
   if (history.source === 'admin_manual_tail_settlement' && status === 'paid') return '已人工结清'
   const labels = { pending: '审核中', approved: '待提交转账', transferring: '打款中', transfer_failed: '打款失败', rejected: '已驳回', paid: '已到账' }
@@ -44,6 +45,8 @@ function withDisplay(profile, selectedIds = []) {
     depositTopUpAmountText: `¥${depositTopUpAmount.toFixed(2)}`,
     withdrawableAmount: Number(profile.withdrawableAmount || 0),
     withdrawableAmountText: `¥${Number(profile.withdrawableAmount || 0).toFixed(2)}`,
+    estimatedEarningsText: `¥${Number(profile.estimatedEarnings || 0).toFixed(2)}`,
+    redeemedAmountText: `¥${Number(profile.redeemedAmount || 0).toFixed(2)}`,
     withdrawnAmountText: `¥${Number(profile.withdrawnAmount || 0).toFixed(2)}`,
     withdrawHistory: (profile.withdrawHistory || []).map((history) => ({
       ...history,
@@ -115,7 +118,16 @@ Page({
     depositRefundPreviewLoading: false,
     depositRefundError: '',
     depositRefundReason: '',
-    depositRefundStaff: null
+    depositRefundStaff: null,
+    redemptionStaff: null,
+    redemptionPreview: null,
+    redemptionLoading: false,
+    redemptionBusy: false,
+    redemptionAmount: '',
+    redemptionRemark: '',
+    redemptionImage: '',
+    redemptionConfirmed: false,
+    redemptionLocked: false
   },
 
   onPullDownRefresh() {
@@ -130,6 +142,7 @@ Page({
   onUnload() {
     this._settlementPageUnloaded = true
     this._staffListLoadVersion = (this._staffListLoadVersion || 0) + 1
+    this._redemptionVersion = (this._redemptionVersion || 0) + 1
     this._depositRefundPreviewVersion = (this._depositRefundPreviewVersion || 0) + 1
   },
 
@@ -167,7 +180,11 @@ Page({
       .then((result) => {
         if (!isCurrent()) return
         const pageData = pageList(result)
-        const profiles = pageData.list.map((p) => withDisplay(p, this.data.selectedIds))
+        const profiles = pageData.list.map((p) => {
+          const profile = withDisplay(p, this.data.selectedIds)
+          profile.redemptionPending = Boolean(wx.getStorageSync(`admin_staff_redemption_${getActiveEnvId()}_${p._id}`))
+          return profile
+        })
         this.setData({
           profiles: reset ? profiles : this.data.profiles.concat(profiles),
           page: pageData.page,
@@ -320,6 +337,127 @@ Page({
     const profile = this.data.profiles[index]
     if (!profile) return
     this.setData({ [`profiles[${index}].expanded`]: !profile.expanded })
+  },
+
+  async openRedemption(e) {
+    if (this.data.redemptionBusy) return
+    const staff = this.data.profiles.find(p => p._id === e.currentTarget.dataset.id)
+    if (!staff) return
+    const version = this._redemptionVersion = (this._redemptionVersion || 0) + 1
+    this._redemptionStorageKey = `admin_staff_redemption_${getActiveEnvId()}_${staff._id}`
+    this._redemptionOperation = wx.getStorageSync(this._redemptionStorageKey) || null
+    const saved = this._redemptionOperation
+    this.setData({ redemptionStaff: staff, redemptionPreview: null, redemptionLoading: true,
+      redemptionAmount: saved ? String(saved.amount) : '', redemptionRemark: saved?.remark || '',
+      redemptionImage: saved?.paymentProofImage || '', redemptionConfirmed: Boolean(saved), redemptionLocked: Boolean(saved) })
+    return this.refreshRedemptionPreview(staff._id, version)
+  },
+
+  async refreshRedemptionPreview(staffProfileId, version = this._redemptionVersion) {
+    this.setData({ redemptionPreview: null, redemptionLoading: true })
+    try {
+      const preview = await callFunction('admin', 'getStaffRedemptionPreview', { staffProfileId })
+      if (this._settlementPageUnloaded || version !== this._redemptionVersion) return
+      const maxRedemptionAmount = Number(preview.maxRedemptionAmount ?? preview.available)
+      this.setData({ redemptionPreview: { ...preview, maxRedemptionAmount,
+        maxRedemptionAmountText: maxRedemptionAmount.toFixed(2),
+        availableText: Number(preview.available).toFixed(2), estimatedText: Number(preview.estimated).toFixed(2) } })
+    } catch (err) {
+      if (!this._settlementPageUnloaded && version === this._redemptionVersion) showError(err)
+    } finally {
+      if (!this._settlementPageUnloaded && version === this._redemptionVersion) this.setData({ redemptionLoading: false })
+    }
+  },
+
+  closeRedemption() {
+    if (this.data.redemptionBusy) return
+    this._redemptionVersion = (this._redemptionVersion || 0) + 1
+    this.setData({ redemptionStaff: null })
+  },
+
+  redemptionInput(e) {
+    if (this.data.redemptionBusy || this.data.redemptionLocked) return
+    const field = e.currentTarget.dataset.field
+    if (['redemptionAmount', 'redemptionRemark'].includes(field)) this.setData({ [field]: e.detail.value })
+  },
+
+  confirmRedemptionPayment(e) {
+    if (!this.data.redemptionBusy && !this.data.redemptionLocked) this.setData({ redemptionConfirmed: e.detail.value.includes('confirmed') })
+  },
+
+  chooseRedemptionImage() {
+    if (this.data.redemptionBusy || this.data.redemptionLocked) return
+    const version = this._redemptionVersion
+    wx.chooseMedia({ count: 1, mediaType: ['image'], sourceType: ['album', 'camera'], success: res => {
+      if (!this._settlementPageUnloaded && version === this._redemptionVersion && !this.data.redemptionBusy && !this.data.redemptionLocked) this.setData({ redemptionImage: res.tempFiles?.[0]?.tempFilePath || '' })
+    } })
+  },
+
+  previewPaymentProof(e) {
+    const url = e.currentTarget.dataset.url
+    if (url) wx.previewImage({ current: url, urls: [url] })
+  },
+
+  clearRedemptionOperation(operation) {
+    const saved = wx.getStorageSync(this._redemptionStorageKey)
+    const isCurrent = !saved || (saved.clientRequestId === operation?.clientRequestId && saved.staffProfileId === operation?.staffProfileId)
+    if (saved && isCurrent) wx.removeStorageSync(this._redemptionStorageKey)
+    if (this._redemptionOperation?.clientRequestId === operation?.clientRequestId) this._redemptionOperation = null
+    return isCurrent
+  },
+
+  async submitRedemption() {
+    if (this.data.redemptionBusy || !this.data.redemptionStaff || this._settlementPageUnloaded) return
+    let operation = this._redemptionOperation
+    if (!operation) {
+      const amount = Number(this.data.redemptionAmount)
+      if (!/^\d+(?:\.\d{1,2})?$/.test(this.data.redemptionAmount) || !Number.isSafeInteger(Math.round(amount * 100)) || amount <= 0) return showError(new Error('请输入有效兑换金额，最多两位小数'))
+      if (!this.data.redemptionPreview?.enabled) return showError(new Error('请先开启后台兑换收益方式'))
+      if (amount > this.data.redemptionPreview.available) return showError(new Error('兑换金额不可超过可兑换收益'))
+      if (amount > (this.data.redemptionPreview.maxRedemptionAmount ?? this.data.redemptionPreview.available)) return showError(new Error(`本次最多可登记 ¥${Number(this.data.redemptionPreview.maxRedemptionAmount).toFixed(2)}，请分次登记`))
+      if (!this.data.redemptionImage) return showError(new Error('请上传转账截图'))
+      if (!this.data.redemptionConfirmed) return showError(new Error('请确认已完成转账'))
+    }
+    this.setData({ redemptionBusy: true })
+    try {
+      if (!operation) {
+        const clientRequestId = `redeem_${Date.now()}_${Math.random().toString(36).slice(2)}`
+        let paymentProofImage = this.data.redemptionImage
+        if (!paymentProofImage.startsWith('cloud://')) {
+          const result = await uploadImage({ cloudPath: `staff_redemptions/${clientRequestId}.jpg`, filePath: paymentProofImage })
+          paymentProofImage = result.fileID
+        }
+        if (this._settlementPageUnloaded) return
+        operation = { staffProfileId: this.data.redemptionStaff._id, clientRequestId, amount: Number(this.data.redemptionAmount),
+          paymentProofImage, remark: this.data.redemptionRemark.trim(), paymentConfirmed: true }
+        wx.setStorageSync(this._redemptionStorageKey, operation)
+        this._redemptionOperation = operation
+        this.setData({ redemptionLocked: true, redemptionImage: paymentProofImage })
+      }
+      await callFunction('admin', 'recordStaffEarningRedemption', operation)
+      // Keep the saved request until an open page can confirm its result.
+      if (this._settlementPageUnloaded) return
+      this.clearRedemptionOperation(operation)
+      this.setData({ redemptionStaff: null, redemptionLocked: false })
+      wx.showToast({ title: '已登记兑换并扣减收益', icon: 'success' })
+      await this.load({ reset: true })
+    } catch (err) {
+      if (this._settlementPageUnloaded) return
+      if (err.code === 'STAFF_REDEMPTION_REVIEW_REQUIRED') {
+        if (this.clearRedemptionOperation(operation)) {
+          this.setData({ redemptionLocked: false, redemptionConfirmed: false })
+          await this.refreshRedemptionPreview(this.data.redemptionStaff._id)
+        } else {
+          // Another page has started a newer operation; reopen from its saved
+          // payload instead of allowing this older form to replace it.
+          this.setData({ redemptionStaff: null, redemptionLocked: false })
+          await this.load({ reset: true })
+        }
+      }
+      if (!this._settlementPageUnloaded) showError(err)
+    } finally {
+      if (!this._settlementPageUnloaded) this.setData({ redemptionBusy: false })
+    }
   },
 
   openCommissionEditor(e) {

@@ -13,6 +13,7 @@ const earningStatusText = {
   withdrawn: '已提现',
   frozen: '已冻结',
   settled: '已结算',
+  redeemed: '已兑换',
   deducted: '已扣除',
   refunded_void: '已退款作废',
   mock_settled: '模拟测试(不可提现)',
@@ -42,22 +43,29 @@ function money(value) {
   return Number(value || 0).toFixed(2)
 }
 
-function withEarning(item) {
+function withEarning(item, manualRedemption = false) {
   const status = String(item.status || '').toLowerCase()
   const isMock = item.isMock === true || item.paymentChannel === 'mock' || status === 'mock_settled' || status === 'mock'
+  const holdText = status === 'available'
+    ? (item.pendingRefundIds?.length ? '退款处理中' : item.frozenIncidentId ? '已冻结' : item.withdrawRequestId ? '提现处理中' : '')
+    : ''
   const deductAmount = Number(item.deductAmount || 0)
   const hasDeduction = deductAmount > 0
   const expectedAmount = Number(item.originalAmount != null ? item.originalAmount : (item.amount != null ? Number(item.amount) + deductAmount : 0))
   return {
     ...item,
     isMock,
+    isAvailable: status === 'available' && !isMock && !holdText,
     amountText: money(item.amount),
+    redeemedAmountText: money(item.redeemedAmount),
+    adjustmentAmountText: money(item.deductedAmount),
+    debtAmountText: money(item.overpaidDebtAmount),
     expectedAmountText: money(expectedAmount),
     originalAmountText: money(expectedAmount),
     deductAmountText: money(deductAmount),
     deductReasonText: item.deductReason || '服务违规/出险扣除',
     hasDeduction,
-    statusText: isMock ? '模拟测试(不可提现)' : (earningStatusText[status] || '已记录')
+    statusText: isMock ? '模拟测试(不可提现)' : (holdText || (manualRedemption && status === 'available' ? '已结算' : earningStatusText[status] || '已记录'))
   }
 }
 
@@ -68,7 +76,7 @@ function withWithdraw(item) {
   return {
     ...item,
     amountText: money(item.amount),
-    statusText: item.source === 'admin_manual_tail_settlement' && status === 'approved' ? '待人工付款'
+    statusText: item.source === 'admin_earning_redemption' ? '已兑换' : item.source === 'admin_manual_tail_settlement' && status === 'approved' ? '待人工付款'
       : item.source === 'admin_manual_tail_settlement' && status === 'paid' ? '已人工结清' : withdrawStatusText[status] || '处理中',
     wechatTransferStateText: wechatTransferStateText[transferState] || (transferState ? '转账状态待确认' : ''),
     isAccepted,
@@ -106,9 +114,9 @@ Page({
     const decoratedEarnings = this.data.earnings || []
     const filteredEarnings = status
       ? decoratedEarnings.filter((item) => {
-        if (status === 'available') return item.status === 'available' && !item.isMock
+        if (status === 'available') return item.isAvailable
         if (status === 'pending') return item.status === 'pending' && !item.isMock
-        if (status === 'settled') return ['withdrawing', 'withdrawn', 'settled'].includes(item.status) || item.isMock
+        if (status === 'settled') return Number(item.redeemedAmount || 0) > 0 || ['withdrawing', 'withdrawn', 'settled', 'redeemed'].includes(item.status) || item.isMock
         return true
       })
       : decoratedEarnings
@@ -127,9 +135,15 @@ Page({
   },
 
   onShow() {
+    this._earningsUnloaded = false
     this.applyCurrentTheme()
     loadSystemSettings()
     this.load()
+  },
+
+  onUnload() {
+    this._earningsUnloaded = true
+    this._earningsLoadVersion = (this._earningsLoadVersion || 0) + 1
   },
 
   openWithdrawalSubscriptions() {
@@ -142,25 +156,29 @@ Page({
   },
 
   load() {
-    Promise.all([
+    if (this._earningsUnloaded) return
+    const version = this._earningsLoadVersion = (this._earningsLoadVersion || 0) + 1
+    const isCurrent = () => !this._earningsUnloaded && version === this._earningsLoadVersion
+    return Promise.all([
       callFunction('finance', 'getStaffBalance'),
       callFunction('finance', 'listStaffEarnings'),
       callFunction('finance', 'listMyWithdraws')
     ])
       .then(([balance, earnings, withdraws]) => {
+        if (!isCurrent()) return
         const quota = balance.wechatTransferQuota || {}
         const maxAmount = quota.effectiveRemainingAmount === null || quota.effectiveRemainingAmount === undefined
           ? Number(balance.available || 0)
           : Math.min(Number(balance.available || 0), Number(quota.effectiveRemainingAmount || 0))
-        const decoratedEarnings = (earnings || []).map(withEarning)
-        const availableEarningsCount = decoratedEarnings.filter((item) => item.status === 'available' && !item.isMock).length
+        const decoratedEarnings = (earnings || []).map(item => withEarning(item, balance.manualRedemption))
+        const availableEarningsCount = decoratedEarnings.filter((item) => item.isAvailable).length
         const pendingEarningsCount = decoratedEarnings.filter((item) => item.status === 'pending' && !item.isMock).length
         const currentFilter = this.data.earningFilterStatus
         const filteredEarnings = currentFilter
           ? decoratedEarnings.filter((item) => {
-            if (currentFilter === 'available') return item.status === 'available' && !item.isMock
+            if (currentFilter === 'available') return item.isAvailable
             if (currentFilter === 'pending') return item.status === 'pending' && !item.isMock
-            if (currentFilter === 'settled') return ['withdrawing', 'withdrawn', 'settled'].includes(item.status) || item.isMock
+            if (currentFilter === 'settled') return Number(item.redeemedAmount || 0) > 0 || ['withdrawing', 'withdrawn', 'settled', 'redeemed'].includes(item.status) || item.isMock
             return true
           })
           : decoratedEarnings
@@ -169,6 +187,8 @@ Page({
             ...balance,
             assetSummary: balance.assetSummary ? { ...balance.assetSummary, availableAmountText: money(balance.assetSummary.availableAmount), totalAmountText: money(balance.assetSummary.totalAmount) } : null,
             availableText: money(balance.available),
+            estimatedText: money(balance.estimated),
+            redeemedText: money(balance.redeemed),
             pendingText: money(balance.pending),
             withdrawingText: money(balance.withdrawing),
             withdrawnText: money(balance.withdrawn),
@@ -185,7 +205,12 @@ Page({
         })
         this.autoSyncPendingTransfers((withdraws || []).map(withWithdraw))
       })
-      .catch(showError)
+      .catch(error => { if (isCurrent()) showError(error) })
+  },
+
+  previewPaymentProof(e) {
+    const url = e.currentTarget.dataset.url
+    if (url) wx.previewImage({ current: url, urls: [url] })
   },
 
   fillAllAvailable() {
@@ -203,6 +228,7 @@ Page({
   },
 
   withdraw() {
+    if (!this.data.balance || this.data.balance.withdrawalEnabled === false || this.data.balance.manualRedemption) return
     if (this._submittingLock || this.data.submitting) return
     const amount = Number(this.data.amount || 0)
     const minWithdraw = Number(this.data.balance?.minWithdrawAmount || 0)

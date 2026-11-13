@@ -16,6 +16,7 @@ module.exports = function createHandler(context) {
     summarizeStaffEarnings
   } = context
   const { buildWithdrawalRules } = require('../services/withdrawalRules')
+  const { isManualRedemption } = require('../utils/staffEarningsMode')
   const readAll = readScopedDocuments
   return async function finance(openid, action, data) {
     if (action === 'getStaffBalance') {
@@ -25,6 +26,7 @@ module.exports = function createHandler(context) {
       const withdraws = (await readAll('withdraw_requests', { staffOpenid: openid })).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
       const settings = await getSystemSettings()
       const balance = summarizeStaffEarnings(earnings)
+      const manualRedemption = isManualRedemption(settings)
       const assetSummary = await getUserAssetSummary(openid).catch(() => null)
       const wechatTransferQuota = typeof getWechatTransferQuotaSnapshot === 'function'
         ? await getWechatTransferQuotaSnapshot(openid, Math.round(Number(balance.availableAmount || balance.available || 0) * 100)).catch(() => null)
@@ -32,6 +34,9 @@ module.exports = function createHandler(context) {
       const minWithdrawAmount = Math.max(0.10, Number(settings.settlement.minWithdrawAmount || 0))
       return {
         ...balance,
+        manualRedemption,
+        withdrawalEnabled: !manualRedemption,
+        estimated: Math.round((Number(balance.pending || 0) + Number(balance.available || 0)) * 100) / 100,
         minWithdrawAmount,
         withdraws,
         assetSummary,
