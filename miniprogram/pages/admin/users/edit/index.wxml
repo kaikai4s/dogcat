@@ -23,6 +23,7 @@
       <view class="info-row"><view class="label">累计完成订单</view><view class="value">{{user.completedOrderCount || 0}} 单</view></view>
     </view>
 
+    <view wx:if="{{adminSuper || adminPermissions.memorial_listUserMemorialsAdmin}}" class="user-memorial-card"><view class="strong">纪念园档案</view><view class="tip-text">查看 TA 在各园区的时光小筑、申请时间、位置，以及回忆与画像。</view><button class="mini-btn" bindtap="viewMemorials">查看 TA 的时光小筑 ›</button></view>
     <view class="strong">基础信息修改</view>
 
     <view class="field">

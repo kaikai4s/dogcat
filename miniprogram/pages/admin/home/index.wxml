@@ -13,6 +13,7 @@
     <view class="tip">按业务域查看订单、人员、营销和平台配置，快速定位运营动作。</view>
   </view>
 
+<view class="staff-audit-todo-card" wx:if="{{memorialPendingCount > 0}}" data-url="/pages/admin/memorial/index" bindtap="go"><view>纪念园申请待处理 · {{memorialPendingCount}} 项</view><view>去处理 ›</view></view>
   <!-- 紧急待办通知 Banner（如超时30分钟未开始） -->
   <view class="urgent-notice-banner" wx:if="{{urgentNotice}}" bindtap="tapUrgentNotice">
     <view class="urgent-banner-left">

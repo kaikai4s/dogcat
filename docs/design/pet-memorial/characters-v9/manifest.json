@@ -1,0 +1,134 @@
+{
+  "modelRequested": "gpt-image-2.6-sunburst",
+  "scope": "boy/sw",
+  "method": "Complete model-generated frames, equal-cell slicing only; no transferred hands, joint warping, or per-frame rescaling",
+  "source": "raw/walk-generated.png",
+  "frameSize": [
+    312,
+    416
+  ],
+  "columns": 4,
+  "rows": 2,
+  "frameCount": 8,
+  "frameDurationMs": 125,
+  "idleUnchanged": true,
+  "frames": [
+    {
+      "frame": 1,
+      "bbox": [
+        41,
+        9,
+        281,
+        393
+      ],
+      "alphaRange": [
+        0,
+        255
+      ],
+      "sha256": "019b26dd714f189d464a85a6cd82dd84472daa15756763bef16983eafeb49bbf"
+    },
+    {
+      "frame": 2,
+      "bbox": [
+        44,
+        10,
+        285,
+        395
+      ],
+      "alphaRange": [
+        0,
+        255
+      ],
+      "sha256": "c24e0ff52f52c6f811e54df52e56ce98c8b2965359597c537396227eb8cc003c"
+    },
+    {
+      "frame": 3,
+      "bbox": [
+        48,
+        11,
+        285,
+        395
+      ],
+      "alphaRange": [
+        0,
+        255
+      ],
+      "sha256": "a134a02125eef013f4a67bffc65ec51f19449fceec8541c5ab84d962f30d97f3"
+    },
+    {
+      "frame": 4,
+      "bbox": [
+        49,
+        11,
+        283,
+        394
+      ],
+      "alphaRange": [
+        0,
+        255
+      ],
+      "sha256": "7f2ff666d68543697ce618823a0ffecc3215a24ddc5ac8b05dafd3702165f4e6"
+    },
+    {
+      "frame": 5,
+      "bbox": [
+        46,
+        8,
+        280,
+        378
+      ],
+      "alphaRange": [
+        0,
+        255
+      ],
+      "sha256": "5370641e24055b82d27dcf2c1bffb3ae7c5cbf93e3899ecad391da40222e767c"
+    },
+    {
+      "frame": 6,
+      "bbox": [
+        46,
+        8,
+        278,
+        379
+      ],
+      "alphaRange": [
+        0,
+        255
+      ],
+      "sha256": "4d5e229417f4d63296b7a549f204f20e84d675e9adb0167bf16d7d1987bd4d57"
+    },
+    {
+      "frame": 7,
+      "bbox": [
+        52,
+        9,
+        280,
+        378
+      ],
+      "alphaRange": [
+        0,
+        255
+      ],
+      "sha256": "8c254d341fb784abef9fd7b1eac83527b724815467f3619350e7290bfa5a9bcb"
+    },
+    {
+      "frame": 8,
+      "bbox": [
+        55,
+        9,
+        280,
+        379
+      ],
+      "alphaRange": [
+        0,
+        255
+      ],
+      "sha256": "7764e7678790962b27e5f38d7c80fc15cacdcecbb6dc4890a418139c77fd0e17"
+    }
+  ],
+  "visualStatus": "new-model-generation-awaiting-user-review",
+  "productionIntegrated": false,
+  "generationCalls": 1,
+  "rawOutputUnmodified": true,
+  "processing": "Raw model PNG copied verbatim; only equal-cell slicing and preview generation; no color correction, hand transplantation, joint changes, scaling per frame or interpolation"
+}

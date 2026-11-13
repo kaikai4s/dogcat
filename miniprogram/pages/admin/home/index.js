@@ -44,9 +44,11 @@ const adminSections = [
     ]
   },
   {
-    title: '宠物庄园',
+    title: '宠物庄园与纪念园',
     desc: '拼单、宠物状态、地面与庄园素材',
     items: [
+      { icon: 'ri-leaf-line', title: '纪念园管理', desc: '新增、命名园区与申请设置', url: '/pages/admin/memorial/gardens' },
+      { icon: 'ri-leaf-line', title: '时光小筑审核', desc: '小筑申请、公开回忆与宠物画像', url: '/pages/admin/memorial/index' },
       { icon: 'ri-home-heart-line', title: '庄园规则与配置', desc: '拼单优惠、猫狗状态与排泄规则', url: '/pages/admin/playground/index' },
       { icon: 'ri-palette-line', title: '乐园形象定制', desc: '照片申请与专属形象发布', url: '/pages/admin/playground-customizations/index' },
       { icon: 'ri-plant-line', title: '农作物管理', desc: '装饰素材、生长阶段与会员解锁', url: '/pages/admin/playground-crops/index' },
@@ -115,13 +117,15 @@ function pendingCountForUrl(url, pending = {}) {
     '/pages/admin/playground-customizations/index': pending.playgroundCustomizations,
     '/pages/admin/community-map/index': pending.communityApplications,
     '/pages/admin/mall/orders/index': pending.mallOrders,
+    '/pages/admin/memorial/index': pending.memorialApplications,
     '/pages/admin/incidents/list/index': pending.incidents
   }
   return Number(map[url] || 0)
 }
 
-function buildAdminSections(access, dashboard = null, mallPendingCount = null, communityPendingCount = null) {
+function buildAdminSections(access, dashboard = null, mallPendingCount = null, communityPendingCount = null, memorialPendingCount = null) {
   const pending = { ...((dashboard && dashboard.pendingReviews) || {}),
+    ...(memorialPendingCount !== null ? { memorialApplications: memorialPendingCount } : {}),
     ...(mallPendingCount !== null ? { mallOrders: mallPendingCount } : {}),
     ...(communityPendingCount !== null ? { communityApplications: communityPendingCount } : {}) }
   return adminSections
@@ -165,6 +169,7 @@ Page({
     this._dashboardRequest = (this._dashboardRequest || 0) + 1
     this._mallRequest = (this._mallRequest || 0) + 1
     this._communityRequest = (this._communityRequest || 0) + 1
+    this._memorialRequest = (this._memorialRequest || 0) + 1
     this._notificationRequest = (this._notificationRequest || 0) + 1
   },
 
@@ -182,16 +187,29 @@ Page({
       platformFinanceStats: [],
       mallPendingCount: null,
       communityPendingCount: null,
+      memorialPendingCount: 0,
       urgentNotice: null,
       unreadNotificationCount: 0,
       staffAuditTodo: null
     })
     const requests = []
     if (can(access, 'adminMall.listOrders')) requests.push(this.loadMallPending())
+    if (can(access, 'memorial.listAdmin') || can(access, 'memorial.listMemoriesAdmin') || can(access, 'memorial.listPortraitsAdmin')) requests.push(this.loadMemorialPending())
     if (can(access, 'communityMap.listAdmin')) requests.push(this.loadCommunityPending())
     if (can(access, 'admin.dashboard')) requests.push(this.loadDashboard())
     if (can(access, 'admin.getAdminNotificationBadge')) requests.push(this.loadNotifications())
     return Promise.all(requests)
+  },
+
+  loadMemorialPending() {
+    const version = this._memorialRequest = (this._memorialRequest || 0) + 1
+    const access = this.data.adminAccess
+    const actions = ['listAdmin', 'listMemoriesAdmin', 'listPortraitsAdmin'].filter(action => can(access, 'memorial.' + action))
+    return Promise.all(actions.map(action => callFunction('memorial', action, { pendingCountsOnly: true }))).then(results => {
+      const result = { pendingCount: results.reduce((sum, row) => sum + Number(row.pendingCount || 0), 0) }
+      if (version === this._memorialRequest) this.setData({ memorialPendingCount: Number(result.pendingCount || 0),
+        adminSections: buildAdminSections(this.data.adminAccess, this.data.dashboard, this.data.mallPendingCount, this.data.communityPendingCount, Number(result.pendingCount || 0)) })
+    }).catch(error => { if (version === this._memorialRequest) showError(error) })
   },
 
   loadMallPending() {
@@ -199,7 +217,7 @@ Page({
     return callFunction('adminMall', 'listOrders', { pendingCountsOnly: true }).then(result => {
       if (requestId !== this._mallRequest) return
       const count = Number(result.pendingCount || 0)
-      this.setData({ mallPendingCount: count, adminSections: buildAdminSections(this.data.adminAccess, this.data.dashboard, count, this.data.communityPendingCount) })
+      this.setData({ mallPendingCount: count, adminSections: buildAdminSections(this.data.adminAccess, this.data.dashboard, count, this.data.communityPendingCount, this.data.memorialPendingCount) })
     }).catch(error => { if (requestId === this._mallRequest) showError(error) })
   },
 
@@ -209,7 +227,7 @@ Page({
       if (requestId !== this._communityRequest) return
       const count = Number(result.pendingApplicationCount || 0)
       this.setData({ communityPendingCount: count,
-        adminSections: buildAdminSections(this.data.adminAccess, this.data.dashboard, this.data.mallPendingCount, count) })
+        adminSections: buildAdminSections(this.data.adminAccess, this.data.dashboard, this.data.mallPendingCount, count, this.data.memorialPendingCount) })
     }).catch(error => { if (requestId === this._communityRequest) showError(error) })
   },
 
@@ -227,7 +245,7 @@ Page({
           overviewStats: buildOverviewStats(dashboard),
           revenueStats: buildRevenueStats(dashboard),
           platformFinanceStats: buildFinanceOverviewStats(dashboard),
-          adminSections: buildAdminSections(this.data.adminAccess, dashboard, this.data.mallPendingCount, this.data.communityPendingCount),
+          adminSections: buildAdminSections(this.data.adminAccess, dashboard, this.data.mallPendingCount, this.data.communityPendingCount, this.data.memorialPendingCount),
           staffAuditTodo: staffPending > 0 && canVisit(this.data.adminAccess, staffAuditUrl)
             ? { count: staffPending, url: staffAuditUrl }
             : null

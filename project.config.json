@@ -71,6 +71,10 @@
     "ignore": [
       {
         "type": "folder",
+        "value": "packageMemorial/assets"
+      },
+      {
+        "type": "folder",
         "value": "packagePlayground/images/people"
       },
       {

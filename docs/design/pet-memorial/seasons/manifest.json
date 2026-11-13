@@ -1,0 +1,33 @@
+{
+  "source": "miniprogram/packageMemorial/assets/world-v2/props.png",
+  "sourceSha256": "127545e65435e9386b0c94100c379feb04e0dc811a35ec537d9db44c604512d5",
+  "method": "Deterministic color and frost treatment of project-owned existing art; no new AI generation.",
+  "rights": "Same provenance and usage restrictions as source garden artwork.",
+  "file": "seasons-v1/foliage.png",
+  "size": [
+    512,
+    1024
+  ],
+  "cell": [
+    256,
+    256
+  ],
+  "rows": [
+    "spring",
+    "summer",
+    "autumn",
+    "winter"
+  ],
+  "columns": [
+    "tree",
+    "shrub"
+  ],
+  "anchor": [
+    0.5,
+    0.84
+  ],
+  "alphaMatchesSource": true,
+  "collision": "Existing tree/shrub footprints; cosmetic only.",
+  "bytes": 600315,
+  "sha256": "72a27cd4c50652179d4b712b759a53778eac7acb9191600b6e0373023d5548c4"
+}

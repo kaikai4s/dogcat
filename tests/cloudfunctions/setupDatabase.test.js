@@ -23,8 +23,10 @@ test('setupDatabase: initializes data without granting administrator identity', 
 
   assert.equal(res.ok, true)
   assert.equal(res.data.success, true)
-  assert.equal(res.data.totalCollections, 98)
-  assert.equal(res.data.totalIndexesConfigured, 66)
+  assert.equal(res.data.totalCollections, 99)
+  assert.equal(res.data.totalIndexesConfigured, 70)
+  assert.ok(res.data.indexResults.some(index => index.collection === 'pet_memorial_live' && index.name === 'idx_memorial_live_scene'))
+  for (const name of ['idx_memorial_catalog', 'idx_memorial_owner']) assert.ok(res.data.indexResults.some(index => index.collection === 'platform_configs' && index.name === name))
   assert.ok(res.data.indexResults.some(index => index.collection === 'mall_orders' && index.name === 'idx_mall_refund_inventory'))
   assert.ok(res.data.indexResults.some(index => index.collection === 'pet_playground_groups' && index.name === 'idx_groups_due_unformed'))
   for (const name of ['idx_map_admin_city', 'idx_map_candidates_staff', 'idx_map_candidates_orders', 'idx_map_application_city', 'idx_map_application_pending']) assert.ok(res.data.indexResults.some(index => index.name === name))

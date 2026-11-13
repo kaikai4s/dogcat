@@ -1,0 +1,1310 @@
+{
+  "method": "AI-generated directional bases with deterministic raster articulation",
+  "modelRequested": "gpt-image-2.6-sunburst",
+  "frameSize": [
+    256,
+    256
+  ],
+  "masterFrameSize": [
+    512,
+    512
+  ],
+  "anchor": [
+    128,
+    230
+  ],
+  "columns": 4,
+  "rows": 3,
+  "frameCount": 12,
+  "animations": {
+    "boy/idle-sw": {
+      "atlas": "runtime/boy/idle-sw.png",
+      "fps": 8,
+      "source": "bases/boy/sw.png",
+      "sourceSha256": "da7af7dcf33cb5e74dc32bf9da4237f5a3e43a60431631a871e7e7ae905ea9ca",
+      "motion": [],
+      "legCut": 330
+    },
+    "boy/walk-sw": {
+      "atlas": "runtime/boy/walk-sw.png",
+      "fps": 12,
+      "source": "bases/boy/sw.png",
+      "sourceSha256": "da7af7dcf33cb5e74dc32bf9da4237f5a3e43a60431631a871e7e7ae905ea9ca",
+      "motion": [
+        {
+          "frame": 1,
+          "leftLegOffset": [
+            -23.0,
+            9.0
+          ],
+          "rightLegOffset": [
+            23.0,
+            -9.0
+          ],
+          "bodyBob": -0.0
+        },
+        {
+          "frame": 2,
+          "leftLegOffset": [
+            -19.9186,
+            2.2942
+          ],
+          "rightLegOffset": [
+            19.9186,
+            -7.7942
+          ],
+          "bodyBob": -0.8
+        },
+        {
+          "frame": 3,
+          "leftLegOffset": [
+            -11.5,
+            -5.0263
+          ],
+          "rightLegOffset": [
+            11.5,
+            -4.5
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 4,
+          "leftLegOffset": [
+            -0.0,
+            -11.0
+          ],
+          "rightLegOffset": [
+            0.0,
+            -0.0
+          ],
+          "bodyBob": -3.2
+        },
+        {
+          "frame": 5,
+          "leftLegOffset": [
+            11.5,
+            -14.0263
+          ],
+          "rightLegOffset": [
+            -11.5,
+            4.5
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 6,
+          "leftLegOffset": [
+            19.9186,
+            -13.2942
+          ],
+          "rightLegOffset": [
+            -19.9186,
+            7.7942
+          ],
+          "bodyBob": -0.8
+        },
+        {
+          "frame": 7,
+          "leftLegOffset": [
+            23.0,
+            -9.0
+          ],
+          "rightLegOffset": [
+            -23.0,
+            9.0
+          ],
+          "bodyBob": -0.0
+        },
+        {
+          "frame": 8,
+          "leftLegOffset": [
+            19.9186,
+            -7.7942
+          ],
+          "rightLegOffset": [
+            -19.9186,
+            2.2942
+          ],
+          "bodyBob": -0.8
+        },
+        {
+          "frame": 9,
+          "leftLegOffset": [
+            11.5,
+            -4.5
+          ],
+          "rightLegOffset": [
+            -11.5,
+            -5.0263
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 10,
+          "leftLegOffset": [
+            0.0,
+            -0.0
+          ],
+          "rightLegOffset": [
+            -0.0,
+            -11.0
+          ],
+          "bodyBob": -3.2
+        },
+        {
+          "frame": 11,
+          "leftLegOffset": [
+            -11.5,
+            4.5
+          ],
+          "rightLegOffset": [
+            11.5,
+            -14.0263
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 12,
+          "leftLegOffset": [
+            -19.9186,
+            7.7942
+          ],
+          "rightLegOffset": [
+            19.9186,
+            -13.2942
+          ],
+          "bodyBob": -0.8
+        }
+      ],
+      "legCut": 330
+    },
+    "boy/idle-se": {
+      "atlas": "runtime/boy/idle-se.png",
+      "fps": 8,
+      "source": "bases/boy/se.png",
+      "sourceSha256": "03107bcfdc3d8d9aa7dbaee1a1d0b98690e5094517215ee55adb8e3ed12e8fb4",
+      "motion": [],
+      "legCut": 330
+    },
+    "boy/walk-se": {
+      "atlas": "runtime/boy/walk-se.png",
+      "fps": 12,
+      "source": "bases/boy/se.png",
+      "sourceSha256": "03107bcfdc3d8d9aa7dbaee1a1d0b98690e5094517215ee55adb8e3ed12e8fb4",
+      "motion": [
+        {
+          "frame": 1,
+          "leftLegOffset": [
+            23.0,
+            9.0
+          ],
+          "rightLegOffset": [
+            -23.0,
+            -9.0
+          ],
+          "bodyBob": -0.0
+        },
+        {
+          "frame": 2,
+          "leftLegOffset": [
+            19.9186,
+            2.2942
+          ],
+          "rightLegOffset": [
+            -19.9186,
+            -7.7942
+          ],
+          "bodyBob": -0.8
+        },
+        {
+          "frame": 3,
+          "leftLegOffset": [
+            11.5,
+            -5.0263
+          ],
+          "rightLegOffset": [
+            -11.5,
+            -4.5
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 4,
+          "leftLegOffset": [
+            0.0,
+            -11.0
+          ],
+          "rightLegOffset": [
+            -0.0,
+            -0.0
+          ],
+          "bodyBob": -3.2
+        },
+        {
+          "frame": 5,
+          "leftLegOffset": [
+            -11.5,
+            -14.0263
+          ],
+          "rightLegOffset": [
+            11.5,
+            4.5
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 6,
+          "leftLegOffset": [
+            -19.9186,
+            -13.2942
+          ],
+          "rightLegOffset": [
+            19.9186,
+            7.7942
+          ],
+          "bodyBob": -0.8
+        },
+        {
+          "frame": 7,
+          "leftLegOffset": [
+            -23.0,
+            -9.0
+          ],
+          "rightLegOffset": [
+            23.0,
+            9.0
+          ],
+          "bodyBob": -0.0
+        },
+        {
+          "frame": 8,
+          "leftLegOffset": [
+            -19.9186,
+            -7.7942
+          ],
+          "rightLegOffset": [
+            19.9186,
+            2.2942
+          ],
+          "bodyBob": -0.8
+        },
+        {
+          "frame": 9,
+          "leftLegOffset": [
+            -11.5,
+            -4.5
+          ],
+          "rightLegOffset": [
+            11.5,
+            -5.0263
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 10,
+          "leftLegOffset": [
+            -0.0,
+            -0.0
+          ],
+          "rightLegOffset": [
+            0.0,
+            -11.0
+          ],
+          "bodyBob": -3.2
+        },
+        {
+          "frame": 11,
+          "leftLegOffset": [
+            11.5,
+            4.5
+          ],
+          "rightLegOffset": [
+            -11.5,
+            -14.0263
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 12,
+          "leftLegOffset": [
+            19.9186,
+            7.7942
+          ],
+          "rightLegOffset": [
+            -19.9186,
+            -13.2942
+          ],
+          "bodyBob": -0.8
+        }
+      ],
+      "legCut": 330
+    },
+    "boy/idle-nw": {
+      "atlas": "runtime/boy/idle-nw.png",
+      "fps": 8,
+      "source": "bases/boy/nw.png",
+      "sourceSha256": "603a63bdb68ea5f0891963cf6899ca3ec3cb04fbad4554625167b78928f71f92",
+      "motion": [],
+      "legCut": 330
+    },
+    "boy/walk-nw": {
+      "atlas": "runtime/boy/walk-nw.png",
+      "fps": 12,
+      "source": "bases/boy/nw.png",
+      "sourceSha256": "603a63bdb68ea5f0891963cf6899ca3ec3cb04fbad4554625167b78928f71f92",
+      "motion": [
+        {
+          "frame": 1,
+          "leftLegOffset": [
+            -23.0,
+            -9.0
+          ],
+          "rightLegOffset": [
+            23.0,
+            9.0
+          ],
+          "bodyBob": -0.0
+        },
+        {
+          "frame": 2,
+          "leftLegOffset": [
+            -19.9186,
+            -13.2942
+          ],
+          "rightLegOffset": [
+            19.9186,
+            7.7942
+          ],
+          "bodyBob": -0.8
+        },
+        {
+          "frame": 3,
+          "leftLegOffset": [
+            -11.5,
+            -14.0263
+          ],
+          "rightLegOffset": [
+            11.5,
+            4.5
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 4,
+          "leftLegOffset": [
+            -0.0,
+            -11.0
+          ],
+          "rightLegOffset": [
+            0.0,
+            0.0
+          ],
+          "bodyBob": -3.2
+        },
+        {
+          "frame": 5,
+          "leftLegOffset": [
+            11.5,
+            -5.0263
+          ],
+          "rightLegOffset": [
+            -11.5,
+            -4.5
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 6,
+          "leftLegOffset": [
+            19.9186,
+            2.2942
+          ],
+          "rightLegOffset": [
+            -19.9186,
+            -7.7942
+          ],
+          "bodyBob": -0.8
+        },
+        {
+          "frame": 7,
+          "leftLegOffset": [
+            23.0,
+            9.0
+          ],
+          "rightLegOffset": [
+            -23.0,
+            -9.0
+          ],
+          "bodyBob": -0.0
+        },
+        {
+          "frame": 8,
+          "leftLegOffset": [
+            19.9186,
+            7.7942
+          ],
+          "rightLegOffset": [
+            -19.9186,
+            -13.2942
+          ],
+          "bodyBob": -0.8
+        },
+        {
+          "frame": 9,
+          "leftLegOffset": [
+            11.5,
+            4.5
+          ],
+          "rightLegOffset": [
+            -11.5,
+            -14.0263
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 10,
+          "leftLegOffset": [
+            0.0,
+            0.0
+          ],
+          "rightLegOffset": [
+            -0.0,
+            -11.0
+          ],
+          "bodyBob": -3.2
+        },
+        {
+          "frame": 11,
+          "leftLegOffset": [
+            -11.5,
+            -4.5
+          ],
+          "rightLegOffset": [
+            11.5,
+            -5.0263
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 12,
+          "leftLegOffset": [
+            -19.9186,
+            -7.7942
+          ],
+          "rightLegOffset": [
+            19.9186,
+            2.2942
+          ],
+          "bodyBob": -0.8
+        }
+      ],
+      "legCut": 330
+    },
+    "boy/idle-ne": {
+      "atlas": "runtime/boy/idle-ne.png",
+      "fps": 8,
+      "source": "bases/boy/ne.png",
+      "sourceSha256": "09fbd800198677cea9b0145e0284e7ef5411f146c433fe05b6083d45394bffdc",
+      "motion": [],
+      "legCut": 330
+    },
+    "boy/walk-ne": {
+      "atlas": "runtime/boy/walk-ne.png",
+      "fps": 12,
+      "source": "bases/boy/ne.png",
+      "sourceSha256": "09fbd800198677cea9b0145e0284e7ef5411f146c433fe05b6083d45394bffdc",
+      "motion": [
+        {
+          "frame": 1,
+          "leftLegOffset": [
+            23.0,
+            -9.0
+          ],
+          "rightLegOffset": [
+            -23.0,
+            9.0
+          ],
+          "bodyBob": -0.0
+        },
+        {
+          "frame": 2,
+          "leftLegOffset": [
+            19.9186,
+            -13.2942
+          ],
+          "rightLegOffset": [
+            -19.9186,
+            7.7942
+          ],
+          "bodyBob": -0.8
+        },
+        {
+          "frame": 3,
+          "leftLegOffset": [
+            11.5,
+            -14.0263
+          ],
+          "rightLegOffset": [
+            -11.5,
+            4.5
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 4,
+          "leftLegOffset": [
+            0.0,
+            -11.0
+          ],
+          "rightLegOffset": [
+            -0.0,
+            0.0
+          ],
+          "bodyBob": -3.2
+        },
+        {
+          "frame": 5,
+          "leftLegOffset": [
+            -11.5,
+            -5.0263
+          ],
+          "rightLegOffset": [
+            11.5,
+            -4.5
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 6,
+          "leftLegOffset": [
+            -19.9186,
+            2.2942
+          ],
+          "rightLegOffset": [
+            19.9186,
+            -7.7942
+          ],
+          "bodyBob": -0.8
+        },
+        {
+          "frame": 7,
+          "leftLegOffset": [
+            -23.0,
+            9.0
+          ],
+          "rightLegOffset": [
+            23.0,
+            -9.0
+          ],
+          "bodyBob": -0.0
+        },
+        {
+          "frame": 8,
+          "leftLegOffset": [
+            -19.9186,
+            7.7942
+          ],
+          "rightLegOffset": [
+            19.9186,
+            -13.2942
+          ],
+          "bodyBob": -0.8
+        },
+        {
+          "frame": 9,
+          "leftLegOffset": [
+            -11.5,
+            4.5
+          ],
+          "rightLegOffset": [
+            11.5,
+            -14.0263
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 10,
+          "leftLegOffset": [
+            -0.0,
+            0.0
+          ],
+          "rightLegOffset": [
+            0.0,
+            -11.0
+          ],
+          "bodyBob": -3.2
+        },
+        {
+          "frame": 11,
+          "leftLegOffset": [
+            11.5,
+            -4.5
+          ],
+          "rightLegOffset": [
+            -11.5,
+            -5.0263
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 12,
+          "leftLegOffset": [
+            19.9186,
+            -7.7942
+          ],
+          "rightLegOffset": [
+            -19.9186,
+            2.2942
+          ],
+          "bodyBob": -0.8
+        }
+      ],
+      "legCut": 330
+    },
+    "girl/idle-sw": {
+      "atlas": "runtime/girl/idle-sw.png",
+      "fps": 8,
+      "source": "bases/girl/sw.png",
+      "sourceSha256": "ff0f258e7f697dd0b72322ba81985616ec5600eded192a36b163448b26c5f0f1",
+      "motion": [],
+      "legCut": 330
+    },
+    "girl/walk-sw": {
+      "atlas": "runtime/girl/walk-sw.png",
+      "fps": 12,
+      "source": "bases/girl/sw.png",
+      "sourceSha256": "ff0f258e7f697dd0b72322ba81985616ec5600eded192a36b163448b26c5f0f1",
+      "motion": [
+        {
+          "frame": 1,
+          "leftLegOffset": [
+            -23.0,
+            9.0
+          ],
+          "rightLegOffset": [
+            23.0,
+            -9.0
+          ],
+          "bodyBob": -0.0
+        },
+        {
+          "frame": 2,
+          "leftLegOffset": [
+            -19.9186,
+            2.2942
+          ],
+          "rightLegOffset": [
+            19.9186,
+            -7.7942
+          ],
+          "bodyBob": -0.8
+        },
+        {
+          "frame": 3,
+          "leftLegOffset": [
+            -11.5,
+            -5.0263
+          ],
+          "rightLegOffset": [
+            11.5,
+            -4.5
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 4,
+          "leftLegOffset": [
+            -0.0,
+            -11.0
+          ],
+          "rightLegOffset": [
+            0.0,
+            -0.0
+          ],
+          "bodyBob": -3.2
+        },
+        {
+          "frame": 5,
+          "leftLegOffset": [
+            11.5,
+            -14.0263
+          ],
+          "rightLegOffset": [
+            -11.5,
+            4.5
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 6,
+          "leftLegOffset": [
+            19.9186,
+            -13.2942
+          ],
+          "rightLegOffset": [
+            -19.9186,
+            7.7942
+          ],
+          "bodyBob": -0.8
+        },
+        {
+          "frame": 7,
+          "leftLegOffset": [
+            23.0,
+            -9.0
+          ],
+          "rightLegOffset": [
+            -23.0,
+            9.0
+          ],
+          "bodyBob": -0.0
+        },
+        {
+          "frame": 8,
+          "leftLegOffset": [
+            19.9186,
+            -7.7942
+          ],
+          "rightLegOffset": [
+            -19.9186,
+            2.2942
+          ],
+          "bodyBob": -0.8
+        },
+        {
+          "frame": 9,
+          "leftLegOffset": [
+            11.5,
+            -4.5
+          ],
+          "rightLegOffset": [
+            -11.5,
+            -5.0263
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 10,
+          "leftLegOffset": [
+            0.0,
+            -0.0
+          ],
+          "rightLegOffset": [
+            -0.0,
+            -11.0
+          ],
+          "bodyBob": -3.2
+        },
+        {
+          "frame": 11,
+          "leftLegOffset": [
+            -11.5,
+            4.5
+          ],
+          "rightLegOffset": [
+            11.5,
+            -14.0263
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 12,
+          "leftLegOffset": [
+            -19.9186,
+            7.7942
+          ],
+          "rightLegOffset": [
+            19.9186,
+            -13.2942
+          ],
+          "bodyBob": -0.8
+        }
+      ],
+      "legCut": 330
+    },
+    "girl/idle-se": {
+      "atlas": "runtime/girl/idle-se.png",
+      "fps": 8,
+      "source": "bases/girl/se.png",
+      "sourceSha256": "9814391afe9e88e870abe8544ad9ce733656bbb3c635c9b0ca451fce24b4e843",
+      "motion": [],
+      "legCut": 330
+    },
+    "girl/walk-se": {
+      "atlas": "runtime/girl/walk-se.png",
+      "fps": 12,
+      "source": "bases/girl/se.png",
+      "sourceSha256": "9814391afe9e88e870abe8544ad9ce733656bbb3c635c9b0ca451fce24b4e843",
+      "motion": [
+        {
+          "frame": 1,
+          "leftLegOffset": [
+            23.0,
+            9.0
+          ],
+          "rightLegOffset": [
+            -23.0,
+            -9.0
+          ],
+          "bodyBob": -0.0
+        },
+        {
+          "frame": 2,
+          "leftLegOffset": [
+            19.9186,
+            2.2942
+          ],
+          "rightLegOffset": [
+            -19.9186,
+            -7.7942
+          ],
+          "bodyBob": -0.8
+        },
+        {
+          "frame": 3,
+          "leftLegOffset": [
+            11.5,
+            -5.0263
+          ],
+          "rightLegOffset": [
+            -11.5,
+            -4.5
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 4,
+          "leftLegOffset": [
+            0.0,
+            -11.0
+          ],
+          "rightLegOffset": [
+            -0.0,
+            -0.0
+          ],
+          "bodyBob": -3.2
+        },
+        {
+          "frame": 5,
+          "leftLegOffset": [
+            -11.5,
+            -14.0263
+          ],
+          "rightLegOffset": [
+            11.5,
+            4.5
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 6,
+          "leftLegOffset": [
+            -19.9186,
+            -13.2942
+          ],
+          "rightLegOffset": [
+            19.9186,
+            7.7942
+          ],
+          "bodyBob": -0.8
+        },
+        {
+          "frame": 7,
+          "leftLegOffset": [
+            -23.0,
+            -9.0
+          ],
+          "rightLegOffset": [
+            23.0,
+            9.0
+          ],
+          "bodyBob": -0.0
+        },
+        {
+          "frame": 8,
+          "leftLegOffset": [
+            -19.9186,
+            -7.7942
+          ],
+          "rightLegOffset": [
+            19.9186,
+            2.2942
+          ],
+          "bodyBob": -0.8
+        },
+        {
+          "frame": 9,
+          "leftLegOffset": [
+            -11.5,
+            -4.5
+          ],
+          "rightLegOffset": [
+            11.5,
+            -5.0263
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 10,
+          "leftLegOffset": [
+            -0.0,
+            -0.0
+          ],
+          "rightLegOffset": [
+            0.0,
+            -11.0
+          ],
+          "bodyBob": -3.2
+        },
+        {
+          "frame": 11,
+          "leftLegOffset": [
+            11.5,
+            4.5
+          ],
+          "rightLegOffset": [
+            -11.5,
+            -14.0263
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 12,
+          "leftLegOffset": [
+            19.9186,
+            7.7942
+          ],
+          "rightLegOffset": [
+            -19.9186,
+            -13.2942
+          ],
+          "bodyBob": -0.8
+        }
+      ],
+      "legCut": 330
+    },
+    "girl/idle-nw": {
+      "atlas": "runtime/girl/idle-nw.png",
+      "fps": 8,
+      "source": "bases/girl/nw.png",
+      "sourceSha256": "84782a7a933abae46654fd7e3046332faadd1c181ee26b613c2330b7f4b6dcde",
+      "motion": [],
+      "legCut": 330
+    },
+    "girl/walk-nw": {
+      "atlas": "runtime/girl/walk-nw.png",
+      "fps": 12,
+      "source": "bases/girl/nw.png",
+      "sourceSha256": "84782a7a933abae46654fd7e3046332faadd1c181ee26b613c2330b7f4b6dcde",
+      "motion": [
+        {
+          "frame": 1,
+          "leftLegOffset": [
+            -23.0,
+            -9.0
+          ],
+          "rightLegOffset": [
+            23.0,
+            9.0
+          ],
+          "bodyBob": -0.0
+        },
+        {
+          "frame": 2,
+          "leftLegOffset": [
+            -19.9186,
+            -13.2942
+          ],
+          "rightLegOffset": [
+            19.9186,
+            7.7942
+          ],
+          "bodyBob": -0.8
+        },
+        {
+          "frame": 3,
+          "leftLegOffset": [
+            -11.5,
+            -14.0263
+          ],
+          "rightLegOffset": [
+            11.5,
+            4.5
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 4,
+          "leftLegOffset": [
+            -0.0,
+            -11.0
+          ],
+          "rightLegOffset": [
+            0.0,
+            0.0
+          ],
+          "bodyBob": -3.2
+        },
+        {
+          "frame": 5,
+          "leftLegOffset": [
+            11.5,
+            -5.0263
+          ],
+          "rightLegOffset": [
+            -11.5,
+            -4.5
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 6,
+          "leftLegOffset": [
+            19.9186,
+            2.2942
+          ],
+          "rightLegOffset": [
+            -19.9186,
+            -7.7942
+          ],
+          "bodyBob": -0.8
+        },
+        {
+          "frame": 7,
+          "leftLegOffset": [
+            23.0,
+            9.0
+          ],
+          "rightLegOffset": [
+            -23.0,
+            -9.0
+          ],
+          "bodyBob": -0.0
+        },
+        {
+          "frame": 8,
+          "leftLegOffset": [
+            19.9186,
+            7.7942
+          ],
+          "rightLegOffset": [
+            -19.9186,
+            -13.2942
+          ],
+          "bodyBob": -0.8
+        },
+        {
+          "frame": 9,
+          "leftLegOffset": [
+            11.5,
+            4.5
+          ],
+          "rightLegOffset": [
+            -11.5,
+            -14.0263
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 10,
+          "leftLegOffset": [
+            0.0,
+            0.0
+          ],
+          "rightLegOffset": [
+            -0.0,
+            -11.0
+          ],
+          "bodyBob": -3.2
+        },
+        {
+          "frame": 11,
+          "leftLegOffset": [
+            -11.5,
+            -4.5
+          ],
+          "rightLegOffset": [
+            11.5,
+            -5.0263
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 12,
+          "leftLegOffset": [
+            -19.9186,
+            -7.7942
+          ],
+          "rightLegOffset": [
+            19.9186,
+            2.2942
+          ],
+          "bodyBob": -0.8
+        }
+      ],
+      "legCut": 330
+    },
+    "girl/idle-ne": {
+      "atlas": "runtime/girl/idle-ne.png",
+      "fps": 8,
+      "source": "bases/girl/ne.png",
+      "sourceSha256": "6872add710abdc7314553c397e939ca9f9a331fb0d85243a38d3056b0578131c",
+      "motion": [],
+      "legCut": 330
+    },
+    "girl/walk-ne": {
+      "atlas": "runtime/girl/walk-ne.png",
+      "fps": 12,
+      "source": "bases/girl/ne.png",
+      "sourceSha256": "6872add710abdc7314553c397e939ca9f9a331fb0d85243a38d3056b0578131c",
+      "motion": [
+        {
+          "frame": 1,
+          "leftLegOffset": [
+            23.0,
+            -9.0
+          ],
+          "rightLegOffset": [
+            -23.0,
+            9.0
+          ],
+          "bodyBob": -0.0
+        },
+        {
+          "frame": 2,
+          "leftLegOffset": [
+            19.9186,
+            -13.2942
+          ],
+          "rightLegOffset": [
+            -19.9186,
+            7.7942
+          ],
+          "bodyBob": -0.8
+        },
+        {
+          "frame": 3,
+          "leftLegOffset": [
+            11.5,
+            -14.0263
+          ],
+          "rightLegOffset": [
+            -11.5,
+            4.5
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 4,
+          "leftLegOffset": [
+            0.0,
+            -11.0
+          ],
+          "rightLegOffset": [
+            -0.0,
+            0.0
+          ],
+          "bodyBob": -3.2
+        },
+        {
+          "frame": 5,
+          "leftLegOffset": [
+            -11.5,
+            -5.0263
+          ],
+          "rightLegOffset": [
+            11.5,
+            -4.5
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 6,
+          "leftLegOffset": [
+            -19.9186,
+            2.2942
+          ],
+          "rightLegOffset": [
+            19.9186,
+            -7.7942
+          ],
+          "bodyBob": -0.8
+        },
+        {
+          "frame": 7,
+          "leftLegOffset": [
+            -23.0,
+            9.0
+          ],
+          "rightLegOffset": [
+            23.0,
+            -9.0
+          ],
+          "bodyBob": -0.0
+        },
+        {
+          "frame": 8,
+          "leftLegOffset": [
+            -19.9186,
+            7.7942
+          ],
+          "rightLegOffset": [
+            19.9186,
+            -13.2942
+          ],
+          "bodyBob": -0.8
+        },
+        {
+          "frame": 9,
+          "leftLegOffset": [
+            -11.5,
+            4.5
+          ],
+          "rightLegOffset": [
+            11.5,
+            -14.0263
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 10,
+          "leftLegOffset": [
+            -0.0,
+            0.0
+          ],
+          "rightLegOffset": [
+            0.0,
+            -11.0
+          ],
+          "bodyBob": -3.2
+        },
+        {
+          "frame": 11,
+          "leftLegOffset": [
+            11.5,
+            -4.5
+          ],
+          "rightLegOffset": [
+            -11.5,
+            -5.0263
+          ],
+          "bodyBob": -2.4
+        },
+        {
+          "frame": 12,
+          "leftLegOffset": [
+            19.9186,
+            -7.7942
+          ],
+          "rightLegOffset": [
+            -19.9186,
+            2.2942
+          ],
+          "bodyBob": -0.8
+        }
+      ],
+      "legCut": 330
+    }
+  },
+  "limitations": "Cutout animation preserves fixed-perspective details; no newly drawn limb rotations."
+}

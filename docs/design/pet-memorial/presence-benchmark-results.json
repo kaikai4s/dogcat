@@ -1,0 +1,271 @@
+{
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "dpr": 1
+  },
+  "results": [
+    {
+      "totalVisitors": 1,
+      "visibleRemoteActors": 0,
+      "cpu": {
+        "samples": 150,
+        "medianMs": 0.1,
+        "p95Ms": 0.2,
+        "maxMs": 103.7
+      },
+      "raf": {
+        "samples": 109,
+        "medianMs": 16.7,
+        "p95Ms": 16.7,
+        "maxMs": 16.8
+      }
+    },
+    {
+      "totalVisitors": 50,
+      "visibleRemoteActors": 49,
+      "cpu": {
+        "samples": 150,
+        "medianMs": 0.3,
+        "p95Ms": 0.5,
+        "maxMs": 172.4
+      },
+      "raf": {
+        "samples": 109,
+        "medianMs": 16.7,
+        "p95Ms": 16.8,
+        "maxMs": 16.8
+      }
+    },
+    {
+      "totalVisitors": 100,
+      "visibleRemoteActors": 99,
+      "cpu": {
+        "samples": 150,
+        "medianMs": 0.3,
+        "p95Ms": 0.6,
+        "maxMs": 132.9
+      },
+      "raf": {
+        "samples": 109,
+        "medianMs": 16.7,
+        "p95Ms": 16.7,
+        "maxMs": 16.8
+      }
+    }
+  ],
+  "scope": "Desktop browser, local cached assets, all remote avatars near camera. CPU is synchronous JS plus canvas submission; RAF is desktop cadence, not phone or cloud latency.",
+  "date": "2026-11-12",
+  "baselineBeforeImplementation": {
+    "cpuMedianMs": 0.2,
+    "cpuP95Ms": 0.3,
+    "cpuMaxMs": 92.3
+  },
+  "movementSmoothing": {
+    "date": "2026-11-12",
+    "environment": "Node.js deterministic 60 FPS simulation; no real CloudBase or phone network",
+    "speedWorldUnitsPerSecond": 120,
+    "warmupMs": 5000,
+    "measuredDurationMs": 20000,
+    "stallThresholdWorldUnitsPerFrame": 0.01,
+    "scenarios": [
+      {
+        "cadenceMs": [
+          250
+        ],
+        "before": {
+          "stallFrames": 0,
+          "stalls": 0,
+          "maxStep": 2,
+          "backwards": 0,
+          "maxLagMs": 300,
+          "stepP95Ms": 0.0026660000000013895
+        },
+        "after": {
+          "stallFrames": 0,
+          "stalls": 0,
+          "maxStep": 2.0175429709534,
+          "backwards": 0,
+          "maxLagMs": 357.18259090778974,
+          "stepP95Ms": 0.0027369999999997674
+        }
+      },
+      {
+        "cadenceMs": [
+          450
+        ],
+        "before": {
+          "stallFrames": 352,
+          "stalls": 44,
+          "maxStep": 18,
+          "backwards": 0,
+          "maxLagMs": 433.33333333333394,
+          "stepP95Ms": 0.0022660000000023217
+        },
+        "after": {
+          "stallFrames": 0,
+          "stalls": 0,
+          "maxStep": 2.0718328897319225,
+          "backwards": 0,
+          "maxLagMs": 628.7913782625656,
+          "stepP95Ms": 0.0017440000000021882
+        }
+      },
+      {
+        "cadenceMs": [
+          650
+        ],
+        "before": {
+          "stallFrames": 612,
+          "stalls": 31,
+          "maxStep": 42,
+          "backwards": 0,
+          "maxLagMs": 633.3333333333339,
+          "stepP95Ms": 0.0001509999999953493
+        },
+        "after": {
+          "stallFrames": 0,
+          "stalls": 0,
+          "maxStep": 2.1211024550643742,
+          "backwards": 0,
+          "maxLagMs": 897.4216304464935,
+          "stepP95Ms": 0.0011130000000036944
+        }
+      },
+      {
+        "cadenceMs": [
+          900
+        ],
+        "before": {
+          "stallFrames": 782,
+          "stalls": 23,
+          "maxStep": 72,
+          "backwards": 0,
+          "maxLagMs": 883.3333333333339,
+          "stepP95Ms": 0.00013099999999610645
+        },
+        "after": {
+          "stallFrames": 0,
+          "stalls": 0,
+          "maxStep": 2.1752505679414753,
+          "backwards": 0,
+          "maxLagMs": 1230.5232178399528,
+          "stepP95Ms": 0.00018099999999776628
+        }
+      },
+      {
+        "cadenceMs": [
+          250,
+          500,
+          350,
+          700,
+          250,
+          450,
+          600
+        ],
+        "before": {
+          "stallFrames": 391,
+          "stalls": 32,
+          "maxStep": 48,
+          "backwards": 0,
+          "maxLagMs": 683.3333333333339,
+          "stepP95Ms": 0.00014999999999787406
+        },
+        "after": {
+          "stallFrames": 0,
+          "stalls": 0,
+          "maxStep": 2.009828585645664,
+          "backwards": 0,
+          "maxLagMs": 889.3457441429928,
+          "stepP95Ms": 0.00018000000000029104
+        }
+      }
+    ],
+    "crowd100": {
+      "stallFrames": 0,
+      "stalls": 0,
+      "maxStep": 2.1211024550643742,
+      "backwards": 0,
+      "maxLagMs": 897.4216304464935,
+      "stepP95Ms": 0.015948000000001628
+    },
+    "browser": {
+      "scenario": "Two browser tabs, serialized 650 ms mock cloud requests, same received packets in both renderers",
+      "before": {
+        "frames": 258,
+        "stalls": 7,
+        "maxStep": 44.7449085365829
+      },
+      "after": {
+        "frames": 258,
+        "stalls": 0,
+        "maxStep": 2.1088405646476076
+      },
+      "final": {
+        "x": 1536,
+        "y": 2159.975999999972,
+        "moving": false
+      }
+    },
+    "validation": {
+      "testsPassed": 3108,
+      "apiDependencies": "passed",
+      "realWeChatOrCloudLoadTest": false
+    }
+  },
+  "boundaryReview": {
+    "date": "2026-11-12",
+    "environment": "Deterministic local simulation; no real phone or CloudBase load",
+    "lowFps": {
+      "durationMs": 40000,
+      "packetIntervalMs": 250,
+      "beforeEngineAt10Fps": {
+        "maxLagMs": 7840,
+        "jumps": 84
+      },
+      "after": [
+        {
+          "fps": 5,
+          "stallFrames": 0,
+          "stalls": 0,
+          "maxStep": 25.3614325612798,
+          "backwards": 0,
+          "maxLagMs": 409.4924663893762,
+          "stepP95Ms": 0.0037970000000022708
+        },
+        {
+          "fps": 10,
+          "stallFrames": 0,
+          "stalls": 0,
+          "maxStep": 12.203288986616826,
+          "backwards": 0,
+          "maxLagMs": 341.45725400986703,
+          "stepP95Ms": 0.0016929999999995005
+        },
+        {
+          "fps": 15,
+          "stallFrames": 0,
+          "stalls": 0,
+          "maxStep": 8.163414915476551,
+          "backwards": 0,
+          "maxLagMs": 340.08446905335586,
+          "stepP95Ms": 0.0026849999999996044
+        }
+      ]
+    },
+    "outage": {
+      "durationMs": 7000,
+      "afterOneSecond": {
+        "confirmedX": 1040,
+        "displayedX": 992.7097744861136,
+        "gapWorldUnits": 47.29022551388641
+      }
+    },
+    "validation": {
+      "testsPassed": 3112,
+      "apiDependencies": "passed",
+      "browserPreview": "passed",
+      "realWeChatOrCloudLoadTest": false
+    }
+  }
+}

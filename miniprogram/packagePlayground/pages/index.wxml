@@ -13,6 +13,11 @@
     </view>
   </view>
 
+  <view class="memorial-entry">
+    <view><view class="memorial-entry-title">纪念园</view><view class="memorial-entry-description">在草木与阳光之间，留住爱与思念。</view></view>
+    <button bindtap="openMemorial">入园散步 →</button>
+  </view>
+
   <view class="loading-card" wx:if="{{loading}}">
     <view class="remix-icon ri-loader-4-line loading-icon"></view>
     <view class="strong">正在唤醒宠物乐园...</view>

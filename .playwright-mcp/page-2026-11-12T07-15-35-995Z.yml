@@ -1,0 +1,21 @@
+- generic [active] [ref=f57e1]:
+  - generic [ref=f57e3]:
+    - generic:
+      - button "‹ 离开园区" [ref=f57e5] [cursor=pointer]
+      - generic: 时光纪念园
+      - button "设置 ⚙" [disabled]
+    - generic [ref=f57e6]:
+      - generic [ref=f57e7]:
+        - generic [ref=f57e8]: ↑
+        - generic [ref=f57e9]: ↓
+        - generic [ref=f57e10]: ←
+        - generic [ref=f57e11]: →
+      - generic [ref=f57e14]: 摇杆行走 · 双指缩放
+    - generic [ref=f57e15]:
+      - button "大地图 ↗" [disabled]
+      - button "申请时光小筑" [disabled]
+    - generic [ref=f57e17]:
+      - generic [ref=f57e18]: ✦
+      - generic [ref=f57e19]: 正在走进纪念园
+      - generic [ref=f57e20]: 阳光、草木和思念，都在这里。
+  - generic: 本地页面验证 · 示例数据 · 不发送通知

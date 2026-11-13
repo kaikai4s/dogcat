@@ -6,6 +6,11 @@
   background: linear-gradient(180deg, #fff8ec 0%, #e8f8d9 52%, #fff5e6 100%);
 }
 
+.memorial-entry { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; margin-top: 24rpx; padding: 28rpx; border-radius: 28rpx; background: #f6f4e9; border: 1rpx solid #e0e6d5; }
+.memorial-entry-title { color: #496047; font-size: 30rpx; font-weight: 700; }
+.memorial-entry-description { margin-top: 8rpx; color: #849078; font-size: 22rpx; line-height: 1.5; }
+.memorial-entry button { flex-shrink: 0; margin: 0; padding: 0 22rpx; border-radius: 30rpx; line-height: 66rpx; background: #546f51; color: #fff9e5; font-size: 24rpx; }
+
 .playground-hero {
   padding: 30rpx;
   border-radius: 36rpx;

@@ -231,6 +231,11 @@ Page({
 
   stopBubble() {},
 
+  viewMemorials() {
+    if (!this.data.openid) return
+    wx.navigateTo({ url: '/pages/admin/memorial/user-archive?openid=' + encodeURIComponent(this.data.openid) })
+  },
+
   viewPets() {
     if (!this.data.openid) return
     wx.navigateTo({ url: `/pages/admin/pets/list/index?keyword=${encodeURIComponent(this.data.openid)}` })

@@ -1,0 +1,94 @@
+{
+  "version": "garden-v1",
+  "columns": 4,
+  "rows": 2,
+  "frames": 8,
+  "cell": 128,
+  "anchor": [
+    64,
+    115
+  ],
+  "sources": {
+    "girl/walk-sw.png": {
+      "sourceSha256": "776b5a16737213c27ff4643b5b501ee35ce8d6bfbfedf4f254044f64d3892f98",
+      "sha256": "c120cf56922aca068e31c8d4c9c15ea37f245c5c47da832b03fc2eae57270732",
+      "bytes": 19674
+    },
+    "girl/walk-se.png": {
+      "sourceSha256": "f626b82def793045668a7490518a974d25bf9e363c1e75d33006cfe98eaecc87",
+      "sha256": "7981bdec222f4b39f86187450c0ac8a48682c691b750c68e9c31f70269432421",
+      "bytes": 19736
+    },
+    "girl/walk-nw.png": {
+      "sourceSha256": "50ca1dbef875beb4d1783c8760c83c45d918f19e65744a3bc20a93dc47385949",
+      "sha256": "2c5377f507243b6e99ae1eaa9dba55dc03e82ba322c3cdd4a7e60e77abb28898",
+      "bytes": 19005
+    },
+    "girl/walk-ne.png": {
+      "sourceSha256": "3de5b9d9d244e3940e8df149117dbc8effb6812f485cd12662fb274e5a22ad14",
+      "sha256": "d1fe00e967f0a937d3a8fa78e0b2e0f7a0647b680e5d6b9fd2a4e9fd8cb57e24",
+      "bytes": 17824
+    },
+    "girl/idle-sw.png": {
+      "sourceSha256": "4b552bb20a84dda34afa7dd0ac4f96a8c9c03c9085c0964ee34caaecfb58f31d",
+      "sha256": "fe68ef5156d847b43b6c5f4beed23717031885337581909cbc6b6e0e96009368",
+      "bytes": 18653
+    },
+    "girl/idle-se.png": {
+      "sourceSha256": "8844b5ded02b6310fc06feb99e997cb2693ffa4f1b16362b11f73031ec7b7c95",
+      "sha256": "681c994ff0886e150db23c9500400e7f37225e0f8558074d961d82db63fc6cf5",
+      "bytes": 17346
+    },
+    "girl/idle-nw.png": {
+      "sourceSha256": "a86229ac67dd40a678918b47983ddc17191c4d25e8f0d3621284ced8a6930367",
+      "sha256": "094dc13cd2830104e6db5df58011ab78e65d1f58da14718ddac78d3fc79c302c",
+      "bytes": 18467
+    },
+    "girl/idle-ne.png": {
+      "sourceSha256": "a417982ade5a6acec4ff3c6440d0cf1c7ea26b79a8e9c6d9aebd5cb90712447d",
+      "sha256": "5041116346d401c770d94c36f641222e43950dcb410696d6be094a8c1d70c1b4",
+      "bytes": 17995
+    },
+    "boy/walk-sw.png": {
+      "sourceSha256": "83c36e38e2795e1c7229493ebccffd4f17812c12571159b8eb94ef1abff52a31",
+      "sha256": "57db7fb0bb1ca7aa17ec0026ca12cd074323623b013f74e7228b47d5678da3ae",
+      "bytes": 19550
+    },
+    "boy/walk-se.png": {
+      "sourceSha256": "7ba76da3796f8878caa743d03408cc67fc0b33a27cc2c7b2a7bda1309e01be4d",
+      "sha256": "9f4679b0ecb58f81f251b4fe694df55ef3b112f876d285f8d893443e828f3391",
+      "bytes": 20573
+    },
+    "boy/walk-nw.png": {
+      "sourceSha256": "b02fb88757b1381ddfd7553987be79596b427276af5960fcfe448e698793a662",
+      "sha256": "a55ad25c0f0ce7597795afc84e8a3d819df7a4f0c2c434c6682653a8f0f3dce6",
+      "bytes": 18808
+    },
+    "boy/walk-ne.png": {
+      "sourceSha256": "8303561c881444fdf532411469c789b74d54fd084e6cece41b3c0e0756cb4950",
+      "sha256": "b5d46acc9b43832fcf869fddf8dc348312e9b0b870a97acec7130d82947abc3a",
+      "bytes": 16792
+    },
+    "boy/idle-sw.png": {
+      "sourceSha256": "1f84685e502d572de2f1e5738c1e3655b3faba4427713b045172a257c97637dd",
+      "sha256": "6aa2e0e28a7f813ee2e7e8e8f30e8e74448595beef9adbaf45e8afd23d3ede3c",
+      "bytes": 20592
+    },
+    "boy/idle-se.png": {
+      "sourceSha256": "cbb3093aaf0fff0172cd2fd7eea0a67a270a88b8ea7ac6ff660164696370746a",
+      "sha256": "74b49c1d8b4071ce235ea55f5dfcee92d7f82efb7de1a95a300a1a79a936b2b4",
+      "bytes": 20029
+    },
+    "boy/idle-nw.png": {
+      "sourceSha256": "c8338e035abd2167986098945b94f363d6c7e19c8d3bb96699caeb6c434b7833",
+      "sha256": "b152f2f25821726e74d9b73c663ba64799c607866f0efb4af39f535e48cfc9c9",
+      "bytes": 17919
+    },
+    "boy/idle-ne.png": {
+      "sourceSha256": "9317761aea5a9aab43b3c1dcc27a76ac54c8c3f873f4dd198aca69671a357531",
+      "sha256": "b295856680fca64498208388ed20459133629a8d0dbe80687e1a7ebe05d3dd3f",
+      "bytes": 17983
+    }
+  },
+  "assetBytes": 815450
+}

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>纪念园 · 角色动作第十版</title>
+<style>
+:root{color-scheme:light;--ink:#263d32;--muted:#708075;--line:#d8dfd4;--gold:#a78445}*{box-sizing:border-box}body{margin:0;background:#f3f2e9;color:var(--ink);font:15px/1.65 system-ui,"Microsoft YaHei",sans-serif}main{max-width:1240px;margin:auto;padding:32px 30px 50px}header{display:flex;justify-content:space-between;align-items:end;gap:24px;margin-bottom:22px}.eyebrow{font-size:11px;letter-spacing:3px;color:#8d794e}h1{font:500 32px/1.3 Georgia,"Microsoft YaHei",serif;margin:9px 0}h2{font-size:17px;margin:0}p{margin:7px 0;color:var(--muted)}.badge{border:1px solid #ccd6c9;border-radius:30px;padding:6px 16px;white-space:nowrap;font-size:12px}.garden{position:relative;overflow:hidden;border-radius:16px;background:#293e36;box-shadow:0 15px 40px #263d3214}.garden canvas{display:block;width:100%;aspect-ratio:16/9}.overlay{position:absolute;top:18px;left:20px;padding:7px 13px;background:#f5f3e9e8;border:1px solid #fff8;border-radius:9px;font-size:12px}.controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:18px 0}button,select{font:inherit;border:1px solid #cbd4c7;background:#fafbf6;color:var(--ink);padding:9px 15px;border-radius:9px;cursor:pointer}button:hover{background:#e6ecdf}button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid #a78445;outline-offset:3px}button.primary{background:#315340;color:white;border-color:#315340;touch-action:none;user-select:none}button.primary:active,button.primary[data-active=true]{background:#53724d}label{display:flex;align-items:center;gap:8px;font-size:13px}input[type=range]{accent-color:#53724d;max-width:160px}small{color:var(--muted)}.inspector{margin-top:16px;background:#fffef8;border:1px solid var(--line);border-radius:16px;overflow:hidden}.bar{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.bar .controls{padding:0}.panels{display:grid;grid-template-columns:1fr 1fr 1fr}.panel{padding:18px;border-right:1px solid var(--line);text-align:center}.panel:last-child{border-right:0}.panel canvas{width:100%;max-width:320px;aspect-ratio:1;display:block;margin:12px auto 0;border-radius:12px}.panel p{font-size:12px}.footer{padding:16px 22px;border-top:1px solid var(--line);display:flex;gap:14px;align-items:center;flex-wrap:wrap}.footer input{max-width:none;flex:1;min-width:140px}.downloads{display:flex;gap:12px;flex-wrap:wrap;margin-top:22px}a{color:#476347;text-underline-offset:4px}details{margin-top:18px;padding:15px 20px;border:1px solid var(--line);border-radius:12px}summary{cursor:pointer}details img{width:100%;display:block;margin-top:15px;border-radius:8px}.note{font-size:12px;margin-top:20px}.error{color:#993c35}@media(max-width:760px){main{padding:20px 14px}header{align-items:start}h1{font-size:24px}.badge{display:none}.panels{grid-template-columns:1fr 1fr}.panel:last-child{grid-column:1/-1;border-top:1px solid var(--line)}.panel{padding:12px}.panel canvas{margin-top:5px}.controls{gap:8px}button,select{padding:8px 10px}.overlay{top:9px;left:9px;font-size:10px}.bar{padding:14px}.footer{padding:12px}}
+</style>
+<main>
+<header><div><div class="eyebrow">MEMORIAL GARDEN · MOTION STUDY 10</div><h1>走近回忆，停留片刻</h1><p>男角色 · 左前方　行走与呼吸待机</p></div><span class="badge">动作候选 · 待审阅</span></header>
+<section class="garden"><canvas id="scene" width="1600" height="900" aria-label="纪念园实景角色移动预览"></canvas><div class="overlay" id="scene-state" role="status">正在载入园区…</div></section>
+<div class="controls"><button class="primary" id="move">按住向左前方行走</button><button id="reset">回到起点</button><label>角色大小<input id="size" type="range" min="100" max="240" value="150"></label><small>也可按住空格；松开后停步待机。此页预览一个朝向。</small></div>
+<section class="inspector"><div class="bar"><h2>动作与细节</h2><div class="controls"><button id="play">暂停</button><label>速度<select id="speed"><option value="1">正常</option><option value="0.5">半速</option><option value="0.25">四分之一速</option></select></label><label>底色<select id="bg"><option value="#293e36">草绿色</option><option value="#202733">深色</option><option value="#eee8da">浅色</option></select></label></div></div>
+<div class="panels"><section class="panel"><h2>行走</h2><canvas id="walk" width="320" height="320" aria-label="行走循环"></canvas><p>8 帧 · 每帧 140 毫秒</p></section><section class="panel"><h2>待机</h2><canvas id="idle" width="320" height="320" aria-label="待机循环"></canvas><p>8 帧 · 每帧 320 毫秒</p></section><section class="panel"><h2>手腕与双手</h2><canvas id="detail" width="320" height="320" aria-label="手部细节放大"></canvas><p><label style="justify-content:center">查看<select id="detail-action"><option value="walk">行走</option><option value="idle">待机</option></select></label></p></section></div>
+<div class="footer"><button id="prev" aria-label="上一帧">←</button><input id="frame" type="range" min="0" max="7" value="0" aria-label="逐帧检查"><button id="next" aria-label="下一帧">→</button><output id="counter">行走 1 / 8 · 待机 1 / 8</output><small>拖动时间轴可暂停并对照同序号帧</small></div></section>
+<details open><summary>行走高度修正前后对比</summary><p>左侧为原先按最低鞋底对齐；右侧稳定躯干高度。保持原有八帧姿势和统一比例。</p><img src="walk-stability-comparison.gif?v=10.1" alt="修正前与修正后行走循环对比" style="max-width:640px;margin:15px auto"></details>
+<details><summary>展开全部行走帧</summary><img src="walk-contact.jpg?v=10.1" alt="八帧行走接触表"></details>
+<details><summary>展开全部待机帧</summary><img src="idle-contact.jpg" alt="八帧待机接触表"></details>
+<div class="downloads"><a href="boy-sw-actions-v10.zip" download>下载完整素材包</a><a href="cloud-upload/walk-sw.png" download>行走透明图集</a><a href="cloud-upload/idle-sw.png" download>待机透明图集</a><a href="actions-preview.gif">循环动图</a><a href="manifest.json">播放参数</a></div>
+<p class="note" id="status" role="status">正在载入动作…</p>
+</main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id), images={}, durations={walk:140,idle:320};
+let ready=false,paused=false,manual=0,last=null,time=0,held=false,velocity=0,walkPhase=0,idleTime=0;
+let x=970,y=610,frameWalk=0,frameIdle=0;
+function load(name,src){return new Promise((resolve,reject)=>{const im=new Image();im.onload=()=>{images[name]=im;resolve()};im.onerror=()=>reject(new Error('无法加载 '+src));im.src=src;});}
+Promise.all([load('walk','cloud-upload/walk-sw.png?v=10.1'),load('idle','cloud-upload/idle-sw.png?v=10.1'),load('garden','garden.jpg?v=10.1')]).then(()=>{ready=true;$('status').textContent='已修正按最低鞋底对齐造成的上下跳动。当前仍为男角色左前方候选，尚未接入正式园区。';}).catch(e=>{$('status').textContent=e.message;$('status').className='note error';});
+function sprite(ctx,action,frame,px,py,size){ctx.drawImage(images[action],frame%4*256,Math.floor(frame/4)*256,256,256,px-size/2,py-size*230/256,size,size);}
+function panel(action,frame){const c=$(action),ctx=c.getContext('2d');ctx.fillStyle=$('bg').value;ctx.fillRect(0,0,320,320);ctx.strokeStyle='#82927e55';ctx.beginPath();ctx.moveTo(24,288);ctx.lineTo(296,288);ctx.stroke();sprite(ctx,action,frame,160,288,300);}
+function draw(dt){if(!ready)return;const speed=Number($('speed').value);if(!paused)time+=dt*speed;
+frameWalk=paused?manual:Math.floor(time/durations.walk)%8;frameIdle=paused?manual:Math.floor(time/durations.idle)%8;
+panel('walk',frameWalk);panel('idle',frameIdle);
+const da=$('detail-action').value,df=da==='walk'?frameWalk:frameIdle,dc=$('detail').getContext('2d');dc.fillStyle=$('bg').value;dc.fillRect(0,0,320,320);dc.drawImage(images[da],df%4*256+62,Math.floor(df/4)*256+90,132,100,0,38,320,242);
+const active=held&&!paused&&x>470;const target=active?100:0;if(!paused){velocity+=(target-velocity)*Math.min(1,dt/110);if(velocity<.6)velocity=0;const distance=velocity*dt/1000;x-=distance*.89;y+=distance*.45;walkPhase=(walkPhase+distance/82)%1;if(!velocity)idleTime+=dt;else idleTime=0;}
+const sc=$('scene').getContext('2d');sc.drawImage(images.garden,0,0,1600,900);const sz=Number($('size').value);sc.fillStyle='#26371e38';sc.beginPath();sc.ellipse(x,y+1,sz*.15,sz*.04,0,0,Math.PI*2);sc.fill();const action=velocity>.6?'walk':'idle',sf=paused?manual:action==='walk'?Math.floor(walkPhase*8)%8:Math.floor(idleTime/durations.idle)%8;sprite(sc,action,sf,x,y,sz);
+$('scene-state').textContent=paused?'已暂停 · 可逐帧检查':x<=470?'已到预览边界 · 点击回到起点':action==='walk'?'行走 · 向左前方':'待机 · 呼吸与披风轻摆';
+$('counter').textContent=`行走 ${frameWalk+1} / 8 · 待机 ${frameIdle+1} / 8`;$('frame').value=paused?manual:frameWalk;
+}
+function hold(value){held=value;$('move').dataset.active=String(value);}
+$('move').onpointerdown=e=>{e.preventDefault();$('move').setPointerCapture(e.pointerId);hold(true);};
+for(const event of ['pointerup','pointercancel','lostpointercapture'])$('move').addEventListener(event,()=>hold(false));
+window.addEventListener('keydown',e=>{if(e.code==='Space'&&!['INPUT','SELECT','BUTTON','TEXTAREA','A'].includes(e.target.tagName)){e.preventDefault();hold(true);}});
+window.addEventListener('keyup',e=>{if(e.code==='Space')hold(false);});window.addEventListener('blur',()=>hold(false));document.addEventListener('visibilitychange',()=>{if(document.hidden){hold(false);velocity=0;}last=null;});
+$('reset').onclick=()=>{x=970;y=610;velocity=0;walkPhase=0;idleTime=0;hold(false);};
+function seek(n){paused=true;hold(false);manual=(n+8)%8;$('play').textContent='播放';draw(0);}
+$('play').onclick=()=>{paused=!paused;if(paused){manual=frameWalk;hold(false);}else time=manual*durations.walk;$('play').textContent=paused?'播放':'暂停';};
+$('frame').oninput=()=>seek(Number($('frame').value));$('prev').onclick=()=>seek((paused?manual:frameWalk)-1);$('next').onclick=()=>seek((paused?manual:frameWalk)+1);
+function tick(now){const dt=last===null?0:Math.min(now-last,60);last=now;draw(dt);requestAnimationFrame(tick);}requestAnimationFrame(tick);
+</script>
+</html>

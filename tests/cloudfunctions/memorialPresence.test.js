@@ -1,0 +1,111 @@
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const { createCollectionStore } = require('./helpers')
+const create = require('../../cloudfunctions/api/services/memorialPresence')
+const { COLLECTION, SCENE, TTL, SHARDS, playerId, shardId } = create.constants
+const initial = { x: 1536, y: 1430, gender: 'boy', direction: 'sw', moving: false, activity: 'walk' }
+function fixture() {
+  let time = 100000
+  const db = createCollectionStore(), rates = [], users = []
+  const service = create({ db, nowMs: () => time, getUser: async id => { users.push(id); if (id === 'blocked') throw new Error('用户已禁用') }, checkRateLimit: async (...args) => rates.push(args) })
+  const join = (who, n = 1, extra = {}) => service.handle(who, 'joinPresence', { sceneId: SCENE, requestId: 'request_123456789_' + n, clientId: 'client_1234567890', joinSeq: n, state: initial, ...extra })
+  const sync = (who, session, seq, state = initial, action = 'syncPresence') => service.handle(who, action, { sceneId: SCENE, session, seq, state })
+  const records = () => db.state[COLLECTION].filter(x => x.kind === 'scene').flatMap(x => Object.values(x.records || {}))
+  return { db, service, join, sync, records, rates, users, advance: ms => { time += ms } }
+}
+test('presence exposes only allowlisted anonymous state and rejects invalid sessions/rooms', async () => {
+  const f = fixture(), a = await f.join('private-openid', 1, { state: { ...initial, secret: 'private biography', ownerOpenid: 'sensitive' } })
+  const publicData = JSON.stringify(f.db.state[COLLECTION].filter(x => x.kind === 'scene'))
+  for (const secret of ['private-openid', 'private biography', 'sensitive', a.session, 'client_1234567890']) assert.ok(!publicData.includes(secret))
+  assert.equal(f.records().length, 1)
+  assert.equal((await f.sync('other', a.session, 1)).replaced, true)
+  await assert.rejects(f.service.handle('private-openid', 'joinPresence', { sceneId: 'other' }), /版本/)
+  await assert.rejects(f.join('blocked'), /禁用/)
+  await assert.rejects(f.sync('private-openid', 'bad', 1), /凭据/)
+  for (const state of [{ ...initial, x: NaN }, { ...initial, y: 99999 }, { ...initial, direction: 'constructor' }, { ...initial, activity: 'private text' }]) await assert.rejects(f.join('bad', 1, { state }), /状态/)
+})
+test('duplicates, reordered packets, old leaves and delayed old joins cannot overwrite a new session', async () => {
+  const f = fixture(), a = await f.join('a')
+  assert.equal((await f.join('a')).session, a.session)
+  f.advance(250)
+  assert.equal((await f.sync('a', a.session, 3, { ...initial, x: 1540 })).accepted, true)
+  f.advance(250)
+  await f.sync('a', a.session, 2, { ...initial, x: 1520 })
+  assert.equal(f.records()[0].x, 1540)
+  const b = await f.join('a', 2)
+  assert.notEqual(b.session, a.session)
+  assert.equal((await f.join('a', 1)).replaced, true)
+  assert.equal((await f.sync('a', a.session, 99, initial, 'leavePresence')).replaced, true)
+  assert.equal(f.records()[0].seq, 0)
+  await f.sync('a', b.session, 2, initial, 'leavePresence')
+  f.advance(250)
+  assert.equal((await f.sync('a', b.session, 1)).rejoin, true)
+  assert.equal(f.records().length, 0)
+})
+test('sender sample time is optional display data and never replaces server TTL or rate-limit time', async () => {
+  const f = fixture(), a = await f.join('a', 1, { state: { ...initial, sampledAt: 9000000000000 } })
+  assert.equal(f.records()[0].sampledAt, 9000000000000)
+  assert.equal(f.records()[0].updatedAt, 100000)
+  assert.equal((await f.sync('a', a.session, 1, { ...initial, sampledAt: 1 })).accepted, false)
+  f.advance(650)
+  assert.equal((await f.sync('a', a.session, 2, { ...initial, sampledAt: 1 })).accepted, true)
+  assert.equal(f.records()[0].sampledAt, 1)
+  assert.equal(f.records()[0].updatedAt, 100650)
+  for (const sampledAt of [NaN, -1, .5, '100', {}, Number.MAX_SAFE_INTEGER + 1]) {
+    await assert.rejects(f.sync('a', a.session, 3, { ...initial, sampledAt }), /状态/)
+  }
+  f.advance(TTL + 1); await f.join('a', 2)
+  assert.equal(f.records().length, 1)
+  assert.equal(f.records()[0].sampledAt, undefined)
+})
+test('packet pacing is separate from business rate limits and expires abandoned sessions', async () => {
+  const f = fixture(), a = await f.join('a')
+  assert.equal((await f.sync('a', a.session, 1)).accepted, false)
+  for (let i = 0; i < 100; i++) { f.advance(250); assert.equal((await f.sync('a', a.session, i + 2)).accepted, true) }
+  assert.equal(f.users.length, 1); assert.equal(f.rates.length, 1)
+  f.advance(3600000)
+  assert.equal((await f.sync('a', a.session, 200)).rejoin, true)
+})
+test('100 users remain distinct across shard updates, stale entries are pruned and scene revisions roll back atomically', async () => {
+  const f = fixture()
+  const sessions = await Promise.all(Array.from({ length: 100 }, (_, i) => f.join('user-' + i)))
+  for (let frame = 1; frame <= 4; frame++) {
+    f.advance(250)
+    await Promise.all(sessions.map((s, i) => f.sync('user-' + i, s.session, frame, { ...initial, x: 1500 + frame * 20, moving: true })))
+  }
+  assert.equal(f.records().length, 100)
+  assert.ok(f.records().every(r => r.seq === 4 && r.x === 1580))
+  assert.ok(f.db.state[COLLECTION].filter(r => r.kind === 'scene').length <= SHARDS)
+  f.advance(TTL + 1)
+  await f.sync('user-0', sessions[0].session, 5)
+  const sameShard = f.db.state[COLLECTION].find(x => x._id === shardId(playerId('user-0')))
+  assert.equal(Object.keys(sameShard.records).length, 1)
+  await assert.rejects(f.db.runTransaction(async tx => { await f.service.changed(tx); throw new Error('rollback') }), /rollback/)
+  assert.ok(!f.db.state[COLLECTION].some(r => r._id === 'world_' + SCENE))
+  await f.db.runTransaction(tx => f.service.changed(tx))
+  assert.equal(f.db.state[COLLECTION].find(r => r._id === 'world_' + SCENE).revision, 1)
+})
+test('database rule protects sessions even from their owner and disallows all client writes', () => {
+  const rule = require('../../cloudfunctions/api/database-rules/pet_memorial_live.json')
+  assert.equal(rule.write, false)
+  assert.equal(rule.read, "auth != null && doc.kind == 'scene'")
+  const bounds = require('../../cloudfunctions/api/config/memorial-presence.json'), template = require('../../miniprogram/packageMemorial/scene/world-template')
+  assert.equal(bounds.version, template.version)
+  assert.equal(bounds.maxX, Math.max(...template.boundary.map(p => p.x)))
+  assert.equal(bounds.maxY, Math.max(...template.boundary.map(p => p.y)))
+})
+
+test('switching gardens removes the old room member atomically and rejects packets from the old room', async () => {
+  const f=fixture(), sceneId='garden_'+'a'.repeat(32)
+  f.db.state.platform_configs=[{_id:sceneId,key:'memorial_garden',template:SCENE,name:'第二园区',accepting:true,revision:1}]
+  const first=await f.join('a')
+  const second=await f.join('a',2,{sceneId})
+  assert.equal(second.sceneId,sceneId)
+  assert.equal(Object.keys(f.db.state[COLLECTION].find(d=>d._id===shardId(playerId('a'))).records).length,0)
+  assert.equal(Object.keys(f.db.state[COLLECTION].find(d=>d._id===shardId(playerId('a'),sceneId)).records).length,1)
+  f.advance(250)
+  assert.equal((await f.sync('a',first.session,10)).replaced,true)
+  assert.equal((await f.sync('a',second.session,1)).replaced,true)
+  assert.equal((await f.service.handle('a','syncPresence',{sceneId,session:second.session,seq:1,state:initial})).accepted,true)
+  await assert.rejects(f.join('a',2),/园区不一致/)
+})

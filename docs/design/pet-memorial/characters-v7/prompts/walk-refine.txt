@@ -1,0 +1,12 @@
+Refine this complete eight-frame character animation without changing the character design, hands, scale, camera or 4x2 layout. The hands now look good and naturally connected: keep this hand clarity and anatomical wrist connections throughout. Preserve all eight heads, hairstyles, blank glowing faces, outfit and golden materials exactly.
+Repair the WALKING SEQUENCE, because cells 1 and 3 currently repeat the same step. Read cells 1,2,3,4 across top row, then 5,6,7,8 across bottom row.
+Cell 1: near foot forward on heel, far foot behind on toe. Near arm BACK, far arm forward.
+Cell 2: near leg accepts weight, far heel lifts and foot starts traveling forward under pelvis. Hands move naturally toward hips.
+Cell 3: near leg is nearly straight supporting under pelvis, far thigh and bent knee pass in front, far boot lifted a little off the ground. Both hands pass beside hips. THIS MUST NOT REPEAT CELL 1.
+Cell 4: near foot approaches rear push-off, far leg extends forward toward its next heel strike.
+Cell 5: opposite contact: near foot behind, far foot forward. Near arm clearly FORWARD, far arm back.
+Cell 6: far leg accepts weight while near foot lifts and travels forward.
+Cell 7: far leg nearly straight supporting under pelvis, near thigh and bent knee pass forward, near boot off the ground. Both hands pass beside hips. This is the opposite passing pose of cell 3.
+Cell 8: far foot approaches rear push-off, near leg extends forward to heel strike, seamlessly returning to cell 1.
+Keep the relaxed, small step length. Both boot toes consistently point diagonally down-left, never in reverse. Maintain boot volume, knee length, stable pelvis and subtle head bob. Hands swing from shoulders opposite their same-side legs and remain clearly visible connected to wrists, no clasped hands or poses like presenting objects. Render arms, wrists, hands as complete connected anatomy; no pasted-on pieces.
+Exactly the same cell sizes and eight complete figures, all fully in bounds. Real transparent background. No text, borders or shadows. All pose changes must be fully rendered into complete coherent character frames.

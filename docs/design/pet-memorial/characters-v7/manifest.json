@@ -1,0 +1,153 @@
+{
+  "modelRequested": "gpt-image-2.6-sunburst",
+  "scope": "boy/sw",
+  "method": "Complete model-generated frames, equal-cell slicing only; no transferred hands, joint warping, or per-frame rescaling",
+  "source": "raw/walk-preserve-motion.png",
+  "frameSize": [
+    312,
+    416
+  ],
+  "columns": 4,
+  "rows": 2,
+  "frameCount": 8,
+  "frameDurationMs": 125,
+  "idleUnchanged": true,
+  "frames": [
+    {
+      "frame": 1,
+      "bbox": [
+        39,
+        15,
+        259,
+        385
+      ],
+      "alphaRange": [
+        0,
+        255
+      ],
+      "sha256": "b230c9342b7542c896c281c4f1dc29e0a5cbe210b2b1f1b3872054b71f28b3cf"
+    },
+    {
+      "frame": 2,
+      "bbox": [
+        45,
+        15,
+        267,
+        388
+      ],
+      "alphaRange": [
+        0,
+        255
+      ],
+      "sha256": "f519dcbe977a21d45b06db9752851d80f40c28384e35bef74e9d97ebdad2a9b9"
+    },
+    {
+      "frame": 3,
+      "bbox": [
+        55,
+        15,
+        274,
+        388
+      ],
+      "alphaRange": [
+        0,
+        255
+      ],
+      "sha256": "1d832357e5ab9f6227dbd08c6e8156ddef7e0c2b29700fa5a53329014b4a272a"
+    },
+    {
+      "frame": 4,
+      "bbox": [
+        53,
+        14,
+        276,
+        389
+      ],
+      "alphaRange": [
+        0,
+        255
+      ],
+      "sha256": "2ee3786ac7d44347a4da516ec4ca29a5a3d1812b885d04f36cd91eda9f7df379"
+    },
+    {
+      "frame": 5,
+      "bbox": [
+        47,
+        28,
+        260,
+        370
+      ],
+      "alphaRange": [
+        0,
+        255
+      ],
+      "sha256": "fb536902ce2f565c1bbe9de0b833cdd3de79931326fa158bac64b5f8d1b41c78"
+    },
+    {
+      "frame": 6,
+      "bbox": [
+        52,
+        28,
+        264,
+        370
+      ],
+      "alphaRange": [
+        0,
+        255
+      ],
+      "sha256": "09dd03a0238dce65d97b1fa53b106488004c892266a6069d56274c3880cb9fce"
+    },
+    {
+      "frame": 7,
+      "bbox": [
+        60,
+        28,
+        269,
+        376
+      ],
+      "alphaRange": [
+        0,
+        255
+      ],
+      "sha256": "18e55dad37115a7045278cd81e0e142bccfa2526c707e2bc0aad36711f8d3466"
+    },
+    {
+      "frame": 8,
+      "bbox": [
+        63,
+        28,
+        271,
+        376
+      ],
+      "alphaRange": [
+        0,
+        255
+      ],
+      "sha256": "f945022b2ea8488d6b4f8b591dfea20febaad73c9e9d38ebd08279a3fe73185e"
+    }
+  ],
+  "visualStatus": "full-frame-redraw-ready-for-user-review",
+  "productionIntegrated": false,
+  "generationCalls": 3,
+  "review": {
+    "selected": "walk-preserve-motion.png",
+    "observations": [
+      "both hands rendered as connected continuations of forearms",
+      "visible palm and finger silhouettes throughout eight frames",
+      "selected output follows the accepted walk pose sequence more closely than the first two attempts"
+    ],
+    "rejectedCandidates": {
+      "walk-redrawn.png": "Several repeated step poses",
+      "walk-redrawn-v2.png": "Repeated steps worsened; upper hair glow touches top edge"
+    },
+    "limitations": [
+      "newly rendered hand shape still needs user aesthetic review",
+      "no formal garden integration or movement synchronization test"
+    ]
+  },
+  "rawOutputUnmodified": true,
+  "technicalChecks": {
+    "allFramesHaveTransparency": true,
+    "noClippingAboveAlpha32": true
+  }
+}

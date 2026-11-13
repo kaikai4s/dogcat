@@ -38,6 +38,34 @@ async function main() {
   assert.deepEqual(filters.status.$in, ['paid'])
   assert.equal(filters._id.$gt, 'cursor')
 
+  // Exercise the installed SDK's real transaction serializer. A plain object
+  // becomes publicContent.images/text dotted writes, which fail when the stored
+  // publicContent is null. Explicit set must replace the entire snapshot.
+  const Database = db._db.constructor, Request = Database.reqClass, writes = []
+  const snapshot = { text: '这是我们的回忆', images: [{ uploadId: 'image-1', entrance: true }],
+    videos: [{ uploadId: 'video-1', entrance: false }], music: null }
+  Database.reqClass = class {
+    async send(action, parameters) {
+      if (action === 'database.startTransaction') return { transactionId: 'local-memory-review' }
+      if (action === 'database.commitTransaction' || action === 'database.abortTransaction') return {}
+      assert.equal(action, 'database.modifyDocument')
+      assert.equal(parameters.transactionId, 'local-memory-review')
+      writes.push(JSON.parse(parameters.data))
+      return { data: { updated: 1 }, requestId: 'local' }
+    }
+  }
+  try {
+    const tx = await db.startTransaction(), doc = tx.collection('dependency_checks').doc('memory')
+    await doc.update({ data: { publicContent: snapshot } })
+    await doc.update({ data: { status: 'approved', publicContent: db.command.set(snapshot) } })
+    await tx.commit()
+    assert.ok(Object.hasOwn(writes[0].$set, 'publicContent.images'))
+    assert.deepEqual(writes[1].$set, { status: 'approved', publicContent: snapshot })
+    assert.ok(Object.keys(writes[1].$set).every(key => !key.startsWith('publicContent.')))
+  } finally {
+    Database.reqClass = Request
+  }
+
   const server = http.createServer((request, response) => {
     if (request.url === '/redirect') {
       response.writeHead(302, { Location: '/echo' })
@@ -60,7 +88,7 @@ async function main() {
   } finally {
     await new Promise(resolve => server.close(resolve))
   }
-  console.log('API dependency compatibility passed: SDK query serialization, Lodash function/default exports, Axios JSON and redirects.')
+  console.log('API dependency compatibility passed: SDK query/transaction snapshot serialization, Lodash function/default exports, Axios JSON and redirects.')
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1 })

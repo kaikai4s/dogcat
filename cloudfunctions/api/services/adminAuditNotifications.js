@@ -20,6 +20,9 @@ async function isAuditTargetHandled(db, auditType, targetId) {
     supply_reimbursement: 'staff_supply_reimbursements',
     deposit_refund: 'staff_deposits',
     community_application: 'platform_configs',
+    memorial_application: 'platform_configs',
+    memorial_memory: 'platform_configs',
+    memorial_portrait: 'platform_configs',
     appearance_customization: 'pet_playground_appearance_requests',
     incident: 'order_incidents',
     mall_after_sale: 'mall_orders',
@@ -28,7 +31,8 @@ async function isAuditTargetHandled(db, auditType, targetId) {
   }
   const collection = collections[auditType]
   if (!collection) return false
-  const doc = await readOptionalDocument(db, collection, targetId)
+  const lookupId = ['memorial_memory', 'memorial_portrait'].includes(auditType) ? targetId.split(':')[0] : targetId
+  const doc = await readOptionalDocument(db, collection, lookupId)
   if (!doc) return true
   if (auditType === 'staff_audit') return doc.auditStatus !== 'pending'
   if (auditType === 'staff_video') return doc.videoAuditStatus !== 'pending'
@@ -37,6 +41,8 @@ async function isAuditTargetHandled(db, auditType, targetId) {
   if (auditType === 'withdraw') return doc.status !== 'pending'
   if (auditType === 'supply_reimbursement') return doc.status !== 'pending'
   if (auditType === 'deposit_refund') return doc.refundStatus !== 'requested'
+  if (['memorial_memory', 'memorial_portrait'].includes(auditType)) return doc.status !== 'pending' || doc.revision !== Number(targetId.split(':')[1])
+  if (auditType === 'memorial_application') return doc.status !== 'pending'
   if (auditType === 'community_application') return doc.status !== 'pending'
   if (auditType === 'appearance_customization') return !['pending', 'processing'].includes(doc.status)
   if (auditType === 'incident') return doc.status !== 'open'

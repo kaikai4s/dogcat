@@ -1,0 +1,10 @@
+{
+  "navigationBarTitleText": "纪念园",
+  "navigationBarBackgroundColor": "#f6f4e9",
+  "navigationBarTextStyle": "black",
+  "backgroundColor": "#d9e3d1",
+  "disableScroll": true,
+  "pageOrientation": "auto",
+  "usingComponents": {},
+  "navigationStyle": "custom"
+}

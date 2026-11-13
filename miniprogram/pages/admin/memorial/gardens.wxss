@@ -1,0 +1,2 @@
+@import "./index.wxss";
+.garden-name-input{box-sizing:border-box;width:100%;padding:20rpx;min-height:88rpx;border:1rpx solid #dbe2d3;background:#f4f6ee;border-radius:16rpx;font-size:28rpx;margin:24rpx 0}.garden-accepting{display:flex;justify-content:space-between;align-items:center;gap:20rpx;font-size:28rpx}.garden-accepting>view{flex:1;min-width:0}

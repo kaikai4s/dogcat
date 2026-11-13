@@ -1,0 +1,267 @@
+{
+  "version": 6,
+  "scope": "boy/sw",
+  "sourceModel": "gpt-image-2.6-sunburst",
+  "newGenerationCalls": 0,
+  "method": "Extract the exact user-approved idle hands with cuffs; rigid rotation and fixed per-side scale onto each accepted walk wrist; alpha composite only",
+  "handScale": {
+    "near": 1.12,
+    "far": 1.08
+  },
+  "frameSize": [
+    312,
+    416
+  ],
+  "frameCount": 8,
+  "columns": 4,
+  "rows": 2,
+  "productionIntegrated": false,
+  "animations": {
+    "walk": {
+      "atlas": "walk-sw.png",
+      "frameDurationMs": 125,
+      "frames": [
+        {
+          "frame": 1,
+          "bbox": [
+            53,
+            25,
+            252,
+            373
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "d596c5c78adc4a88109bae9357664bc9559f071afb23e5649190cff841f7ff32"
+        },
+        {
+          "frame": 2,
+          "bbox": [
+            57,
+            25,
+            255,
+            375
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "8fb46b5537a1d5f8677ad4c9eab5b7a4757ca355f230da983b2366cf8a31c660"
+        },
+        {
+          "frame": 3,
+          "bbox": [
+            61,
+            25,
+            259,
+            375
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "5a4023e07e3cb9a830a87f76f5875ae07fafd018e84df9d71e8600d40072eb0f"
+        },
+        {
+          "frame": 4,
+          "bbox": [
+            62,
+            25,
+            259,
+            374
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "c7bb0491617439c78ed59ec6f328f4ca860616b026a3113983202f505a4f66c5"
+        },
+        {
+          "frame": 5,
+          "bbox": [
+            57,
+            26,
+            257,
+            359
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "923ac69d387ab5803832b7d9ba3a87c9701bda2807d8f033e51f7e4822598663"
+        },
+        {
+          "frame": 6,
+          "bbox": [
+            60,
+            25,
+            257,
+            358
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "80b30e8319b42483e2ba8e7647d2d3fb860bfdcf45eff356f60986fa6817e6a0"
+        },
+        {
+          "frame": 7,
+          "bbox": [
+            63,
+            25,
+            260,
+            361
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "45673f89a1854a6e39081cb66cb6481b368384ad57f9051d73e5dfa5fee9296f"
+        },
+        {
+          "frame": 8,
+          "bbox": [
+            65,
+            26,
+            261,
+            361
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "a85fe092875f1cd50a06e0061b38144972ae242ad94a9e900a37612d8717e2f2"
+        }
+      ]
+    },
+    "idle": {
+      "atlas": "idle-sw.png",
+      "frameDurationMs": 300,
+      "frames": [
+        {
+          "frame": 1,
+          "bbox": [
+            56,
+            12,
+            263,
+            385
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "c43ccad8bbb5cdfb42c67247aab570fb2025d6e8adcbe82378f2cb0d8bce5f49"
+        },
+        {
+          "frame": 2,
+          "bbox": [
+            57,
+            12,
+            264,
+            385
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "fb300c7d19c725deacbaa7d0b7c158882c9fcc2df0ed569613dd6e6705125054"
+        },
+        {
+          "frame": 3,
+          "bbox": [
+            57,
+            12,
+            265,
+            385
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "88ee6ba7011be77ada34b19c20aad16e0213d8a5b9ef130e15bdf782add51483"
+        },
+        {
+          "frame": 4,
+          "bbox": [
+            55,
+            11,
+            270,
+            385
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "d5404bcef86cede6d083b8d1a486535c23431b84f388bfcc658b6c68113fef2c"
+        },
+        {
+          "frame": 5,
+          "bbox": [
+            56,
+            12,
+            264,
+            385
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "ace6387f08929faf95be573d8d7f7e257f70a93e3f7cdc2633a6694fcd9cfd90"
+        },
+        {
+          "frame": 6,
+          "bbox": [
+            58,
+            12,
+            262,
+            385
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "c889a26768a64a10c7fe498decb8305d61fbcabbf1a434c44f7e781c6864199f"
+        },
+        {
+          "frame": 7,
+          "bbox": [
+            57,
+            12,
+            262,
+            385
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "8a6bc9ea3b9ad083697bb17f23ed28c3dc3aaca8dc93b9c11329defa88b80fd9"
+        },
+        {
+          "frame": 8,
+          "bbox": [
+            58,
+            12,
+            262,
+            385
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "03302bd280c8333dbf5e877c6e09f23420980ea9e38695f803854d7b37ae6938"
+        }
+      ]
+    }
+  },
+  "idleIdenticalToApprovedV5": true,
+  "verification": {
+    "outsideHandOverlayUnchanged": true,
+    "handsPresentInAllFrames": true,
+    "clipping": false,
+    "sourceOfHands": "v5 idle first frame",
+    "userAcceptancePending": "walk hand visibility update"
+  },
+  "status": "rejected-by-user",
+  "userFeedback": "Transferred hands do not align with wrists; user requested complete regeneration."
+}

@@ -1,0 +1,106 @@
+[
+  {
+    "frame": 1,
+    "nearWristAngle": [
+      199,
+      218,
+      -13
+    ],
+    "farWristAngle": [
+      92,
+      207,
+      13
+    ]
+  },
+  {
+    "frame": 2,
+    "nearWristAngle": [
+      188,
+      220,
+      -5
+    ],
+    "farWristAngle": [
+      103,
+      208,
+      7
+    ]
+  },
+  {
+    "frame": 3,
+    "nearWristAngle": [
+      180,
+      222,
+      0
+    ],
+    "farWristAngle": [
+      115,
+      210,
+      1
+    ]
+  },
+  {
+    "frame": 4,
+    "nearWristAngle": [
+      168,
+      220,
+      12
+    ],
+    "farWristAngle": [
+      123,
+      205,
+      -5
+    ]
+  },
+  {
+    "frame": 5,
+    "nearWristAngle": [
+      148,
+      218,
+      23
+    ],
+    "farWristAngle": [
+      128,
+      208,
+      -12
+    ]
+  },
+  {
+    "frame": 6,
+    "nearWristAngle": [
+      157,
+      220,
+      15
+    ],
+    "farWristAngle": [
+      115,
+      207,
+      -7
+    ]
+  },
+  {
+    "frame": 7,
+    "nearWristAngle": [
+      180,
+      221,
+      3
+    ],
+    "farWristAngle": [
+      117,
+      210,
+      2
+    ]
+  },
+  {
+    "frame": 8,
+    "nearWristAngle": [
+      197,
+      218,
+      -10
+    ],
+    "farWristAngle": [
+      104,
+      206,
+      9
+    ]
+  }
+]

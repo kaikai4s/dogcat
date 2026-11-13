@@ -1,0 +1,264 @@
+{
+  "modelRequested": "gpt-image-2.6-sunburst",
+  "basis": "User accepted v4 walk on 2026-11-11; preserve gait and refine hands, add idle",
+  "scope": "boy/sw only",
+  "status": "hand-repair-and-idle-ready-for-user-review",
+  "productionIntegrated": false,
+  "cellSize": [
+    312,
+    416
+  ],
+  "columns": 4,
+  "rows": 2,
+  "frameCount": 8,
+  "animations": {
+    "walk": {
+      "atlas": "walk-sw.png",
+      "frameDurationMs": 125,
+      "cycleDurationMs": 1000,
+      "frames": [
+        {
+          "frame": 1,
+          "bboxAlphaAbove32": [
+            53,
+            25,
+            252,
+            373
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "2a3461a4d5ca558ac13cdcaa8e64b3366cd665994d989ceacfea5a6a53009003"
+        },
+        {
+          "frame": 2,
+          "bboxAlphaAbove32": [
+            57,
+            25,
+            255,
+            375
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "97bf3144637f46b5f293069d52e3534e2447b48aafe4c96a61055a17b7470d06"
+        },
+        {
+          "frame": 3,
+          "bboxAlphaAbove32": [
+            61,
+            25,
+            259,
+            375
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "20f94217fc907d410403034faa61e22a5642879ba118b4979a7843e6e97bf337"
+        },
+        {
+          "frame": 4,
+          "bboxAlphaAbove32": [
+            62,
+            25,
+            259,
+            374
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "33ddbfb5588c05fa346a9318aca5ba6b2b47cc75749b0bf7a6208554a0c4c3f8"
+        },
+        {
+          "frame": 5,
+          "bboxAlphaAbove32": [
+            57,
+            26,
+            257,
+            359
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "c015098c12ac0eac9d94d61a3f5a9f0d3c14e6639e9c088e22fd090a25d9ba85"
+        },
+        {
+          "frame": 6,
+          "bboxAlphaAbove32": [
+            60,
+            25,
+            257,
+            358
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "6f40ac29ec9123923526c34f6999c45f5e7262485fb3cf9740378f0a0646c128"
+        },
+        {
+          "frame": 7,
+          "bboxAlphaAbove32": [
+            63,
+            25,
+            260,
+            361
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "820574e554a98763fc95b94585a0679477d4258fdc772a08352dedd6e1a7b633"
+        },
+        {
+          "frame": 8,
+          "bboxAlphaAbove32": [
+            65,
+            26,
+            261,
+            361
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "3d60fd29988acff2dc4dac26b464aeea631d0c54da4cb048d83d0d062aaa99e5"
+        }
+      ],
+      "uniqueFrames": 8,
+      "noClippingAlphaAbove32": true
+    },
+    "idle": {
+      "atlas": "idle-sw.png",
+      "frameDurationMs": 300,
+      "cycleDurationMs": 2400,
+      "frames": [
+        {
+          "frame": 1,
+          "bboxAlphaAbove32": [
+            56,
+            12,
+            263,
+            385
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "c43ccad8bbb5cdfb42c67247aab570fb2025d6e8adcbe82378f2cb0d8bce5f49"
+        },
+        {
+          "frame": 2,
+          "bboxAlphaAbove32": [
+            57,
+            12,
+            264,
+            385
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "fb300c7d19c725deacbaa7d0b7c158882c9fcc2df0ed569613dd6e6705125054"
+        },
+        {
+          "frame": 3,
+          "bboxAlphaAbove32": [
+            57,
+            12,
+            265,
+            385
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "88ee6ba7011be77ada34b19c20aad16e0213d8a5b9ef130e15bdf782add51483"
+        },
+        {
+          "frame": 4,
+          "bboxAlphaAbove32": [
+            55,
+            11,
+            270,
+            385
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "d5404bcef86cede6d083b8d1a486535c23431b84f388bfcc658b6c68113fef2c"
+        },
+        {
+          "frame": 5,
+          "bboxAlphaAbove32": [
+            56,
+            12,
+            264,
+            385
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "ace6387f08929faf95be573d8d7f7e257f70a93e3f7cdc2633a6694fcd9cfd90"
+        },
+        {
+          "frame": 6,
+          "bboxAlphaAbove32": [
+            58,
+            12,
+            262,
+            385
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "c889a26768a64a10c7fe498decb8305d61fbcabbf1a434c44f7e781c6864199f"
+        },
+        {
+          "frame": 7,
+          "bboxAlphaAbove32": [
+            57,
+            12,
+            262,
+            385
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "8a6bc9ea3b9ad083697bb17f23ed28c3dc3aaca8dc93b9c11329defa88b80fd9"
+        },
+        {
+          "frame": 8,
+          "bboxAlphaAbove32": [
+            58,
+            12,
+            262,
+            385
+          ],
+          "alphaRange": [
+            0,
+            255
+          ],
+          "sha256": "03302bd280c8333dbf5e877c6e09f23420980ea9e38695f803854d7b37ae6938"
+        }
+      ],
+      "uniqueFrames": 8,
+      "noClippingAlphaAbove32": true
+    }
+  },
+  "processing": {
+    "walk": "Generated enlarged wrist/hand details, mapped back and composited through local feathered masks; exact pixel equality outside masks",
+    "idle": "Generated eight idle poses; boots below y=284 locked to first generated frame, blended y=272..284; no limb deformation or synthesized inbetween frames"
+  },
+  "walkOutsideHandMaskIdentical": true,
+  "idleBootPixelsIdentical": true
+}

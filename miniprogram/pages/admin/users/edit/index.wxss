@@ -494,3 +494,5 @@ checkbox .wx-checkbox-input.wx-checkbox-input-checked::before {
   font-size: 28rpx;
   border-radius: 999rpx;
 }
+
+.user-memorial-card{padding:28rpx;margin:24rpx 0;background:#eef3e7;border:1rpx solid #dce5d4;border-radius:24rpx}.user-memorial-card button{margin-top:20rpx;min-height:80rpx;padding:18rpx 24rpx;background:#506d4e;color:#fffdf3;border-radius:16rpx;font-size:26rpx;line-height:1.6}

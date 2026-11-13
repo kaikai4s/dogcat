@@ -1,0 +1,47 @@
+- main [ref=f2e2]:
+  - generic [ref=f2e3]:
+    - generic [ref=f2e4]:
+      - text: PET MEMORIAL GARDEN
+      - heading "让思念有一个相见的地方" [level=1] [ref=f2e5]
+      - paragraph [ref=f2e6]: 人物动作素材预览 · 金色微光、披风与无五官设计
+    - link "下载素材包" [ref=f2e7] [cursor=pointer]:
+      - /url: pet-memorial-characters.zip
+  - generic [ref=f2e8]:
+    - generic [ref=f2e9]:
+      - text: 人物
+      - combobox "人物" [ref=f2e10] [cursor=pointer]:
+        - option "男角色" [selected]
+        - option "女角色"
+    - generic [ref=f2e11]:
+      - text: 动作
+      - combobox "动作" [ref=f2e12] [cursor=pointer]:
+        - option "行走" [selected]
+        - option "待机"
+    - generic [ref=f2e13]:
+      - text: 朝向
+      - combobox "朝向" [ref=f2e14] [cursor=pointer]:
+        - option "左前方" [selected]
+        - option "右前方"
+        - option "左后方"
+        - option "右后方"
+    - generic [ref=f2e15]:
+      - text: 预览
+      - combobox "预览" [ref=f2e16] [cursor=pointer]:
+        - option "向前行走" [selected]
+        - option "原地循环"
+    - generic [ref=f2e17]:
+      - text: 速度
+      - combobox "速度" [ref=f2e18] [cursor=pointer]:
+        - option "正常" [selected]
+        - option "半速"
+    - button "暂停" [ref=f2e19] [cursor=pointer]
+    - generic [ref=f2e20]:
+      - text: 逐帧
+      - slider "逐帧" [ref=f2e21]: "2"
+  - paragraph [ref=f2e24]: 第二版 · 16/16 张图集已加载 · 当前第 3/12 帧 · 循环播放
+  - generic [ref=f2e25]:
+    - generic [ref=f2e26]: 左前方
+    - generic [ref=f2e29]: 右前方
+    - generic [ref=f2e32]: 左后方
+    - generic [ref=f2e35]: 右后方
+  - paragraph [ref=f2e38]: 第二版步态：髋、膝、踝联动，鞋子保持形状。上方可检查向前移动时的落脚，下方放大查看四个朝向。可切换半速、暂停或逐帧查看。
