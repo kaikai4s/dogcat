@@ -1,6 +1,6 @@
 const crypto = require('crypto')
 const { readOptionalDocument } = require('../utils/documentPages')
-const { inspectPortrait } = require('./playground-appearance-png')
+const { inspectPortrait, pngBuffer } = require('./playground-appearance-png')
 const hash = s => crypto.createHash('sha256').update(String(s)).digest('hex').slice(0, 32)
 const clean = v => String(v || '').normalize('NFKC').trim()
 const placement = asset => asset && asset.layoutVersion === 1 ? { layoutVersion: 1, width: asset.width, height: asset.height, bounds: asset.bounds, scale: asset.scale } : {}
@@ -35,8 +35,8 @@ module.exports = context => {
   async function inspectUpload(openid, row, data) {
     const ticket = await read(db, clean(data.uploadId)), fileId = clean(data.fileId)
     if (!ticket || ticket.key !== 'memorial_portrait_asset' || ticket.ownerOpenid !== openid || ticket.requestId !== row._id || ticket.revision !== row.revision || !/^cloud:\/\/[^/]+\//.test(fileId) || fileId.split('/').slice(3).join('/') !== ticket.path) throw new Error('请上传当前申请的画像成品')
-    const file = await cloud.downloadFile({ fileID: fileId }), bytes = file && file.fileContent
-    if (!Buffer.isBuffer(bytes) || bytes.length > 1024 * 1024) throw new Error('成品必须为不超过 1MB 的透明 PNG')
+    const file = await cloud.downloadFile({ fileID: fileId }), bytes = pngBuffer(file && file.fileContent)
+    if (bytes.length > 1024 * 1024) throw new Error('成品必须为不超过 1MB 的透明 PNG')
     const inspected = inspectPortrait(bytes)
     return { ...inspected, bytes: bytes.subarray(0, inspected.pngBytes) }
   }

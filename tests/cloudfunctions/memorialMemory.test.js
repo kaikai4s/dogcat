@@ -225,6 +225,48 @@ test('portrait preview accepts a complete PNG with album suffix and approval sto
   assert.deepEqual(asset.bounds,decision.bounds)
   assert.equal((await f.call('visitor','world')).memorials[0].portrait.id,ticket.uploadId)
 })
+for (const format of ['ArrayBuffer', 'Uint8Array', 'DataView']) {
+  test(`portrait preview and approval accept ${format} downloads and preserve the PNG boundary`, async () => {
+    const f = fixture(), { row } = await portraitPending(f)
+    const ticket = await f.call('admin', 'preparePortraitAsset', { id: row._id, revision: 1 })
+    const fileId = 'cloud://test.bucket/' + ticket.cloudPath
+    const bytes = require('../fixtures/appearanceAtlas').atlas({ columns: 4, rows: 4 })
+    const payload = Buffer.concat([bytes, Buffer.from('album-extra-data')])
+    // A view may cover a small file inside an allocation larger than the file limit.
+    const backing = new ArrayBuffer(1024 * 1024 + 64)
+    new Uint8Array(backing, 16, payload.length).set(payload)
+    const downloaded = format === 'ArrayBuffer' ? backing.slice(16, 16 + payload.length)
+      : format === 'Uint8Array' ? new Uint8Array(backing, 16, payload.length) : new DataView(backing, 16, payload.length)
+    f.files.set(fileId, downloaded)
+    const decision = { id: row._id, revision: 1, status: 'approved', uploadId: ticket.uploadId, fileId }
+    Object.assign(decision, await f.call('admin', 'preparePortraitAsset', decision))
+    assert.equal(decision.width, 512); assert.equal(decision.height, 512)
+    await f.call('admin', 'reviewPortrait', decision)
+    const asset = f.db.state.platform_configs.find(r => r._id === 'plot').portrait
+    assert.deepEqual(f.files.get(asset.fileId), bytes)
+    assert.deepEqual(asset.bounds, decision.bounds)
+    assert.equal(f.db.state.platform_configs.find(r => r._id === row._id).status, 'approved')
+  })
+}
+test('portrait preview and approval reject oversized binary views and nonbinary downloads', async () => {
+  const f = fixture(), { row } = await portraitPending(f)
+  const ticket = await f.call('admin', 'preparePortraitAsset', { id: row._id, revision: 1 })
+  const fileId = 'cloud://test.bucket/' + ticket.cloudPath
+  const bytes = require('../fixtures/appearanceAtlas').atlas({ columns: 4, rows: 4 })
+  f.files.set(fileId, bytes)
+  const decision = { id: row._id, revision: 1, status: 'approved', uploadId: ticket.uploadId, fileId }
+  Object.assign(decision, await f.call('admin', 'preparePortraitAsset', decision))
+  const oversized = new ArrayBuffer(1024 * 1024 + 1)
+  new Uint8Array(oversized).set(bytes)
+  for (const downloaded of [oversized, new Uint8Array(oversized), new DataView(oversized), null, bytes.toString('base64')]) {
+    f.files.set(fileId, downloaded)
+    for (const action of ['preparePortraitAsset', 'reviewPortrait']) {
+      await assert.rejects(f.call('admin', action, decision), /1MB|PNG二进制/)
+    }
+    assert.equal(f.db.state.platform_configs.find(r => r._id === 'plot').portrait, undefined)
+    assert.equal(f.db.state.platform_configs.find(r => r._id === row._id).status, 'pending')
+  }
+})
 test('portrait approval replaces null and legacy snapshots on both records and retains unrelated fields', async () => {
   for (const previous of [null, { uploadId:'old', bounds:null, retiredField:'must disappear', scale:.5 }]) {
     const f=fixture(), {row}=await portraitPending(f)
