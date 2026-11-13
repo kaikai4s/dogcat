@@ -1,7 +1,7 @@
 const crypto=require('crypto')
 const {transaction}=require('./playground-transaction')
 const {hash,readDocument}=require('./playground-world')
-const {inspectAtlas}=require('./playground-appearance-png')
+const {inspectAtlas,pngBuffer}=require('./playground-appearance-png')
 const REQUESTS='pet_playground_appearance_requests'
 const BINDINGS='pet_playground_appearance_bindings'
 const active=new Set(['draft','pending','processing'])
@@ -288,24 +288,59 @@ module.exports=function createAppearance(context) {
       await target(tx,row.ownerOpenid,row.targetType,row.targetType==='pet'?row.targetId:'')
       const uploadPrefix=`playground-appearance/staging/${id}/${hash(admin)}/${token}/`
       await tx.collection(REQUESTS).doc(id).update({data:{status:'processing',reviewer:admin,uploadToken:token,uploadPrefix,updatedAt:now()}})
-      return {token,walkPath:uploadPrefix+'walk.png',runPath:uploadPrefix+'run.png',targetName:row.targetName}
+      const upload={token,targetName:row.targetName,targetType:row.targetType,
+        walkPath:uploadPrefix+'walk.png',runPath:uploadPrefix+'run.png'}
+      if(row.targetType==='character') {
+        upload.walkPaths=Object.fromEntries(['sw','se','nw','ne'].map((d)=>[d,uploadPrefix+`walk-${d}.png`]))
+        upload.runPaths=Object.fromEntries(['sw','se','nw','ne'].map((d)=>[d,uploadPrefix+`run-${d}.png`]))
+      }
+      return upload
     })
   }
   async function publish(admin,data) {
     const id=requestId(data),row=await read(db,REQUESTS,id)
     if(row&&row.status==='completed')return {appearance:row.appearance,completed:true}
     if(!row||row.status!=='processing'||row.reviewer!==admin||row.uploadToken!==data.token)throw new Error('上传批次已失效，请重新打开申请')
-    const inputs={walk:data.walkFileID}
-    if(data.runFileID)inputs.run=data.runFileID
+    let inputs
+    if(row.targetType==='character') {
+      const directions=['sw','se','nw','ne']
+      const walk=data.walkFileIDs,run=data.runFileIDs
+      if(!walk||!run||directions.some((d)=>!walk[d]||!run[d]))throw new Error('角色定制需上传四方向行走和奔跑图集')
+      inputs=Object.fromEntries(['walk','run'].flatMap((action)=>directions.map((direction)=>[
+        `${action}-${direction}`,{action,direction,fileID:(action==='walk'?walk:run)[direction]}
+      ])))
+    } else {
+      inputs={walk:{action:'walk',fileID:data.walkFileID}}
+      if(data.runFileID)inputs.run={action:'run',fileID:data.runFileID}
+    }
     const atlases={},digests=[]
-    for(const [action,fileID] of Object.entries(inputs)) {
-      if(pathOf(fileID)!==row.uploadPrefix+action+'.png')throw new Error('只能使用这条申请本次上传的动作图集')
-      const bytes=(await cloud.downloadFile({fileID})).fileContent
-      const meta=inspectAtlas(bytes)
-      const uploaded=await cloud.uploadFile({cloudPath:`packagePlayground/custom/${row.targetKey}/${id}/${action}-${meta.digest}.png`,fileContent:bytes})
+    for(const [key,input] of Object.entries(inputs)) {
+      const {action,direction,fileID}=input
+      if(pathOf(fileID)!==row.uploadPrefix+key+'.png')throw new Error('只能使用这条申请本次上传的动作图集')
+      let response
+      try {response=await cloud.downloadFile({fileID})}
+      catch(error) {throw new Error(`${key}.png下载失败：${error.message||'云存储读取失败'}`)}
+      let bytes,meta
+      try {
+        bytes=pngBuffer(response&&response.fileContent)
+        const expected=data.atlasByteLengths&&data.atlasByteLengths[key]
+        if(expected!==undefined) {
+          if(!Number.isSafeInteger(expected)||expected<=0||expected>8*1024*1024)throw new Error('上传前文件大小无效，请重新选择原图')
+          if(bytes.length!==expected)throw new Error('上传前'+expected+'字节，云端读取'+bytes.length+'字节，文件大小不一致，请重试上传')
+        }
+        meta=inspectAtlas(bytes,direction?{columns:4,rows:3}:null)
+      }
+      catch(error) {throw new Error(key+'.png校验失败：'+(error.message||'PNG数据无法读取'))}
+      const {pngLength}=meta
+      const uploaded=await cloud.uploadFile({cloudPath:`packagePlayground/custom/${row.targetKey}/${id}/${key}-${meta.digest}.png`,fileContent:bytes.subarray(0,pngLength)})
       if(!uploaded.fileID)throw new Error('图集上传失败，请重试')
       const {digest,width,height,...style}=meta
-      atlases[action]={...style,fileID:uploaded.fileID}
+      delete style.pngLength
+      delete style.trailingBytes
+      if(direction) {
+        if(!atlases[action])atlases[action]={}
+        atlases[action][direction]={...style,fileID:uploaded.fileID}
+      } else atlases[action]={...style,fileID:uploaded.fileID}
       digests.push(digest)
     }
     const result=await transaction(db,async(tx)=>{

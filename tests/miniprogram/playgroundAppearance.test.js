@@ -79,7 +79,7 @@ test('admin uploads the chosen sheets to the server batch before publishing the 
     call:async(m,a,d)=>{calls.push({a,d});if(a==='prepareUpload')return {token:'batch1',walkPath:'staging/walk.png',runPath:'staging/run.png'};if(a==='listAdmin')return {list:[]};return {}},
     upload:async(local,path,onProgress)=>{uploads.push({local,path});onProgress(70);return 'cloud://test/'+path}
   })
-  f.page.setData({detail:{_id:'request-unique',targetId:'pet-unique',targetType:'character'},walk:{path:'/walk.png'},run:{path:'/run.png'}})
+  f.page.setData({detail:{_id:'request-unique',targetId:'pet-unique',targetType:'pet'},walk:{path:'/walk.png'},run:{path:'/run.png'}})
   await f.page.uploadAndPublish()
   assert.equal(uploads.length,2)
   const pub=calls.find((c)=>c.a==='publish').d
@@ -191,12 +191,14 @@ test('album picker requests original images without file access, validates actua
     module:{get exports(){return helper},set exports(v){helper=v}},require:()=>({getCloudEnv:()=> 'current-test-env'}),wx
   })
   const atlas=await helper.chooseAtlas()
-  assert.equal(atlas.path,'/tmp/original.png');assert.equal(atlas.name,'original.png');assert.equal(atlas.frameSize,128)
+  assert.equal(atlas.byteLength,1000);assert.equal(atlas.path,'/tmp/original.png');assert.equal(atlas.name,'original.png');assert.equal(atlas.frameSize,128)
   assert.equal(selections[0].count,1)
   assert.equal(Array.from(selections[0].mediaType).join(','),'image')
   assert.equal(Array.from(selections[0].sourceType).join(','),'album')
   assert.equal(Array.from(selections[0].sizeType).join(','),'original')
   dimensions={width:1024,height:768,type:'png'};await assert.rejects(()=>helper.chooseAtlas(),/24帧/)
+  const directional=await helper.chooseAtlas(3);assert.equal(directional.frames,12);assert.equal(directional.rows,3)
+  dimensions={width:1024,height:1536,type:'png'};await assert.rejects(()=>helper.chooseAtlas(3),/12帧/)
   // A PNG-looking filename must not admit an image converted to JPG by the album.
   dimensions={width:512,height:768,type:'jpeg'};await assert.rejects(()=>helper.chooseAtlas(),/PNG原图/)
   dimensions={width:512,height:768,type:'png'}
@@ -205,4 +207,108 @@ test('album picker requests original images without file access, validates actua
   let progress=0
   assert.equal(await helper.uploadFile('/tmp/original.png','reserved/walk.png',(v)=>progress=v),cloudID('uploaded'))
   assert.equal(uploads[0].config.env,'current-test-env');assert.equal(uploads[0].filePath,'/tmp/original.png');assert.equal(progress,55)
+})
+
+test('admin requires eight directional sheets and uploads each to its reserved action and direction path',async()=>{
+  const calls=[],uploads=[],copies=[];let selectedCount=0
+  const directions=['sw','se','nw','ne']
+  const paths=(action)=>Object.fromEntries(directions.map((d)=>[d,`batch/${action}-${d}.png`]))
+  const f=loadPage('pages/admin/playground-customizations/index.js',{
+    call:async(m,a,d)=>{calls.push({a,d});return a==='prepareUpload'?{token:'eight',walkPaths:paths('walk'),runPaths:paths('run')}:{}},
+    chooseAtlas:async(rows)=>{assert.equal(rows,3);return {path:'/chosen.png',byteLength:1000+(selectedCount++)}},
+    upload:async(local,path)=>{uploads.push({local,path});return 'cloud://test/'+path},
+    extraWx:{setClipboardData(o){copies.push(o.data);o.success()}}
+  })
+  f.page.setData({detail:{_id:'character-request',targetType:'character',canProcess:true}})
+  await f.page.uploadAndPublish();assert.equal(calls.length,0)
+  for(const action of ['walk','run'])for(const direction of directions)await f.page.selectAtlas({currentTarget:{dataset:{action,direction}}})
+  f.page.stopPreview()
+  assert.equal(f.page.data.allAtlasesReady,true)
+  f.page.selectPromptAction({currentTarget:{dataset:{action:'run'}}})
+  f.page.selectPromptDirection({currentTarget:{dataset:{direction:'ne'}}})
+  f.page.copyPrompt()
+  assert.match(copies[0],/奔跑/);assert.match(copies[0],/右后 NE/);assert.match(copies[0],/1024×768/)
+  await f.page.uploadAndPublish()
+  assert.equal(uploads.length,8)
+  const pub=calls.find((c)=>c.a==='publish').d
+  for(const action of ['walk','run'])for(const d of directions)assert.equal(pub[action+'FileIDs'][d],'cloud://test/'+paths(action)[d])
+  assert.deepEqual({...pub.atlasByteLengths},{'walk-sw':1000,'walk-se':1001,'walk-nw':1002,'walk-ne':1003,'run-sw':1004,'run-se':1005,'run-nw':1006,'run-ne':1007})
+  assert.equal(pub.requestId,'character-request');assert.equal(pub.token,'eight')
+  assert.equal(f.page.data.detail,null);assert.equal(f.page.data.allAtlasesReady,false)
+})
+test('default and customized characters render all directions for self and neighbors without double mirroring',()=>{
+  const {w,draws}=world(),directions=['sw','se','nw','ne'],scales=[]
+  w.ctx.scale=(...v)=>scales.push(v);w.markerLabel=()=>{};w.drawOfflineBadge=()=>{}
+  const look=appearance('character','player-a','player-a')
+  look.walk={};look.run={}
+  for(const d of directions) {
+    for(const action of ['idle','walk','run'])w.assets[`boy_${action}_${d}`]={width:action==='idle'?512:1024,height:action==='idle'?512:768,tag:action+d}
+    for(const action of ['walk','run']) {
+      const style={fileID:cloudID(action+d),frames:12,columns:4,rows:3,frameSize:256}
+      look[action][d]=style;w.customImages.set(style.fileID,{width:1024,height:768,tag:'custom'+action+d})
+    }
+  }
+  for(const custom of [false,true]) {
+    w.characterAppearance=custom?look:null
+    for(const d of directions)for(const action of ['idle','walk','run']) {
+      Object.assign(w.character,{facing:d,mirrored:d==='se'||d==='ne',moving:action!=='idle',runRequested:action==='run',animationPhase:11/12+.001})
+      w.drawCharacter(false)
+      const draw=draws.at(-1),selectedAction=custom&&action==='idle'?'walk':action
+      assert.equal(draw[0].tag,(custom?'custom':'')+selectedAction+d)
+      if(action!=='idle'){assert.equal(draw[1],768);assert.equal(draw[2],512)}
+      else if(custom){assert.equal(draw[1],0);assert.equal(draw[2],0)}
+      else assert.equal(draw.length,5)
+      w.drawNeighbor({id:'player-a',ownerId:'player-a',appearance:custom?look:null,characterType:'boy',position:{x:112,z:112},facing:d,mirrored:true,online:true,lastSeen:Date.now(),moving:action!=='idle',running:action==='run'},false)
+      assert.equal(draws.at(-1)[0].tag,(custom?'custom':'')+selectedAction+d)
+    }
+  }
+  assert.equal(scales.length,0)
+})
+
+test('initial custom character sheets are loaded before the scene draws any default character frames',async()=>{
+  const {w,draws}=world(),directions=['sw','se','nw','ne'],loaded=[]
+  const look=appearance('character','player-a','player-a')
+  look.walk=Object.fromEntries(directions.map((direction)=>[direction,{
+    fileID:cloudID('walk-'+direction),frames:12,columns:4,rows:3,frameSize:256
+  }]))
+  w.setOwnAppearance(look)
+  w.loader={loadAtlas:async(style)=>{loaded.push(style.fileID);return {width:1024,height:768,tag:style.fileID}}}
+  await w.preloadInitialCharacterAppearance()
+  assert.equal(loaded.length,4)
+  assert.equal(w.customImages.size,4)
+  w.assets.boy_idle_sw={width:512,height:512,tag:'default-idle'}
+  w.character.facing='sw'
+  w.drawCharacter(false)
+  assert.equal(draws.at(-1)[0].tag,cloudID('walk-sw'))
+})
+
+test('scene snapshots and changes load every direction for a neighbor of another character type',async()=>{
+  const {w}=world(),loads=[]
+  w.loader={loadAll:async(progress,names)=>{loads.push(...names);return Object.fromEntries(names.map((name)=>[name,{}]))}}
+  const record={id:'neighbor',ownerId:'other',kind:'presence',characterType:'girl',position:{x:112,z:112},online:true,lastSeen:Date.now(),facing:'ne'}
+  await w.applySceneRecords([record])
+  for(const action of ['idle','walk','run'])for(const d of ['sw','se','nw','ne'])assert.ok(loads.includes(`girl_${action}_${d}`))
+  loads.length=0;w.assets={}
+  await w.applySceneChanges([{...record,lastSeen:Date.now()+100}])
+  for(const action of ['idle','walk','run'])for(const d of ['sw','se','nw','ne'])assert.ok(loads.includes(`girl_${action}_${d}`))
+})
+
+test('directional PNG errors reach the admin with all eight selected sheets preserved for retry',async()=>{
+  const error='run-ne.png校验失败：上传前522069字节，云端读取80字节，文件大小不一致，请重试上传'
+  const f=loadPage('pages/admin/playground-customizations/index.js',{
+    call:async(m,a)=>{
+      if(a==='prepareUpload')return {token:'batch',walkPaths:{},runPaths:{}}
+      if(a==='publish')throw new Error(error)
+    },upload:async()=>cloudID('uploaded')
+  })
+  const detail={_id:'character-request',targetType:'character',canProcess:true}
+  f.page.setData({detail,allAtlasesReady:true})
+  for(const action of ['walk','run'])for(const slot of f.page.data[action+'Atlases'])slot.atlas={path:action+'-'+slot.key+'.png',byteLength:522069}
+  const selected=JSON.stringify([f.page.data.walkAtlases,f.page.data.runAtlases])
+  await f.page.uploadAndPublish()
+  assert.deepEqual(f.errors,[error])
+  assert.equal(f.page.data.detail,detail)
+  assert.equal(f.page.data.busy,false)
+  assert.equal(f.page.data.allAtlasesReady,true)
+  assert.equal(JSON.stringify([f.page.data.walkAtlases,f.page.data.runAtlases]),selected)
 })

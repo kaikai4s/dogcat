@@ -317,7 +317,7 @@ test('character changes preserve current images on failure and ignore late downl
   assert.equal(w.characterType,'boy')
   const girl=w.setCharacterType('girl')
   const boy=w.setCharacterType('boy')
-  assert.deepEqual(pending[1].names,['girl_idle_sw','girl_walk_sw','girl_run_sw'])
+  assert.deepEqual(pending[1].names,['idle','walk','run'].flatMap((action)=>['sw','se','nw','ne'].map((direction)=>`girl_${action}_${direction}`)))
   pending[2].resolve({boy_idle_sw:{name:'boy'}})
   assert.equal(await boy,true)
   pending[1].resolve({girl_idle_sw:{name:'girl'}})

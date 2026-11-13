@@ -1,7 +1,7 @@
 const { AssetLoader2D } = require('./asset-loader-2d')
 const { placedBuildings, isPublicBuilding, isFloorBuilding, isTreeBuilding, validateBuildingPlacement } = require('./plot-buildings')
 const { createNavigation } = require('./navigation')
-const { CHARACTER_STYLE } = require('./character-assets')
+const { CHARACTER_STYLE, characterAssetNames } = require('./character-assets')
 const { PET_ATLASES } = require('./pet-assets')
 const { validAppearance, atlasFor } = require('./appearance-assets')
 const { sampleMotion } = require('./shared-motion')
@@ -224,6 +224,7 @@ class World2D {
     this.resize(item.width, item.height)
     this.loader = new AssetLoader2D(this.canvas)
     if (this.scene) this.characterType = this.scene.characterType
+    const characterAppearanceReady=this.preloadInitialCharacterAppearance()
     const species = new Set(
       (this.overviewData.pets || []).map((p) =>
         p.species === 'cat' ? 'cat' : 'dog'
@@ -231,7 +232,7 @@ class World2D {
     )
     const initialAssets = [
       'grass_tile',
-      ...['idle', 'walk', 'run'].map((action) => this.characterType + '_' + action + '_sw'),
+      ...characterAssetNames(this.characterType),
       ...[...species].map((s) => s + '_walk')
     ]
     this.assets = await this.loader.loadAll(
@@ -244,6 +245,7 @@ class World2D {
     this.focusCharacter()
     await this.prepareCharacterArea()
     await this.loadVisible()
+    await characterAppearanceReady
     if (this.destroyed) return
     this.onStatus(this.scene && this.scene.hasAvatar === false
       ? '尚未安置庭院，可直接重新选择小区并建造'
@@ -256,7 +258,7 @@ class World2D {
     const generation = this.characterLoadGeneration = (this.characterLoadGeneration || 0) + 1
     this.setCharacterInput(0, 0)
     const images = await this.loader.loadAll(null,
-      ['idle', 'walk', 'run'].map((action) => type + '_' + action + '_sw'))
+      characterAssetNames(type))
     if (this.destroyed || generation !== this.characterLoadGeneration) return false
     Object.assign(this.assets, images)
     this.characterType = type
@@ -1627,17 +1629,46 @@ class World2D {
     const enabled=!!this.characterAppearance
     if(!this.page.data||this.page.data.hasCustomCharacter!==enabled)this.page.setData({hasCustomCharacter:enabled})
   }
-  customSprite(value,type,targetId,ownerId,action) {
+  async preloadInitialCharacterAppearance() {
+    if(!this.loader||!this.characterAppearance)return
+    const styles=['sw','se','nw','ne'].map((direction)=>atlasFor(this.characterAppearance,'walk',direction))
+      .filter((style,index,all)=>style&&all.findIndex((item)=>item.fileID===style.fileID)===index)
+    let total=[...this.customSizes.values()].reduce((sum,size)=>sum+size,0)
+    const pending=[]
+    for(const style of styles) {
+      const bytes=style.frameSize*style.frameSize*style.frames*4
+      if(total+bytes>64*1024*1024)continue
+      total+=bytes
+      this.customSizes.set(style.fileID,bytes)
+      pending.push(style)
+    }
+    let next=0
+    const worker=async()=>{while(next<pending.length) {
+      const style=pending[next++]
+      try {
+        const image=await this.loader.loadAtlas(style)
+        if(!this.destroyed) {
+          this.customImages.set(style.fileID,image)
+          this.customUsed.set(style.fileID,Date.now())
+        }
+      } catch(error) {
+        this.customSizes.delete(style.fileID)
+        if(!this.destroyed)this.customRetry.set(style.fileID,Date.now()+5000)
+      }
+    }}
+    await Promise.all([worker(),worker()])
+  }
+  customSprite(value,type,targetId,ownerId,action,direction='sw') {
     if(!validAppearance(value,type,targetId,ownerId))return null
-    const atlas=atlasFor(value,action)
+    const atlas=atlasFor(value,action,direction)
     if(!atlas)return null
     const image=this.customImages.get(atlas.fileID)
-    if(image){this.customUsed.set(atlas.fileID,Date.now());return {image,style:atlas}}
-    const walk=action==='run'?atlasFor(value,'walk'):null
-    const fallback=walk&&this.customImages.get(walk.fileID)?{image:this.customImages.get(walk.fileID),style:walk}:null
+    if(image){this.customUsed.set(atlas.fileID,Date.now());return {image,style:atlas,directional:atlas.directional}}
+    const walk=action==='run'?atlasFor(value,'walk',direction):null
+    const fallback=walk&&this.customImages.get(walk.fileID)?{image:this.customImages.get(walk.fileID),style:walk,directional:walk.directional}:null
     if(fallback)this.customUsed.set(walk.fileID,Date.now())
     if(this.loader&&this.loader.loadAtlas&&this.customLoads.size<2&&!this.customLoads.has(atlas.fileID)&&Date.now()>=(this.customRetry.get(atlas.fileID)||0)) {
-      const bytes=atlas.frameSize*atlas.frameSize*24*4
+      const bytes=atlas.frameSize*atlas.frameSize*atlas.frames*4
       let total=[...this.customSizes.values()].reduce((sum,size)=>sum+size,0)
       for(const [id,used] of [...this.customUsed].sort((a,b)=>a[1]-b[1])) {
         if(total+bytes<=64*1024*1024)break
@@ -1840,7 +1871,7 @@ class World2D {
     }
     this.replaceCharacters(characters)
     const species=[...new Set(this.pets.map((p)=>p.species==='cat'?'cat_walk':'dog_walk'))]
-    const names=[...species,...this.careAssetNames(),...new Set(characters.flatMap((p)=>['idle','walk','run'].map((a)=>(p.characterType==='girl'?'girl':'boy')+'_'+a+'_sw')))]
+    const names=[...species,...this.careAssetNames(),...new Set(characters.flatMap((p)=>characterAssetNames(p.characterType)))]
     if(this.loader) {
       const missing=names.filter((name)=>!this.assets[name])
       if(missing.length) {
@@ -1886,7 +1917,7 @@ class World2D {
     }
     this.replaceCharacters([...characters.values()])
     if(this.loader) {
-      const missing=[...this.careAssetNames(),...new Set(this.remoteCharacters.flatMap((p)=>['idle','walk','run'].map((a)=>(p.characterType==='girl'?'girl':'boy')+'_'+a+'_sw')))].filter((name)=>!this.assets[name])
+      const missing=[...this.careAssetNames(),...new Set(this.remoteCharacters.flatMap((p)=>characterAssetNames(p.characterType)))].filter((name)=>!this.assets[name])
       if(missing.length) {
         const assets=await this.loader.loadAll(null,missing)
         if(!this.destroyed)Object.assign(this.assets,assets)
@@ -1895,7 +1926,7 @@ class World2D {
     this.emitNearby()
   }
   careAssetNames() {
-    return [...new Set([...(this.careAgents||new Map()).values()].flatMap((agent)=>['idle','walk'].map((a)=>(agent.characterType==='girl'?'girl':'boy')+'_'+a+'_sw')))]
+    return [...new Set([...(this.careAgents||new Map()).values()].flatMap((agent)=>characterAssetNames(agent.characterType,['idle','walk'])))]
   }
   replaceCharacters(characters) {
     const old=new Map(this.remoteCharacters.map((p)=>[p.id,p]))
@@ -1938,11 +1969,13 @@ class World2D {
     else {
       const prefix=person.characterType==='girl'?'girl':'boy'
       const moving=person.online&&person.moving&&Date.now()+this.serverOffset-person.lastSeen<3000
-      const custom=this.customSprite(person.appearance,'character',person.id,person.ownerId,moving&&person.running?'run':'walk')
+      const action=moving?(person.running?'run':'walk'):'walk'
+      const direction=['sw','se','nw','ne'].includes(person.facing)?person.facing:(person.mirrored?'se':'sw')
+      const custom=this.customSprite(person.appearance,'character',person.id,person.ownerId,action,direction)
       const style=custom?custom.style:CHARACTER_STYLE
-      const image=custom?custom.image:this.assets[prefix+(moving?(person.running?'_run_sw':'_walk_sw'):'_idle_sw')]
+      const image=custom?custom.image:this.assets[`${prefix}_${moving?action:'idle'}_${direction}`]
       if(image) {
-        c.translate(p.x,p.y);if(person.mirrored)c.scale(-1,1)
+        c.translate(p.x,p.y);if(person.mirrored&&custom&&!custom.directional)c.scale(-1,1)
         if(moving||custom) {
           const frame=moving?Math.floor((Date.now()+this.serverOffset)/(person.running?70:90))%style.frames:0
           const w=image.width/style.columns,h=image.height/style.rows
@@ -2119,18 +2152,19 @@ class World2D {
       return
     }
     const prefix = this.characterType || 'boy'
-    const custom=this.customSprite(this.characterAppearance,'character',this.scene&&this.scene.playerId,this.scene&&this.scene.playerId,player.moving&&player.runRequested?'run':'walk')
+    const action=player.moving?(player.runRequested?'run':'walk'):'walk'
+    const direction=['sw','se','nw','ne'].includes(player.facing)?player.facing:'sw'
+    const custom=this.customSprite(this.characterAppearance,'character',this.scene&&this.scene.playerId,this.scene&&this.scene.playerId,action,direction)
     const style=custom?{...CHARACTER_STYLE,...custom.style}:CHARACTER_STYLE
-    const walking = player.moving && (custom?custom.image:this.assets[prefix + (player.runRequested ? '_run_sw' : '_walk_sw')])
-    const image = custom?custom.image:walking || this.assets[prefix + '_idle_sw']
+    const image = custom?custom.image:this.assets[`${prefix}_${player.moving?action:'idle'}_${direction}`]
     if (!image) return
     const size = style.size * this.scale * this.zoom
     if (point.x < -size || point.x > this.width + size || point.y < -size || point.y > this.height + size) return
     c.save()
     c.translate(point.x, point.y)
-    if (player.mirrored) c.scale(-1, 1)
-    if (walking||custom) {
-      const index = walking?Math.floor(player.animationPhase * style.frames) % style.frames:0
+    if (player.mirrored&&custom&&!custom.directional) c.scale(-1, 1)
+    if (player.moving||custom) {
+      const index = player.moving?Math.floor(player.animationPhase * style.frames) % style.frames:0
       const w = image.width / style.columns, h = image.height / style.rows
       c.drawImage(image, index % style.columns * w, Math.floor(index / style.columns) * h, w, h,
         -size / 2, -size * style.anchor, size, size)

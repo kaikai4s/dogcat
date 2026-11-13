@@ -1,6 +1,6 @@
 const {getCloudEnv}=require('../../../utils/cloud')
 const STATUS_TEXT={draft:'待补充照片',pending:'等待处理',processing:'制作中',completed:'已生效',rejected:'需重新申请',cancelled:'已取消'}
-function chooseAtlas() {
+function chooseAtlas(rows=6) {
   return new Promise((resolve,reject)=>wx.chooseMedia({count:1,mediaType:['image'],sourceType:['album'],sizeType:['original'],
     success:(result)=>{
       const file=(result.tempFiles||[])[0]
@@ -9,8 +9,8 @@ function chooseAtlas() {
       wx.getImageInfo({src:path,success:(info)=>{
         if(String(info.type||'').toLowerCase()!=='png')return reject(new Error('请选择透明PNG原图，不支持JPG或截图；请将原始图集保存到相册后重试'))
         const size=info.width/4
-        if(![128,256,512].includes(size)||info.height!==size*6)return reject(new Error('需上传4列6行24帧图集，每格128、256或512像素'))
-        resolve({path,name:path.split(/[\\/]/).pop()||'24帧图集.png',width:info.width,height:info.height,frameSize:size})
+        if(![128,256,512].includes(size)||info.height!==size*rows)return reject(new Error(rows===3?'需上传4列3行12帧图集，尺寸为512×384、1024×768或2048×1536':'需上传4列6行24帧图集，每格128、256或512像素'))
+        resolve({path,name:path.split(/[\\/]/).pop()||(rows===3?'12帧':'24帧')+'图集.png',byteLength:file.size,width:info.width,height:info.height,frameSize:size,frames:4*rows,columns:4,rows})
       },fail:reject})
     },fail:reject}))
 }

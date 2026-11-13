@@ -25,3 +25,19 @@ test('development assets stay in development and unknown environments cannot sil
 test('client and server asset root maps remain identical', () => {
   assert.deepEqual(ASSET_ROOTS, require('../../cloudfunctions/api/services/playground-shared/asset-roots').ASSET_ROOTS)
 })
+
+test('four-direction bundled assets follow environment changes while custom IDs remain untouched', () => {
+  const { memorialAssetPath } = require('../../miniprogram/packagePlayground/utils/asset-environment')
+  const { CHARACTER_ASSETS, characterAssetNames } = require('../../miniprogram/packagePlayground/utils/character-assets')
+  assert.equal(Object.keys(CHARACTER_ASSETS).length,24)
+  assert.equal(characterAssetNames('girl').length,12)
+  try {
+    env.setForceEnvId('cloud1-5gnhqn4t0554c1d9')
+    const path='playground-four-directions/cloud-upload/girl/run-ne.png'
+    const dev=memorialAssetPath(path)
+    assert.match(dev,/memorial-cloud-v1\/packageMemorial\/v1\/playground-four-directions\/cloud-upload\/girl\/run-ne.png$/)
+    env.setForceEnvId('production-d2g5jx277f41a81a6')
+    assert.equal(resolveEnvironmentAsset(dev),memorialAssetPath(path))
+    assert.match(resolveEnvironmentAsset(CHARACTER_ASSETS.girl_run_ne),/^cloud:\/\/production-/)
+  } finally { env.setForceEnvId('') }
+})

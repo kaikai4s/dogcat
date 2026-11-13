@@ -378,7 +378,8 @@ module.exports = function createShared(context) {
       const current=plots.find((p)=>p._id===row._id)
       if (current && JSON.stringify(row.staffCard||null)!==JSON.stringify(current.staffCard||null)) {
         row.staffCard=current.staffCard||null;row.revision=Math.max(now(),(row.revision||0)+1)
-        await db.collection(COLLECTION).doc(row._id).update({data:{staffCard:row.staffCard,revision:row.revision}})
+        // Replace the whole card: legacy records can have staffCard: null.
+        await db.collection(COLLECTION).doc(row._id).update({data:{staffCard:db.command.set(row.staffCard),revision:row.revision}})
       }
     }
     // Hide unplaced avatars written by older versions until their next entry.

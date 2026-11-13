@@ -10,15 +10,22 @@ function crc32(bytes) {
   for(const byte of bytes)crc=crcTable[(crc^byte)&255]^(crc>>>8)
   return (crc^0xffffffff)>>>0
 }
+function pngBuffer(value) {
+  if(Buffer.isBuffer(value))return value
+  if(value instanceof ArrayBuffer)return Buffer.from(value)
+  if(ArrayBuffer.isView(value))return Buffer.from(value.buffer,value.byteOffset,value.byteLength)
+  throw new Error('未读取到PNG二进制文件，请重试上传')
+}
 function inspectAtlas(buffer, layout = null) {
   const columns=layout?layout.columns:4,rows=layout?layout.rows:6
   if(!Number.isInteger(columns)||columns<1||columns>12||!Number.isInteger(rows)||rows<1||rows>6)throw new Error('图集行列数无效')
-  if(!Buffer.isBuffer(buffer)||buffer.length>8*1024*1024||!buffer.subarray(0,8).equals(signature))
+  buffer=pngBuffer(buffer)
+  if(buffer.length>8*1024*1024||!buffer.subarray(0,8).equals(signature))
     throw new Error('请上传不超过8MB的透明PNG图集')
   let header,idat=[],ended=false,offset=8
   while(offset+12<=buffer.length) {
     const length=buffer.readUInt32BE(offset),end=offset+12+length
-    if(end>buffer.length)throw new Error('PNG文件不完整')
+    if(end>buffer.length)throw new Error('PNG数据块不完整：需要至少'+end+'字节，实际'+buffer.length+'字节')
     const type=buffer.toString('ascii',offset+4,offset+8),bytes=buffer.subarray(offset+8,end-4)
     if(crc32(buffer.subarray(offset+4,end-4))!==buffer.readUInt32BE(end-4))throw new Error('PNG校验失败，请重新导出')
     if(!header&&type!=='IHDR')throw new Error('PNG格式不正确')
@@ -27,14 +34,17 @@ function inspectAtlas(buffer, layout = null) {
       header={width:bytes.readUInt32BE(0),height:bytes.readUInt32BE(4)}
       const size=header.width/columns
       if(![128,256,512].includes(size)||header.height!==size*rows||bytes[8]!==8||bytes[9]!==6||bytes[10]||bytes[11]||bytes[12])
-        throw new Error(layout?'图集须为指定列数的单行透明RGBA PNG，每格128、256或512像素，关闭隔行扫描':'图集需为4列6行、24帧透明RGBA PNG，每格128、256或512像素，关闭隔行扫描')
+        throw new Error(layout?`图集须为${columns}列${rows}行、${columns*rows}帧透明RGBA PNG，每格128、256或512像素，关闭隔行扫描`:'图集需为4列6行、24帧透明RGBA PNG，每格128、256或512像素，关闭隔行扫描')
     }
     if(type==='acTL')throw new Error('请上传静态PNG图集，不支持动态PNG')
     if(type==='IDAT')idat.push(bytes)
     if(type==='IEND') {ended=true;offset=end;break}
     offset=end
   }
-  if(!header||!idat.length||!ended||offset!==buffer.length)throw new Error('PNG文件不完整')
+  if(!header)throw new Error('PNG缺少图像头，文件不完整')
+  if(!idat.length)throw new Error('PNG缺少图像数据，文件不完整')
+  if(!ended)throw new Error('PNG缺少结束标记，文件不完整')
+  const pngLength=offset,trailingBytes=buffer.length-offset
   const {width,height}=header,rowBytes=width*4,expected=(rowBytes+1)*height
   let raw
   try {raw=zlib.inflateSync(Buffer.concat(idat),{maxOutputLength:expected})}
@@ -65,6 +75,6 @@ function inspectAtlas(buffer, layout = null) {
     previous=row
   }
   if(!transparent||frames.some((count)=>count===0))throw new Error(`图集必须保留透明背景，且${columns*rows}个格子都需要有动作画面`)
-  return {digest:hash.digest('hex'),width,height,frameSize:size,frames:columns*rows,columns,rows,anchor:460/512}
+  return {digest:hash.digest('hex'),width,height,pngLength,trailingBytes,frameSize:size,frames:columns*rows,columns,rows,anchor:460/512}
 }
-module.exports={inspectAtlas,crc32}
+module.exports={inspectAtlas,crc32,pngBuffer}

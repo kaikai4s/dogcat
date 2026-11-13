@@ -4,7 +4,7 @@ const {createCollectionStore,loadCloudFunction}=require('./helpers')
 const createAppearance=require('../../cloudfunctions/api/services/playground-appearance')
 const {inspectAtlas}=require('../../cloudfunctions/api/services/playground-appearance-png')
 const world=require('../../cloudfunctions/api/services/playground-world')
-const {atlas}=require('../fixtures/appearanceAtlas')
+const {atlas,chunk}=require('../fixtures/appearanceAtlas')
 const REQUESTS=createAppearance.REQUESTS,BINDINGS=createAppearance.BINDINGS
 const fileID=(path)=>'cloud://test.bucket/'+path
 const pid=(openid)=>'presence_'+world.hash(openid)
@@ -40,7 +40,7 @@ function fixture() {
   requireOrderedTransactions(db)
   const files=new Map(),uploaded=[],checks=[]
   const cloud={downloadFile:async({fileID})=>{if(!files.has(fileID))throw new Error('file missing');return {fileContent:files.get(fileID)}},
-    uploadFile:async({cloudPath,fileContent})=>{const id=fileID(cloudPath);files.set(id,Buffer.from(fileContent));uploaded.push(id);return {fileID:id}},
+    uploadFile:async({cloudPath,fileContent})=>{assert.ok(Buffer.isBuffer(fileContent),'storage SDK requires Buffer');const id=fileID(cloudPath);files.set(id,Buffer.from(fileContent));uploaded.push(id);return {fileID:id}},
     getTempFileURL:async({fileList})=>({fileList:fileList.map((p)=>({tempFileURL:'https://private.example/'+encodeURIComponent(p.fileID)}))})}
   const context={db,cloud,nowMs:()=>time,nowText:()=>new Date(time).toISOString(),safeText:(v)=>String(v||''),
     skipEligibilityCheck:true,
@@ -53,9 +53,18 @@ function fixture() {
     await service.submit(owner,{requestId:row._id,photos:[photo],remark:'奶油色'})
     return row
   }
-  async function batch(row,bytes=atlas(),admin='admin') {
+  async function batch(row,bytes=null,admin='admin') {
     const ready=await service.prepareUpload(admin,{requestId:row._id})
-    const walkFileID=fileID(ready.walkPath);files.set(walkFileID,bytes)
+    if(ready.walkPaths) {
+      const result={requestId:row._id,token:ready.token,walkFileIDs:{},runFileIDs:{}}
+      for(const action of ['walk','run'])for(const direction of ['sw','se','nw','ne']) {
+        const id=fileID(ready[action+'Paths'][direction])
+        files.set(id,bytes||atlas({rows:3,color:100+Object.keys(result[action+'FileIDs']).length+(action==='run'?4:0)}))
+        result[action+'FileIDs'][direction]=id
+      }
+      return result
+    }
+    const walkFileID=fileID(ready.walkPath);files.set(walkFileID,bytes||atlas())
     return {requestId:row._id,token:ready.token,walkFileID}
   }
   return {db,cloud,files,uploaded,checks,context,service,draft,pending,batch,advance:()=>++time,
@@ -67,6 +76,66 @@ test('24-frame PNG decoder canonicalizes all filters, compression and invisible 
   for(let filter=0;filter<=4;filter++)assert.equal(inspectAtlas(atlas({filter,hidden:99,level:1})).digest,base)
   assert.notEqual(inspectAtlas(atlas({color:101})).digest,base)
   assert.equal(inspectAtlas(atlas()).frames,24)
+})
+test('directional atlases publish binary cloud downloads as exact Buffer copies',async()=>{
+  for(const format of ['buffer','arrayBuffer','offsetView']) {
+    const f=fixture(),row=await f.pending('a','','character'),batch=await f.batch(row)
+    const source=new Map(f.files),atlasByteLengths={}
+    for(const action of ['walk','run'])for(const direction of ['sw','se','nw','ne']) {
+      const id=batch[action+'FileIDs'][direction],bytes=source.get(id)
+      atlasByteLengths[action+'-'+direction]=bytes.length
+      if(format==='arrayBuffer')f.files.set(id,Uint8Array.from(bytes).buffer)
+      if(format==='offsetView') {
+        const padded=new Uint8Array(bytes.length+19).fill(255)
+        padded.set(bytes,7)
+        f.files.set(id,padded.subarray(7,7+bytes.length))
+      }
+    }
+    const result=await f.service.publish('admin',{...batch,atlasByteLengths})
+    assert.equal(result.completed,true)
+    for(const action of ['walk','run'])for(const direction of ['sw','se','nw','ne']) {
+      const style=result.appearance[action][direction]
+      assert.equal(style.frames,12)
+      assert.deepEqual(f.files.get(style.fileID),source.get(batch[action+'FileIDs'][direction]))
+    }
+  }
+})
+test('PNG completeness errors distinguish truncation while reporting removable trailing data',()=>{
+  const bytes=atlas()
+  assert.throws(()=>inspectAtlas(bytes.subarray(0,80)),/PNG数据块不完整.*实际80字节/)
+  assert.throws(()=>inspectAtlas(bytes.subarray(0,8)),/缺少图像头/)
+  assert.throws(()=>inspectAtlas(Buffer.concat([bytes.subarray(0,33),chunk('IEND',Buffer.alloc(0))])),/缺少图像数据/)
+  assert.throws(()=>inspectAtlas(bytes.subarray(0,-12)),/缺少结束标记/)
+  const withTail=Buffer.concat([bytes,Buffer.from([0,1,2])])
+  assert.equal(inspectAtlas(withTail).trailingBytes,3)
+  assert.equal(inspectAtlas(withTail).pngLength,bytes.length)
+  assert.equal(inspectAtlas(withTail).digest,inspectAtlas(bytes).digest)
+})
+test('publication names the failing direction and never binds an invalid or incomplete upload',async()=>{
+  for(const issue of ['download','missingEnd','size','invalidSize']) {
+    const f=fixture(),row=await f.pending('a','','character'),batch=await f.batch(row)
+    const id=batch.runFileIDs.ne,bytes=f.files.get(id)
+    let reason
+    if(issue==='download') {f.files.delete(id);reason=/run-ne\.png下载失败：file missing/}
+    if(issue==='missingEnd') {f.files.set(id,bytes.subarray(0,-12));reason=/run-ne\.png校验失败：PNG缺少结束标记/}
+    if(issue==='size') {batch.atlasByteLengths={'run-ne':bytes.length+10};reason=/run-ne\.png校验失败：上传前[0-9]+字节，云端读取[0-9]+字节，文件大小不一致/}
+    if(issue==='invalidSize') {batch.atlasByteLengths={'run-ne':-1};reason=/run-ne\.png校验失败：上传前文件大小无效/}
+    await assert.rejects(()=>f.service.publish('admin',batch),reason)
+    assert.equal(f.user('a').playgroundAppearance,undefined)
+    assert.equal(f.db.state[REQUESTS].find((r)=>r._id===row._id).status,'processing')
+    assert.equal(f.db.state[BINDINGS].filter((r)=>r.kind==='image').length,0)
+  }
+})
+test('publication strips 2025 bytes after IEND and publishes the intact original PNG',async()=>{
+  const f=fixture(),row=await f.pending('a','','character'),batch=await f.batch(row)
+  const key='walk-sw',id=batch.walkFileIDs.sw,png=f.files.get(id)
+  const cloudFile=Buffer.concat([png,Buffer.alloc(2025,65)])
+  f.files.set(id,cloudFile)
+  batch.atlasByteLengths={[key]:cloudFile.length}
+  const result=await f.service.publish('admin',batch)
+  const published=result.appearance.walk.sw.fileID
+  assert.deepEqual(f.files.get(published),png)
+  assert.equal(inspectAtlas(cloudFile,{columns:4,rows:3}).trailingBytes,2025)
 })
 test('invalid art is rejected for wrong grid, missing frames, opaque background and corrupt data',()=>{
   for(const bytes of [atlas({columns:3}),atlas({blank:23}),atlas({opaque:true}),atlas().subarray(0,80),Buffer.from('not a PNG')])assert.throws(()=>inspectAtlas(bytes))
@@ -115,11 +184,11 @@ test('publishing binds only the exact pet, uploads an immutable copy and updates
   const again=await f.service.publish('admin',batch)
   assert.equal(again.appearance.id,result.appearance.id);assert.equal(f.uploaded.length,1)
 })
-test('identical pixel content cannot be assigned to another pet or a character, even reencoded',async()=>{
+test('identical pixel content cannot be assigned to another pet, even reencoded',async()=>{
   const f=fixture(),first=await f.pending()
   await f.service.publish('admin',await f.batch(first))
-  const pet=await f.pending('b','pet_b'),character=await f.pending('a','','character')
-  for(const row of [pet,character])await assert.rejects(()=>f.batch(row,atlas({filter:4,hidden:7,level:1})).then((batch)=>f.service.publish('admin',batch)),/专属绑定/)
+  const pet=await f.pending('b','pet_b')
+  for(const row of [pet])await assert.rejects(()=>f.batch(row,atlas({filter:4,hidden:7,level:1})).then((batch)=>f.service.publish('admin',batch)),/专属绑定/)
   assert.equal(f.entity('pet_b').playgroundAppearance,undefined)
   assert.equal(f.user('a').playgroundAppearance,undefined)
   assert.equal(f.db.state[BINDINGS].filter((r)=>r.kind==='image').length,1)
@@ -161,9 +230,7 @@ test('character publish preserves live position and session, and stale entry use
   const staleUser=structuredClone(f.user('a')),stalePet=structuredClone(f.entity('pet_a'))
   const old=structuredClone(f.db.state.pet_playground_plots.find((r)=>r._id===pid('a')))
   const request=await f.pending('a','','character'),batch=await f.batch(request)
-  const readyRun=fileID(batch.walkFileID.replace(/walk\.png$/,'run.png').slice('cloud://test.bucket/'.length))
-  f.files.set(readyRun,atlas({color:101}))
-  const custom=await f.service.publish('admin',{...batch,runFileID:readyRun})
+  const custom=await f.service.publish('admin',batch)
   assert.equal(custom.syncPending,false)
   const actor=f.db.state.pet_playground_plots.find((r)=>r._id===pid('a'))
   for(const field of ['position','session','seq'])assert.deepEqual(actor[field],old[field])
@@ -208,18 +275,16 @@ test('publishing over legacy null appearance fields repairs existing projections
   }
 })
 
-test('a walking-only replacement removes the old running atlas from target, binding, request and live scene',async()=>{
+test('four-direction replacement removes legacy atlas fields from target, binding, request and live scene',async()=>{
   const f=fixture(),shared=require('../../cloudfunctions/api/services/playground-shared')(f.context)
+  const legacy={id:'look_'+'f'.repeat(32),targetType:'character',targetId:pid('a'),ownerId:pid('a'),revision:1,
+    walk:{fileID:fileID('old/walk.png'),frames:24,columns:4,rows:6,frameSize:128},
+    run:{fileID:fileID('old/run.png'),frames:24,columns:4,rows:6,frameSize:128}}
+  f.user('a').playgroundAppearance=legacy
   await world.create(f.context).claim('a',f.user('a'),{x:280,z:280})
   await shared.enter('a',f.user('a'),{},[])
-  const first=await f.pending('a','','character'),batch=await f.batch(first)
-  const runFileID=batch.walkFileID.replace(/walk\.png$/,'run.png')
-  f.files.set(runFileID,atlas({color:101}))
-  await f.service.publish('admin',{...batch,runFileID})
-  assert.ok(f.user('a').playgroundAppearance.run)
-  f.advance()
   const next=await f.pending('a','','character')
-  const result=await f.service.publish('admin',await f.batch(next,atlas({color:102})))
+  const result=await f.service.publish('admin',await f.batch(next))
   assert.equal(result.syncPending,false)
   const binding=f.db.state[BINDINGS].find((r)=>r.kind==='target')
   const request=f.db.state[REQUESTS].find((r)=>r._id===next._id)
@@ -227,7 +292,10 @@ test('a walking-only replacement removes the old running atlas from target, bind
   const live=f.db.state.pet_playground_live.flatMap((r)=>Object.values(r.records||{})).find((r)=>r.id===pid('a'))
   for(const stored of [f.user('a').playgroundAppearance,binding.appearance,request.appearance,actor.appearance,live.appearance]) {
     assert.equal(stored.id,result.appearance.id)
-    assert.ok(!stored.run)
+    for(const action of ['walk','run']) {
+      assert.equal(stored[action].fileID,undefined)
+      for(const direction of ['sw','se','nw','ne'])assert.equal(stored[action][direction].frames,12)
+    }
   }
 })
 
@@ -300,4 +368,35 @@ test('private collections and storage rule fragments isolate photos and deny cli
   assert.equal(check('write','packagePlayground/custom/target/request/walk.png'),false)
   assert.equal(check('read','packagePlayground/custom/target/request/walk.png','server'),true)
   assert.equal(check('read','packagePlayground/custom/target/request/walk.png','server',null),false)
+})
+
+test('character publication requires all eight atlases, exact batch paths and a valid 12-frame PNG in every slot',async()=>{
+  for(const issue of ['missing','path','layout','blank']) {
+    const f=fixture(),row=await f.pending('a','','character'),batch=await f.batch(row)
+    if(issue==='missing')delete batch.runFileIDs.ne
+    if(issue==='path')batch.runFileIDs.ne=batch.runFileIDs.nw
+    if(issue==='layout')f.files.set(batch.runFileIDs.ne,atlas())
+    if(issue==='blank')f.files.set(batch.runFileIDs.ne,atlas({rows:3,blank:11}))
+    await assert.rejects(()=>f.service.publish('admin',batch),/四方向|本次上传|4列3行|12个格子/)
+    assert.equal(f.user('a').playgroundAppearance,undefined)
+    assert.equal(f.db.state[BINDINGS].filter((r)=>r.kind==='image').length,0)
+  }
+})
+test('directional atlas content remains exclusive across character owners after PNG reencoding',async()=>{
+  const f=fixture(),a=await f.pending('a','','character'),b=await f.pending('b','','character')
+  await f.service.publish('admin',await f.batch(a,atlas({rows:3})))
+  await assert.rejects(()=>f.batch(b,atlas({rows:3,filter:4,hidden:7})).then((batch)=>f.service.publish('admin',batch)),/专属绑定/)
+  assert.equal(f.user('b').playgroundAppearance,undefined)
+})
+test('public appearance keeps legacy 24-frame art and sanitizes all four directional atlases',()=>{
+  const {publicAppearance}=require('../../cloudfunctions/api/services/playground-appearance-record')
+  const legacy={id:'look_'+'a'.repeat(32),targetType:'character',targetId:pid('a'),ownerId:pid('a'),walk:{fileID:fileID('old.png'),frames:24,columns:4,rows:6,frameSize:128}}
+  assert.equal(publicAppearance(legacy,'character',pid('a'),'a').walk.frames,24)
+  const walk=Object.fromEntries(['sw','se','nw','ne'].map((d)=>[d,{...legacy.walk,frames:12,rows:3,privateField:'hidden'}]))
+  const look={...legacy,walk,run:walk}
+  const cleaned=publicAppearance(look,'character',pid('a'),'a')
+  assert.equal(cleaned.walk.ne.frames,12);assert.equal(cleaned.run.nw.privateField,undefined)
+  assert.equal(publicAppearance(look,'character',pid('a'),'b'),null)
+  delete walk.ne
+  assert.equal(publicAppearance(look,'character',pid('a'),'a'),null)
 })

@@ -203,7 +203,7 @@ function createCollectionStore(initial = {}, options = {}) {
             return result
           })
         }
-        return { data }
+        return { data: options.cloneReads ? structuredClone(data) : data }
       },
       async count() {
         return { total: ensure(name).filter((item) => matchWhere(item, this._where)).length }
@@ -232,7 +232,7 @@ function createCollectionStore(initial = {}, options = {}) {
           async get() {
             const item = ensure(name).find((record) => record._id === _id)
             if (!item) throw new Error(`document with _id ${_id} does not exist`)
-            return { data: item }
+            return { data: options.cloneReads ? structuredClone(item) : item }
           },
           async set({ data }) {
             if (data && Object.prototype.hasOwnProperty.call(data, '_id')) {

@@ -10,15 +10,16 @@ page { background: #f4f6ed; color: #344d39; }
 .target-picker > text:first-child { min-width: 0; word-break: break-all; }
 .photo-heading, .history-heading, .application-top { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; }
 .photo-grid { display: flex; flex-wrap: wrap; gap: 18rpx; margin: 22rpx 0 30rpx; }
-.photo-item, .add-photo { position: relative; width: 174rpx; height: 174rpx; }
-.photo-item image { width: 100%; height: 100%; border-radius: 22rpx; }
+.photo-item, .add-photo { position: relative; flex: none; width: 174rpx; height: 174rpx; }
+.photo-item { overflow: hidden; border-radius: 22rpx; }
+.photo-item image { display: block; width: 100%; height: 100%; }
 button::after { border: none; }
-.remove-photo { position: absolute; right: 0; top: 0; width: 42rpx; height: 42rpx; margin: 0; padding: 0; line-height: 40rpx; border-radius: 0 20rpx; color: white; background: #344d39aa; }
+.photo-remove { position: absolute; z-index: 1; top: 8rpx; right: 8rpx; display: flex; align-items: center; justify-content: center; box-sizing: border-box; width: 44rpx; height: 44rpx; border-radius: 50%; color: #fff; background: rgba(34, 47, 36, .78); font-family: sans-serif; font-size: 34rpx; line-height: 1; }
 .add-photo { display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 0; padding: 0; background: #eef3e5; border: 2rpx dashed #c6d3b6; border-radius: 22rpx; color: #718760; font-size: 23rpx; line-height: 1.8; }
 .add-photo > text:first-child { font-size: 48rpx; }
 textarea { box-sizing: border-box; width: 100%; height: 180rpx; margin-top: 18rpx; padding: 22rpx; border-radius: 20rpx; background: #f2f4ec; font-size: 26rpx; line-height: 1.6; }
 .privacy-note { margin: 22rpx 0; font-size: 22rpx; line-height: 1.7; color: #8a957f; }
-.submit-button { border-radius: 22rpx; color: #fffdf3; background: #6f8d58; font-size: 28rpx; }
+.submit-button { display: flex; align-items: center; justify-content: center; box-sizing: border-box; width: 100%; min-height: 88rpx; margin: 18rpx 0 0; padding: 14rpx 22rpx; border: 0; border-radius: 18rpx; color: #fffdf3; background: #5f7e4b; box-shadow: 0 8rpx 18rpx rgba(63, 91, 49, .16); font-size: 28rpx; font-weight: 600; line-height: 1.35; white-space: normal; text-align: center; }
 .history-heading { margin: 42rpx 6rpx 20rpx; }
 .history-heading button, .cancel-button, .more-button { margin: 0; padding: 0 22rpx; line-height: 60rpx; border-radius: 18rpx; background: #e8eedf; color: #667e56; font-size: 24rpx; }
 .application-card { margin-bottom: 20rpx; }

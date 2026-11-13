@@ -143,3 +143,34 @@ test('sitter refills advance the plot version so connected clients accept the ne
   const unchanged=await f.shared.snapshot('a',f.auth(scene))
   assert.deepEqual(unchanged.records.find((r)=>r.id===plot.id).version,plot.version,'full bowls must not generate redundant updates')
 })
+
+test('staff certification replaces a legacy null card and updates snapshot and live scene through revocation and reapproval',async()=>{
+  const f=fixture({cloudObjectUpdates:true,cloneReads:true}),scene=await f.build()
+  const plotId=f.resident('a').plotId
+  f.row(plotId).staffCard=null
+  const before=structuredClone(f.row(plotId)),position=structuredClone(f.actor('a').position)
+  const profile={_id:'staff_a',openid:'a',auditStatus:'approved',staffLevel:'intern',phone:'private-phone'}
+  f.db.state.staff_profiles=[profile]
+  async function checkCard(expected) {
+    const snapshot=await f.shared.snapshot('a',f.auth(scene))
+    assert.deepEqual(snapshot.records.find((r)=>r.id===plotId).staffCard,expected)
+    const stored=f.row(plotId)
+    assert.deepEqual(stored.staffCard,expected)
+    const live=f.db.state.pet_playground_live.flatMap((r)=>Object.values(r.records||{})).find((r)=>r.id===plotId)
+    assert.deepEqual(live.staffCard,expected)
+    for(const key of ['x','z','size','buildings','ownerOpenid'])assert.deepEqual(stored[key],before[key])
+    assert.deepEqual(f.actor('a').position,position)
+    assert.ok(!JSON.stringify(snapshot).includes('private-phone'))
+    return stored.revision
+  }
+  const firstRevision=await checkCard({id:'staff_a',label:'实习宠托师'})
+  assert.ok(firstRevision>before.revision)
+  assert.equal(await checkCard({id:'staff_a',label:'实习宠托师'}),firstRevision)
+  f.db.state.staff_profiles[0].staffLevel='formal'
+  f.row(plotId).staffCard.obsolete='legacy-field'
+  assert.ok(await checkCard({id:'staff_a',label:'认证宠托师'})>firstRevision)
+  f.db.state.staff_profiles[0].auditStatus='rejected'
+  await checkCard(null)
+  f.db.state.staff_profiles[0].auditStatus='approved'
+  await checkCard({id:'staff_a',label:'认证宠托师'})
+})

@@ -110,18 +110,18 @@ test('cloud assets load only requested images, share downloads and recover after
     const requestCount=requests.length
     const idle=await first.loadImage('boy_idle_sw')
     assert.ok(idle)
-    assert.equal(requests.at(-1),'cloud://cloud1-5gnhqn4t0554c1d9.636c-cloud1-5gnhqn4t0554c1d9-1310870236/packagePlayground/2d/baseImage/people/boy/boy-walk-sw-end/boy-walk-sw-stop.png')
+    assert.equal(requests.at(-1),'cloud://cloud1-5gnhqn4t0554c1d9.636c-cloud1-5gnhqn4t0554c1d9-1310870236/memorial-cloud-v1/packageMemorial/v1/playground-four-directions/cloud-upload/boy/idle-sw.png')
     const atlas=await first.loadImage('boy_walk_sw')
     assert.ok(atlas)
     assert.equal(atlas.width,2048)
-    assert.equal(requests.at(-1),'cloud://cloud1-5gnhqn4t0554c1d9.636c-cloud1-5gnhqn4t0554c1d9-1310870236/packagePlayground/2d/baseImage/people/boy/boy-walk-sw-end/walk-sw.png')
+    assert.equal(requests.at(-1),'cloud://cloud1-5gnhqn4t0554c1d9.636c-cloud1-5gnhqn4t0554c1d9-1310870236/memorial-cloud-v1/packageMemorial/v1/playground-four-directions/cloud-upload/boy/walk-sw.png')
     assert.ok(await first.loadImage('boy_run_sw'))
-    assert.equal(requests.at(-1),'cloud://cloud1-5gnhqn4t0554c1d9.636c-cloud1-5gnhqn4t0554c1d9-1310870236/packagePlayground/2d/baseImage/people/boy/boy-walk-sw-end/run-sw.png')
+    assert.equal(requests.at(-1),'cloud://cloud1-5gnhqn4t0554c1d9.636c-cloud1-5gnhqn4t0554c1d9-1310870236/memorial-cloud-v1/packageMemorial/v1/playground-four-directions/cloud-upload/boy/run-sw.png')
     assert.equal(requests.length,requestCount+3)
     for (const action of ['idle', 'walk', 'run']) {
       const image = await first.loadImage('girl_' + action + '_sw')
       assert.equal(image.width, 2048)
-      assert.equal(requests.at(-1), 'cloud://cloud1-5gnhqn4t0554c1d9.636c-cloud1-5gnhqn4t0554c1d9-1310870236/packagePlayground/2d/baseImage/people/girl/' + action + '-sw.png')
+      assert.equal(requests.at(-1), 'cloud://cloud1-5gnhqn4t0554c1d9.636c-cloud1-5gnhqn4t0554c1d9-1310870236/memorial-cloud-v1/packageMemorial/v1/playground-four-directions/cloud-upload/girl/' + action + '-sw.png')
     }
     await new AssetLoader2D(canvas).loadAll(null, ['boy_idle_sw', 'boy_walk_sw', 'boy_run_sw'])
     assert.equal(requests.length,requestCount+6)

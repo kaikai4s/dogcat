@@ -2,12 +2,12 @@ const {createCollectionStore}=require('../cloudfunctions/helpers')
 const world=require('../../cloudfunctions/api/services/playground-world')
 const createShared=require('../../cloudfunctions/api/services/playground-shared')
 const {vehicleId}=require('../../cloudfunctions/api/services/playground-shared/vehicles')
-function fixture() {
+function fixture(storeOptions = {}) {
   let time=1800000000000
   const users=['a','b','c','d','e','f'].map((openid)=>({_id:'user_'+openid,openid,nickname:'玩家'+openid,residentialCommunity:{name:openid==='f'?'B小区':'A小区'}}))
   const pets=users.map((u)=>({_id:'pet_'+u.openid,openid:u.openid,name:'宠物'+u.openid,species:u.openid==='b'?'cat':'dog'}))
   const user=(id)=>users.find((u)=>u.openid===id)
-  const db=createCollectionStore({users,pets}),context={db,nowMs:()=>time,nowText:()=>new Date(time).toISOString(),getUser:async(id)=>user(id)}
+  const db=createCollectionStore({users,pets},storeOptions),context={db,nowMs:()=>time,nowText:()=>new Date(time).toISOString(),getUser:async(id)=>user(id)}
   Object.assign(context,require('../../cloudfunctions/api/services/membership')({...context,safeText:(v)=>v==null?'':String(v),normalizeMemberBadgeTag:(v)=>v||'',normalizeMemberNameColor:(v)=>v||'',normalizeMemberNameEffect:(v)=>v||'',normalizeMemberBadgeStyle:(v)=>v||'gold'}))
   Object.assign(context,require('../../cloudfunctions/api/services/points')({...context,now:()=>new Date(time).toISOString(),safeText:(v)=>String(v||'')}))
   const shared=createShared(context),plots=world.create(context),seq={},commands={}
