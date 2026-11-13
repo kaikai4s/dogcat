@@ -1,0 +1,72 @@
+{
+  "model": "gpt-image-2",
+  "characterGrid": {
+    "columns": 4,
+    "rows": 2,
+    "frame": [
+      128,
+      128
+    ],
+    "anchor": [
+      64,
+      115
+    ]
+  },
+  "sources": {
+    "boy-flower.png": "24981622a209d281820457ca6ecbaab7ff55d24e9174ba827441a0e4b82ef28d",
+    "boy-snack.png": "1e3304c65ee6f849253fed11d27b177486fd4ee2a608328374ba8ef77c9a76fb",
+    "girl-flower.png": "9b2ccedb917bda6a838714d4f0d4caf708c0b98adaa8f516a0e87c2a760a7cdd",
+    "girl-snack.png": "4e8df9e36be282cd4ea84ab222b4d2a476847ab8292b9fc90707fb7b0b12125a",
+    "props.png": "627af6217eefa05522e9f3fda845390aa6d79fa8a939c6b6d328f54dd9584ba7"
+  },
+  "files": [
+    {
+      "path": "offerings-v1/boy-flower.png",
+      "size": [
+        512,
+        256
+      ],
+      "sha256": "566aa8b77f0fb52108df98f0d275ee8f5c4f7ba4bbbb20550d5da5f5d43f702b"
+    },
+    {
+      "path": "offerings-v1/boy-snack.png",
+      "size": [
+        512,
+        256
+      ],
+      "sha256": "690e5772a9a220835f5efcb388916303e8910acbf155e99c882ae19dcb4c99c6"
+    },
+    {
+      "path": "offerings-v1/flower.png",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "0525bf1ae98e793ad12a838b39aa27d0691673dd9dccdafc4d6c5f9bbe858bf7"
+    },
+    {
+      "path": "offerings-v1/girl-flower.png",
+      "size": [
+        512,
+        256
+      ],
+      "sha256": "09b0d8e5d09bb360d321e4362dfc61cdb728d3cb0e0614446f10bea1db62c869"
+    },
+    {
+      "path": "offerings-v1/girl-snack.png",
+      "size": [
+        512,
+        256
+      ],
+      "sha256": "31b6c351cc297770e3bdb7f36d937708e7969d0046c2d79cf22b7214b5a074ad"
+    },
+    {
+      "path": "offerings-v1/snack.png",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "8c5b491244d8341f8088d73d875f6d9ae83cfee9cf4a020a20fad26262279ba0"
+    }
+  ]
+}

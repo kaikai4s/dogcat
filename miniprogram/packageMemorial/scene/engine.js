@@ -1,3 +1,5 @@
+const { OfferingRitual } = require('./offering-ritual')
+const { placements, drawOffering } = require('./offerings')
 const { portraitLayout, drawPortrait } = require('./memorial-portrait-layout')
 const { safePosition } = require('./saved-position')
 const { PortraitImages } = require('./portrait-images')
@@ -73,6 +75,7 @@ class MemorialScene {
     this.player = safePosition(options.position) || Object.assign({}, layout.spawn)
     this.direction = 'sw'
     this.gender = options.gender === 'girl' ? 'girl' : 'boy'
+    this.ritual = new OfferingRitual(this)
     this.images = {}
     this.pending = {}
     this.input = { x: 0, y: 0 }
@@ -150,6 +153,7 @@ class MemorialScene {
   setEffectsEnabled(enabled) { this.effectsEnabled = !!enabled; this.requestDraw() }
   async setGender(gender) {
     if (gender !== 'girl' && gender !== 'boy') return false
+    this.ritual.cancel()
     const version = ++this.changeVersion
     this.setInput(0, 0)
     await this.loadGender(gender)
@@ -160,6 +164,7 @@ class MemorialScene {
     return true
   }
   setInput(x, y) {
+    if (this.ritual.state && (x || y)) this.ritual.cancel()
     if (this.overview || this.destroyed) x = y = 0
     const length = Math.hypot(x, y)
     this.input = length > 0.12 ? { x: x / Math.max(1, length), y: y / Math.max(1, length) } : { x: 0, y: 0 }
@@ -172,6 +177,7 @@ class MemorialScene {
     // Local collision steps are capped at 50 ms; remote playback must still
     // consume the real frame interval or low FPS accumulates seconds of lag.
     this.visitors.step(seconds)
+    this.ritual.step(dt)
     const before = Object.assign({}, this.player)
     const screen = G.project(before)
     const aim = G.unproject({ x: screen.x + this.input.x, y: screen.y + this.input.y })
@@ -294,6 +300,7 @@ class MemorialScene {
     return true
   }
   openOverview(point) {
+    this.ritual.cancel()
     this.overview = true
     this.overviewZoom = point ? .9 : null
     if (point) this.camera = { x: point.x, y: point.y }
@@ -306,9 +313,22 @@ class MemorialScene {
   setZoom(delta) {
     this.zoomAt(Math.exp(clamp(delta, -10, 10)))
   }
+  prepareOffering(row, kind) { return this.ritual.approach(row, kind) }
+  playOffering(onRelease) { return this.ritual.gesture(onRelease) }
+  cancelOffering() { this.ritual.cancel() }
+  updateOfferings(id, counts, display) {
+    const row = this.memorials.find(item => item.applicationId === id)
+    if (row) { row.offerings = counts; row.offeringScene = display; this.loadOfferingProps(); this.requestDraw() }
+  }
+  loadOfferingProps() {
+    if (this._offeringProps || !this.memorials.some(row => placements(row, this.environment.time()).length)) return
+    this._offeringProps = Promise.all(['flower', 'snack'].map(kind => this.image('offerings-v1/' + kind + '.png')))
+      .then(() => this.requestDraw()).catch(() => {}).finally(() => { this._offeringProps = null })
+  }
   setMemorials(rows) {
     this.memorials = rows.map(row => ({ ...row, kind: 'memorial' }))
     this.grass.setMemorials(this.memorials)
+    this.loadOfferingProps()
     const safe = safePosition(this.player, rows)
     if (safe && (safe.x !== this.player.x || safe.y !== this.player.y)) { this.player = safe; this.updateCamera(1, true) }
     if (this.destination) this.navigate(this.destination, this.destination.name)
@@ -348,6 +368,7 @@ class MemorialScene {
     this.onNavigation({ active: true, name: this.destination.name, distance: Math.round(this.routeDistance()) })
   }
   reset() {
+    this.ritual.cancel()
     this.player = Object.assign({}, this.map.spawn)
     this.cancelNavigation()
     this.overview = false
@@ -379,8 +400,9 @@ class MemorialScene {
     const person = actor || this
     c.fillStyle = 'rgba(42,52,29,0.23)'
     c.beginPath(); c.ellipse(p.x, p.y + 1, 15, 5, 0, 0, Math.PI * 2); c.fill()
-    const frame = actor ? Math.floor(actor.moving ? actor.walkPhase : actor.idleTime / .32) % 8 : this.getFrame()
-    const img = this.images[person.gender + '/' + (person.moving ? 'walk' : 'idle') + '-' + person.direction + '.png']
+    const ritualFrame = !actor && this.ritual.frame()
+    const frame = ritualFrame !== null && ritualFrame !== false ? ritualFrame : actor ? Math.floor(actor.moving ? actor.walkPhase : actor.idleTime / .32) % 8 : this.getFrame()
+    const img = ritualFrame !== null && ritualFrame !== false ? this.images['offerings-v1/' + this.gender + '-' + this.ritual.state.kind + '.png'] : this.images[person.gender + '/' + (person.moving ? 'walk' : 'idle') + '-' + person.direction + '.png']
     if (actor && actor.activity !== 'walk' && this.scale >= .7) {
       c.textAlign = 'center'; c.font = '12px sans-serif'; c.fillStyle = '#38543d'
       c.fillText(({ remember: '静静陪伴', select: '挑选小筑', map: '查看地图' })[actor.activity] || '', p.x, p.y - 109)
@@ -434,12 +456,15 @@ class MemorialScene {
       }
       const visible = scenery.concat(this.memorials).filter(o => {
         const box = propBox(o)
-        return box.x + box.width >= view.left && box.x <= view.right && Math.max(box.y + box.height, o.portrait ? o.y + 46 : 0) >= view.top && box.y <= view.bottom
+        return box.x + box.width + (o.offeringScene ? 16 : 0) >= view.left && box.x - (o.offeringScene ? 16 : 0) <= view.right && Math.max(box.y + box.height, o.portrait ? o.y + 46 : 0, o.offeringScene ? o.y + 74 : 0) >= view.top && box.y <= view.bottom
       })
       // Sort by ground anchor so tree canopies and buildings naturally occlude the character.
       const drawables = visible.map(o => ({ y: o.y, object: o }))
       const portraits = this.scale >= .5 ? visible.filter(o => o.portrait).sort((a, b) =>
         Math.hypot(a.x - this.camera.x, a.y - this.camera.y) - Math.hypot(b.x - this.camera.x, b.y - this.camera.y)).slice(0, 24) : []
+      if (this.scale >= .5) for (const o of visible.filter(row => row.kind === 'memorial')) {
+        for (const item of placements(o, this.environment.time())) drawables.push({ y: item.y, offering: item })
+      }
       for (const o of portraits) {
         const image = this.portraits.get(o.portrait)
         // The stone sprite's lawn ends near y + 20. Keep paws on that lawn;
@@ -451,7 +476,8 @@ class MemorialScene {
       }
       drawables.push({ y: this.player.y, player: true })
       drawables.sort((a, b) => a.y - b.y).forEach(item => {
-        if (item.portrait) {
+        if (item.offering) drawOffering(c, this.images['offerings-v1/' + item.offering.kind + '.png'], item.offering)
+        else if (item.portrait) {
           drawPortrait(c, item.image, item.portrait)
         }
         else if (item.actor) { this.drawPlayer(item.actor); this.grass.feet(c, item.actor) }
@@ -524,6 +550,7 @@ class MemorialScene {
     this.raf = this.canvas.requestAnimationFrame(tick)
   }
   pause() {
+    this.ritual.cancel()
     this.running = false
     if (this.raf !== undefined) this.canvas.cancelAnimationFrame(this.raf)
     this.raf = undefined

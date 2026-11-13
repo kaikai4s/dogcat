@@ -79,7 +79,7 @@ Page({
   },
 
   openMemorial() {
-    wx.navigateTo({ url: '/packageMemorial/pages/garden' })
+    wx.navigateTo({ url: '/packageMemorial/pages/entrance' })
   },
 
   customizePet() {

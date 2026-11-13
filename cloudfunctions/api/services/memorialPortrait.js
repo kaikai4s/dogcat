@@ -12,8 +12,8 @@ module.exports = context => {
   const presence = require('./memorialPresence')(context)
   const read = (store, id) => readOptionalDocument(store, 'platform_configs', id)
   const put = (store, id, data) => store.collection('platform_configs').doc(id).set({ data })
-  async function app(id, openid, owner) {
-    const row = await read(db, clean(id))
+  async function app(id, openid, owner, store = db) {
+    const row = await read(store, clean(id))
     if (!row || row.key !== 'memorial_application' || row.status !== 'approved') throw new Error('时光小筑尚未安放')
     if (owner && row.ownerOpenid !== openid) throw new Error('只有主人可以申请宠物画像')
     return row
@@ -55,6 +55,7 @@ module.exports = context => {
       await checkTextSecurity(openid, note, { label: '宠物画像备注' })
       const fingerprint = hash(JSON.stringify([data.revision, data.front, data.side, note, pose]))
       return db.runTransaction(async tx => {
+        const a = await app(data.id, openid, true, tx)
         const id = rowId(a._id), old = await read(tx, id)
         if (old && old.revision === data.revision + 1 && old.fingerprint === fingerprint) return { revision: old.revision, status: old.status }
         if ((old && old.revision || 0) !== data.revision) throw new Error('申请已更新，请刷新')
@@ -84,7 +85,12 @@ module.exports = context => {
         return { layoutVersion: 1, width, height, bounds, previewDigest: digest, scale: 1 }
       }
       const id = 'memorial_portrait_asset_' + crypto.randomBytes(16).toString('hex'), path = 'memorial-memories/uploads/' + hash(openid) + '/' + id + '.png'
-      await put(db, id, { key: 'memorial_portrait_asset', ownerOpenid: openid, requestId: row._id, revision: row.revision, path, status: 'uploading', createdAt: now() })
+      await db.runTransaction(async tx => {
+        await app(row.applicationId, openid, false, tx)
+        const latest = await read(tx, row._id)
+        if (!latest || latest.status !== 'pending' || latest.revision !== row.revision) throw new Error('申请已变化，请刷新')
+        await put(tx, id, { key: 'memorial_portrait_asset', applicationId: row.applicationId, ownerOpenid: openid, requestId: row._id, revision: row.revision, path, status: 'uploading', createdAt: now() })
+      })
       return { uploadId: id, cloudPath: path, maxBytes: 1024 * 1024 }
     }
     if (action === 'reviewPortrait') {
@@ -99,38 +105,46 @@ module.exports = context => {
       if (row.revision === data.revision && row.decision === decision && row.status === data.status) return { status: row.status }
       if (row.status !== 'pending' || row.revision !== data.revision) throw new Error('申请已更新或处理，请刷新')
       await checkTextSecurity(openid, reason, { label: '画像审核意见' })
-      let asset
-      if (data.status === 'approved') {
-        const { bytes, width, height, bounds, digest } = await inspectUpload(openid, row, data)
-        if (data.previewDigest !== digest) throw new Error('请重新上传并预览成品后再安放，文件与预览不一致')
-        const uploaded = await cloud.uploadFile({ cloudPath: 'memorial-memories/vault/portrait-' + crypto.randomBytes(24).toString('hex') + '.png', fileContent: bytes })
-        if (!uploaded || !uploaded.fileID) throw new Error('画像保存失败，请重试')
-        await context.checkImageSecurity(openid, uploaded.fileID, { label: '宠物画像成品' })
-        asset = { uploadId: data.uploadId, fileId: uploaded.fileID, width, height, bounds, scale, layoutVersion: 1 }
-      }
-      return db.runTransaction(async tx => {
-        const latest = await read(tx, row._id)
-        if (latest && latest.revision === data.revision && latest.decision === decision && latest.status === data.status) return { status: latest.status }
-        if (!latest || latest.status !== 'pending' || latest.revision !== data.revision) throw new Error('申请已更新或处理，请刷新')
-        if (asset) {
-          const a = await read(tx, row.applicationId), plot = a && await read(tx, a.plotKey)
-          if (!a || a.status !== 'approved' || !plot || plot.status !== 'approved' || plot.applicationId !== a._id) throw new Error('小筑状态已变化，请刷新')
-          // CloudBase expands plain objects into nested writes. Replace the
-          // complete snapshot so a previous null (or legacy fields) is safe.
-          await tx.collection('platform_configs').doc(a.plotKey).update({ data: { portrait: db.command.set(asset), updatedAt: now() } })
-          await presence.changed(tx, gardenId(a))
+      let asset, generatedFile, retained = false
+      try {
+        if (data.status === 'approved') {
+          const { bytes, width, height, bounds, digest } = await inspectUpload(openid, row, data)
+          if (data.previewDigest !== digest) throw new Error('请重新上传并预览成品后再安放，文件与预览不一致')
+          const uploaded = await cloud.uploadFile({ cloudPath: 'memorial-memories/vault/portrait-' + crypto.randomBytes(24).toString('hex') + '.png', fileContent: bytes })
+          if (!uploaded || !uploaded.fileID) throw new Error('画像保存失败，请重试')
+          generatedFile = uploaded.fileID
+          await context.checkImageSecurity(openid, uploaded.fileID, { label: '宠物画像成品' })
+          asset = { uploadId: data.uploadId, fileId: uploaded.fileID, width, height, bounds, scale, layoutVersion: 1 }
         }
-        await tx.collection('platform_configs').doc(row._id).update({ data: { status: data.status, reason, decision, reviewedBy: openid, updatedAt: now(), ...(asset ? { asset: db.command.set(asset) } : {}) } })
-        const notice = 'admin_audit_memorial_portrait_' + row._id + ':' + row.revision
-        if (await readOptionalDocument(tx, 'admin_notifications', notice)) await tx.collection('admin_notifications').doc(notice).update({ data: { resolved: true, resolvedAt: now() } })
-        const stamp = now(), time = stamp instanceof Date ? stamp.toISOString() : String(stamp)
-        await tx.collection('system_notifications').doc('memorial_portrait_result_' + hash(row._id + ':' + row.revision)).set({ data: {
-          title: asset ? '宠物画像已安放' : '宠物画像申请需要调整', content: asset ? '“' + row.petName + '”的画像已安放在时光小筑平台上，回园看看它吧。' : '请调整画像照片：' + reason,
-          target: 'client', targetOpenid: row.ownerOpenid, targetOpenids: [], type: 'notice', status: 'active', level: 'normal',
-          targetUrl: '/packageMemorial/pages/memory?id=' + row.applicationId, createdAt: time, updatedAt: time
-        } })
-        return { status: data.status }
-      })
+        const result = await db.runTransaction(async tx => {
+          await app(row.applicationId, openid, false, tx)
+          const latest = await read(tx, row._id)
+          if (latest && latest.revision === data.revision && latest.decision === decision && latest.status === data.status) return { status: latest.status, retainedFile: latest.asset && latest.asset.fileId }
+          if (!latest || latest.status !== 'pending' || latest.revision !== data.revision) throw new Error('申请已更新或处理，请刷新')
+          if (asset) {
+            const a = await read(tx, row.applicationId), plot = a && await read(tx, a.plotKey)
+            if (!a || a.status !== 'approved' || !plot || plot.status !== 'approved' || plot.applicationId !== a._id) throw new Error('小筑状态已变化，请刷新')
+            // CloudBase expands plain objects into nested writes. Replace the
+            // complete snapshot so a previous null (or legacy fields) is safe.
+            await tx.collection('platform_configs').doc(a.plotKey).update({ data: { portrait: db.command.set(asset), updatedAt: now() } })
+            await presence.changed(tx, gardenId(a))
+          }
+          await tx.collection('platform_configs').doc(row._id).update({ data: { status: data.status, reason, decision, reviewedBy: openid, updatedAt: now(), ...(asset ? { asset: db.command.set(asset) } : {}) } })
+          const notice = 'admin_audit_memorial_portrait_' + row._id + ':' + row.revision
+          if (await readOptionalDocument(tx, 'admin_notifications', notice)) await tx.collection('admin_notifications').doc(notice).update({ data: { resolved: true, resolvedAt: now() } })
+          const stamp = now(), time = stamp instanceof Date ? stamp.toISOString() : String(stamp)
+          await tx.collection('system_notifications').doc('memorial_portrait_result_' + hash(row._id + ':' + row.revision)).set({ data: {
+            title: asset ? '宠物画像已安放' : '宠物画像申请需要调整', content: asset ? '“' + row.petName + '”的画像已安放在时光小筑平台上，回园看看它吧。' : '请调整画像照片：' + reason,
+            target: 'client', targetOpenid: row.ownerOpenid, targetOpenids: [], type: 'notice', status: 'active', level: 'normal',
+            targetUrl: '/packageMemorial/pages/memory?id=' + row.applicationId, createdAt: time, updatedAt: time
+          } })
+          return { status: data.status, retainedFile: asset && asset.fileId }
+        })
+        retained = !generatedFile || result.retainedFile === generatedFile
+        return { status: result.status }
+      } finally {
+        if (generatedFile && !retained) await require('./memorialFileCleanup').discardFiles(context, [generatedFile], [row._id])
+      }
     }
     throw new Error('未知画像操作')
   }

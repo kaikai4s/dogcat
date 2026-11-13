@@ -221,6 +221,7 @@ Page({
       assuranceTitle: '平台保障',
       modules: defaultModules
     },
+    trustVisible: false,
     statsData: {
       completedCount: '0',
       sitterCount: '0',
@@ -298,6 +299,7 @@ Page({
   },
 
   onShow() {
+    this.setData({ trustVisible: false })
     this.initNavBar()
     this._staffEntryVisible = true
     startStaffEntryUnread(this)
@@ -588,6 +590,7 @@ Page({
   },
 
   onHide() {
+    this.setData({ trustVisible: false })
     this._staffEntryVisible = false
     stopStaffEntryUnread(this)
     clearTimeout(this._groupNoticeTimer)
@@ -925,6 +928,7 @@ Page({
           coupons: homeData.coupons || [],
           repeatOrder: homeData.repeatOrder || null,
           recentOrders: homeData.recentOrders || [],
+          trustVisible: !!(homeData.settings && homeData.settings.homePage && homeData.settings.homePage.modules && homeData.settings.homePage.modules.historyStats !== false && homeData.statsData),
           statsData: homeData.statsData || this.data.statsData,
           assuranceItems: homeData.assuranceItems || []
         }, () => {

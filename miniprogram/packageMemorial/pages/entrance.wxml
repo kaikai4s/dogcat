@@ -1,0 +1,15 @@
+<view class="entrance-page">
+  <view class="eyebrow">留一处时光 · 安放思念</view>
+  <view class="title">{{moving ? (restoring ? '为小筑选择恢复的园区' : '为小筑选择新的园区') : '今天，去哪里看看它'}}</view>
+  <view class="description">{{moving ? '选择园区后，在地图上挑选新位置。回忆、画像和收到的心意全部保留。' : '选择一个纪念园，从这里开始今天的探望。'}}</view>
+  <view class="garden-card" wx:for="{{gardens}}" wx:key="id">
+    <view class="garden-mark">✧</view><view class="garden-name">{{item.name}}</view>
+    <view class="garden-status">{{item.accepting ? '可探望 · 可安放小筑' : '可探望 · 暂停安放新小筑'}}</view>
+    <button data-id="{{item.id}}" bindtap="enter" disabled="{{moving && !item.accepting}}">{{moving ? (item.accepting ? '在此园选择新位置 →' : '暂不开放选址') : '从这里进入 →'}}</button>
+  </view>
+  <view class="hint" wx:if="{{!loading && !error && !gardens.length}}">暂时没有开放的纪念园</view>
+  <view class="recycle-entry" wx:if="{{!moving}}"><view>找回暂别的小筑</view><view class="description">拆除后 7 天内，可在回收站恢复。</view><button class="more" bindtap="openRecycle">进入小筑回收站 →</button></view>
+  <view class="hint" wx:if="{{loading}}">正在读取纪念园…</view>
+  <view class="hint" wx:if="{{error}}">{{error}}<button bindtap="load" data-more="{{gardens.length > 0}}">重新加载</button></view>
+  <button class="more" wx:if="{{more && !error}}" data-more="true" bindtap="load" loading="{{loading}}" disabled="{{loading}}">更多纪念园</button>
+</view>

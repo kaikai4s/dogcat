@@ -125,6 +125,7 @@ module.exports = function createService({
 
   async function getHomePageData(openid, data = {}) {
     const settings = await getSystemSettings()
+    const showTrust = settings.homePage?.modules?.historyStats !== false
     const loc = {
       latitude: Number(data.latitude || 0),
       longitude: Number(data.longitude || 0)
@@ -150,7 +151,7 @@ module.exports = function createService({
       // 条件与条数下推：仅查询最近完成的 6 笔订单，避免全量拉取全表
       safeCollectionData('orders', (col) => col.where({ status: 'completed' }).orderBy('createdAt', 'desc').limit(6)),
       // 数量统计下推：直接使用 count()，避免传输全量订单文档
-      safeCollectionCount('orders', { status: 'completed' }),
+      showTrust ? safeCollectionCount('orders', { status: 'completed' }) : Promise.resolve(0),
       // 精确查询当前用户的最近订单（仅需前几条用于 repeatOrder 与 isNewUser 判断）
       openid
         ? safeCollectionData('orders', (col) => col.where({ clientOpenid: openid }).orderBy('createdAt', 'desc').limit(5))
@@ -212,7 +213,7 @@ module.exports = function createService({
         hideCheckinPhotos: shouldHidePublicCheckinPhotos(userMap[order.clientOpenid])
       }))
 
-    const reviewCount = await safeCollectionCount('service_reviews', { status: 'visible' })
+    const reviewCount = showTrust ? await safeCollectionCount('service_reviews', { status: 'visible' }) : 0
     const newbieTemplates = couponTemplates.filter((coupon) => coupon.newbieOnly !== false)
     const newbieTemplateIds = new Set(newbieTemplates.map((coupon) => coupon._id).filter(Boolean))
     const claimedNewbieTemplateIds = new Set((userCoupons || [])
@@ -246,11 +247,11 @@ module.exports = function createService({
         staffProfileId: repeatOrder.staffProfileId || repeatOrder.requestedStaffProfileId || ''
       } : null,
       recentOrders,
-      statsData: {
+      statsData: showTrust ? {
         completedCount: formatHomeCount(completedCount),
         sitterCount: formatHomeCount(staffProfiles.length),
         ratingCount: formatHomeCount(reviewCount)
-      },
+      } : null,
       assuranceItems: [
         { title: '实名认证', desc: '宠托师资料审核后上岗', icon: '✅' },
         { title: '轨迹打卡', desc: '服务过程位置和照片可追踪', icon: '📍' },

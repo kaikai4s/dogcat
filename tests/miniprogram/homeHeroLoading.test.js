@@ -188,3 +188,23 @@ test('home only shows real newbie coupons and keeps the fixed card layout', asyn
   assert.equal(real.page.data.coupons[0]._id, 'real-coupon')
 })
 
+
+test('service trust panel is hidden until fresh home settings and counts arrive, regardless of enabled cache', async () => {
+  const ctx = setup({ cached: { homePage: { modules: { historyStats: true } } } })
+  assert.equal(ctx.page.data.trustVisible, false)
+  ctx.page.onShow()
+  ctx.settings.resolve({ homePage: { modules: { historyStats: true } } })
+  await flush()
+  assert.equal(ctx.page.data.trustVisible, false)
+  ctx.home.resolve({ settings: { homePage: { modules: { historyStats: false } } }, statsData: null })
+  await flush()
+  assert.equal(ctx.page.data.trustVisible, false)
+  const enabled = setup()
+  enabled.page.onShow()
+  enabled.home.resolve({ settings: { homePage: { modules: { historyStats: true } } }, statsData: { completedCount: '12' } })
+  await flush()
+  assert.equal(enabled.page.data.trustVisible, true)
+  assert.equal(enabled.page.data.statsData.completedCount, '12')
+  enabled.page.onHide()
+  assert.equal(enabled.page.data.trustVisible, false)
+})

@@ -251,7 +251,7 @@
     </view></scroll-view>
   </view>
 
-  <view class="home-section trust-section" wx:if="{{homePage.modules.historyStats}}">
+  <view class="home-section trust-section" wx:if="{{trustVisible && homePage.modules.historyStats}}">
     <view class="section-heading"><view><view class="section-title">服务安心指数</view><view class="section-desc">真实服务数据，帮你更放心选择</view></view><view class="section-link" data-url="/pages/client/orders/public-list/index" bindtap="go">查看记录</view></view>
     <view class="trust-grid">
       <view class="trust-card"><view class="remix-icon ri-checkbox-circle-fill trust-icon success"></view><view class="trust-num">{{statsData.completedCount}}<text>单</text></view><view class="trust-label">已完成服务</view></view>

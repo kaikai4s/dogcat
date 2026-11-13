@@ -41,7 +41,7 @@ python3 scripts/assets/package-memorial-environment.py
 - `world-v3/chunks/`：96 个区域 JSON。
 - `seasons-v1/foliage.png`：512×1024 四季树木/灌木图集，600315 字节。
 
-开发/体验环境上传到 `memorial-cloud-v1/packageMemorial/v1/`，正式环境上传到 `packageMemorial/v1/`。上传两个子文件夹并保留层级，不上传外层目录或 ZIP。每个文件的环境 FileID 和 SHA-256 在上传包旁的 `manifest.json` 中。
+开发/体验环境上传到 `memorial-cloud-v1/packageMemorial/v1/`，正式环境同样上传到 `memorial-cloud-v1/packageMemorial/v1/`。上传两个子文件夹并保留层级，不上传外层目录或 ZIP。每个文件的环境 FileID 和 SHA-256 在上传包旁的 `manifest.json` 中。
 
 顺序：**上传资源 → 部署 api 云函数 → 编译/发布小程序**。旧 `world-v2` 仍供旧版客户端使用，不能删除。此次无需新增集合、索引或迁移小筑数据。
 

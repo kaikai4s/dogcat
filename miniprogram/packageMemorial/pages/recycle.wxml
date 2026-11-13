@@ -1,0 +1,15 @@
+<view class="recycle-page">
+  <view class="eyebrow">给思念留一次回来的机会</view><view class="title">小筑回收站</view>
+  <view class="description">拆除后保留 7 天，期间可恢复全部回忆、画像和收到的心意。原位置被占用时，可重新选址，也可跨园恢复。到期后永久清除。</view>
+  <view class="notice" wx:if="{{restored}}">小筑已恢复。<button bindtap="visitRestored">去看看它 →</button></view>
+  <view class="notice error" wx:if="{{error && !errorId}}">{{error}}<button bindtap="load" disabled="{{loading || busy}}">刷新回收站</button></view>
+  <view class="recycle-card" wx:for="{{rows}}" wx:key="id">
+    <view class="pet-name">{{item.petName}}</view><view class="location">{{item.gardenName}} · {{item.lawn}} {{item.plotNumber}}号</view>
+    <view class="deadline">请于 {{item.deadline}} 前恢复<text>北京时间 · 逾期永久清除</text></view>
+    <view class="notice error" wx:if="{{error && errorId === item.id}}">{{error}}<view class="error-help">可重试原位恢复，或重新选择园区与位置。</view></view>
+    <view class="actions"><button data-id="{{item.id}}" bindtap="restoreOriginal" loading="{{busy === item.id}}" disabled="{{busy || loading}}">恢复到原位置</button><button class="secondary" data-id="{{item.id}}" bindtap="chooseLocation" disabled="{{busy || loading}}">重新选址恢复</button></view>
+  </view>
+  <view class="empty" wx:if="{{loaded && !rows.length && !loading && !error}}">暂无可恢复的小筑</view>
+  <view class="empty" wx:if="{{loading || !loaded}}">正在读取回收站…</view>
+  <button class="more" wx:if="{{more && !error}}" data-more="true" bindtap="load" disabled="{{loading || busy}}">更多记录</button>
+</view>

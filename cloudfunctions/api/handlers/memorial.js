@@ -4,6 +4,7 @@ const plotLayout = require('../config/memorial-plots.json')
 const nearby = (a, b) => Math.abs(a.x - b.x) < plotLayout.spacing && Math.abs(a.y - b.y) < plotLayout.spacing
 const { readOptionalDocument } = require('../utils/documentPages')
 const { DEFAULT, gardenId } = require('../services/memorialGardens')
+const offeringService = require('../services/memorialOfferings')
 const hash = text => crypto.createHash('sha256').update(text).digest('hex').slice(0, 32)
 const text = value => String(value || '').normalize('NFKC').trim()
 module.exports = function createHandler(context) {
@@ -12,17 +13,20 @@ module.exports = function createHandler(context) {
   const presence = require('../services/memorialPresence')(context)
   const portrait = require('../services/memorialPortrait')(context)
   const memory = require('../services/memorialMemory')(context)
+  const offerings = offeringService(context)
   const read = (store, id) => readOptionalDocument(store, 'platform_configs', id)
   const write = (store, id, data) => store.collection('platform_configs').doc(id).set({ data })
   return async function memorial(openid, action, data = {}) {
     if (['joinPresence', 'syncPresence', 'leavePresence'].includes(action)) return presence.handle(openid, action, data)
     const user = await getUser(openid)
-    const admin = ['listAdmin', 'review', 'listMemoriesAdmin', 'reviewMemory', 'listPortraitsAdmin', 'preparePortraitAsset', 'reviewPortrait', 'listGardensAdmin', 'createGarden', 'updateGarden', 'listUserMemorialsAdmin', 'getMemorialAdmin'].includes(action) ? await requireAdmin(openid) : null
+    const admin = ['listAdmin', 'review', 'listMemoriesAdmin', 'reviewMemory', 'listPortraitsAdmin', 'preparePortraitAsset', 'reviewPortrait', 'listGardensAdmin', 'createGarden', 'updateGarden', 'listUserMemorialsAdmin', 'getMemorialAdmin', 'getOfferingSettings', 'saveOfferingSettings'].includes(action) ? await requireAdmin(openid) : null
     await checkRateLimit(openid, 'memorial.' + action, { max: action === 'submit' ? 5 : 60, windowMs: action === 'submit' ? 3600000 : 60000 })
+    if (['offeringStatus', 'placeOffering', 'getOfferingSettings', 'saveOfferingSettings'].includes(action)) return offerings(openid, action, data)
     if (['listGardens', 'listGardensAdmin', 'createGarden', 'updateGarden'].includes(action)) return gardens.handle(openid, action, data)
     if (action === 'getMemorialAdmin') return memory(openid, action, data, user)
     if (['portraitDetail', 'submitPortrait', 'listPortraitsAdmin', 'preparePortraitAsset', 'reviewPortrait'].includes(action)) return portrait(openid, action, data, user)
     if (['detail', 'entrance', 'prepareMedia', 'finishMedia', 'saveMemory', 'updateMemoryMedia', 'listMemoriesAdmin', 'reviewMemory'].includes(action)) return memory(openid, action, data, user)
+    if (['demolish', 'relocate', 'restore', 'listRecycle', 'recycleDetail'].includes(action)) return require('../services/memorialLifecycle')(context).handle(openid, action, data)
     if (action === 'world') {
       const garden = await gardens.get(data.gardenId || DEFAULT)
       const plots = await gardens.plots(garden._id)
@@ -34,8 +38,9 @@ module.exports = function createHandler(context) {
         const signed = await context.cloud.getTempFileURL({ fileList: fileIds.slice(i, i + 50).map(fileID => ({ fileID, maxAge: 3600 })) })
         for (const f of signed.fileList || []) urls.set(f.fileID, f.tempFileURL || '')
       }
-      return { serverTime: (context.nowMs || Date.now)(), version: world.version, garden: gardens.publicRow(garden), occupied: [...new Set(plots.filter(p => p.status !== 'released').flatMap(p => [p.plotId, ...world.cells.filter(c => nearby(c, p)).map(c => c.id)]))],
-        memorials: plots.filter(p => p.status === 'approved').map(p => ({ id: p.plotId, applicationId: p.applicationId, style: p.style || 'arch', legacy: p.footprint !== 2, x: p.x, y: p.y, name: p.petName, epitaph: p.epitaph, date: p.date, ...(p.portrait ? { portrait: { id: p.portrait.uploadId, ...(p.portrait.layoutVersion === 1 ? { layoutVersion: 1, width: p.portrait.width, height: p.portrait.height, bounds: p.portrait.bounds, scale: p.portrait.scale } : {}), url: urls.get(p.portrait.fileId) || '' } } : {}) })) }
+      const serverTime = (context.nowMs || Date.now)()
+      return { serverTime, version: world.version, garden: gardens.publicRow(garden), occupied: [...new Set(plots.filter(p => p.status !== 'released').flatMap(p => [p.plotId, ...world.cells.filter(c => nearby(c, p)).map(c => c.id)]))],
+        memorials: plots.filter(p => p.status === 'approved').map(p => ({ id: p.plotId, applicationId: p.applicationId, style: p.style || 'arch', legacy: p.footprint !== 2, x: p.x, y: p.y, name: p.petName, epitaph: p.epitaph, date: p.date, offerings: offeringService.counts(p.offerings), offeringScene: offeringService.scene(p.offeringScene, serverTime), ...(p.portrait ? { portrait: { id: p.portrait.uploadId, ...(p.portrait.layoutVersion === 1 ? { layoutVersion: 1, width: p.portrait.width, height: p.portrait.height, bounds: p.portrait.bounds, scale: p.portrait.scale } : {}), url: urls.get(p.portrait.fileId) || '' } } : {}) })) }
     }
     if (['listMine', 'listAdmin', 'listUserMemorialsAdmin'].includes(action)) {
       const where = { key: 'memorial_application' }
@@ -49,7 +54,7 @@ module.exports = function createHandler(context) {
       const result = await db.collection('platform_configs').where({ ...where, ...(cursor ? { _id: db.command.gt(cursor) } : {}) }).orderBy('_id', 'asc').limit(31).get()
       const rows = await gardens.labelRows((result.data || []).slice(0, 30).map(row => ({
         style: row.style || 'arch', _id: row._id, petName: row.petName, epitaph: row.epitaph, date: row.date,
-        plotId: row.plotId, lawn: row.lawn, x: row.x, y: row.y, gardenId: gardenId(row), status: row.status,
+        locationRevision: row.locationRevision || 0, plotId: row.plotId, lawn: row.lawn, x: row.x, y: row.y, gardenId: gardenId(row), status: row.status,
         reason: row.reason, createdAt: row.createdAt, reviewedAt: row.reviewedAt || (row.status !== 'pending' ? row.updatedAt : ''),
         ...(admin ? { applicant: row.applicant, ownerOpenid: row.ownerOpenid } : {})
       })))

@@ -48,6 +48,6 @@ with zipfile.ZipFile(OUT / 'memorial-world-v2.zip') as archive:
 原先 boy、girl、audio 和 garden.jpg 都不用移动、删除或重新上传。新版行走场景不再使用 garden.jpg，但保留文件不影响运行。
 
 上传后在微信开发者工具清缓存并重新编译。普通视图全园采用固定比例，走路时下载附近区域；“园区导览”是地图示意图。后续墓碑使用统一规格，现阶段尚未开放建碑。
-正式环境仍使用 packageMemorial/v1/world-v2/ 路径（没有 memorial-cloud-v1 外层）。上线前还需上传正式环境并完成真机验证。
+正式环境同样使用 memorial-cloud-v1/packageMemorial/v1/world-v2/ 路径。上线前还需上传正式环境并完成真机验证。
 ''', encoding='utf-8')
 print(f"Verified {len(config)} files; {sum(r['bytes'] for r in config):,} bytes; {OUT / 'memorial-world-v2.zip'}")

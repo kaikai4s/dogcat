@@ -96,6 +96,10 @@ module.exports = function createContext({ cloud, db }) {
   Object.assign(context, require('../services/paymentLifecycle')(context))
   Object.assign(context, require('../services/staffCancellation')(context))
   Object.assign(context, require('../services/petBeauty')(context))
+  context.cleanupMemorials = async () => {
+    await require('../services/memorialLifecycle')(context).cleanupMemorials()
+    await require('../services/memorialFileCleanup').cleanupUnusedFiles(context)
+  }
   Object.assign(context, require('../services/home')(context))
   Object.assign(context, require('../services/reviews')(context))
   Object.assign(context, require('../scheduled/cancelUnpaidOrders')(context))

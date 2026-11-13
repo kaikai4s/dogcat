@@ -6,7 +6,7 @@ const root = path.resolve(__dirname, '../..')
 const out = path.join(root, 'output/memorial-scene-preview')
 fs.mkdirSync(out, { recursive: true })
 fs.cpSync(path.join(root, 'miniprogram/packageMemorial/assets'), path.join(out, 'packageMemorial/assets'), { recursive: true })
-const modules = ['memorial-portrait-layout', 'portrait-images', 'saved-position', 'visitors', 'plot-layout', 'plot-number', 'world-template', 'world-index', 'navigation', 'ground-cache', 'geometry', 'environment', 'environment-renderer', 'grass', 'layout', 'chunks', 'terrain', 'engine', 'gestures', 'sound'].map(name => JSON.stringify('./' + name) + ':function(module,exports,require){\n' +
+const modules = ['offerings', 'offering-ritual', 'memorial-portrait-layout', 'portrait-images', 'saved-position', 'visitors', 'plot-layout', 'plot-number', 'world-template', 'world-index', 'navigation', 'ground-cache', 'geometry', 'environment', 'environment-renderer', 'grass', 'layout', 'chunks', 'terrain', 'engine', 'gestures', 'sound'].map(name => JSON.stringify('./' + name) + ':function(module,exports,require){\n' +
   fs.readFileSync(path.join(root, 'miniprogram/packageMemorial/scene', name + '.js'), 'utf8') + '\n}').join(',\n')
 fs.writeFileSync(path.join(out, 'scene.js'), '(function(){const modules={' + modules + '};const cache={};function require(id){if(!cache[id]){const m=cache[id]={exports:{}};modules[id](m,m.exports,require)}return cache[id].exports}window.MemorialScene=require("./engine").MemorialScene;window.MapGestures=require("./gestures").MapGestures;window.GardenSound=require("./sound").GardenSound;})();')
 fs.copyFileSync(path.join(root, 'docs/design/pet-memorial/scene-preview.html'), path.join(out, 'index.html'))
@@ -16,7 +16,7 @@ console.log('Preview built: ' + out)
 fs.writeFileSync(path.join(out, 'native-layout.css'), fs.readFileSync(path.join(root, 'miniprogram/packageMemorial/pages/garden.wxss'), 'utf8').replace(/(^|\n)page\s*\{/g, '$1.preview-page {').replace(/\bview\b/g, 'div'))
 
 // Adapt the real WXML pages for local interaction review; all data is explicitly mocked.
-for (const [kind, entry] of Object.entries({ garden: 'packageMemorial/pages/garden', memory: 'packageMemorial/pages/memory', admin: 'pages/admin/memorial/index', gardens: 'pages/admin/memorial/gardens', archive: 'pages/admin/memorial/user-archive' })) {
+for (const [kind, entry] of Object.entries({ recycle: 'packageMemorial/pages/recycle', entrance: 'packageMemorial/pages/entrance', garden: 'packageMemorial/pages/garden', memory: 'packageMemorial/pages/memory', admin: 'pages/admin/memorial/index', gardens: 'pages/admin/memorial/gardens', archive: 'pages/admin/memorial/user-archive' })) {
   const sources = Object.fromEntries(['js', 'wxml', 'wxss'].map(ext => [ext, fs.readFileSync(path.join(root, 'miniprogram', entry + '.' + ext), 'utf8')]))
   sources.wxss = sources.wxss.replace(/@import "\.\/index.wxss";/g, () => fs.readFileSync(path.join(root, 'miniprogram/pages/admin/memorial/index.wxss'), 'utf8'))
   sources.global = fs.readFileSync(path.join(root, 'miniprogram/app.wxss'), 'utf8').replace(/@import[^;]+;/g, '')

@@ -324,3 +324,29 @@ test('switching filters during verification cannot leave an uploaded portrait lo
   assert.equal(page.data.rows[0].previewPending,false)
   assert.equal(page.data.rows[0].previewReady,true)
 })
+
+test('offering display settings load minutes, reject invalid values and save the current revision once', async () => {
+  let saved = 0
+  const f = setup({ api: async (module, action, data) => {
+    if (action === 'getOfferingSettings') return { revision: 3, flowerMinutes: 1440, snackMinutes: 60 }
+    if (action === 'saveOfferingSettings') { saved++; assert.deepEqual(JSON.parse(JSON.stringify(data)), { revision: 3, flowerMinutes: 120, snackMinutes: 60 }); return {} }
+  } })
+  f.page.data.adminSuper = true
+  await f.page.openOfferingSettings()
+  assert.equal(f.page.data.offeringSettings.flowerMinutes, '1440')
+  f.page.inputOfferingSettings({ currentTarget: { dataset: { field: 'flowerMinutes' } }, detail: { value: '0' } })
+  await f.page.saveOfferingSettings(); assert.equal(saved, 0); assert.match(f.page.data.offeringSettings.error, /整数/)
+  f.page.inputOfferingSettings({ currentTarget: { dataset: { field: 'flowerMinutes' } }, detail: { value: '120' } })
+  await f.page.saveOfferingSettings(); assert.equal(saved, 1); assert.equal(f.page.data.offeringSettings, null)
+})
+test('read-only admins cannot save durations and late settings responses cannot reopen closed dialogs', async () => {
+  let resolve
+  const f = setup({ api: () => new Promise(done => { resolve = done }) })
+  f.page.data.adminPermissions = { memorial_getOfferingSettings: true }
+  const pending = f.page.openOfferingSettings(); f.page.closeOfferingSettings()
+  resolve({ revision: 0, flowerMinutes: 60, snackMinutes: 60 }); await pending
+  assert.equal(f.page.data.offeringSettings, null)
+  f.page.data.offeringSettings = { revision: 0, flowerMinutes: '60', snackMinutes: '60' }
+  const count = f.calls.length
+  await f.page.saveOfferingSettings(); assert.equal(f.calls.length, count)
+})

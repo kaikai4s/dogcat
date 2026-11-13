@@ -125,3 +125,15 @@ test('getHomePageData optimizes queries: pushes conditions down, uses count(), a
   assert.ok(normalOrder.review)
   assert.match(normalOrder.review.content, /服务非常贴心/)
 })
+
+test('disabled service trust panel returns no stats and skips statistics count queries', async () => {
+  const db = createCollectionStore({ platform_configs: [{ _id: 'cfg1', key: 'system_settings', value: { homePage: { modules: { historyStats: false } } } }] })
+  const context = require('../../cloudfunctions/api/services/context')({ db, cloud: {} })
+  const counts = []
+  context.safeCollectionCount = async (...args) => { counts.push(args); return 99 }
+  const home = require('../../cloudfunctions/api/services/home')(context)
+  const result = await home.getHomePageData('')
+  assert.equal(result.settings.homePage.modules.historyStats, false)
+  assert.equal(result.statsData, null)
+  assert.deepEqual(counts, [])
+})

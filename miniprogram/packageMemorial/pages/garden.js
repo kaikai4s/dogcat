@@ -10,16 +10,26 @@ const { propBox } = require('../scene/terrain')
 const { plotNumber } = require('../scene/plot-number')
 
 Page({
-  data: { presenceMessage: '正在连接同园访客…', visitorCount: 0, loading: true, error: '', gender: 'boy', changing: false, overview: false,
+  data: { restoring: false, move: null, moveLoading: false, moveError: '', presenceMessage: '正在连接同园访客…', visitorCount: 0, loading: true, error: '', gender: 'boy', changing: false, overview: false,
+    offeringBusy: false, offeringStage: '', offeringMessage: '', offeringLoading: false, offeringError: '', offeringStatus: null, offeringTotals: { flower: 0, snack: 0 },
     gardenName: '时光纪念园', gardenAccepting: true, gardenListOpen: false, gardens: [], gardensLoading: false, gardensMore: false, gardensError: '',
     environmentLabel: '', environmentTime: '', environmentError: '', weatherEffects: true,
     grid: false, stickX: 0, stickY: 0, following: true, music: true, effects: true, settingsOpen: false, audioError: '', audioDismissed: false, memorialCard: null,
-    selection: null, navigation: null, selectingPlot: false, form: null, applications: null, applicationError: '', submitting: false, recordsLoading: false,
+    selection: null, navigation: null, selectingPlot: false, form: null, formError: '', applications: null, applicationError: '', submitting: false, recordsLoading: false,
     streaming: false, streamError: false, worldLoading: false, hudTop: 48, hudLeft: 14, hudRight: 14 },
   onLoad(options = {}) {
     this._alive = true
+    if (!options.gardenId && !options.plotId && !options.moveId && wx.redirectTo) {
+      this._choosingEntrance = true
+      wx.redirectTo({ url: '/packageMemorial/pages/entrance', fail: () => this.setData({ loading: false, error: '入口未能打开，请重试' }) })
+      return
+    }
     this.gardenId = options.gardenId || worldIndex.version
     this._focusPlotId = options.plotId || ''
+    this._restoring = options.restore === '1'
+    this.setData({ restoring: this._restoring })
+    this._moveId = options.moveId || ''
+    if (this._moveId) this.loadMove()
     this._version = 0
     this.updateInsets()
     try {
@@ -60,18 +70,24 @@ Page({
       if (gender === 'girl' || gender === 'boy') this.setData({ gender })
     } catch (_) { /* Storage may be unavailable; use the default avatar. */ }
   },
-  onReady() { this._ready = true; if (this._visible) this.initialize() },
+  onReady() { if (this._choosingEntrance) return; this._ready = true; if (this._visible) this.initialize() },
   onShow() {
+    if (this._choosingEntrance) return
     this._visible = true
     this.refreshMemorials()
-    if (this.data.memorialCard) this.loadEntrance()
+    if (this.data.memorialCard) { this.loadEntrance(); this.loadOfferingStatus() }
     if (this.sound && this._audioUnlocked && !this._audioInterrupted) this.sound.resume()
     if (this.scene && this.scene.ready) { this.scene.start(); this.startPresence() }
     else if (this._ready && !this.scene) this.initialize()
   },
   onHide() {
+    if (this._choosingEntrance) return
+    this._confirmVersion = (this._confirmVersion || 0) + 1
     this.savePosition()
     this._visible = false
+    this.invalidateOfferingStatus()
+    this._offeringOperation = (this._offeringOperation || 0) + 1
+    this.setData({ offeringBusy: false, offeringStage: '', offeringMessage: '', offeringStatus: null, offeringLoading: false })
     this._entranceRequest = (this._entranceRequest || 0) + 1
     this._entranceVideoId = ''
     this.setData({ entrance: null, entranceLoading: false })
@@ -82,6 +98,7 @@ Page({
     if (this.sound) this.sound.pause()
   },
   onUnload() {
+    if (this._choosingEntrance) { this._alive = false; return }
     this.onHide()
     this._alive = false
     this._version++
@@ -132,9 +149,11 @@ Page({
     })
   },
   initialize() {
+    this._moveSelectionStarted = false
     this.stopPresence()
     this._version++
     this.cancelMapGesture()
+    this._confirmVersion = (this._confirmVersion || 0) + 1
     this.savePosition()
     if (this.scene) this.scene.destroy()
     this.scene = null
@@ -177,13 +196,14 @@ Page({
         this.setData({ loading: false })
         if (this._worldData) { scene.occupiedPlots = new Set(this._worldData.occupied); scene.setMemorials(this._worldData.memorials) }
         this.focusRequestedPlot()
+        this.startMoveSelection()
         if (this._visible) { scene.start(); this.startPresence() }
       }).catch(error => {
         if (this._alive && this.scene === scene) this.setData({ loading: false, error: error.message })
       })
     })
   },
-  retry() { if (this._alive) this.initialize() },
+  retry() { if (this._choosingEntrance) { wx.redirectTo({ url: '/packageMemorial/pages/entrance' }); return }; if (this._alive) this.initialize() },
   retryChunks() { if (this.scene) this.scene.retryChunks() },
   async chooseGender(event) {
     const gender = event.currentTarget.dataset.gender
@@ -375,7 +395,7 @@ Page({
       if (!this._visible || !this._alive) return
       if (this._worldLoading) { this.queueWorldRefresh(); return }
       await this.refreshMemorials()
-      if (this._alive && this._visible && this.data.memorialCard) await this.loadEntrance()
+      if (this._alive && this._visible && this.data.memorialCard) { await this.loadEntrance(); this.loadOfferingStatus() }
       if (this.data.applicationError) this.queueWorldRefresh()
     }, this.data.applicationError ? 4000 : 600)
   },
@@ -385,11 +405,17 @@ Page({
     this._worldLoading = true
     this.setData({ worldLoading: true })
     try {
-      const sent = Date.now()
+      const sent = Date.now(), offeringVersion = this._worldOfferingVersion || 0
       const result = await this.api('world')
+      if (offeringVersion !== (this._worldOfferingVersion || 0)) { this.queueWorldRefresh(); return }
       if (!this._alive) return
       this.syncEnvironmentClock(result.serverTime, sent, Date.now())
       this._worldData = result
+      if (this.data.memorialCard) {
+        const current = result.memorials.find(row => row.applicationId === this.data.memorialCard.applicationId)
+        if (current) this.setData({ memorialCard: current })
+        else this.closeMemorial()
+      }
       if (result.garden) this.setData({ gardenName: result.garden.name, gardenAccepting: result.garden.accepting })
       if (this.scene) this.scene.occupiedPlots = new Set(result.occupied)
       if (this.scene && this.scene.ready) this.scene.setMemorials(result.memorials)
@@ -446,22 +472,74 @@ Page({
     this.scene.openOverview(nearest || this.scene.player)
     await this.refreshMemorials()
   },
+  async loadMove() {
+    const id = this._moveId, request = this._moveRequest = (this._moveRequest || 0) + 1
+    const current = () => this._alive && id === this._moveId && request === this._moveRequest
+    this.setData({ moveLoading: true, moveError: '' })
+    try {
+      const detail = await this.api(this._restoring ? 'recycleDetail' : 'detail', { id })
+      if (!current()) return
+      if (!detail.owner) throw new Error('只有主人可以管理这座小筑')
+      this.setData({ move: detail })
+      this.startMoveSelection()
+    } catch (error) { if (current()) this.setData({ moveError: error.message || '小筑资料加载失败，请重试' }) }
+    finally { if (current()) this.setData({ moveLoading: false }) }
+  },
+  startMoveSelection() {
+    if (!this.data.move || !this.scene || !this.scene.ready || !this.data.gardenAccepting || this._moveSelectionStarted) return
+    this._moveSelectionStarted = true
+    this.choosePlot()
+  },
+  changeMoveGarden() {
+    if (this.data.submitting) return
+    wx.redirectTo({ url: '/packageMemorial/pages/entrance?moveId=' + encodeURIComponent(this._moveId) + (this._restoring ? '&restore=1' : '') })
+  },
+  cancelMove() {
+    if (this.data.submitting) return
+    this._restoring = false
+    this._moveId = ''; this._moveRequest = (this._moveRequest || 0) + 1; this._moveSelectionStarted = false
+    this.setData({ move: null, moveError: '', moveLoading: false, restoring: false, form: null, formError: '' })
+    this.returnToWalk()
+  },
+  async submitMove() {
+    if (!this.data.move || !this.data.form || this.data.submitting) return
+    const detail = this.data.move, form = { ...this.data.form }, restoring = this._restoring, version = this._confirmVersion || 0
+    this.setData({ submitting: true, formError: '' })
+    try {
+      const answer = await new Promise((resolve, reject) => wx.showModal({ title: this._restoring ? '确认恢复小筑' : '确认迁移小筑', content: '将“' + detail.petName + (restoring ? '”恢复至' : '”迁至') + this.data.gardenName + ' · ' + form.lawn + ' ' + form.plotNumber + '号。回忆、画像、鲜花零食及当天互动记录全部保留。', confirmText: this._restoring ? '确认恢复' : '确认迁移', success: resolve, fail: reject }))
+      if (!answer.confirm || !this._alive || this._visible === false || version !== (this._confirmVersion || 0)) return
+      const result = await this.api(this._restoring ? 'restore' : 'relocate', { id: detail.id, locationRevision: detail.locationRevision || 0, requestId: form.requestId, plotId: form.plotId, style: form.style, version: worldIndex.version })
+      if (!this._alive) return
+      this._worldOfferingVersion = (this._worldOfferingVersion || 0) + 1
+      this._moveId = ''; this._moveSelectionStarted = false; this._restoring = false
+      this.setData({ move: null, restoring: false, form: null, selection: null, selectingPlot: false })
+      this._focusPlotId = result.plotId
+      await this.refreshMemorials()
+      this.focusRequestedPlot()
+      wx.showToast({ title: restoring ? '小筑已恢复' : '小筑已迁入，回忆全部保留', icon: 'none' })
+    } catch (error) { if (this._alive) this.setData({ formError: error.message || (restoring ? '恢复失败，请重试' : '迁移失败，请重试') }) }
+    finally { if (this._alive) this.setData({ submitting: false }) }
+  },
+  openRecycle() { wx.navigateTo({ url: '/packageMemorial/pages/recycle' }) },
+  manageRecord(e) { wx.navigateTo({ url: '/packageMemorial/pages/memory?id=' + encodeURIComponent(e.currentTarget.dataset.id) }) },
   openApplication() {
+    if (this._moveId && !this.data.move) { wx.showToast({ title: '请先加载小筑资料', icon: 'none' }); return }
     const selected = this.data.selection
     if (!selected || !selected.plotId || !this._worldData || this.data.worldLoading || this.data.applicationError || this._worldData.occupied.includes(selected.plotId)) { wx.showToast({ title: '请先刷新位置状态并选择空位', icon: 'none' }); return }
-    this.setData({ form: { style: 'arch', petName: '', epitaph: '', date: '', plotId: selected.plotId, plotNumber: plotNumber(selected.plotId), lawn: selected.lawn, requestId: 'mem_' + Date.now() + '_' + Math.random().toString(36).slice(2) } })
+    this.setData({ formError: '', form: { style: this.data.move && this.data.move.style || 'arch', petName: '', epitaph: '', date: '', plotId: selected.plotId, plotNumber: plotNumber(selected.plotId), lawn: selected.lawn, requestId: 'mem_' + Date.now() + '_' + Math.random().toString(36).slice(2) } })
   },
   chooseStyle(e) { if (this.data.form && !this.data.submitting) this.setData({ 'form.style': e.currentTarget.dataset.style }) },
   inputApplication(e) {
     const field = e.currentTarget.dataset.field
-    if (!this.data.submitting && ['petName', 'epitaph', 'date'].includes(field)) this.setData({ ['form.' + field]: e.detail.value })
+    if (!this.data.move && !this.data.submitting && ['petName', 'epitaph', 'date'].includes(field)) this.setData({ ['form.' + field]: e.detail.value })
   },
-  closeApplication() { if (!this.data.submitting) this.setData({ form: null, applications: null }) },
+  closeApplication() { if (!this.data.submitting) this.setData({ form: null, formError: '', applications: null }) },
   async submitApplication() {
+    if (this.data.move) return this.submitMove()
     if (!this.data.form || this.data.submitting) return
     const form = this.data.form
     if (!form.petName.trim() || !form.epitaph.trim() || !form.date) { wx.showToast({ title: '请填写名字、纪念日期和寄语', icon: 'none' }); return }
-    this.setData({ submitting: true })
+    this.setData({ submitting: true, formError: '' })
     try {
       await this.api('submit', { ...form, version: worldIndex.version })
       if (!this._alive) return
@@ -470,7 +548,7 @@ Page({
       this.setData({ overview: false, following: true, grid: false })
       wx.showToast({ title: '已提交，等待管理员审核', icon: 'none' })
       await this.refreshMemorials(); await this.showApplications()
-    } catch (error) { if (this._alive) wx.showToast({ title: error.message || '提交失败，请重试', icon: 'none' }) }
+    } catch (error) { if (this._alive) this.setData({ formError: error.message || '提交失败，请重试' }) }
     finally { if (this._alive) this.setData({ submitting: false }) }
   },
   async showApplications(e) {
@@ -498,9 +576,86 @@ Page({
     this.scene.selectedPoint = plot
     this.setData({ applications: null, overview: true, selectingPlot: false, grid: false, selection: null,
       memorialCard: { ...plot, date: row.date, name: row.petName, epitaph: row.epitaph, applicationId: row._id } })
-    this.loadEntrance()
+    this.loadEntrance(); this.loadOfferingStatus()
   },
-  closeMemorial() { this._entranceRequest = (this._entranceRequest || 0) + 1; this.resumeEntranceSound(); this.setData({ memorialCard: null, entrance: null, entranceLoading: false, entranceError: '' }) },
+  closeMemorial() { this.invalidateOfferingStatus(); this._entranceRequest = (this._entranceRequest || 0) + 1; this.resumeEntranceSound(); this.setData({ memorialCard: null, entrance: null, entranceLoading: false, entranceError: '', offeringStatus: null, offeringLoading: false, offeringError: '' }) },
+  invalidateOfferingStatus() {
+    this._offeringStatusRequest = (this._offeringStatusRequest || 0) + 1
+    clearTimeout(this._offeringResetTimer); this._offeringResetTimer = null
+  },
+  async loadOfferingStatus() {
+    const card = this.data.memorialCard
+    if (!card || !card.applicationId || this._visible === false) return
+    this.invalidateOfferingStatus()
+    const request = this._offeringStatusRequest, id = card.applicationId, same = this.data.offeringStatus && this.data.offeringStatus.id === id
+    this.setData({ offeringLoading: true, offeringError: '', offeringStatus: same ? this.data.offeringStatus : null,
+      offeringTotals: same ? this.data.offeringTotals : card.offerings || { flower: 0, snack: 0 } })
+    const current = () => this._alive && this._visible && request === this._offeringStatusRequest && this.data.memorialCard && this.data.memorialCard.applicationId === id
+    try {
+      const sent = Date.now(), status = await this.api('offeringStatus', { id })
+      if (!current()) return
+      this.syncEnvironmentClock(status.serverTime, sent, Date.now())
+      this.setData({ offeringStatus: { ...status, id }, offeringTotals: status.counts })
+      if (this.scene && this.scene.updateOfferings) this.scene.updateOfferings(id, status.counts, status.display)
+      // Reload at the server's next Beijing midnight, independent of phone date settings.
+      const remaining = status.resetAt - status.serverTime - (Date.now() - sent) / 2
+      if (Number.isFinite(remaining)) this._offeringResetTimer = setTimeout(() => { if (current()) this.loadOfferingStatus() }, Math.max(1000, remaining + 100))
+    } catch (error) { if (current()) this.setData({ offeringError: error.message || '心意记录暂未读取，请重试' }) }
+    finally { if (current()) this.setData({ offeringLoading: false }) }
+  },
+  cancelOffering() {
+    if (this.data.offeringStage === 'recording' || this.data.offeringStage === 'gesture') return
+    this._offeringOperation = (this._offeringOperation || 0) + 1
+    if (this.scene && this.scene.cancelOffering) this.scene.cancelOffering()
+    this.setData({ offeringBusy: false, offeringStage: '', offeringMessage: '' })
+  },
+  async giveOffering(e) {
+    const kind = e.currentTarget.dataset.kind, card = this.data.memorialCard, status = this.data.offeringStatus, scene = this.scene
+    if (!['flower', 'snack'].includes(kind) || this.data.offeringBusy || this.data.offeringLoading || !card || !scene || !scene.ready) return
+    if (!status || status.id !== card.applicationId) { this.loadOfferingStatus(); return }
+    if (status.given[kind]) return
+    const operation = this._offeringOperation = (this._offeringOperation || 0) + 1, id = card.applicationId
+    const current = () => this._alive && this._visible && this.scene === scene && operation === this._offeringOperation
+    const label = kind === 'flower' ? '鲜花' : '零食'
+    this.setData({ offeringBusy: true, offeringStage: 'approach', offeringMessage: '正在走到小筑前…' })
+    this.joystickEnd(); this.cancelMapGesture()
+    // Reveal the scene so the approach and gesture can be watched in full.
+    this.closeMemorial()
+    let acknowledged
+    const apply = () => {
+      if (acknowledged && !scene.destroyed) scene.updateOfferings(id, acknowledged.counts, acknowledged.display)
+    }
+    try {
+      const row = scene.memorials.find(item => item.applicationId === id)
+      if (!row) throw new Error('小筑位置已变化，请刷新园区')
+      await scene.prepareOffering(row, kind)
+      if (!current()) return
+      this.setData({ offeringStage: 'recording', offeringMessage: '正在记录这份心意…' })
+      const sent = Date.now()
+      acknowledged = await this.api('placeOffering', { id, kind, day: status.day })
+      this._worldOfferingVersion = (this._worldOfferingVersion || 0) + 1
+      if (!current()) return
+      this.syncEnvironmentClock(acknowledged.serverTime, sent, Date.now())
+      if (!acknowledged.duplicate) {
+        this.setData({ offeringStage: 'gesture', offeringMessage: kind === 'flower' ? '献上一束花，愿思念常在。' : '放下一份零食，愿它依旧快乐。' })
+        await scene.playOffering(apply)
+      }
+      apply()
+      if (current()) {
+        if (this.sound && !acknowledged.duplicate) this.sound.chime()
+        wx.showToast({ title: acknowledged.duplicate ? '今天已献过这份心意' : '已献上' + label, icon: 'none' })
+      }
+    } catch (error) {
+      if (current()) wx.showToast({ title: error.message || '心意未能确认，请重新打开小筑查看', icon: 'none' })
+    } finally {
+      apply()
+      if (operation === this._offeringOperation) {
+        scene.cancelOffering()
+        if (this._alive) this.setData({ offeringBusy: false, offeringStage: '', offeringMessage: '' })
+      }
+      if (this._alive && this._visible) this.queueWorldRefresh()
+    }
+  },
   async loadEntrance() {
     const row = this.data.memorialCard
     if (!row || !row.applicationId) return
@@ -556,8 +711,9 @@ Page({
   enterGarden(id, plotId) {
     if (!id || this.data.submitting) return
     if (id === (this.gardenId || worldIndex.version) && !plotId) { this.closeGardens(); return }
+    this._confirmVersion = (this._confirmVersion || 0) + 1
     this.savePosition(); this.joystickEnd()
-    wx.redirectTo({ url: '/packageMemorial/pages/garden?gardenId=' + encodeURIComponent(id) + (plotId ? '&plotId=' + encodeURIComponent(plotId) : ''),
+    wx.redirectTo({ url: '/packageMemorial/pages/garden?gardenId=' + encodeURIComponent(id) + (plotId ? '&plotId=' + encodeURIComponent(plotId) : '') + (this._moveId ? '&moveId=' + encodeURIComponent(this._moveId) + (this._restoring ? '&restore=1' : '') : ''),
       fail: () => wx.showToast({ title: '未能切换园区，请重试', icon: 'none' }) })
   },
   openMemory() {
@@ -570,7 +726,7 @@ Page({
     const p = this.scene.screenToMap(point)
     const rows = (this._worldData && this._worldData.memorials || []).slice().sort((a, b) => b.y - a.y)
     const hit = rows.find(row => { const box = propBox({ ...row, kind: 'memorial' }); return p.x >= box.x && p.x <= box.x + box.width && p.y >= box.y && p.y <= box.y + box.height })
-    if (hit) { this.joystickEnd(); this.setData({ memorialCard: hit }); this.loadEntrance(); return true }
+    if (hit) { this.joystickEnd(); this.setData({ memorialCard: hit }); this.loadEntrance(); this.loadOfferingStatus(); return true }
     return false
   },
   cancelMapGesture() {
@@ -579,7 +735,7 @@ Page({
     if (this.gestures) this.gestures.reset()
   },
   mapTouchStart(event) {
-    if (!this.scene || !this.scene.ready || this.data.error || this._touchId !== undefined) return
+    if (!this.scene || !this.scene.ready || this.data.error || this.data.offeringBusy || this._touchId !== undefined) return
     this.unlockAudio()
     if (event.touches && event.touches.length === 1) {
       const t = event.touches[0], r = this._canvasRect || {}

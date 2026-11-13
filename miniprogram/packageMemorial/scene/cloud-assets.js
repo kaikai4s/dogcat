@@ -4,6 +4,7 @@ const { DIRECTORY, ENV_DIRECTORIES, memorialAssetID } = require('./memorial-asse
 const FILES = ['garden.jpg', 'audio/music.wav', 'audio/step.wav', 'audio/chime.wav']
 FILES.push('world-v2/props.png', 'world-v2/grass.jpg', 'monuments-v1/atlas.png', 'monuments-v1/arch.png', 'monuments-v1/cottage.png', 'monuments-v1/moon.png')
 FILES.push('seasons-v1/foliage.png')
+FILES.push(...['flower', 'snack', 'boy-flower', 'boy-snack', 'girl-flower', 'girl-snack'].map(name => 'offerings-v1/' + name + '.png'))
 for (let y = 0; y < HEIGHT / CHUNK; y++) for (let x = 0; x < WIDTH / CHUNK; x++) FILES.push(CHUNK_DIRECTORY + '/' + x + '-' + y + '.json')
 ;['boy', 'girl'].forEach(gender => ['walk', 'idle'].forEach(action =>
   ['sw', 'se', 'nw', 'ne'].forEach(direction => FILES.push(gender + '/' + action + '-' + direction + '.png'))))

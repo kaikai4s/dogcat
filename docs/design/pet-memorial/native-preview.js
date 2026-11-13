@@ -58,6 +58,10 @@
  if(memoryDemo){demoStory.images.push({uploadId:'image-second',entrance:false,url:'/portrait-demo.png'});demoStory.videos.push({uploadId:'video-demo',entrance:true,url:''},{uploadId:'video-second',entrance:false,url:''})}
  let memoryState={revision:1,mediaRevision:0,reviewStatus:'approved',isPublic:true,draft:structuredClone(demoStory),story:structuredClone(demoStory)};
  if(memoryDemo){try{memoryState=JSON.parse(localStorage.getItem('memorial-preview-memory'))||memoryState}catch(_){}}
+ let offeringSettings={revision:0,flowerMinutes:1440,snackMinutes:1440};
+ let offeringCounts={flower:3,snack:2}, offeringScene={flower:[[Math.ceil(Date.now()/60000)+1440,3]],snack:[[Math.ceil(Date.now()/60000)+1440,2]]}, given={flower:false,snack:false};
+ const offeringDay=()=>new Date(Date.now()+8*3600000).toISOString().slice(0,10);
+ const offeringStatus=()=>({day:offeringDay(),serverTime:Date.now(),resetAt:(Math.floor((Date.now()+8*3600000)/86400000)+1)*86400000-8*3600000,counts:{...offeringCounts},display:structuredClone(offeringScene),given:{...given},settings:{...offeringSettings}});
  const cloud={callFunction:async(module,action,data={})=>{
   // Local-only network rehearsal: serialize the real sync client behind a slow
   // response, preserving the position's original sampledAt before the delay.
@@ -67,11 +71,18 @@
 
   if(action==='listGardens'||action==='listGardensAdmin')return{list:[previewGarden,extraGarden],hasMore:false};
   if(action==='createGarden'||action==='updateGarden')return{...previewGarden,...data,id:data.id||extraGarden.id,revision:1};
-  if(action==='world')return{serverTime:Date.now(),garden:data.gardenId===extraGarden.id?extraGarden:previewGarden,occupied:['garden-ortho-v2:23:21'],memorials:[{id:'garden-ortho-v2:23:21',applicationId:sample._id,x:1376,y:1504,name:sample.petName,epitaph:sample.epitaph,date:sample.date,style:'arch',...(new URLSearchParams(location.search).get('portraitDemo')==='1'?{portrait:{id:'shiba-demo',url:'/portrait-demo.png',...demoArt}}:{})}]};
+  if(action==='getOfferingSettings')return {...offeringSettings};
+  if(action==='saveOfferingSettings'){offeringSettings={...data,revision:offeringSettings.revision+1};return {...offeringSettings}}
+  if(action==='offeringStatus')return offeringStatus();
+  if(action==='placeOffering'){if(data.day!==offeringDay())throw new Error('日期已更新，请刷新');const duplicate=given[data.kind];if(!duplicate){given[data.kind]=true;offeringCounts[data.kind]++;offeringScene[data.kind].push([Math.ceil(Date.now()/60000)+offeringSettings[data.kind+'Minutes'],1])}return {...offeringStatus(),duplicate}}
+  if(action==='world')return{serverTime:Date.now(),garden:data.gardenId===extraGarden.id?extraGarden:previewGarden,occupied:['garden-ortho-v2:23:21'],memorials:[{id:'garden-ortho-v2:23:21',applicationId:sample._id,x:1376,y:1504,name:sample.petName,epitaph:sample.epitaph,date:sample.date,style:'arch',offerings:{...offeringCounts},offeringScene:structuredClone(offeringScene),...(new URLSearchParams(location.search).get('portraitDemo')==='1'?{portrait:{id:'shiba-demo',url:'/portrait-demo.png',...demoArt}}:{})}]};
   const story=memoryState.story;
   if(action==='entrance')return memoryState.isPublic?{images:story.images.filter(m=>m.entrance),videos:story.videos.filter(m=>m.entrance)}:{images:[],videos:[]};
   if(action==='getMemorialAdmin')return{...sample,id:sample._id,reviewStatus:'approved',isPublic:true,draft:story,story,portrait:{status:'empty',photos:[]}};
-  if(action==='detail')return{gardenId:sample.gardenId,gardenName:sample.gardenName,id:sample._id,petName:sample.petName,date:sample.date,epitaph:sample.epitaph,lawn:sample.lawn,plotId:sample.plotId,owner:new URLSearchParams(location.search).get('role')!=='visitor',hasPublicStory:memoryState.isPublic,...structuredClone(memoryState),story:memoryState.isPublic?structuredClone(story):null};
+  if(action==='listRecycle')return{list:[{...sample,id:sample._id,locationRevision:1,recoverUntil:Date.now()+6*86400000}],hasMore:false,serverTime:Date.now()};
+  if(action==='recycleDetail')return{...sample,id:sample._id,owner:true,locationRevision:1,recoverUntil:Date.now()+6*86400000};
+  if(action==='restore')return{id:data.id,status:'approved',gardenId:data.gardenId||sample.gardenId,plotId:data.plotId||sample.plotId,locationRevision:data.locationRevision+1};
+  if(action==='detail')return{style:'arch',locationRevision:0,gardenId:sample.gardenId,gardenName:sample.gardenName,id:sample._id,petName:sample.petName,date:sample.date,epitaph:sample.epitaph,lawn:sample.lawn,plotId:sample.plotId,owner:new URLSearchParams(location.search).get('role')!=='visitor',hasPublicStory:memoryState.isPublic,...structuredClone(memoryState),story:memoryState.isPublic?structuredClone(story):null};
   if(action==='updateMemoryMedia'){
    if(data.mediaRevision!==memoryState.mediaRevision||data.revision!==memoryState.revision)throw new Error('回忆已更新，请重新打开');
    for(const snapshot of [memoryState.draft,memoryState.story])snapshot[data.kind]=data.operation==='remove'?snapshot[data.kind].filter(m=>m.uploadId!==data.uploadId):snapshot[data.kind].map(m=>m.uploadId===data.uploadId?{...m,entrance:data.enabled}:m);
@@ -82,6 +93,8 @@
   if(action==='portraitDetail')return{revision:0,status:'empty',photos:[]};
   if(action==='preparePortraitAsset')return data.uploadId ? demoArt : {uploadId:'demo-art',cloudPath:'portrait-demo.png'};
   if(action==='listPortraitsAdmin')return{list:[{...sample,_id:'demo-portrait',style:new URLSearchParams(location.search).get('style')||'arch',pose:new URLSearchParams(location.search).get('pose')||'sitting',legacy:new URLSearchParams(location.search).get('legacy')==='1',status:'pending',revision:1,note:'右耳和尾巴上的花纹要保留',photos:[{uploadId:'front',url:'/portrait-demo.png'},{uploadId:'side',url:'/portrait-demo.png'}]}],hasMore:false};
+  if(action==='relocate')return{id:data.id,status:'approved',gardenId:data.gardenId,plotId:data.plotId,locationRevision:data.locationRevision+1};
+  if(action==='demolish')return{id:data.id,status:'demolished',recoverUntil:Date.now()+7*86400000};
   if(action==='saveMemory')return{revision:2,status:'pending'};
   if(action==='getSettings')return{subscription:{enabled:true,templates:{adminPendingAudit:'audit-local-preview'}}};
   if(action==='listAdmin'||action==='listMine'||action==='listUserMemorialsAdmin')return{list:(!data.status||data.status===sample.status)?[sample]:[],hasMore:false,cursor:''};
@@ -110,7 +123,7 @@
  getFileSystemManager(){return {getFileInfo(o){fetch(o.filePath).then(r=>r.arrayBuffer()).then(b=>o.success({size:b.byteLength})).catch(o.fail)}}},
  canvasToTempFilePath(o){o.canvas.toBlob(blob=>blob?o.success({tempFilePath:URL.createObjectURL(blob)}):o.fail(new Error('PNG export failed')),'image/png')},
  getImageInfo(o){const img=new Image();img.onload=()=>o.success({width:img.width,height:img.height,type:'png'});img.onerror=()=>o.fail(new Error('示例图片加载失败'));img.src=o.src},
- setClipboardData(o){navigator.clipboard.writeText(o.data)},getWindowInfo:info,getMenuButtonBoundingClientRect:()=>({bottom:48}),getStorageSync:key=>key==='memorial-sound-v1'?{music:false,effects:false}:JSON.parse(localStorage.getItem(key)||'null'),setStorageSync:(key,value)=>localStorage.setItem(key,JSON.stringify(value)),showToast:console.log,openSetting(){},navigateBack(){},reLaunch(){},navigateTo({url}){const dest=url.includes('user-archive')?'archive':url.includes('/gardens')?'gardens':url.includes('/garden')?'garden':'memory';location.href='native.html?page='+dest+'&'+(url.split('?')[1]||'')},redirectTo(options){this.navigateTo(options)},previewImage({current}){window.open(current,'_blank')},stopPullDownRefresh(){},
+ setClipboardData(o){navigator.clipboard.writeText(o.data)},getWindowInfo:info,getMenuButtonBoundingClientRect:()=>({bottom:48}),getStorageSync:key=>key==='memorial-sound-v1'?{music:false,effects:false}:JSON.parse(localStorage.getItem(key)||'null'),setStorageSync:(key,value)=>localStorage.setItem(key,JSON.stringify(value)),showToast:console.log,openSetting(){},navigateBack(){},reLaunch(){},showModal(o){if(o.editable){const content=window.prompt(o.title+'\n'+o.content,'');o.success({confirm:content!==null,content:content||''})}else o.success({confirm:window.confirm(o.title+'\n'+o.content)})},navigateTo({url,success,complete}){success?.();complete?.();const dest=url.includes('/recycle')?'recycle':url.includes('/entrance')?'entrance':url.includes('user-archive')?'archive':url.includes('/gardens')?'gardens':url.includes('/garden')?'garden':'memory';location.href='native.html?page='+dest+'&'+(url.split('?')[1]||'')},redirectTo(options){this.navigateTo(options)},previewImage({current}){window.open(current,'_blank')},stopPullDownRefresh(){},
  createOffscreenCanvas:({width,height})=>Object.assign(document.createElement('canvas'),{width,height}),createInnerAudioContext:()=>{
   const audio=new Audio(), handlers={};
   audio.onplaying=()=>handlers.play?.();audio.oncanplay=()=>handlers.ready?.();audio.onended=()=>handlers.ended?.();audio.onerror=()=>handlers.error?.({errMsg:'预览音频未能播放'});
@@ -158,6 +171,12 @@
    document.body.appendChild(controls);
   }
  }
+ if(kind==='garden'&&new URLSearchParams(location.search).get('offeringDemo')==='1'){
+  const timer=setInterval(()=>{
+   if(!page.scene?.ready||!page._worldData)return;clearInterval(timer);
+   const scene=page.scene;scene.player={x:1376+18,y:1504+100};scene.followPlayer();page.setData({memorialCard:page._worldData.memorials[0]});page.loadEntrance();page.loadOfferingStatus();
+  },100);
+ }
  window.addEventListener('pagehide',()=>page?.onHide?.());
- window.previewPage=page;page.onLoad&&page.onLoad({id:kind==='memory'?'demo-application':undefined,openid:'preview-owner',gardenId:new URLSearchParams(location.search).get('gardenId')||undefined,plotId:new URLSearchParams(location.search).get('plotId')||undefined,mode:new URLSearchParams(location.search).get('mode')});page.onShow&&await page.onShow();page.onReady&&page.onReady();window.onresize=()=>{style();page.onResize&&page.onResize()};
+ window.previewPage=page;page.onLoad&&page.onLoad({id:kind==='memory'?'demo-application':undefined,openid:'preview-owner',restore:new URLSearchParams(location.search).get('restore')||undefined,moveId:new URLSearchParams(location.search).get('moveId')||undefined,gardenId:new URLSearchParams(location.search).get('gardenId')||(kind==='garden'?'garden-ortho-v2':undefined),plotId:new URLSearchParams(location.search).get('plotId')||undefined,mode:new URLSearchParams(location.search).get('mode')});page.onShow&&await page.onShow();page.onReady&&page.onReady();window.onresize=()=>{style();page.onResize&&page.onResize()};
 })().catch(console.error)

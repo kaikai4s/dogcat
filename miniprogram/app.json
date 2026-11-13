@@ -163,7 +163,7 @@
     {
       "root": "packageMemorial",
       "name": "memorial",
-      "pages": ["pages/garden", "pages/memory"]
+      "pages": ["pages/entrance", "pages/garden", "pages/memory", "pages/recycle"]
     },
     {
       "root": "packagePlayground",

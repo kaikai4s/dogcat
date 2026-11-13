@@ -36,7 +36,7 @@ with zipfile.ZipFile(archive_path) as archive:
 解压 memorial-environment.zip，共 97 个文件：world-v3/chunks 下 96 个区域 JSON，seasons-v1 下 1 张 foliage.png。
 
 开发/体验环境：在云存储 memorial-cloud-v1/packageMemorial/v1/ 内上传 world-v3 和 seasons-v1 两个文件夹。
-正式环境：在云存储 packageMemorial/v1/ 内上传这两个文件夹。
+正式环境：同样在云存储 memorial-cloud-v1/packageMemorial/v1/ 内上传这两个文件夹。
 
 请保留文件夹层级，勿上传 ZIP、manifest.json、此说明或外层 memorial-environment-upload 文件夹。
 可对照 manifest.json 的 fileIDs 核对每个环境的目标路径。该清单来自配置，不代表云端已经上传。

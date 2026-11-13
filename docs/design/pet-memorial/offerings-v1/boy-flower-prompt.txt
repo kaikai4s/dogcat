@@ -1,0 +1,9 @@
+Use case: identity-preserve
+Asset type: eight-frame one-shot offering animation for a Canvas2D pet memorial game.
+Image 1 is the exact short-haired boy in loose trousers identity and costume reference. Image 2 is the existing rear-left-facing in-game sprite reference. Image 3 gives the bouquet and pet snack plate designs; use only the flower object.
+Preserve golden hair, featureless softly luminous face, original proportions, ivory-gold clothing, cape, boots, clasp and ribbons. Girl retains fitted clothes; boy retains loose trousers.
+Camera: fixed elevated orthographic rear three-quarter view, facing screen UPPER LEFT (northwest), showing the back of head and cape. A quiet respectful placing gesture, stationary, feet registered to one ground location.
+Layout: EXACTLY 4 columns and 2 rows in a 1024 square image, eight chronological cells in row-major order. Each cell 256px wide by 512px tall. Full character in every cell, generous clear gutters, consistent scale and ground anchor.
+Frame 1: standing, holding a small ivory and peach daisy bouquet tied with golden ribbon with both hands at waist. Frame 2: elbows move forward, head inclines. Frame 3: knees soften, body bends forward. Frame 4: gentle crouch, arms extending down toward upper left. Frame 5: lowest placing pose, hands releasing item onto ground in front. Frame 6: empty hands withdraw while bowed. Frame 7: straighten torso and legs. Frame 8: upright resting stance, hands relaxed, same baseline as frame 1. Item in hands only in frames 1-4, at fingertips frame 5; do not draw released ground item in frames 6-8.
+Style: softly painted storybook sprites matching reference, stable anatomy and natural hand/cape motion, no facial features or heavy outline.
+Background: perfectly flat saturated magenta RGB(255,0,255) for extraction. No checkerboard, white matte, cell borders, text, numbers, scenery, tombstone or baked shadows. Magenta must not occur on character or item.

@@ -11,8 +11,8 @@ module.exports = context => {
   const read = (store, id) => readOptionalDocument(store, 'platform_configs', id)
   const put = (store, id, data) => store.collection('platform_configs').doc(id).set({ data })
   const memoryId = id => 'memorial_memory_' + digest(id)
-  async function application(id, openid, owner = false) {
-    const app = await read(db, clean(id))
+  async function application(id, openid, owner = false, store = db) {
+    const app = await read(store, clean(id))
     if (!app || app.key !== 'memorial_application' || app.status !== 'approved') throw new Error('这处时光小筑暂不可查看，请刷新')
     if (owner && app.ownerOpenid !== openid) throw new Error('只有主人可以编辑这份回忆')
     return app
@@ -58,19 +58,20 @@ module.exports = context => {
       const owner = app.ownerOpenid === openid, row = await read(db, memoryId(app._id))
       const visible = !!(row && row.isPublic && row.publicContent)
       return { id: app._id, gardenId: garden._id, gardenName: garden.name, petName: app.petName, epitaph: app.epitaph, date: app.date, lawn: app.lawn, plotId: app.plotId,
-        style: app.style || 'arch', owner, isPublic: !!(row && row.isPublic), hasPublicStory: visible,
+        style: app.style || 'arch', locationRevision: app.locationRevision || 0, owner, isPublic: !!(row && row.isPublic), hasPublicStory: visible,
         story: visible ? await hydrate(row.publicContent) : null,
         ...(owner ? { revision: row && row.revision || 0, mediaRevision: row && row.mediaRevision || 0, reviewStatus: row && row.status || 'empty', reason: row && row.reason || '', draft: await hydrate(row && row.draft) } : {}) }
     }
     if (action === 'updateMemoryMedia') {
-      const app = await application(data.id, openid, true)
+      await application(data.id, openid, true)
       const { kind, operation, uploadId, enabled, revision, mediaRevision } = data
       if (!['images', 'videos'].includes(kind) || !['entrance', 'remove'].includes(operation) ||
         typeof uploadId !== 'string' || !uploadId || !Number.isSafeInteger(revision) || revision < 0 ||
         !Number.isSafeInteger(mediaRevision) || mediaRevision < 0 || operation === 'entrance' && typeof enabled !== 'boolean') throw new Error('照片或视频操作无效')
       const fingerprint = digest(JSON.stringify([revision, mediaRevision, kind, operation, uploadId, operation === 'entrance' ? enabled : null]))
       const row = await db.runTransaction(async tx => {
-        const current = await read(tx, memoryId(app._id))
+        const currentApp = await application(data.id, openid, true, tx)
+        const current = await read(tx, memoryId(currentApp._id))
         if (!current || current.key !== 'memorial_memory' || current.ownerOpenid !== openid) throw new Error('这份回忆尚未保存，请先提交新内容')
         if (current.revision !== revision) throw new Error('回忆已在其他页面更新，请重新打开后编辑')
         const version = current.mediaRevision || 0
@@ -88,7 +89,7 @@ module.exports = context => {
         const patch = { draft, publicContent, mediaRevision: version + 1, lastMediaMutation: fingerprint, mediaUpdatedAt: now() }
         await tx.collection('platform_configs').doc(current._id).update({ data: { ...patch,
           draft: db.command.set(draft), publicContent: db.command.set(publicContent) } })
-        if (publicChanged) await presence.changed(tx, gardenId(app))
+        if (publicChanged) await presence.changed(tx, gardenId(currentApp))
         return { ...current, ...patch }
       })
       return { revision: row.revision, mediaRevision: row.mediaRevision || 0, reviewStatus: row.status, reason: row.reason || '',
@@ -101,7 +102,10 @@ module.exports = context => {
       if (!(kind === 'image' ? ['jpg', 'png'] : kind === 'video' ? ['mp4', 'mov'] : ['mp3', 'm4a', 'wav']).includes(ext)) throw new Error('文件格式不支持')
       const token = crypto.randomBytes(16).toString('hex'), id = 'memorial_media_' + token
       const path = 'memorial-memories/uploads/' + digest(openid) + '/' + token + '.' + ext
-      await put(db, id, { key: 'memorial_media', ownerOpenid: openid, applicationId: app._id, kind, path, name: clean(data.name).slice(0, 80), status: 'uploading', createdAt: now() })
+      await db.runTransaction(async tx => {
+        await application(app._id, openid, true, tx)
+        await put(tx, id, { key: 'memorial_media', ownerOpenid: openid, applicationId: app._id, kind, path, name: clean(data.name).slice(0, 80), status: 'uploading', createdAt: now() })
+      })
       return { uploadId: id, cloudPath: path, maxBytes: LIMITS[kind] }
     }
     if (action === 'finishMedia') {
@@ -114,6 +118,13 @@ module.exports = context => {
         if (upload.sourceFileId !== fileId) throw new Error('上传文件不可替换')
         return { uploadId: upload._id, kind: upload.kind, name: upload.name }
       }
+      await db.runTransaction(async tx => {
+        await application(upload.applicationId, openid, true, tx)
+        const ticket = await read(tx, upload._id)
+        if (!ticket || ticket.ownerOpenid !== openid) throw new Error('上传凭证无效')
+        if (ticket.sourceFileId && ticket.sourceFileId !== fileId) throw new Error('上传文件不可替换')
+        await tx.collection('platform_configs').doc(upload._id).update({ data: { sourceFileId: fileId } })
+      })
       const file = await cloud.downloadFile({ fileID: fileId }), bytes = file && file.fileContent
       if (!Buffer.isBuffer(bytes) || !bytes.length || bytes.length > LIMITS[upload.kind]) throw new Error('文件为空或超过大小限制')
       const isImage = bytes[0] === 137 && bytes[1] === 80 || bytes[0] === 255 && bytes[1] === 216
@@ -124,16 +135,24 @@ module.exports = context => {
       // replace approved content by overwriting the client upload afterward.
       const vault = await cloud.uploadFile({ cloudPath: 'memorial-memories/vault/' + crypto.randomBytes(24).toString('hex') + '.' + upload.path.split('.').pop(), fileContent: bytes })
       if (!vault || !vault.fileID) throw new Error('媒体保存失败，请重试')
-      if (upload.kind === 'image') await checkImageSecurity(openid, vault.fileID, { label: '纪念相册' })
-      await db.runTransaction(async tx => {
-        const current = await read(tx, upload._id)
-        if (!current || current.ownerOpenid !== openid) throw new Error('上传凭证无效')
-        if (current.status === 'ready') {
-          if (current.sourceFileId !== fileId) throw new Error('上传文件不可替换')
-          return
-        }
-        await tx.collection('platform_configs').doc(upload._id).update({ data: { status: 'ready', fileId: vault.fileID, sourceFileId: fileId, bytes: bytes.length, updatedAt: now() } })
-      })
+      let retained = false
+      try {
+        if (upload.kind === 'image') await checkImageSecurity(openid, vault.fileID, { label: '纪念相册' })
+        const stored = await db.runTransaction(async tx => {
+          await application(upload.applicationId, openid, true, tx)
+          const current = await read(tx, upload._id)
+          if (!current || current.ownerOpenid !== openid) throw new Error('上传凭证无效')
+          if (current.status === 'ready') {
+            if (current.sourceFileId !== fileId) throw new Error('上传文件不可替换')
+            return current.fileId
+          }
+          await tx.collection('platform_configs').doc(upload._id).update({ data: { status: 'ready', fileId: vault.fileID, sourceFileId: fileId, bytes: bytes.length, updatedAt: now() } })
+          return vault.fileID
+        })
+        retained = stored === vault.fileID
+      } finally {
+        if (!retained) await require('./memorialFileCleanup').discardFiles(context, [vault.fileID], [upload._id])
+      }
       return { uploadId: upload._id, kind: upload.kind, name: upload.name }
     }
     if (action === 'saveMemory') {
@@ -175,28 +194,36 @@ module.exports = context => {
         if (!saved || !saved.fileID) throw new Error('回忆文字保存失败，请重试')
         draft.text = ''; draft.textFileId = saved.fileID
       }
-      return db.runTransaction(async tx => {
-        const id = memoryId(app._id), previous = await read(tx, id)
-        // Old editors must not restore media removed immediately in another view.
-        if ((previous && previous.mediaRevision || 0) !== mediaRevision) throw new Error('展示设置或照片已更新，请重新打开回忆后再保存')
-        if (previous && previous.revision === data.revision + 1 && previous.saveFingerprint === saveFingerprint) {
-          return { revision: previous.revision, status: previous.status }
-        }
-        if ((previous && previous.revision || 0) !== data.revision) throw new Error('回忆已在其他页面更新，请重新打开后编辑')
-        if (previous && previous.status === 'pending') {
-          const oldNotice = 'admin_audit_memorial_memory_' + id + ':' + previous.revision
-          if (await readOptionalDocument(tx, 'admin_notifications', oldNotice)) await tx.collection('admin_notifications').doc(oldNotice).update({ data: { resolved: true, resolvedAt: now() } })
-        }
-        const revision = data.revision + 1
-        await put(tx, id, { key: 'memorial_memory', gardenId: gardenId(app), applicationId: app._id, ownerOpenid: openid,
-          petName: app.petName, applicant: user.nickname || '用户', lawn: app.lawn, plotId: app.plotId,
-          revision, mediaRevision, saveFingerprint, draft, isPublic: data.isPublic, status: data.isPublic ? 'pending' : 'private', reason: '',
-          publicContent: previous && previous.publicContent || null, createdAt: previous && previous.createdAt || now(), updatedAt: now() })
-        if (previous && previous.isPublic && !data.isPublic && previous.publicContent) await presence.changed(tx, gardenId(app))
-        if (data.isPublic) await context.enqueueAdminAuditNotification(tx, { auditType: 'memorial_memory', targetId: id + ':' + revision,
-          applicant: user.nickname || '用户', type: '纪念回忆审核', reason: app.petName, page: 'pages/admin/memorial/index?mode=memories' })
-        return { revision, status: data.isPublic ? 'pending' : 'private' }
-      })
+      let retained = false
+      try {
+        const result = await db.runTransaction(async tx => {
+          const app = await application(data.id, openid, true, tx)
+          const id = memoryId(app._id), previous = await read(tx, id)
+          // Old editors must not restore media removed immediately in another view.
+          if ((previous && previous.mediaRevision || 0) !== mediaRevision) throw new Error('展示设置或照片已更新，请重新打开回忆后再保存')
+          if (previous && previous.revision === data.revision + 1 && previous.saveFingerprint === saveFingerprint) {
+            return { revision: previous.revision, status: previous.status, retainedFile: previous.draft && previous.draft.textFileId || null }
+          }
+          if ((previous && previous.revision || 0) !== data.revision) throw new Error('回忆已在其他页面更新，请重新打开后编辑')
+          if (previous && previous.status === 'pending') {
+            const oldNotice = 'admin_audit_memorial_memory_' + id + ':' + previous.revision
+            if (await readOptionalDocument(tx, 'admin_notifications', oldNotice)) await tx.collection('admin_notifications').doc(oldNotice).update({ data: { resolved: true, resolvedAt: now() } })
+          }
+          const revision = data.revision + 1
+          await put(tx, id, { key: 'memorial_memory', gardenId: gardenId(app), applicationId: app._id, ownerOpenid: openid,
+            petName: app.petName, applicant: user.nickname || '用户', lawn: app.lawn, plotId: app.plotId,
+            revision, mediaRevision, saveFingerprint, draft, isPublic: data.isPublic, status: data.isPublic ? 'pending' : 'private', reason: '',
+            publicContent: previous && previous.publicContent || null, createdAt: previous && previous.createdAt || now(), updatedAt: now() })
+          if (previous && previous.isPublic && !data.isPublic && previous.publicContent) await presence.changed(tx, gardenId(app))
+          if (data.isPublic) await context.enqueueAdminAuditNotification(tx, { auditType: 'memorial_memory', targetId: id + ':' + revision,
+            applicant: user.nickname || '用户', type: '纪念回忆审核', reason: app.petName, page: 'pages/admin/memorial/index?mode=memories' })
+          return { revision, status: data.isPublic ? 'pending' : 'private', retainedFile: draft.textFileId || null }
+        })
+        retained = !draft.textFileId || result.retainedFile === draft.textFileId
+        return { revision: result.revision, status: result.status }
+      } finally {
+        if (!retained && draft.textFileId) await require('./memorialFileCleanup').discardFiles(context, [draft.textFileId], [memoryId(app._id)])
+      }
     }
     if (action === 'listMemoriesAdmin') {
       if (data.pendingCountsOnly) return { pendingCount: (await db.collection('platform_configs').where({ key: 'memorial_memory', status: 'pending' }).count()).total }
@@ -215,6 +242,7 @@ module.exports = context => {
       await checkTextSecurity(openid, reason, { label: '回忆审核意见' })
       return db.runTransaction(async tx => {
         const row = await read(tx, clean(data.id))
+        if (row) await application(row.applicationId, openid, false, tx)
         if (row && row.key === 'memorial_memory' && row.revision === data.revision && row.status === data.status && row.reason === reason) return { status: row.status }
         if (!row || row.key !== 'memorial_memory' || row.status !== 'pending' || row.revision !== data.revision) throw new Error('回忆已更新或已审核，请刷新')
         await tx.collection('platform_configs').doc(row._id).update({ data: { status: data.status, reason, reviewedBy: openid, updatedAt: now(),

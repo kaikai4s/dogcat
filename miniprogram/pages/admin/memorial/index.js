@@ -11,7 +11,7 @@ const queues = { applications: ['listAdmin', 'review'], memories: ['listMemories
 const native = (name, options) => new Promise((resolve, reject) => wx[name]({ ...options, success: resolve, fail: reject }))
 Page({
   data: { mode: 'applications', status: 'pending', rows: [], loading: false, busy: false, hasMore: false, error: '', reviewForm: null,
-    uploadingPortraitId: '', portraitUploadTip: '',
+    offeringSettings: null, uploadingPortraitId: '', portraitUploadTip: '',
     subscriptionReady: false, subscribing: false, subscriptionTip: '正在读取通知配置…', subscriptionFeedback: '' },
   onLoad(options = {}) { if (Object.prototype.hasOwnProperty.call(queues, options.mode)) this.setData({ mode: options.mode }) },
   changeMode(e) {
@@ -28,8 +28,8 @@ Page({
         if (mode) this.setData({ mode })
       }
     }
-    this.setData({ busy: false, reviewForm: null }); return Promise.all([this.load(), this.loadSubscription()]) },
-  onHide() { this.stopAudio(); if (this._pickingAsset && !this._unloaded) return; this._closed = true; this._reviewRequest = (this._reviewRequest || 0) + 1; this._request = (this._request || 0) + 1; this._settingsRequest = (this._settingsRequest || 0) + 1 },
+    this.setData({ busy: false, reviewForm: null, offeringSettings: null }); return Promise.all([this.load(), this.loadSubscription()]) },
+  onHide() { this._offeringSettingsRequest = (this._offeringSettingsRequest || 0) + 1; this.stopAudio(); if (this._pickingAsset && !this._unloaded) return; this._closed = true; this._reviewRequest = (this._reviewRequest || 0) + 1; this._request = (this._request || 0) + 1; this._settingsRequest = (this._settingsRequest || 0) + 1 },
   onUnload() { this._unloaded = true; if (this._placementImages) this._placementImages.dispose(); if (this._uploadTask && this._uploadTask.abort) this._uploadTask.abort(); this.onHide() },
   onPullDownRefresh() { return this.load().finally(() => wx.stopPullDownRefresh()) },
   async load(e) {
@@ -50,6 +50,45 @@ Page({
       await Promise.all(rows.filter(row => row.stagedAsset || row.result).map(row => this.preparePlacement(row)))
     } catch (error) { if (!this._closed && request === this._request) this.setData({ error: error.message || '加载失败，请重试' }) }
     finally { if (!this._closed && request === this._request) this.setData({ loading: false }) }
+  },
+  async openOfferingSettings() {
+    if (!(this.data.adminSuper || (this.data.adminPermissions || {}).memorial_getOfferingSettings) || this.data.busy) return
+    const request = this._offeringSettingsRequest = (this._offeringSettingsRequest || 0) + 1
+    this.setData({ offeringSettings: { loading: true, saving: false, error: '', revision: 0, flowerMinutes: '', snackMinutes: '' } })
+    try {
+      const settings = await callFunction('memorial', 'getOfferingSettings')
+      if (this._closed || request !== this._offeringSettingsRequest) return
+      this.setData({ offeringSettings: { ...settings, flowerMinutes: String(settings.flowerMinutes), snackMinutes: String(settings.snackMinutes), loading: false, saving: false, error: '' } })
+    } catch (error) {
+      if (!this._closed && request === this._offeringSettingsRequest) this.setData({ offeringSettings: { ...this.data.offeringSettings, loading: false, error: error.message || '显示设置读取失败，请重试', loadFailed: true } })
+    }
+  },
+  closeOfferingSettings() {
+    if (this.data.offeringSettings && this.data.offeringSettings.saving) return
+    this._offeringSettingsRequest = (this._offeringSettingsRequest || 0) + 1
+    this.setData({ offeringSettings: null })
+  },
+  inputOfferingSettings(e) {
+    const form = this.data.offeringSettings, field = e.currentTarget.dataset.field
+    if (!form || form.loading || form.saving || !['flowerMinutes', 'snackMinutes'].includes(field)) return
+    this.setData({ offeringSettings: { ...form, [field]: e.detail.value, error: '' } })
+  },
+  async saveOfferingSettings() {
+    const form = this.data.offeringSettings
+    if (!form || form.loading || form.saving || form.loadFailed || !(this.data.adminSuper || (this.data.adminPermissions || {}).memorial_saveOfferingSettings)) return
+    const flowerMinutes = Number(form.flowerMinutes), snackMinutes = Number(form.snackMinutes)
+    if ([flowerMinutes, snackMinutes].some(n => !Number.isInteger(n) || n < 1 || n > 10080)) {
+      this.setData({ offeringSettings: { ...form, error: '请输入 1～10080 分钟的整数' } }); return
+    }
+    const request = this._offeringSettingsRequest
+    this.setData({ offeringSettings: { ...form, saving: true, error: '' } })
+    try {
+      await callFunction('memorial', 'saveOfferingSettings', { revision: form.revision, flowerMinutes, snackMinutes })
+      if (this._closed || request !== this._offeringSettingsRequest) return
+      this.setData({ offeringSettings: null }); wx.showToast({ title: '显示时长已保存', icon: 'success' })
+    } catch (error) {
+      if (!this._closed && request === this._offeringSettingsRequest) this.setData({ offeringSettings: { ...form, saving: false, error: error.message || '保存失败，请重试' } })
+    }
   },
   portraitRow(row) {
     const asset = row.stagedAsset || row.result

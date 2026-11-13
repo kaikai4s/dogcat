@@ -43,7 +43,7 @@ console.log(JSON.stringify({directory:a.DIRECTORY,environmentDirectories:a.ENV_D
    之后替换素材时，在云存储 memorial-cloud-v1 目录内上传解压后的 packageMemorial 文件夹，保留 v1、boy、girl、audio 子目录。
 4. 开发/体验环境背景的实际云路径为 memorial-cloud-v1/packageMemorial/v1/garden.jpg，不要再增加外层目录。
 5. 资源需允许小程序的访问用户读取；不要开放公共写入。重新编译小程序并进入纪念园验证。
-6. 正式版使用 production-d2g5jx277f41a81a6 环境，目前仍配置 packageMemorial/v1/（无 memorial-cloud-v1 外层）。发布前按该路径上传；若使用其他目录，需提供正式环境 FileID 后再调整。
+6. 正式版使用 production-d2g5jx277f41a81a6 环境，目录同样为 memorial-cloud-v1/packageMemorial/v1/。两个环境保持相同文件夹和文件名，仅云环境与存储桶标识不同。
 
 ZIP、此说明和 upload-manifest.json 不需要上传。只上传 packageMemorial/v1/ 下的图片和 WAV。
 人物图集为 512×256，4 列×2 行，每格128×128，8帧，锚点(64,115)；上传时不要转换、压缩或裁切。

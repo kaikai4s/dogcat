@@ -1,7 +1,7 @@
 const test = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm')
 function fixture(owner = true, overrides = {}) {
   let page; const calls = [], toasts = []
-  const detail = { owner, revision: 4, mediaRevision: 0, isPublic: false, draft: { text: '一起看夕阳', images: [{ uploadId: 'photo1', url: 'local-photo' }], videos: [{ uploadId: 'video1' }, { uploadId: 'video2' }], music: { uploadId: 'song1' } }, story: null, reviewStatus: 'private' }
+  const detail = { petName: '小白', owner, revision: 4, mediaRevision: 0, isPublic: false, draft: { text: '一起看夕阳', images: [{ uploadId: 'photo1', url: 'local-photo' }], videos: [{ uploadId: 'video1' }, { uploadId: 'video2' }], music: { uploadId: 'song1' } }, story: null, reviewStatus: 'private' }
   async function api(_, action, data) {
     calls.push({ action, data })
     if (action === 'detail') return structuredClone(detail)
@@ -16,7 +16,7 @@ function fixture(owner = true, overrides = {}) {
     return {}
   }
   vm.runInNewContext(fs.readFileSync(require.resolve('../../miniprogram/packageMemorial/pages/memory'), 'utf8'), {
-    Page: def => { page = def }, require: name => name.endsWith('/cloud') ? { callFunction: api } : name.endsWith('/image-upload') ? { prepareImage: overrides.prepareImage } : name.endsWith('/memorial-portrait-layout') ? require('../../miniprogram/packageMemorial/scene/memorial-portrait-layout') : name.endsWith('/plot-number') ? { plotNumber: () => '01-01' } : {},
+    Page: def => { page = def }, require: name => name.endsWith('/cloud') ? { callFunction: api } : name.endsWith('/image-upload') ? { prepareImage: overrides.prepareImage } : name.endsWith('/memorial-portrait-layout') ? require('../../miniprogram/packageMemorial/scene/memorial-portrait-layout') : name.endsWith('/recovery-time') ? require('../../miniprogram/packageMemorial/scene/recovery-time') : name.endsWith('/plot-number') ? { plotNumber: () => '01-01' } : {},
     wx: { showToast: v => toasts.push(v.title), ...overrides.wx }
   })
   page.setData = values => Object.entries(values).forEach(([key, value]) => { const parts = key.split('.'); let object = page.data; for (const part of parts.slice(0,-1)) object = object[part]; object[parts.at(-1)] = value })
@@ -187,4 +187,75 @@ test('portrait pose defaults for old requests, restores sleeping, and is locked 
   page.data.saving = true; choose('sitting'); assert.equal(page.data.portraitPose, 'sleeping')
   page.data.saving = false; choose('standing'); assert.equal(page.data.portraitPose, 'sleeping')
   delete page.data.portrait.pose; page.openPortrait(); assert.equal(page.data.portraitPose, 'sitting')
+})
+
+test('demolition warns about permanent loss and only confirmed owner requests clear the page', async () => {
+  let confirm = false
+  const prompts = []
+  const f = fixture(true, { wx: { showModal: o => { prompts.push(o); o.success({ confirm, content: '小白' }) } } })
+  await f.page.load()
+  const event = { currentTarget: { dataset: { operation: 'demolish' } } }
+  await f.page.manageMemorial(event)
+  assert.equal(f.calls.filter(c => c.action === 'demolish').length, 0)
+  assert.match(prompts[0].content, /7 天/)
+  confirm = true
+  await f.page.manageMemorial(event)
+  const request = f.calls.find(c => c.action === 'demolish')
+  assert.equal(prompts.length, 3); assert.equal(prompts[2].editable, true); assert.equal(request.data.confirmName, '小白');
+  assert.equal(request.data.confirm, true); assert.equal(request.data.locationRevision, 0)
+  assert.equal(f.page.data.detail, null); assert.equal(f.page.data.demolished, true)
+  const visitor = fixture(false); await visitor.page.load(); await visitor.page.manageMemorial(event)
+  assert.equal(visitor.calls.length, 1)
+})
+test('owner migration opens the garden chooser and refreshes current location on return', async () => {
+  const routes = []
+  const f = fixture(true, { wx: { navigateTo: o => { routes.push(o.url); o.success({}) } } })
+  await f.page.load()
+  f.page.data.uploading = true
+  await f.page.manageMemorial({ currentTarget: { dataset: { operation: 'relocate' } } })
+  assert.equal(routes.length, 0)
+  f.page.data.uploading = false
+  await f.page.manageMemorial({ currentTarget: { dataset: { operation: 'relocate' } } })
+  assert.equal(routes[0], '/packageMemorial/pages/entrance?moveId=app')
+  f.page.onShow()
+  assert.equal(f.calls.filter(c => c.action === 'detail').length, 2)
+})
+
+test('second demolition confirmation cancellation or incorrect name never sends a deletion', async () => {
+  for (const second of [{ confirm: false }, { confirm: true, content: '小' }, { confirm: true, content: '' }]) {
+    let dialogs = 0
+    const f = fixture(true, { wx: { showModal: o => { dialogs++; o.success(dialogs === 1 ? { confirm: true } : second) } } })
+    await f.page.load()
+    await f.page.manageMemorial({ currentTarget: { dataset: { operation: 'demolish' } } })
+    assert.equal(dialogs, 2)
+    assert.equal(f.calls.some(c => c.action === 'demolish'), false)
+    assert.ok(f.page.data.detail)
+    assert.equal(f.page.data.managing, false)
+  }
+})
+
+test('a fresh location revision gets a fresh demolition request after a failed stale request', async () => {
+  let failed = true
+  const f = fixture(true, { wx: { showModal: o => o.success({ confirm: true, content: '小白' }) }, api: async action => {
+    if (action === 'demolish' && failed) throw new Error('位置已更新')
+    return { recoverUntil: Date.now() + 86400000 }
+  } })
+  await f.page.load()
+  const event = { currentTarget: { dataset: { operation: 'demolish' } } }
+  await f.page.manageMemorial(event)
+  const old = f.calls.find(c => c.action === 'demolish').data.requestId
+  f.detail.locationRevision = 2; failed = false
+  await f.page.load(); await f.page.manageMemorial(event)
+  const requests = f.calls.filter(c => c.action === 'demolish')
+  assert.notEqual(requests[1].data.requestId, old)
+  assert.equal(requests[1].data.locationRevision, 2)
+})
+
+test('hiding memory during demolition confirmation prevents removal', async () => {
+  let confirm
+  const f = fixture(true, { wx: { showModal: o => { confirm = o.success } } }); await f.page.load()
+  const pending = f.page.manageMemorial({ currentTarget: { dataset: { operation: 'demolish' } } })
+  f.page.onHide(); confirm({ confirm: true }); await pending
+  assert.equal(f.calls.some(c => c.action === 'demolish'), false)
+  assert.equal(f.page.data.managing, false)
 })

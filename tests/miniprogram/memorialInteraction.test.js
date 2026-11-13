@@ -138,7 +138,7 @@ test('failed audio is released for retry; stale play rejection after pause is ig
   assert.equal(errors.length, 1)
 })
 
-function pageFixture(saved = {}, windowInfo = {}) {
+function pageFixture(saved = {}, windowInfo = {}, wxOverrides = {}) {
   let definition, resized = 0
   const audio = sounds(), events = {}
   vm.runInNewContext(fs.readFileSync(require.resolve('../../miniprogram/packageMemorial/pages/garden'), 'utf8'), {
@@ -152,7 +152,7 @@ function pageFixture(saved = {}, windowInfo = {}) {
       onAudioInterruptionBegin: fn => { events.begin = fn }, onAudioInterruptionEnd: fn => { events.end = fn },
       showToast() {},
       offAudioInterruptionBegin: fn => { assert.equal(fn, events.begin); delete events.begin },
-      offAudioInterruptionEnd: fn => { assert.equal(fn, events.end); delete events.end } }
+      offAudioInterruptionEnd: fn => { assert.equal(fn, events.end); delete events.end }, ...wxOverrides }
   })
   const page = { ...definition, data: structuredClone(definition.data), setData(value) { Object.assign(this.data, value) } }
   page.onLoad(); page._visible = true; page._ready = true
@@ -564,5 +564,115 @@ test('cross-garden visit carries garden and plot ids while closing same-garden c
   page.data.applications=[{_id:'other-app',gardenId:'garden_'+'b'.repeat(32),plotId:'garden-ortho-v2:3:3'}]
   page.visitMemorial({currentTarget:{dataset:{id:'other-app'}}})
   assert.deepEqual(entered,[[page.data.applications[0].gardenId,'garden-ortho-v2:3:3']])
+  page.onUnload()
+})
+
+test('offering status ignores replaced cards and hidden-page responses and updates each memorial independently', async () => {
+  const { page } = pageFixture(), pending = []
+  page.api = (action, data) => new Promise(resolve => pending.push({ action, data, resolve }))
+  page.data.memorialCard = { applicationId: 'a', offerings: { flower: 2, snack: 1 } }
+  const first = page.loadOfferingStatus()
+  page.data.memorialCard = { applicationId: 'b' }
+  const second = page.loadOfferingStatus()
+  const status = { day: '2026-11-13', serverTime: 1000, resetAt: 86401000, counts: { flower: 5, snack: 4 }, display: { flower: [], snack: [] }, given: { flower: true, snack: false } }
+  pending[1].resolve(status); await second
+  pending[0].resolve({ ...status, counts: { flower: 2, snack: 1 } }); await first
+  assert.equal(page.data.offeringStatus.id, 'b'); assert.equal(page.data.offeringTotals.flower, 5)
+  const third = page.loadOfferingStatus(); page.onHide(); pending[2].resolve(status); await third
+  assert.equal(page.data.offeringStatus, null); assert.equal(page._offeringResetTimer, null)
+  page.onUnload()
+})
+test('offering is recorded only after arrival, duplicate taps are ignored and an acknowledged gift renders once', async () => {
+  const { page } = pageFixture(), calls = [], updates = []
+  page.queueWorldRefresh = () => {}
+  page.scene.memorials = [{ applicationId: 'a' }]
+  let arrive
+  page.scene.prepareOffering = () => new Promise(resolve => { arrive = resolve })
+  page.scene.playOffering = async release => release()
+  page.scene.updateOfferings = (id, counts) => updates.push({ id, counts })
+  const status = { id: 'a', day: '2026-11-13', given: { flower: false, snack: false } }
+  page.data.memorialCard = { applicationId: 'a' }; page.data.offeringStatus = status
+  page.api = async (action, data) => { calls.push({ action, data }); return { counts: { flower: 1, snack: 0 }, display: { flower: [[99999999, 1]], snack: [] }, serverTime: Date.now() } }
+  const e = { currentTarget: { dataset: { kind: 'flower' } } }
+  const giving = page.giveOffering(e)
+  assert.equal(calls.length, 0); assert.equal(page.data.offeringBusy, true); assert.equal(page.data.memorialCard, null)
+  await page.giveOffering(e); arrive(); await giving
+  assert.equal(calls.length, 1); assert.equal(calls[0].data.day, status.day)
+  assert.equal(updates.at(-1).counts.flower, 1); assert.equal(page.data.offeringBusy, false)
+  page.onUnload()
+})
+test('cancelled approach and hiding during preparation do not spend a daily offering', async () => {
+  for (const hide of [false, true]) {
+    const { page } = pageFixture(); let arrive, recorded = 0
+    page.scene.memorials = [{ applicationId: 'a' }]
+    page.scene.prepareOffering = () => new Promise(resolve => { arrive = resolve })
+    page.scene.updateOfferings = () => {}
+    page.data.memorialCard = { applicationId: 'a' }; page.data.offeringStatus = { id: 'a', day: '2026-11-13', given: {} }
+    page.api = async () => { recorded++; return {} }; page.queueWorldRefresh = () => {}
+    const pending = page.giveOffering({ currentTarget: { dataset: { kind: 'snack' } } })
+    if (hide) page.onHide(); else page.cancelOffering()
+    arrive(); await pending
+    assert.equal(recorded, 0); assert.equal(page.data.offeringBusy, false)
+    page.onUnload()
+  }
+})
+
+test('cancelled relocation ignores late owner details and cannot restart selection', async () => {
+  const { page } = pageFixture()
+  page._moveId = 'moving-app'
+  let finish
+  page.api = () => new Promise(r => { finish = r })
+  const loading = page.loadMove()
+  page.cancelMove()
+  finish({ id: 'moving-app', owner: true })
+  await loading
+  assert.equal(page.data.move, null)
+  assert.equal(page.data.selectingPlot, false)
+  page.onUnload()
+})
+test('world refresh closes a memorial card after it is demolished or relocated', async () => {
+  const { page } = pageFixture()
+  page.data.memorialCard = { applicationId: 'old-app' }
+  page.api = async () => ({ occupied: [], memorials: [] })
+  await page.refreshMemorials()
+  assert.equal(page.data.memorialCard, null)
+  page.onUnload()
+})
+
+for (const action of ['relocate', 'restore']) test(action + ' confirmation cannot submit after the page hides or unloads', async () => {
+  for (const leave of ['onHide', 'onUnload']) {
+    let confirm
+    const { page } = pageFixture({}, {}, { showModal: options => { confirm = options.success } })
+    page._restoring = action === 'restore'
+    page.data.move = { id: 'app', locationRevision: 2, petName: '小白' }
+    page.data.form = { plotId: 'new', style: 'arch', requestId: 'request' }
+    let submitted = 0
+    page.api = async () => { submitted++; return {} }
+    const pending = page.submitMove()
+    page[leave]()
+    confirm({ confirm: true })
+    await pending
+    assert.equal(submitted, 0)
+    if (leave === 'onHide') { assert.equal(page.data.submitting, false); page.onUnload() }
+  }
+})
+test('failed relocation retains selected position and shows the full actionable error', async () => {
+  const { page } = pageFixture({}, {}, { showModal: o => o.success({ confirm: true }) })
+  page.data.move = { id: 'app' }; page.data.form = { plotId: 'occupied', style: 'arch', requestId: 'same-request' }
+  page.api = async () => { throw new Error('这个位置刚被其他小筑占用，请关闭窗口重新选址。') }
+  await page.submitMove()
+  assert.match(page.data.formError, /重新选址/)
+  assert.equal(page.data.form.requestId, 'same-request')
+  assert.equal(page.data.submitting, false)
+  page.onUnload()
+})
+test('paused gardens do not consume migration auto-selection, cancellation clears restoration mode', () => {
+  const { page } = pageFixture()
+  page.data.move = { id: 'app' }; page.data.gardenAccepting = false
+  let selected = 0; page.choosePlot = () => { selected++ }
+  page.startMoveSelection(); assert.equal(selected, 0)
+  page.data.gardenAccepting = true; page.startMoveSelection(); assert.equal(selected, 1)
+  page._restoring = true; page.data.restoring = true; page.cancelMove()
+  assert.equal(page._restoring, false); assert.equal(page.data.restoring, false)
   page.onUnload()
 })

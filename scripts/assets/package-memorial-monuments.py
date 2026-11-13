@@ -29,7 +29,7 @@ with zipfile.ZipFile(package / 'memorial-monuments-v1.zip', 'w', zipfile.ZIP_DEF
 (package / 'manifest.json').write_text(json.dumps(records, indent=2))
 (package / '上传说明.md').write_text('''# 时光小筑新素材
 解压 memorial-monuments-v1.zip，将 monuments-v1 文件夹上传到云存储 memorial-cloud-v1/packageMemorial/v1/ 下。
-共 4 张 PNG：atlas.png、arch.png、cottage.png、moon.png。正式环境目录为 packageMemorial/v1/monuments-v1/。
+共 4 张 PNG：atlas.png、arch.png、cottage.png、moon.png。正式环境目录同样为 memorial-cloud-v1/packageMemorial/v1/monuments-v1/。
 保留现有场景、人物和音频文件。新图需上传后重新编译；缺少 atlas.png 时园区加载会提示失败，可上传后重试。
 这次有新的回忆接口和权限，需要部署 api 云函数、发布小程序，并按 docs/design/pet-memorial/memory-release.md 合并私有媒体存储规则。
 ''', encoding='utf-8')

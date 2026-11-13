@@ -150,3 +150,15 @@ test('native page injects the cloud resolver into both images and audio; packer 
   const config = require('../../project.config.json')
   assert.ok(config.packOptions.ignore.some(item => item.type === 'folder' && item.value === 'packageMemorial/assets'))
 })
+
+test('every production memorial asset keeps exactly the same cloud object path as trial', () => {
+  const roots = require('../../miniprogram/utils/cloud-assets').CLOUD_STORAGE_ROOTS
+  const trial = 'cloud1-5gnhqn4t0554c1d9', production = 'production-d2g5jx277f41a81a6'
+  const admin = require('../../miniprogram/pages/admin/memorial/memorial-asset-path')
+  for (const key of FILES) {
+    const path = '/memorial-cloud-v1/packageMemorial/v1/' + key
+    assert.equal(fileID(key, trial), roots[trial] + path)
+    assert.equal(fileID(key, production), roots[production] + path)
+    assert.equal(admin.memorialAssetID(key, production), roots[production] + path)
+  }
+})

@@ -23,6 +23,7 @@ module.exports = function createHandler(context) {
 
     // 1. 并发执行相互独立的对账与补偿重试任务，避免慢网络累加串行耗时
     const retryTasks = [
+      { name: 'memorialCleanup', fn: context.cleanupMemorials },
       { name: 'refunds', fn: reconcilePendingRefunds },
       { name: 'wechatTransfers', fn: reconcileWechatTransfers },
       { name: 'staffDepositRefunds', fn: reconcileStaffDepositRefunds },

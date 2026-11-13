@@ -14,7 +14,7 @@
 
 ### 补传云资源
 
-`output/memorial-world-v2-upload/memorial-world-v2.zip` 中只有 world-v2 文件夹（2 张图片+48 个 JSON，共 50 个文件，约 561 KB）。用户在现有 `memorial-cloud-v1/packageMemorial/v1/` 目录内上传 world-v2，开发/体验版直接读取。人物和声音路径保持不变，无需重传。正式环境仍为 `packageMemorial/v1/world-v2/`，尚未验证其上传。
+`output/memorial-world-v2-upload/memorial-world-v2.zip` 中只有 world-v2 文件夹（2 张图片+48 个 JSON，共 50 个文件，约 561 KB）。用户在现有 `memorial-cloud-v1/packageMemorial/v1/` 目录内上传 world-v2，开发/体验版直接读取。人物和声音路径保持不变，无需重传。正式环境同样为 `memorial-cloud-v1/packageMemorial/v1/world-v2/`，尚未验证其上传。
 
 复现：
 ```powershell
@@ -86,7 +86,7 @@ python -m http.server 8771 --bind 127.0.0.1 --directory output/memorial-scene-pr
 
 ## 云存储接入（当前资源加载方式）
 
-按用户要求，原生小程序页面为场景引擎和声音控制器注入 `scene/cloud-assets.js` 的下载器。文件统一放在 `packageMemorial/v1/`，沿用 `envList` 的版本环境选择和公共 `CLOUD_STORAGE_ROOTS`，开发/体验指向 cloud1 环境，正式版指向 production 环境。未知环境报错，不跨环境回退。读取通过 `wx.cloud.downloadFile`，Canvas2D/音频使用下载返回的临时本地文件；无包内资源兜底，也不保存带有效期的签名 URL。
+按用户要求，原生小程序页面为场景引擎和声音控制器注入 `scene/cloud-assets.js` 的下载器。文件统一放在 `memorial-cloud-v1/packageMemorial/v1/`，沿用 `envList` 的版本环境选择和公共 `CLOUD_STORAGE_ROOTS`，开发/体验指向 cloud1 环境，正式版指向 production 环境。未知环境报错，不跨环境回退。读取通过 `wx.cloud.downloadFile`，Canvas2D/音频使用下载返回的临时本地文件；无包内资源兜底，也不保存带有效期的签名 URL。
 
 本地素材保留供打包和浏览器设计预览，`project.config.json` 明确排除整个 `packageMemorial/assets` 目录，因此不会随小程序包发布。之前的约 1.77 MB 为包含素材的本地目录大小，不能再视为当前发布分包大小。
 
@@ -102,6 +102,6 @@ python -m http.server 8771 --bind 127.0.0.1 --directory output/memorial-scene-pr
 用户提供开发/体验环境背景 FileID：
 `cloud://cloud1-5gnhqn4t0554c1d9.636c-cloud1-5gnhqn4t0554c1d9-1310870236/memorial-cloud-v1/packageMemorial/v1/garden.jpg`。
 
-截图显示同级 audio、boy、girl 目录。开发/体验环境现通过 `ENV_DIRECTORIES` 使用 `memorial-cloud-v1/packageMemorial/v1/`；20 个资源均从该目录解析，不需要用户移动或重传。正式环境尚无实际上传证据，仍使用原配置 `packageMemorial/v1/`。上传脚本及输出说明已同步两环境的不同路径。
+截图显示同级 audio、boy、girl 目录。开发/体验环境现通过 `ENV_DIRECTORIES` 使用 `memorial-cloud-v1/packageMemorial/v1/`；20 个资源均从该目录解析，不需要用户移动或重传。用户确认正式环境按体验环境相同目录上传，因此正式环境也使用 `memorial-cloud-v1/packageMemorial/v1/`。上传脚本及输出说明已统一为相同目录，仅切换环境与存储桶标识。
 
 本次 8 项云资源测试通过，断言背景 FileID 与用户提供值完全相同，全部资源位于同一基目录。该验证属于路径与加载逻辑验证，尚未实际从微信云端逐个下载，不能代替云权限、文件内容及真机验证。
