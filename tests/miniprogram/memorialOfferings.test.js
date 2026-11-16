@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { MemorialScene } = require('../../miniprogram/packageMemorial/scene/engine')
-const { activeCounts, placements, MAX_VISIBLE } = require('../../miniprogram/packageMemorial/scene/offerings')
+const { activeCounts, placements, slot, MAX_VISIBLE } = require('../../miniprogram/packageMemorial/scene/offerings')
 const worldIndex = require('../../miniprogram/packageMemorial/scene/world-index')
 const { ids } = require('../../miniprogram/packageMemorial/scene/plot-layout')
 const plot = worldIndex.cells.find(row => ids.includes(row.id))
@@ -83,5 +83,25 @@ test('world removal and manual input cancel the approach and cannot complete a p
     const rejected = assert.rejects(approaching, /结束/)
     await settle(); cancel(s); await rejected
     assert.equal(s.ritual.state, null)
+  }
+})
+
+test('a building on the preferred offering spot routes the player to another clear position', async () => {
+  for (const gender of ['boy', 'girl']) for (const kind of ['flower', 'snack']) {
+    const { s, memorial } = fixture(gender)
+    const place = slot(memorial, kind, 0)
+    const preferred = { x: place.x + 25, y: Math.max(memorial.y + 38, place.y + 15) }
+    const blocker = { kind: 'memorial', applicationId: 'neighbor', x: preferred.x, y: preferred.y }
+    s.setMemorials([memorial, blocker])
+    assert.equal(s.canWalk(preferred), false)
+    await approach(s, memorial, kind)
+    assert.ok(Math.hypot(s.player.x - preferred.x, s.player.y - preferred.y) > 8)
+    assert.equal(s.canWalk(s.player), true)
+    let releases = 0
+    const playing = s.playOffering(() => { releases++ })
+    for (let i = 0; i < 55; i++) s.step(.05)
+    await playing
+    assert.equal(releases, 1)
+    s.destroy()
   }
 })

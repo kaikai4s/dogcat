@@ -31,6 +31,18 @@ function drawGround(c, view, grass) {
   c.strokeStyle = '#8e9471'; c.lineWidth = 3
   c.strokeRect(66, 66, M.WIDTH - 132, M.HEIGHT - 132)
 }
+function drawOverviewGround(c) {
+  c.fillStyle = '#8c9f62'
+  c.fillRect(0, 0, M.WIDTH, M.HEIGHT)
+  c.fillStyle = '#d3c7a6'
+  M.roadX.forEach(x => c.fillRect(x - M.roadWidth / 2, 64, M.roadWidth, M.HEIGHT - 128))
+  M.roadY.forEach(y => c.fillRect(64, y - M.roadWidth / 2, M.WIDTH - 128, M.roadWidth))
+  c.beginPath(); c.arc(M.plaza.x, M.plaza.y, M.plaza.radius, 0, Math.PI * 2); c.fill()
+  c.strokeStyle = '#c9c2a5'; c.lineWidth = 18
+  c.strokeRect(54, 54, M.WIDTH - 108, M.HEIGHT - 108)
+  c.strokeStyle = '#8e9471'; c.lineWidth = 3
+  c.strokeRect(66, 66, M.WIDTH - 132, M.HEIGHT - 132)
+}
 function propBox(prop) {
   const type = prop.kind === 'memorial' && prop.legacy ? { width: 64, height: 88 } : M.PROPS[prop.kind]
   return { x: prop.x - type.width / 2, y: prop.y - type.height * .84,
@@ -131,4 +143,4 @@ function drawPlan(c) {
   c.beginPath(); c.arc(M.plaza.x, M.plaza.y, M.plaza.radius, 0, Math.PI * 2); c.fill()
   M.landmarks.forEach(p => { c.fillStyle = '#63775c'; c.beginPath(); c.arc(p.x, p.y, 45, 0, Math.PI * 2); c.fill() })
 }
-module.exports = { drawGround, drawProp, propBox, drawPlan }
+module.exports = { drawGround, drawOverviewGround, drawProp, propBox, drawPlan }

@@ -1,4 +1,4 @@
-const { drawGround } = require('./terrain')
+const { drawGround, drawOverviewGround } = require('./terrain')
 const M = require('./world-template')
 function wideView(view, scale) {
   const cols = Math.max(0, Math.min(M.WIDTH / M.CHUNK, Math.ceil(view.right / M.CHUNK)) - Math.max(0, Math.floor(view.left / M.CHUNK)))
@@ -9,13 +9,18 @@ function wideView(view, scale) {
 class GroundCache {
   constructor(createCanvas) { this.createCanvas = createCanvas; this.tiles = new Map(); this.overview = null }
   draw(c, view, grass, scale) {
-    if (!this.createCanvas) { drawGround(c, view, grass); return }
+    const broad = wideView(view, scale)
+    if (!this.createCanvas) {
+      if (broad) drawOverviewGround(c)
+      else drawGround(c, view, grass)
+      return
+    }
     try {
-      if (wideView(view, scale)) {
+      if (broad) {
         if (!this.overview) {
-          const ratio = Math.min(1536 / M.WIDTH, 1152 / M.HEIGHT)
+          const ratio = Math.min(1024 / M.WIDTH, 768 / M.HEIGHT)
           const canvas = this.createCanvas(Math.ceil(M.WIDTH * ratio), Math.ceil(M.HEIGHT * ratio)), ctx = canvas.getContext('2d')
-          ctx.scale(ratio, ratio); drawGround(ctx, { left: 0, top: 0, right: M.WIDTH, bottom: M.HEIGHT }, grass)
+          ctx.scale(ratio, ratio); drawOverviewGround(ctx)
           this.overview = canvas
         }
         c.drawImage(this.overview, 0, 0, M.WIDTH, M.HEIGHT); return
@@ -35,7 +40,9 @@ class GroundCache {
       }
       for (const key of this.tiles.keys()) if (this.tiles.size > 24 && !wanted.has(key)) this.tiles.delete(key)
     } catch (_) {
-      this.destroy(); this.createCanvas = null; drawGround(c, view, grass)
+      this.destroy(); this.createCanvas = null
+      if (broad) drawOverviewGround(c)
+      else drawGround(c, view, grass)
     }
   }
   destroy() { this.tiles.clear(); this.overview = null }

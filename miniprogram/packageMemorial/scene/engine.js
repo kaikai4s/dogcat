@@ -407,8 +407,13 @@ class MemorialScene {
       c.textAlign = 'center'; c.font = '12px sans-serif'; c.fillStyle = '#38543d'
       c.fillText(({ remember: '静静陪伴', select: '挑选小筑', map: '查看地图' })[actor.activity] || '', p.x, p.y - 109)
     }
-    if (img) c.drawImage(img, frame % 4 * 128, Math.floor(frame / 4) * 128, 128, 128,
-      p.x - size / 2, p.y - size * 115 / 128, size, size)
+    if (img) {
+      const mirror = ritualFrame !== null && ritualFrame !== false && this.ritual.state.direction === 'ne'
+      if (mirror) { c.save(); c.translate(p.x * 2, 0); c.scale(-1, 1) }
+      c.drawImage(img, frame % 4 * 128, Math.floor(frame / 4) * 128, 128, 128,
+        p.x - size / 2, p.y - size * 115 / 128, size, size)
+      if (mirror) c.restore()
+    }
   }
   requestDraw() { if (!this.running) this.draw() }
   draw() {

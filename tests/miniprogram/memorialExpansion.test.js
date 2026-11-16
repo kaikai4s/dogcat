@@ -50,7 +50,7 @@ test('expanded ground renders to the edge, retains the tile budget and caps the 
   cache.draw(main, { left: 4300, right: M.WIDTH, top: 2800, bottom: M.HEIGHT }, {}, 1)
   assert.ok(draws.some(d => d[1] === 11 * M.CHUNK && d[2] === 7 * M.CHUNK))
   cache.draw(main, { left: 0, right: M.WIDTH, top: 0, bottom: M.HEIGHT }, {}, .1)
-  assert.deepEqual([cache.overview.width, cache.overview.height], [1536, 1024])
+  assert.deepEqual([cache.overview.width, cache.overview.height], [1024, 683])
   assert.deepEqual(draws.at(-1).slice(1), [0, 0, M.WIDTH, M.HEIGHT])
   const count = created.length
   cache.draw(main, { left: 0, right: M.WIDTH, top: 0, bottom: M.HEIGHT }, {}, .5)

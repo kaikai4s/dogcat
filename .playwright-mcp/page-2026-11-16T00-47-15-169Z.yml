@@ -1,0 +1,26 @@
+- main [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]: SLOW LITTLE DAYS
+    - generic [ref=e7]: 小小漫游记 / 001
+  - generic [ref=e8]:
+    - generic [ref=e9]:
+      - generic [ref=e10]: A LITTLE RIDE, A LOT OF JOY
+      - heading "今天，顺着海风走。" [level=1] [ref=e11]
+    - paragraph [ref=e12]: 一只鹈鹕，一辆单车。目的地不重要，踩着风就好。
+  - region "鹈鹕骑自行车的二维动画" [ref=e13]:
+    - generic [ref=e14]: COASTAL CRUISE · 海岸骑行
+    - img "鹈鹕的海岸骑行 白色鹈鹕骑着青绿色自行车，双腿交替踩踏，车轮转动，围巾随风飘动，海岸景色缓缓后退。" [ref=e15]:
+      - generic [ref=e100]: 海风刚刚好
+  - generic [ref=e103]:
+    - generic [ref=e104]:
+      - button "暂停动画" [ref=e105] [cursor=pointer]
+      - generic [ref=e108]:
+        - text: 慢慢骑，慢慢看
+        - generic [ref=e109]: ENJOY THE LITTLE THINGS
+    - generic [ref=e110]:
+      - generic [ref=e111]: 骑行速度
+      - slider "骑行速度" [ref=e112] [cursor=pointer]: "1"
+      - status [ref=e113]: 1.0×
+  - generic [ref=e114]:
+    - generic [ref=e115]: 一段没有截止时间的旅程。
+    - generic [ref=e116]: SVG 小剧场 · 纯矢量绘制

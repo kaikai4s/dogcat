@@ -30,7 +30,7 @@ function clearLine(a, b, objects) {
   return true
 }
 // A* on a fixed ground grid; sample every segment to avoid cutting corners.
-function findRoute(start, target, memorials) {
+function routeToTargets(start, targets, memorials, exactTargets = false) {
   const objects = index.objects.concat(memorials || [])
   const step = 32, cols = M.WIDTH / step, rows = M.HEIGHT / step
   const point = id => ({ x: id % cols * step + 16, y: Math.floor(id / cols) * step + 16 })
@@ -49,8 +49,20 @@ function findRoute(start, target, memorials) {
     }
     return result
   }
-  const source = nearest(start, true), goal = nearest(target, false)
-  if (source < 0 || goal < 0) return []
+  const source = nearest(start, true)
+  const destinations = new Map()
+  for (const target of targets) {
+    if (exactTargets && !walkable(target, objects)) continue
+    const goal = nearest(target, exactTargets)
+    if (goal < 0) continue
+    const endpoint = exactTargets ? target : point(goal)
+    const cost = distance(point(goal), endpoint)
+    const previous = destinations.get(goal)
+    if (!previous || cost < previous.cost) destinations.set(goal, { endpoint, cost })
+  }
+  if (source < 0 || !destinations.size) return []
+  const goals = [...destinations.values()].map(destination => destination.endpoint)
+  const estimate = id => Math.min(...goals.map(goal => distance(point(id), goal)))
   const heap = [], visited = new Set(), cost = new Map([[source, 0]]), parent = new Map()
   function push(id, f) {
     let i = heap.length; heap.push({ id, f })
@@ -71,14 +83,16 @@ function findRoute(start, target, memorials) {
     }
     return first.id
   }
-  push(source, distance(point(source), point(goal)))
+  push(source, estimate(source))
   while (heap.length) {
     let current = pop()
     if (visited.has(current)) continue
-    if (current === goal) {
-      const result = [point(goal)]
+    if (destinations.has(current)) {
+      const destination = destinations.get(current)
+      const result = [point(current)]
       while (parent.has(current)) { current = parent.get(current); result.unshift(point(current)) }
       result.unshift({ ...start })
+      if (exactTargets) result.push(destination.endpoint)
       const simplified = [result[0]]
       for (let i = 0; i < result.length - 1;) {
         let j = result.length - 1
@@ -93,9 +107,17 @@ function findRoute(start, target, memorials) {
       const nx = x + dx, ny = y + dy, next = ny * cols + nx
       if (nx < 2 || nx >= cols - 2 || ny < 2 || ny >= rows - 2 || visited.has(next) || !free(next) || !clearLine(point(current), point(next), objects)) continue
       const g = cost.get(current) + Math.hypot(dx, dy) * step
-      if (!cost.has(next) || g < cost.get(next)) { cost.set(next, g); parent.set(next, current); push(next, g + distance(point(next), point(goal))) }
+      if (!cost.has(next) || g < cost.get(next)) { cost.set(next, g); parent.set(next, current); push(next, g + estimate(next)) }
     }
   }
   return []
 }
-module.exports = { findRoute, walkable, clearLine }
+function findRoute(start, target, memorials) {
+  return routeToTargets(start, [target], memorials)
+}
+
+function findRouteToAny(start, targets, memorials) {
+  return routeToTargets(start, targets, memorials, true)
+}
+
+module.exports = { findRoute, findRouteToAny, walkable, clearLine }

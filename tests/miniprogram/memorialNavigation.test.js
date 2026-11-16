@@ -32,6 +32,26 @@ test('ground cache paints paving once then uses drawImage while panning over cac
   assert.equal(paints, initial); assert.equal(images, 101)
   cache.destroy(); assert.equal(cache.tiles.size, 0)
 })
+test('whole-garden zoom uses a bounded cached ground and a cheap canvas-less fallback', () => {
+  const counter = () => {
+    let calls = 0
+    const ctx = new Proxy({}, { get: (_, key) => (...args) => { if (typeof key === 'string') calls++ }, set: () => true })
+    return { ctx, calls: () => calls }
+  }
+  const offscreen = counter(), main = counter(), fullView = { left: 0, top: 0, right: world.WIDTH, bottom: world.HEIGHT }
+  const cache = new GroundCache((width, height) => ({ width, height, getContext: () => offscreen.ctx }))
+  cache.draw(main.ctx, fullView, {}, .04)
+  assert.deepEqual([cache.overview.width, cache.overview.height], [1024, 683])
+  assert.ok(offscreen.calls() < 40, 'overview rasterization should not draw detailed paving rows')
+  const preparedCalls = offscreen.calls()
+  for (let i = 0; i < 20; i++) cache.draw(main.ctx, fullView, {}, .04)
+  assert.equal(offscreen.calls(), preparedCalls)
+  assert.equal(main.calls(), 21)
+
+  const fallback = counter()
+  new GroundCache(null).draw(fallback.ctx, fullView, {}, .04)
+  assert.ok(fallback.calls() < 40, 'low zoom without offscreen canvas should use overview drawing')
+})
 test('native audio never seeks before decoding; replay can seek after canplay', () => {
   let canplay, ended, seeks = 0, plays = 0
   const sound = new GardenSound(() => ({ onError() {}, onCanplay(fn) { canplay = fn }, onEnded(fn) { ended = fn }, seek() { seeks++ }, play() { plays++ }, pause() {}, destroy() {} }))
