@@ -37,7 +37,7 @@ test('private and pending memories never expose draft or media; only an approved
   assert.equal((await f.call('owner', 'detail', { id: 'app' })).draft.text, '新草稿待审核')
   await f.save(3, { isPublic: false })
   assert.equal((await f.call('visitor', 'detail', { id: 'app' })).story, null)
-  assert.ok(f.db.state.admin_notifications.every(n => n.resolved))
+  assert.equal(f.db.state.admin_notifications.filter(n => !n.resolved).length, 1)
 })
 test('save conflicts and old review requests cannot overwrite or publish a newer revision', async () => {
   const f = fixture(); await f.save(0)
@@ -152,6 +152,56 @@ test('long stories retain every Unicode character, stay private until approval, 
   assert.equal((await f.call('visitor', 'detail', { id: 'app' })).story.text, text)
   await f.save(2, { text, isPublic: false })
   assert.equal((await f.call('visitor', 'detail', { id: 'app' })).story, null)
+})
+
+test('novel chapters stay private until review, then publish as chapters with page-ready text', async () => {
+  const f = fixture()
+  const chapters = [
+    { id: 'meet', title: '初次相遇', text: '那天我们在雨里相遇。' },
+    { id: 'home', title: '回家的路', text: '它把每一天都变成了家。' }
+  ]
+  const saved = await f.call('owner', 'saveMemory', { id: 'app', revision: 0, mode: 'novel', chapters, isPublic: true, images: [], videos: [] })
+  assert.equal(saved.status, 'pending')
+  const row = f.db.state.platform_configs.find(r => r.key === 'memorial_memory')
+  assert.equal(row.draft.mode, 'novel')
+  assert.deepEqual((await f.call('owner', 'detail', { id: 'app' })).draft.chapters, chapters)
+  assert.equal((await f.call('visitor', 'detail', { id: 'app' })).story, null)
+  assert.deepEqual((await f.call('admin', 'listMemoriesAdmin')).list[0].memory.chapters, chapters)
+  await f.call('admin', 'reviewMemory', { id: row._id, revision: 1, status: 'approved' })
+  assert.deepEqual((await f.call('visitor', 'detail', { id: 'app' })).story.chapters, chapters)
+})
+
+test('private text edits still require review and approval never reopens a private story', async () => {
+  const f = fixture()
+  await f.call('owner', 'saveMemory', { id: 'app', revision: 0, mode: 'plain', text: '只留给自己的第一版', isPublic: false, images: [], videos: [] })
+  let row = f.db.state.platform_configs.find(r => r.key === 'memorial_memory')
+  assert.equal(row.status, 'pending')
+  await f.call('admin', 'reviewMemory', { id: row._id, revision: 1, status: 'approved' })
+  assert.equal(f.db.state.platform_configs.find(r => r._id === row._id).publicContent, null)
+  assert.equal((await f.call('visitor', 'detail', { id: 'app' })).story, null)
+  await f.call('owner', 'saveMemory', { id: 'app', revision: 1, mode: 'plain', text: '修改后的私人版本', isPublic: false, images: [], videos: [] })
+  row = f.db.state.platform_configs.find(r => r.key === 'memorial_memory')
+  assert.equal(row.status, 'pending')
+  assert.equal((await f.call('visitor', 'detail', { id: 'app' })).story, null)
+  await f.call('admin', 'reviewMemory', { id: row._id, revision: 2, status: 'approved' })
+  assert.equal((await f.call('visitor', 'detail', { id: 'app' })).story, null)
+  await f.call('owner', 'saveMemory', { id: 'app', revision: 2, mode: 'plain', text: '修改后的私人版本', isPublic: true, images: [], videos: [] })
+  assert.equal((await f.call('visitor', 'detail', { id: 'app' })).story, null)
+  await f.call('admin', 'reviewMemory', { id: row._id, revision: 3, status: 'approved' })
+  assert.equal((await f.call('visitor', 'detail', { id: 'app' })).story.text, '修改后的私人版本')
+})
+
+test('large novel chapter sets use immutable text storage and hydrate through review snapshots', async () => {
+  const f = fixture(), chapters = [{ id: 'long', title: '漫长的一生', text: '一起生活🐾'.repeat(4000) }]
+  const text = chapters[0].text
+  await f.call('owner', 'saveMemory', { id: 'app', revision: 0, mode: 'novel', chapters, isPublic: true, images: [], videos: [] })
+  const row = f.db.state.platform_configs.find(r => r.key === 'memorial_memory')
+  assert.ok(row.draft.textFileId)
+  assert.equal(row.draft.chapters[0].text, '')
+  assert.equal((await f.call('owner', 'detail', { id: 'app' })).draft.chapters[0].text, text)
+  assert.equal((await f.call('admin', 'listMemoriesAdmin')).list[0].memory.chapters[0].text, text)
+  await f.call('admin', 'reviewMemory', { id: row._id, revision: 1, status: 'approved' })
+  assert.equal((await f.call('visitor', 'detail', { id: 'app' })).story.chapters[0].text, text)
 })
 
 async function portraitPending(f) {
@@ -464,7 +514,7 @@ test('private or first pending memory mutations preserve a null public snapshot 
   await f.call('owner','updateMemoryMedia',mediaChange(0))
   await f.call('owner','updateMemoryMedia',mediaChange(1,{operation:'remove'}))
   const row=f.db.state.platform_configs.find(r=>r.key==='memorial_memory')
-  assert.equal(row.publicContent,null);assert.equal(row.status,'private')
+  assert.equal(row.publicContent,null);assert.equal(row.status,'pending')
   assert.equal((await f.call('visitor','detail',{id:'app'})).story,null)
   await assert.rejects(f.call('visitor','updateMemoryMedia',mediaChange(2)),/只有主人/)
   await assert.rejects(f.call('owner','updateMemoryMedia',mediaChange(2,{uploadId:'foreign'})),/已被移除/)

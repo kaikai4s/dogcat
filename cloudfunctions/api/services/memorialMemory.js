@@ -18,20 +18,24 @@ module.exports = context => {
     if (owner && app.ownerOpenid !== openid) throw new Error('只有主人可以编辑这份回忆')
     return app
   }
-  const content = row => ({ text: row.text || '', images: row.images || [], videos: row.videos || [], music: row.music || null })
+  const content = row => ({ mode: row.mode === 'novel' ? 'novel' : 'plain', text: row.text || '',
+    chapters: Array.isArray(row.chapters) ? row.chapters : [], images: row.images || [], videos: row.videos || [], music: row.music || null })
   async function hydrate(value) {
     const result = content(value || {})
     if (value && value.textFileId) {
       const file = await cloud.downloadFile({ fileID: value.textFileId })
       if (!file || !Buffer.isBuffer(file.fileContent)) throw new Error('回忆文字暂时未能读取，请重试')
-      result.text = file.fileContent.toString('utf8')
+      const savedText = file.fileContent.toString('utf8')
+      if (result.mode === 'novel') {
+        try { result.chapters = JSON.parse(savedText) } catch (_) { throw new Error('小说章节暂时未能读取，请重试') }
+      } else result.text = savedText
     }
     const media = result.images.concat(result.videos, result.music ? [result.music] : [])
     if (!media.length) return result
     const response = await cloud.getTempFileURL({ fileList: media.map(m => ({ fileID: m.fileId, maxAge: 600 })) })
     const urls = new Map((response.fileList || []).map(f => [f.fileID, f.tempFileURL || '']))
     const safe = m => ({ uploadId: m.uploadId, name: m.name, kind: m.kind, entrance: m.entrance === true, url: urls.get(m.fileId) || '' })
-    return { text: result.text, images: result.images.map(safe), videos: result.videos.map(safe), music: result.music ? safe(result.music) : null }
+    return { ...result, images: result.images.map(safe), videos: result.videos.map(safe), music: result.music ? safe(result.music) : null }
   }
   return async (openid, action, data, user) => {
     if (action === 'entrance') {
@@ -157,7 +161,20 @@ module.exports = context => {
       return { uploadId: upload._id, kind: upload.kind, name: upload.name }
     }
     if (action === 'saveMemory') {
-      const app = await application(data.id, openid, true), story = typeof data.text === 'string' ? data.text : ''
+      const app = await application(data.id, openid, true), mode = data.mode === undefined ? 'plain' : data.mode
+      if (!['plain', 'novel'].includes(mode)) throw new Error('回忆格式无效')
+      const story = mode === 'plain' && typeof data.text === 'string' ? data.text : ''
+      let chapters = []
+      if (mode === 'novel') {
+        if (!Array.isArray(data.chapters) || !data.chapters.length || data.chapters.length > 100) throw new Error('小说至少需要一章，最多 100 章')
+        const ids = new Set()
+        chapters = data.chapters.map(chapter => {
+          if (!chapter || typeof chapter !== 'object' || typeof chapter.id !== 'string' || !/^[A-Za-z0-9_-]{1,80}$/.test(chapter.id) || ids.has(chapter.id) ||
+            typeof chapter.title !== 'string' || !chapter.title.trim() || Array.from(chapter.title.trim()).length > 50 || typeof chapter.text !== 'string') throw new Error('章节标题、编号或正文无效')
+          ids.add(chapter.id)
+          return { id: chapter.id, title: chapter.title.trim(), text: chapter.text }
+        })
+      }
       if (typeof data.isPublic !== 'boolean' || !Number.isInteger(data.revision) || data.revision < 0) throw new Error('回忆版本或公开设置无效')
       const mediaRevision = data.mediaRevision === undefined ? 0 : data.mediaRevision
       if (!Number.isSafeInteger(mediaRevision) || mediaRevision < 0) throw new Error('照片版本无效，请重新打开回忆')
@@ -178,22 +195,31 @@ module.exports = context => {
         if (!m || m.kind !== kind) throw new Error('媒体类型不匹配')
         return { uploadId: m._id, fileId: m.fileId, name: m.name, kind, ...(kind !== 'music' ? { entrance: selections[kind === 'image' ? 'entranceImages' : 'entranceVideos'].has(id) } : {}) }
       }
-      const draft = { text: story, images: data.images.map(id => pick(id, 'image')), videos: data.videos.map(id => pick(id, 'video')), music: data.music ? pick(data.music, 'music') : null }
-      const saveFingerprint = digest(JSON.stringify([data.revision, story, data.isPublic, data.images, data.videos, data.music || null,
+      const draft = { mode, text: story, ...(mode === 'novel' ? { chapters } : {}), images: data.images.map(id => pick(id, 'image')), videos: data.videos.map(id => pick(id, 'video')), music: data.music ? pick(data.music, 'music') : null }
+      const textFingerprint = digest(JSON.stringify(mode === 'novel' ? [mode, chapters.map(chapter => [chapter.id, chapter.title, chapter.text])] : [mode, story]))
+      const saveFingerprint = digest(JSON.stringify([data.revision, textFingerprint, data.isPublic, data.images, data.videos, data.music || null,
         data.images.filter(id => selections.entranceImages.has(id)), data.videos.filter(id => selections.entranceVideos.has(id))]))
       // Check bounded UTF-8 chunks without truncating the user's story. Long
       // text lives in immutable storage so it cannot overflow the memory document.
-      let part = '', size = 0
-      for (const char of story) {
-        const bytes = Buffer.byteLength(char)
-        if (size + bytes > 1800) { await checkTextSecurity(openid, part, { label: '宠物回忆' }); part = Array.from(part).slice(-80).join(''); size = Buffer.byteLength(part) }
-        part += char; size += bytes
+      async function checkStoryText(value) {
+        let part = '', size = 0
+        for (const char of value) {
+          const bytes = Buffer.byteLength(char)
+          if (size + bytes > 1800) { await checkTextSecurity(openid, part, { label: '宠物回忆' }); part = Array.from(part).slice(-80).join(''); size = Buffer.byteLength(part) }
+          part += char; size += bytes
+        }
+        if (part) await checkTextSecurity(openid, part, { label: '宠物回忆' })
       }
-      if (part) await checkTextSecurity(openid, part, { label: '宠物回忆' })
-      if (Buffer.byteLength(story) > 16000) {
-        const saved = await cloud.uploadFile({ cloudPath: 'memorial-memories/vault/' + crypto.randomBytes(24).toString('hex') + '.txt', fileContent: Buffer.from(story) })
+      if (mode === 'novel') {
+        for (const chapter of chapters) await checkStoryText(chapter.title + '\n' + chapter.text)
+      } else await checkStoryText(story)
+      const serializedText = mode === 'novel' ? JSON.stringify(chapters) : story
+      if (Buffer.byteLength(serializedText) > 16000) {
+        const saved = await cloud.uploadFile({ cloudPath: 'memorial-memories/vault/' + crypto.randomBytes(24).toString('hex') + '.txt', fileContent: Buffer.from(serializedText) })
         if (!saved || !saved.fileID) throw new Error('回忆文字保存失败，请重试')
-        draft.text = ''; draft.textFileId = saved.fileID
+        if (mode === 'novel') draft.chapters = chapters.map(({ id, title }) => ({ id, title, text: '' }))
+        else draft.text = ''
+        draft.textFileId = saved.fileID
       }
       let retained = false
       try {
@@ -206,6 +232,12 @@ module.exports = context => {
             return { revision: previous.revision, status: previous.status, retainedFile: previous.draft && previous.draft.textFileId || null }
           }
           if ((previous && previous.revision || 0) !== data.revision) throw new Error('回忆已在其他页面更新，请重新打开后编辑')
+          const previousTextFingerprint = previous && (previous.textFingerprint || (previous.draft && !previous.draft.textFileId
+            ? digest(JSON.stringify(previous.draft.mode === 'novel'
+              ? ['novel', (previous.draft.chapters || []).map(chapter => [chapter.id, chapter.title, chapter.text || ''])]
+              : ['plain', previous.draft.text || ''])) : null))
+          const textChanged = previous ? previousTextFingerprint !== textFingerprint : (mode === 'novel' ? chapters.some(chapter => chapter.title || chapter.text) : !!story)
+          const requiresReview = data.isPublic || textChanged
           if (previous && previous.status === 'pending') {
             const oldNotice = 'admin_audit_memorial_memory_' + id + ':' + previous.revision
             if (await readOptionalDocument(tx, 'admin_notifications', oldNotice)) await tx.collection('admin_notifications').doc(oldNotice).update({ data: { resolved: true, resolvedAt: now() } })
@@ -213,12 +245,12 @@ module.exports = context => {
           const revision = data.revision + 1
           await put(tx, id, { key: 'memorial_memory', gardenId: gardenId(app), applicationId: app._id, ownerOpenid: openid,
             petName: app.petName, applicant: user.nickname || '用户', lawn: app.lawn, plotId: app.plotId,
-            revision, mediaRevision, saveFingerprint, draft, isPublic: data.isPublic, status: data.isPublic ? 'pending' : 'private', reason: '',
+            revision, mediaRevision, saveFingerprint, textFingerprint, draft, isPublic: data.isPublic, status: requiresReview ? 'pending' : 'private', reason: '',
             publicContent: previous && previous.publicContent || null, createdAt: previous && previous.createdAt || now(), updatedAt: now() })
           if (previous && previous.isPublic && !data.isPublic && previous.publicContent) await presence.changed(tx, gardenId(app))
-          if (data.isPublic) await context.enqueueAdminAuditNotification(tx, { auditType: 'memorial_memory', targetId: id + ':' + revision,
+          if (requiresReview) await context.enqueueAdminAuditNotification(tx, { auditType: 'memorial_memory', targetId: id + ':' + revision,
             applicant: user.nickname || '用户', type: '纪念回忆审核', reason: app.petName, page: 'pages/admin/memorial/index?mode=memories' })
-          return { revision, status: data.isPublic ? 'pending' : 'private', retainedFile: draft.textFileId || null }
+          return { revision, status: requiresReview ? 'pending' : 'private', retainedFile: draft.textFileId || null }
         })
         retained = !draft.textFileId || result.retainedFile === draft.textFileId
         return { revision: result.revision, status: result.status }
@@ -233,7 +265,7 @@ module.exports = context => {
       const result = await db.collection('platform_configs').where(where).orderBy('_id', 'asc').limit(31).get()
       return { list: await gardens.labelRows(await Promise.all((result.data || []).slice(0, 30).map(async row => ({ _id: row._id, applicationId: row.applicationId, ownerOpenid: row.ownerOpenid, gardenId: gardenId(row),
         petName: row.petName, applicant: row.applicant, lawn: row.lawn, plotId: row.plotId, createdAt: row.updatedAt,
-        status: row.status, reason: row.reason, revision: row.revision, memory: await hydrate(row.draft) })))),
+        status: row.status, isPublic: !!row.isPublic, reason: row.reason, revision: row.revision, memory: await hydrate(row.draft) })))),
         cursor: result.data && result.data.length ? result.data[Math.min(29, result.data.length - 1)]._id : '', hasMore: (result.data || []).length > 30 }
     }
     if (action === 'reviewMemory') {
@@ -248,14 +280,14 @@ module.exports = context => {
         if (!row || row.key !== 'memorial_memory' || row.status !== 'pending' || row.revision !== data.revision) throw new Error('回忆已更新或已审核，请刷新')
         await tx.collection('platform_configs').doc(row._id).update({ data: { status: data.status, reason, reviewedBy: openid, updatedAt: now(),
           // Published content is an immutable full snapshot, initially null.
-          ...(data.status === 'approved' ? { publicContent: db.command.set(row.draft) } : {}) } })
-        if (data.status === 'approved') await presence.changed(tx, gardenId(row))
+          ...(data.status === 'approved' && row.isPublic ? { publicContent: db.command.set(row.draft) } : {}) } })
+        if (data.status === 'approved' && row.isPublic) await presence.changed(tx, gardenId(row))
         const noticeId = 'admin_audit_memorial_memory_' + row._id + ':' + row.revision
         if (await readOptionalDocument(tx, 'admin_notifications', noticeId)) await tx.collection('admin_notifications').doc(noticeId).update({ data: { resolved: true, resolvedAt: now() } })
         const stamp = now(), time = stamp instanceof Date ? stamp.toISOString() : String(stamp)
         await tx.collection('system_notifications').doc('memorial_memory_result_' + digest(row._id + ':' + row.revision)).set({ data: {
-          title: data.status === 'approved' ? '纪念回忆已公开' : '纪念回忆需要调整',
-          content: data.status === 'approved' ? '“' + row.petName + '”的回忆已通过审核，大家可以阅读了。' : '“' + row.petName + '”的回忆需要调整：' + reason,
+          title: data.status === 'approved' ? (row.isPublic ? '纪念回忆已公开' : '纪念回忆已通过审核') : '纪念回忆需要调整',
+          content: data.status === 'approved' ? (row.isPublic ? '“' + row.petName + '”的回忆已通过审核，大家可以阅读了。' : '“' + row.petName + '”的回忆文字已通过审核，仍仅主人可见。') : '“' + row.petName + '”的回忆需要调整：' + reason,
           target: 'client', targetOpenid: row.ownerOpenid, targetOpenids: [], type: 'notice', status: 'active', level: 'normal',
           targetUrl: '/packageMemorial/pages/memory?id=' + row.applicationId, createdAt: time, updatedAt: time
         } })

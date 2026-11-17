@@ -45,7 +45,7 @@ Page({
       this._cursor = result.cursor
       const rows = result.list.map(row => this.portraitRow({ ...row, plotNumber: plotNumber(row.plotId), createdText: formatDateTime(row.createdAt),
         ...(row.status === 'pending' && this._portraitAssets && this._portraitAssets[row._id] && this._portraitAssets[row._id].revision === row.revision ? { stagedAsset: this._portraitAssets[row._id].asset } : {}),
-        statusText: { pending: '待审核', approved: this.data.mode === 'memories' ? '已公开' : '已安放', rejected: '需调整' }[row.status] || row.status }))
+        statusText: { pending: '待审核', approved: this.data.mode === 'memories' ? (row.isPublic ? '已公开' : '文字已审核') : '已安放', rejected: '需调整' }[row.status] || row.status }))
       this.setData({ rows: (more ? this.data.rows : []).concat(rows), hasMore: result.hasMore })
       await Promise.all(rows.filter(row => row.stagedAsset || row.result).map(row => this.preparePlacement(row)))
     } catch (error) { if (!this._closed && request === this._request) this.setData({ error: error.message || '加载失败，请重试' }) }
@@ -224,7 +224,7 @@ Page({
         if (!row.previewReady || row.previewError) { showError(new Error(row.previewError || '安放预览正在加载，请稍候')); return }
       }
     }
-    if (row && row.status === 'pending' && ['approved', 'rejected'].includes(e.currentTarget.dataset.status)) this.setData({ reviewForm: { id: row._id, revision: row.revision, petName: row.petName, lawn: row.lawn, plotNumber: row.plotNumber, status: e.currentTarget.dataset.status, reason: '', preview: row.preview, previewKey: row.previewKey, previewAttempt: row.previewAttempt, previewReady: row.previewReady, previewPending: row.previewPending, previewError: row.previewError, petUrl: row.petUrl, monumentUrl: row.monumentUrl, poseLabel: row.poseLabel, ...(this.data.mode === 'portraits' && row.stagedAsset ? row.stagedAsset : {}) } })
+    if (row && row.status === 'pending' && ['approved', 'rejected'].includes(e.currentTarget.dataset.status)) this.setData({ reviewForm: { id: row._id, revision: row.revision, petName: row.petName, lawn: row.lawn, plotNumber: row.plotNumber, status: e.currentTarget.dataset.status, isPublic: row.isPublic, reason: '', preview: row.preview, previewKey: row.previewKey, previewAttempt: row.previewAttempt, previewReady: row.previewReady, previewPending: row.previewPending, previewError: row.previewError, petUrl: row.petUrl, monumentUrl: row.monumentUrl, poseLabel: row.poseLabel, ...(this.data.mode === 'portraits' && row.stagedAsset ? row.stagedAsset : {}) } })
   },
   previewImage(e) { if (this.data.busy) return; const row = this.data.rows.find(r => r._id === e.currentTarget.dataset.id); if (row) wx.previewImage({ urls: (row.memory ? row.memory.images : (row.photos || []).concat(row.stagedAsset || row.result || [])).map(m => m.url).filter(Boolean), current: e.currentTarget.dataset.url }) },
   openUser(e) {
@@ -303,7 +303,7 @@ Page({
       if (this._closed || version !== this._reviewRequest) return
       if (this._portraitAssets) delete this._portraitAssets[form.id]
       this.setData({ reviewForm: null, busy: false })
-      wx.showToast({ title: form.status === 'approved' ? (this.data.mode === 'memories' ? '回忆已公开' : this.data.mode === 'portraits' ? '画像已安放' : '已为它安放时光小筑') : '已通知申请人调整', icon: 'none' })
+      wx.showToast({ title: form.status === 'approved' ? (this.data.mode === 'memories' ? (form.isPublic ? '回忆已公开' : '文字审核已通过') : this.data.mode === 'portraits' ? '画像已安放' : '已为它安放时光小筑') : '已通知申请人调整', icon: 'none' })
       await this.load()
     } catch (error) { if (!this._closed && version === this._reviewRequest) showError(error) }
     finally { if (!this._closed && version === this._reviewRequest) this.setData({ busy: false }) }
