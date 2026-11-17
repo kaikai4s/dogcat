@@ -1,5 +1,5 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
-const { withAuditText } = require('../../../../utils/format')
+const { withAuditText , pageList } = require('../../../../utils/format')
 
 const tabs = [
   { label: '全部', value: '' },
@@ -7,10 +7,6 @@ const tabs = [
   { label: '已通过', value: 'approved' },
   { label: '未通过', value: 'rejected' }
 ]
-
-function pageList(result) {
-  return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result || { list: [], hasMore: false, page: 1, total: 0 })
-}
 
 Page({
   data: {

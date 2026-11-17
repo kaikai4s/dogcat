@@ -1,5 +1,72 @@
 const { getRoleHome } = require('./roles')
 
+const MAIN_NAV_URLS = {
+  client: [
+    '/pages/client/home/index',
+    '/pages/client/sitters/list/index',
+    '/pages/client/orders/list/index',
+    '/pages/client/messages/index',
+    '/pages/client/profile/index'
+  ],
+  staff: [
+    '/pages/staff/home/index',
+    '/pages/staff/orders/list/index',
+    '/pages/staff/messages/index',
+    '/pages/staff/certification/index',
+    '/pages/staff/profile/index'
+  ],
+  admin: [
+    '/pages/admin/home/index',
+    '/pages/admin/orders/list/index',
+    '/pages/admin/staff-audit/list/index',
+    '/pages/admin/incidents/list/index',
+    '/pages/admin/checkin-config/index',
+    '/pages/admin/points/index',
+    '/pages/admin/settings/index',
+    '/pages/admin/pets/list/index'
+  ]
+}
+
+function getNavBarInfo(wxApi) {
+  const api = wxApi || (typeof wx !== 'undefined' ? wx : null)
+  let statusBarHeight = 44
+  let titleBarHeight = 44
+  try {
+    const windowInfo = (api && ((api.getWindowInfo && api.getWindowInfo()) || (api.getSystemInfoSync && api.getSystemInfoSync()))) || {}
+    if (windowInfo.statusBarHeight) {
+      statusBarHeight = windowInfo.statusBarHeight
+    }
+    const menu = api && api.getMenuButtonBoundingClientRect ? api.getMenuButtonBoundingClientRect() : null
+    if (menu && menu.top && menu.height) {
+      titleBarHeight = (menu.top - statusBarHeight) * 2 + menu.height
+    } else {
+      titleBarHeight = 44
+    }
+  } catch (_) {
+    statusBarHeight = 44
+    titleBarHeight = 44
+  }
+  return {
+    statusBarHeight,
+    titleBarHeight,
+    navBarHeight: statusBarHeight + titleBarHeight
+  }
+}
+
+function navigateRoleRoute(url, role = 'client') {
+  if (!url) return
+  const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+  const current = pages[pages.length - 1]
+  const currentRoute = current && current.route ? (current.route.startsWith('/') ? current.route : '/' + current.route) : ''
+  if (currentRoute === url) return
+  const mainUrls = Array.isArray(role) ? role : (MAIN_NAV_URLS[role] || MAIN_NAV_URLS.client)
+  if (mainUrls.includes(url)) {
+    wx.redirectTo({ url })
+  } else {
+    safeNavigateTo({ url })
+  }
+}
+
 function normalizeUrl(url) {
   const text = String(url || '').trim()
   if (!text) return ''
@@ -100,4 +167,12 @@ function navMethods() {
   return { goBack, safeNavigateTo }
 }
 
-module.exports = { createPageNav, navMethods, getCurrentRouteFallback, safeNavigateTo }
+module.exports = {
+  MAIN_NAV_URLS,
+  createPageNav,
+  getNavBarInfo,
+  navMethods,
+  getCurrentRouteFallback,
+  safeNavigateTo,
+  navigateRoleRoute
+}

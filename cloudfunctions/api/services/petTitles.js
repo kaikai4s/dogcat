@@ -74,8 +74,10 @@ module.exports = function createService({
   async function listPetTitles(options = {}) {
     const includeDeleted = options.includeDeleted === true
     const onlyEnabled = options.onlyEnabled === true
-    const res = await db.collection('pet_titles').orderBy('sortOrder', 'asc').get()
-    return (res.data || [])
+    const rawRows = typeof readScopedDocuments === 'function'
+      ? (await readScopedDocuments('pet_titles', {})).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
+      : ((await db.collection('pet_titles').orderBy('sortOrder', 'asc').limit(500).get()).data || [])
+    return rawRows
       .filter((item) => includeDeleted || !item.deletedAt)
       .filter((item) => !onlyEnabled || item.enabled !== false)
       .map((item) => ({ ...item, ...titleSnapshot(item), enabled: item.enabled !== false, deletedAt: item.deletedAt || null, autoGrantLevelIds: normalizeLevelIds(item.autoGrantLevelIds), sortOrder: Number(item.sortOrder || 0) }))

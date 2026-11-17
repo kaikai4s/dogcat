@@ -1179,7 +1179,7 @@ module.exports = function createHandler(context) {
           groupBuyId: order.groupBuyId,
           staffOpenid: openid,
           status: ORDER_STATUS.ON_THE_WAY
-        }).get().catch(() => ({ data: [] }))
+        }).limit(100).get().catch(() => ({ data: [] }))
         const siblings = (siblingsRes.data || []).filter(s => s._id !== order._id)
         for (const sib of siblings) {
           const sibLat = Number(sib.serviceLatitude || sib.addressLatitude || orderLat || 0)

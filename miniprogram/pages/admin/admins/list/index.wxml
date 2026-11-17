@@ -28,7 +28,7 @@
   <view class="card admin-card" wx:for="{{admins}}" wx:key="_id">
     <view class="admin-head">
       <view class="avatar-level-wrap">
-        <image wx:if="{{item.avatarUrl}}" class="admin-avatar" src="{{item.avatarUrl}}" mode="aspectFill" />
+        <image wx:if="{{item.avatarUrl}}" class="admin-avatar" src="{{item.avatarUrl}}" mode="aspectFill" lazy-load="true" />
         <view wx:else class="admin-avatar avatar-placeholder">{{item.avatarText}}</view>
         <view class="avatar-level-badge badge-{{item.badgeStyle || 'gold'}}" wx:if="{{item.badgeTag || item.memberLevelName}}">{{item.badgeTag || item.memberLevelName}}</view>
       </view>
@@ -51,11 +51,6 @@
   <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{loading && admins.length}}">正在加载更多...</view>
   <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{!loading && admins.length && !hasMore}}">已显示全部管理员</view>
 
-  <view class="bottom-nav">
-    <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon remix-icon ri-dashboard-3-line"></view><view>控制台</view></view>
-    <view class="nav-item" data-url="/pages/admin/orders/list/index" bindtap="go"><view class="nav-icon remix-icon ri-file-list-3-line"></view><view>订单</view></view>
-    <view class="nav-item" data-url="/pages/admin/staff-audit/list/index" bindtap="go"><view class="nav-icon remix-icon ri-shield-check-line"></view><view>审核</view></view>
-    <view class="nav-item" data-url="/pages/admin/incidents/list/index" bindtap="go"><view class="nav-icon remix-icon ri-alarm-warning-line"></view><view>异常</view></view>
-  </view>
+  <role-bottom-nav class="bottom-nav" role="admin" active="/pages/admin/admins/list/index" />
 </view>
 <global-loading />

@@ -1,5 +1,5 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
-const { withIncidentText } = require('../../../../utils/format')
+const { withIncidentText , pageList } = require('../../../../utils/format')
 
 const statusTabs = [
   { label: '全部', value: '' },
@@ -7,10 +7,6 @@ const statusTabs = [
   { label: '处理中', value: 'processing' },
   { label: '已结案', value: 'resolved' }
 ]
-
-function pageList(result) {
-  return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result || { list: [], hasMore: false, page: 1, total: 0 })
-}
 
 Page({
   data: { incidents: [], statusTabs, status: '', orderId: '', page: 1, pageSize: 20, hasMore: true, total: 0, loading: false },

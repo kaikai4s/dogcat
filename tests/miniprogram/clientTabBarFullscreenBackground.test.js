@@ -49,10 +49,12 @@ test('个人中心左上角标题显示为会员中心，消息中心导航栏�
   assert.doesNotMatch(messagesWxml, /messages-hero/, '消息界面原有 messages-hero 顶部必须已彻底移除')
 })
 
-test('宠托师、订单、消息、我的 4个页面 JS 逻辑: 包含导航栏尺寸计算与避让', () => {
+test('宠托师、订单、消息、我的 4个页面 JS 逻辑: 复用统一导航栏尺寸计算与避让', () => {
+  const navUtils = fs.readFileSync(path.join(root, 'utils/nav.js'), 'utf8')
+  assert.match(navUtils, /function getNavBarInfo/, 'utils/nav.js 必须集中提供 getNavBarInfo')
   for (const page of pages) {
     const js = fs.readFileSync(path.join(root, page.dir, 'index.js'), 'utf8')
-    assert.match(js, /function getNavBarInfo/, `${page.name} JS 必须包含 getNavBarInfo`)
+    assert.match(js, /getNavBarInfo/, `${page.name} JS 必须引入并使用 getNavBarInfo`)
     assert.match(js, /initNavBar\(/, `${page.name} JS 必须包含 initNavBar`)
   }
 })

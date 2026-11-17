@@ -81,7 +81,7 @@
 
   <view class="product-card" wx:for="{{products}}" wx:key="_id">
     <view class="product-cover-wrap">
-      <image wx:if="{{item.cover}}" src="{{item.cover}}" mode="aspectFill" />
+      <image wx:if="{{item.cover}}" src="{{item.cover}}" mode="aspectFill" lazy-load="true" />
       <view wx:else class="image-placeholder">无图</view>
       <view class="corner-badge {{item.statusClass}}">{{item.statusText}}</view>
     </view>
@@ -149,7 +149,7 @@
         <view class="section-title small-title">商品图片</view>
         <view class="upload-row">
           <view class="upload-cover" bindtap="chooseCoverImage">
-            <image wx:if="{{productForm.coverFileId}}" src="{{productForm.coverFileId}}" mode="aspectFill" data-url="{{productForm.coverFileId}}" bindtap="previewMallImage" />
+            <image wx:if="{{productForm.coverFileId}}" src="{{productForm.coverFileId}}" mode="aspectFill" data-url="{{productForm.coverFileId}}" bindtap="previewMallImage" lazy-load="true" />
             <view wx:else>上传封面</view>
           </view>
           <view class="upload-help">
@@ -161,7 +161,7 @@
         <view class="form-label">详情轮播图</view>
         <view class="image-grid">
           <view class="image-tile" wx:for="{{productForm.imageFileIds}}" wx:key="*this">
-            <image src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="previewMallImage" />
+            <image src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="previewMallImage" lazy-load="true" />
             <view class="remove-image" data-index="{{index}}" bindtap="removeCarouselImage">×</view>
           </view>
           <view class="image-tile add-tile" bindtap="chooseCarouselImages">+</view>
@@ -169,7 +169,7 @@
         <view class="form-label">详情长图 / 详细介绍图（支持上传多张，展示在商品详情底部）</view>
         <view class="image-grid">
           <view class="image-tile detail-tile" wx:for="{{productForm.detailImageFileIds}}" wx:key="*this">
-            <image src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="previewMallImage" />
+            <image src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="previewMallImage" lazy-load="true" />
             <view class="remove-image" data-index="{{index}}" bindtap="removeDetailImage">×</view>
           </view>
           <view class="image-tile add-tile" bindtap="chooseDetailImages">
@@ -249,7 +249,7 @@
                   <!-- 规格图片上传框 -->
                   <view class="sku-avatar-col">
                     <view class="sku-avatar-box {{item.imageFileId ? 'has-img' : ''}}" data-index="{{index}}" bindtap="chooseSkuImage">
-                      <image wx:if="{{item.imageFileId}}" src="{{item.imageFileId}}" mode="aspectFill" data-url="{{item.imageFileId}}" catchtap="previewMallImage" />
+                      <image wx:if="{{item.imageFileId}}" src="{{item.imageFileId}}" mode="aspectFill" data-url="{{item.imageFileId}}" catchtap="previewMallImage" lazy-load="true" />
                       <view wx:else class="sku-avatar-placeholder">
                         <text class="cam-icon">📷</text>
                         <text class="cam-text">传图</text>

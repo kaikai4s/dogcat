@@ -1,8 +1,5 @@
+const { pageList } = require('../../../../utils/format')
 const { callFunction, showError } = require('../../../../utils/cloud')
-
-function pageList(result) {
-  return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result || { list: [], hasMore: false, page: 1, total: 0 })
-}
 
 function emptySpecGroup() { return { name: '', valuesText: '' } }
 function emptyProduct() {

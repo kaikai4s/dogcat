@@ -107,7 +107,7 @@
       </view>
       <view wx:else class="record-list">
         <view wx:for="{{summary.invites}}" wx:key="_id" class="record-row invite-record-row">
-          <image wx:if="{{item.invitedAvatarUrl}}" class="invite-avatar" src="{{item.invitedAvatarUrl}}" mode="aspectFill" />
+          <image wx:if="{{item.invitedAvatarUrl}}" class="invite-avatar" src="{{item.invitedAvatarUrl}}" mode="aspectFill" lazy-load="true" />
           <view wx:else class="invite-avatar placeholder remix-icon ri-user-smile-line"></view>
           <view class="record-main">
             <view class="record-title">{{item.invitedNickname || '好友'}} 绑定了邀请码</view>

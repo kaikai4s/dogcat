@@ -1827,53 +1827,6 @@ button.gallery-vote-btn[disabled] { color: #a89b90; background: #f4f1ed; opacity
   box-shadow: 0 10rpx 28rpx rgba(234, 88, 12, 0.35) !important;
   border: none !important;
 }
-
-/* 暗色模式适配 */
-.theme-night .rules-modal-container {
-  background: #1e1915;
-  color: #f5ede6;
-}
-
-.theme-night .rules-modal-header {
-  border-bottom-color: rgba(255, 255, 255, 0.1);
-}
-
-.theme-night .rules-modal-title {
-  color: #f7ede6;
-}
-
-.theme-night .rules-modal-subtitle {
-  color: #a89a90;
-}
-
-.theme-night .rules-modal-close {
-  background: #2b231d;
-  color: #c4b6ad;
-}
-
-.theme-night .rules-block {
-  background: #26201a;
-  border-color: rgba(255, 255, 255, 0.08);
-}
-
-.theme-night .rules-block.prize-block {
-  background: linear-gradient(135deg, #2d2012 0%, #291b15 100%);
-  border-color: rgba(245, 158, 11, 0.35);
-}
-
-.theme-night .prize-feature-card {
-  background: #201914;
-  border-color: rgba(245, 158, 11, 0.25);
-}
-
-.theme-night .rule-text {
-  color: #d1c4ba;
-}
-
-.theme-night .benefit-item {
-  color: #e2d7ce;
-}
-
 /* ========================================================
    最美爱宠投票高质感动效体系：
    1. 爱心图标调红 (鲜亮纯正爱心红 #ff2d55)

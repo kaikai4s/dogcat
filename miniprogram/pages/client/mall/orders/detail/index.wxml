@@ -73,7 +73,7 @@
       <text class="items-count">共 {{order.items.length}} 件商品</text>
     </view>
     <view class="mini-item" wx:for="{{order.items}}" wx:key="skuId">
-      <image src="{{item.coverFileId}}" mode="aspectFill" />
+      <image src="{{item.coverFileId}}" mode="aspectFill" lazy-load="true" />
       <view class="item-detail">
         <view class="mini-name">{{item.name}}</view>
         <view class="mini-sub">{{item.specText}} × {{item.quantity}}</view>

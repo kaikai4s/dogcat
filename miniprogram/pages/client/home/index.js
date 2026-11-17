@@ -2,7 +2,9 @@ const { getSelectedLocation, chooseSelectedLocation, callFunction, showError, en
 const { getCachedHeroMedia, resolveHeroMedia } = require('../../../utils/hero-media')
 const { loadMessageUnread, startStaffEntryUnread, stopStaffEntryUnread } = require('../../../utils/client-nav')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
-const { safeNavigateTo } = require('../../../utils/nav')
+const navUtils = require('../../../utils/nav') || {}
+const safeNavigateTo = navUtils.safeNavigateTo || ((opts) => wx.navigateTo(opts))
+const getNavBarInfo = navUtils.getNavBarInfo || (() => ({ statusBarHeight: 44, titleBarHeight: 44, navBarHeight: 88 }))
 const { formatDateTime, formatBeijingDate } = require('../../../utils/format')
 const cloudAssets = require('../../../utils/cloud-assets')
 const getDovlinLogoUrl = (cloudAssets && (cloudAssets.getDovlinLogoSrc || cloudAssets.getDovlinLogoUrl)) || (() => '')
@@ -22,31 +24,6 @@ const serviceIconMap = {
 }
 
 const CUSTOM_SERVICE_COVERS_KEY = 'custom_service_covers'
-
-function getNavBarInfo() {
-  let statusBarHeight = 44
-  let titleBarHeight = 44
-  try {
-    const windowInfo = (typeof wx !== 'undefined' && ((wx.getWindowInfo && wx.getWindowInfo()) || (wx.getSystemInfoSync && wx.getSystemInfoSync()))) || {}
-    if (windowInfo.statusBarHeight) {
-      statusBarHeight = windowInfo.statusBarHeight
-    }
-    const menu = typeof wx !== 'undefined' && wx.getMenuButtonBoundingClientRect ? wx.getMenuButtonBoundingClientRect() : null
-    if (menu && menu.top && menu.height) {
-      titleBarHeight = (menu.top - statusBarHeight) * 2 + menu.height
-    } else {
-      titleBarHeight = 44
-    }
-  } catch (_) {
-    statusBarHeight = 44
-    titleBarHeight = 44
-  }
-  return {
-    statusBarHeight,
-    titleBarHeight,
-    navBarHeight: statusBarHeight + titleBarHeight
-  }
-}
 
 function getCustomServiceCovers() {
   try {
@@ -284,7 +261,7 @@ Page({
   },
 
   initNavBar() {
-    const navInfo = getNavBarInfo()
+    const navInfo = getNavBarInfo(typeof wx !== 'undefined' ? wx : null)
     if (
       this.data.statusBarHeight !== navInfo.statusBarHeight ||
       this.data.titleBarHeight !== navInfo.titleBarHeight ||
@@ -657,6 +634,13 @@ Page({
     const label = module === 'booking' ? '预约下单' : '宠物排行榜'
     wx.showModal({ title: '功能维护', content: `${label}功能暂时不可使用，正在维护中`, showCancel: false })
     return true
+  },
+
+  onBottomNavTap(e) {
+    const detail = (e && e.detail) || {}
+    if (!detail.url) return
+    const fakeEvent = { currentTarget: { dataset: { url: detail.url } } }
+    return detail.protected ? this.goProtected(fakeEvent) : this.go(fakeEvent)
   },
 
   go(e) {
@@ -1326,8 +1310,9 @@ Page({
     if (this.isHotServicesTouching) return
     if ((this.data.servicePrices || []).length < 3) return
 
-    const STEP = 0.8
-    const INTERVAL = 30
+    const STEP = 1.3
+    const INTERVAL = 50
+    this._lastSentHotScrollLeft = null
 
     this.hotServicesScrollTimer = setInterval(() => {
       if (!this._isPageActive) {
@@ -1342,9 +1327,12 @@ Page({
         }
       }
       this.currentHotScrollLeft = nextLeft
+      const rounded = Math.round(nextLeft)
+      if (rounded === this._lastSentHotScrollLeft) return
+      this._lastSentHotScrollLeft = rounded
       try {
         this.setData({
-          hotServicesScrollLeft: Math.round(nextLeft)
+          hotServicesScrollLeft: rounded
         })
       } catch (_) {
         this.stopHotServicesAutoScroll()
@@ -1353,6 +1341,7 @@ Page({
   },
 
   stopHotServicesAutoScroll() {
+    this._lastSentHotScrollLeft = null
     if (this.hotServicesScrollTimer) {
       clearInterval(this.hotServicesScrollTimer)
       this.hotServicesScrollTimer = null

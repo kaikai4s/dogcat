@@ -1,5 +1,5 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
-const { withOrderText } = require('../../../../utils/format')
+const { withOrderText , pageList } = require('../../../../utils/format')
 
 const tabs = [
   { label: '全部', value: '' },
@@ -14,10 +14,6 @@ const tabs = [
   { label: '超时订单', value: 'overdue' },
   { label: '已过期', value: 'expired' }
 ]
-
-function pageList(result) {
-  return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result || { list: [], hasMore: false, page: 1, total: 0 })
-}
 
 function applySelected(orders, selectedOrderIds) {
   const selected = new Set(selectedOrderIds || [])

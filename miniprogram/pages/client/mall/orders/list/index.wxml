@@ -2,11 +2,28 @@
 <view class="mall-page">
   <view class="mall-hero small"><view class="mall-kicker">商城订单</view><view class="mall-title">用品购买记录</view><view class="mall-desc">查看付款、发货、物流和售后进度。</view></view>
   <scroll-view scroll-x class="category-tabs"><view class="category-tab {{activeStatus === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-status="{{item.value}}" bindtap="chooseStatus">{{item.label}}</view></scroll-view>
-  <view class="order-card" wx:for="{{orders}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
-    <view class="order-head"><text>{{item.orderNo}}</text><text class="badge">{{item.statusText}}</text></view>
-    <view class="mini-item" wx:for="{{item.items}}" wx:for-item="goods" wx:key="skuId"><image src="{{goods.coverFileId}}" mode="aspectFill" /><view><view class="mini-name">{{goods.name}}</view><view class="mini-sub">{{goods.specText}} × {{goods.quantity}}</view></view><view class="price">¥{{goods.price}}</view></view>
-    <view class="order-foot"><text>{{beijingTime.format(item.createdAt)}}</text><text class="sum-price">¥{{item.payAmount}}</text></view>
+  <view wx:if="{{loading && !orders.length}}" class="mall-skeleton-list">
+    <view class="order-card mall-skeleton-card" wx:for="{{[1,2,3]}}" wx:key="*this">
+      <view class="skeleton-shimmer sk-line sk-head"></view>
+      <view class="sk-item-row">
+        <view class="skeleton-shimmer sk-thumb"></view>
+        <view class="sk-col">
+          <view class="skeleton-shimmer sk-line sk-title"></view>
+          <view class="skeleton-shimmer sk-line sk-sub"></view>
+        </view>
+      </view>
+    </view>
   </view>
-  <view class="empty" wx:if="{{!loading && !orders.length}}"><view>暂无商城订单</view><button bindtap="goMall">去逛逛</button></view>
+  <block wx:else>
+    <view class="order-card" wx:for="{{orders}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
+      <view class="order-head"><text>{{item.orderNo}}</text><text class="badge">{{item.statusText}}</text></view>
+      <view class="mini-item" wx:for="{{item.items}}" wx:for-item="goods" wx:key="skuId"><image src="{{goods.coverFileId}}" mode="aspectFill" lazy-load="true" /><view><view class="mini-name">{{goods.name}}</view><view class="mini-sub">{{goods.specText}} × {{goods.quantity}}</view></view><view class="price">¥{{goods.price}}</view></view>
+      <view class="order-foot"><text>{{beijingTime.format(item.createdAt)}}</text><text class="sum-price">¥{{item.payAmount}}</text></view>
+    </view>
+    <view class="list-state" wx:if="{{loading && orders.length}}">正在加载更多订单...</view>
+    <view class="list-state" wx:if="{{!loading && orders.length && !hasMore}}">已显示全部商城订单</view>
+    <view class="empty" wx:if="{{!loading && loadError && !orders.length}}"><view>订单加载失败，请重试</view><button bindtap="retryLoad">重新加载</button></view>
+    <view class="empty" wx:elif="{{!loading && !orders.length}}"><view>暂无商城订单</view><button bindtap="goMall">去逛逛</button></view>
+  </block>
 </view>
 <global-loading />

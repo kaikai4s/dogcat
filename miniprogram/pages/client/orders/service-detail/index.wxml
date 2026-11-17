@@ -17,7 +17,7 @@
     <!-- 顶部头图与核心价格卡 -->
     <view class="detail-hero">
       <view class="hero-media-wrap" wx:if="{{coverUrl}}" bindtap="previewCover">
-        <image class="hero-cover-img" src="{{coverUrl}}" mode="aspectFill" />
+        <image class="hero-cover-img" src="{{coverUrl}}" mode="aspectFill" lazy-load="true" />
         <view class="hero-cover-scrim"></view>
         <view class="hero-badge hero-badge-float">
           <text class="remix-icon ri-sparkling-fill"></text>
@@ -125,7 +125,7 @@
         <view class="sub-block-label">精选服务实拍（点击查看大图）</view>
         <view class="case-gallery-grid">
           <view class="case-gallery-item" wx:for="{{caseImageUrls}}" wx:key="*this">
-            <image class="case-gallery-img" src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="previewCaseImage" />
+            <image class="case-gallery-img" src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="previewCaseImage" lazy-load="true" />
           </view>
         </view>
       </view>
@@ -171,7 +171,7 @@
 
           <view class="case-photo-grid" wx:if="{{item.checkinPhotos && item.checkinPhotos.length}}">
             <view class="case-photo-item" wx:for="{{item.checkinPhotos}}" wx:for-item="photo" wx:key="_id">
-              <image class="case-photo-img" src="{{photo.mediaFileId}}" mode="aspectFill" data-url="{{photo.mediaFileId}}" data-order-id="{{item._id}}" catchtap="previewOrderPhoto" />
+              <image class="case-photo-img" src="{{photo.mediaFileId}}" mode="aspectFill" data-url="{{photo.mediaFileId}}" data-order-id="{{item._id}}" catchtap="previewOrderPhoto" lazy-load="true" />
               <view class="case-photo-badge" wx:if="{{photo.eventText}}">{{photo.eventText}}</view>
             </view>
           </view>

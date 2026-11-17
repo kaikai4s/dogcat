@@ -294,7 +294,8 @@
   "usingComponents": {
     "dovlin-refresh": "/components/dovlin-refresh/index",
     "staff-active-service-banner": "/components/staff-active-service-banner/index",
-    "global-loading": "/components/global-loading/index"
+    "global-loading": "/components/global-loading/index",
+    "role-bottom-nav": "/components/role-bottom-nav/index"
   },
   "window": {
     "backgroundColor": "#FFF8EC",

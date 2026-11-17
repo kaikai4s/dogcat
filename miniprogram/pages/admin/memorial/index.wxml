@@ -16,6 +16,7 @@
     <view class="plot-label"><text class="remix-icon ri-map-pin-line"></text>{{item.gardenName}} · {{item.lawn}} · {{item.plotNumber}}号</view>
     <view class="detail-row"><text>申请人</text><text>{{item.applicant || '用户'}}</text></view>
     <view class="actions archive-links"><button wx:if="{{adminSuper || adminPermissions.admin_getUserDetail}}" class="secondary" data-id="{{item._id}}" bindtap="openUser" disabled="{{busy}}">用户资料</button><button wx:if="{{adminSuper || adminPermissions.memorial_listUserMemorialsAdmin}}" class="secondary" data-id="{{item._id}}" bindtap="openArchive" disabled="{{busy}}">TA 的小筑档案</button></view>
+    <view class="detail-row" wx:if="{{mode === 'applications' && item.lifeSpanText}}"><text>生卒年份</text><text>{{item.lifeSpanText}}</text></view>
     <view class="detail-row" wx:if="{{mode === 'applications'}}"><text>纪念日期</text><text>{{item.date}}</text></view>
     <view class="detail-row"><text>提交时间</text><text>{{item.createdText}}（北京时间）</text></view>
     <view class="epitaph" wx:if="{{mode === 'applications'}}"><view class="quote-label">想对它说的话</view><view>{{item.epitaph}}</view></view>

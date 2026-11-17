@@ -8,6 +8,13 @@ const { GardenSound } = require('../scene/sound')
 const { createCloudAssets, createCloudChunks } = require('../scene/cloud-assets')
 const { propBox } = require('../scene/terrain')
 const { plotNumber } = require('../scene/plot-number')
+const yearsMod = require('../scene/memorial-years') || {}
+const buildMemorialYearOptions = yearsMod.buildMemorialYearOptions || (() => [{ value: 'unknown', label: '未知' }])
+const yearOptionIndex = yearsMod.yearOptionIndex || (() => 0)
+const validateMemorialYearRange = yearsMod.validateMemorialYearRange || (() => '')
+const formatMemorialLifeSpan = yearsMod.formatMemorialLifeSpan || (() => '')
+
+const INITIAL_YEAR_OPTIONS = buildMemorialYearOptions()
 
 Page({
   data: { restoring: false, move: null, moveLoading: false, moveError: '', presenceMessage: '正在连接同园访客…', visitorCount: 0, loading: true, error: '', gender: 'boy', changing: false, overview: false,
@@ -15,7 +22,7 @@ Page({
     gardenName: '时光纪念园', gardenAccepting: true, gardenListOpen: false, gardens: [], gardensLoading: false, gardensMore: false, gardensError: '',
     environmentLabel: '', environmentTime: '', environmentError: '', weatherEffects: true,
     grid: false, stickX: 0, stickY: 0, following: true, music: true, effects: true, settingsOpen: false, audioError: '', audioDismissed: false, memorialCard: null,
-    selection: null, navigation: null, selectingPlot: false, form: null, formError: '', applications: null, applicationError: '', submitting: false, recordsLoading: false,
+    selection: null, navigation: null, selectingPlot: false, form: null, formError: '', yearOptions: INITIAL_YEAR_OPTIONS, birthYearIndex: 0, passingYearIndex: 0, formLifeSpanPreview: '', applications: null, applicationError: '', submitting: false, recordsLoading: false,
     streaming: false, streamError: false, worldLoading: false, hudTop: 48, hudLeft: 14, hudRight: 14 },
   onLoad(options = {}) {
     this._alive = true
@@ -526,12 +533,43 @@ Page({
     if (this._moveId && !this.data.move) { wx.showToast({ title: '请先加载小筑资料', icon: 'none' }); return }
     const selected = this.data.selection
     if (!selected || !selected.plotId || !this._worldData || this.data.worldLoading || this.data.applicationError || this._worldData.occupied.includes(selected.plotId)) { wx.showToast({ title: '请先刷新位置状态并选择空位', icon: 'none' }); return }
-    this.setData({ formError: '', form: { style: this.data.move && this.data.move.style || 'arch', petName: '', epitaph: '', date: '', plotId: selected.plotId, plotNumber: plotNumber(selected.plotId), lawn: selected.lawn, requestId: 'mem_' + Date.now() + '_' + Math.random().toString(36).slice(2) } })
+    const yearOptions = buildMemorialYearOptions()
+    this.setData({
+      formError: '',
+      yearOptions,
+      birthYearIndex: 0,
+      passingYearIndex: 0,
+      formLifeSpanPreview: formatMemorialLifeSpan('unknown', 'unknown'),
+      form: { style: this.data.move && this.data.move.style || 'arch', petName: '', epitaph: '', date: '', birthYear: 'unknown', passingYear: 'unknown', plotId: selected.plotId, plotNumber: plotNumber(selected.plotId), lawn: selected.lawn, requestId: 'mem_' + Date.now() + '_' + Math.random().toString(36).slice(2) }
+    })
   },
   chooseStyle(e) { if (this.data.form && !this.data.submitting) this.setData({ 'form.style': e.currentTarget.dataset.style }) },
   inputApplication(e) {
     const field = e.currentTarget.dataset.field
     if (!this.data.move && !this.data.submitting && ['petName', 'epitaph', 'date'].includes(field)) this.setData({ ['form.' + field]: e.detail.value })
+  },
+  updateApplicationYear(field, value) {
+    if (this.data.move || this.data.submitting || !this.data.form) return
+    if (!['birthYear', 'passingYear'].includes(field)) return
+    const nextBirth = field === 'birthYear' ? value : (this.data.form.birthYear || 'unknown')
+    const nextPassing = field === 'passingYear' ? value : (this.data.form.passingYear || 'unknown')
+    const options = this.data.yearOptions || INITIAL_YEAR_OPTIONS
+    this.setData({
+      [`form.${field}`]: value,
+      birthYearIndex: yearOptionIndex(options, nextBirth),
+      passingYearIndex: yearOptionIndex(options, nextPassing),
+      formLifeSpanPreview: formatMemorialLifeSpan(nextBirth, nextPassing)
+    })
+  },
+  chooseApplicationYear(e) {
+    const field = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.field
+    const options = this.data.yearOptions || INITIAL_YEAR_OPTIONS
+    const picked = options[Number(e && e.detail && e.detail.value)] || options[0]
+    this.updateApplicationYear(field, picked ? picked.value : 'unknown')
+  },
+  setYearUnknown(e) {
+    const field = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.field
+    this.updateApplicationYear(field, 'unknown')
   },
   closeApplication() { if (!this.data.submitting) this.setData({ form: null, formError: '', applications: null }) },
   async submitApplication() {
@@ -539,6 +577,8 @@ Page({
     if (!this.data.form || this.data.submitting) return
     const form = this.data.form
     if (!form.petName.trim() || !form.epitaph.trim() || !form.date) { wx.showToast({ title: '请填写名字、纪念日期和寄语', icon: 'none' }); return }
+    const rangeError = validateMemorialYearRange(form.birthYear, form.passingYear)
+    if (rangeError) { wx.showToast({ title: rangeError, icon: 'none' }); return }
     this.setData({ submitting: true, formError: '' })
     try {
       await this.api('submit', { ...form, version: worldIndex.version })
@@ -575,7 +615,7 @@ Page({
     this.scene.openOverview(plot)
     this.scene.selectedPoint = plot
     this.setData({ applications: null, overview: true, selectingPlot: false, grid: false, selection: null,
-      memorialCard: { ...plot, date: row.date, name: row.petName, epitaph: row.epitaph, applicationId: row._id } })
+      memorialCard: { ...plot, date: row.date, birthYear: row.birthYear || '', passingYear: row.passingYear || '', lifeSpanText: row.lifeSpanText || '', name: row.petName, epitaph: row.epitaph, applicationId: row._id } })
     this.loadEntrance(); this.loadOfferingStatus()
   },
   closeMemorial() { this.invalidateOfferingStatus(); this._entranceRequest = (this._entranceRequest || 0) + 1; this.resumeEntranceSound(); this.setData({ memorialCard: null, entrance: null, entranceLoading: false, entranceError: '', offeringStatus: null, offeringLoading: false, offeringError: '' }) },

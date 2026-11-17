@@ -9,6 +9,3 @@ button { font-size:27rpx; margin-top:22rpx; border-radius:16rpx; }
 .summary-row { display:flex; justify-content:space-between; gap:16rpx; padding:18rpx 0; font-size:24rpx; border-bottom:1rpx solid #eee; }
 .notice { font-size:25rpx; padding:20rpx; margin-top:20rpx; background:#fff1d8; border-radius:14rpx; line-height:1.7; color:#8c5b23; }
 .footer { margin:28rpx 4rpx; }
-.theme-night.page { background:#17151f; color:#f0e8df; }
-.theme-night .card { background:#25212e; }
-.theme-night .description, .theme-night .env { color:#b9ada2; }

@@ -62,7 +62,7 @@
   <view class="profile-hero">
     <view class="profile-hero-top">
       <view class="profile-avatar-wrap">
-        <image class="profile-avatar" wx:if="{{!isGuest && avatarUrl}}" src="{{avatarUrl}}" mode="aspectFill" binderror="onMainAvatarError" />
+        <image class="profile-avatar" wx:if="{{!isGuest && avatarUrl}}" src="{{avatarUrl}}" mode="aspectFill" binderror="onMainAvatarError" lazy-load="true" />
         <view class="profile-avatar empty" wx:else><view class="remix-icon ri-user-3-line"></view></view>
         <view class="avatar-level-badge badge-{{badgeStyle || 'gold'}}" wx:if="{{!isGuest && (badgeTag || memberLevelName)}}">{{badgeTag || memberLevelName}}</view>
       </view>
@@ -112,7 +112,7 @@
 
   <view class="menu-section">
     <view class="menu-section-title">我的服务</view>
-    <view class="profile-grid-panel cols-5">
+    <view class="profile-grid-panel cols-4">
       <view class="profile-grid-item interactive" bindtap="openPets">
         <view class="profile-icon-wrap coral">
           <view class="remix-icon ri-paw-print-fill"></view>
@@ -155,7 +155,7 @@
 
   <view class="menu-section">
     <view class="menu-section-title">成长权益</view>
-    <view class="profile-grid-panel cols-5">
+    <view class="profile-grid-panel cols-4">
       <view class="profile-grid-item interactive" bindtap="openCoupons">
         <view class="profile-icon-wrap orange">
           <view class="remix-icon ri-coupon-3-fill"></view>
@@ -291,7 +291,7 @@
 
       <!-- 二维码展示区 -->
       <view wx:if="{{officialAccount.qrCodeTempUrl || officialAccount.qrCodeUrl}}" class="oa-qrcode-display-card">
-        <image class="oa-qrcode-display-img" src="{{officialAccount.qrCodeTempUrl || officialAccount.qrCodeUrl}}" mode="aspectFit" bindtap="previewOfficialAccountQrCode" />
+        <image class="oa-qrcode-display-img" src="{{officialAccount.qrCodeTempUrl || officialAccount.qrCodeUrl}}" mode="aspectFit" bindtap="previewOfficialAccountQrCode" lazy-load="true" />
         <view class="oa-qrcode-hint">点击预览二维码大图，微信内长按可直接识别关注</view>
       </view>
 
@@ -302,12 +302,6 @@
       </view>
     </view>
   </view>
-<view class="bottom-nav client-bottom-nav">
-  <view class="nav-item" data-url="/pages/client/home/index" bindtap="go"><view class="nav-icon remix-icon ri-home-5-line"></view><view>首页</view></view>
-  <view class="nav-item" data-url="/pages/client/sitters/list/index" bindtap="go"><view class="nav-icon remix-icon ri-team-line"></view><view>宠托师</view></view>
-  <view class="nav-item" data-url="/pages/client/orders/list/index" bindtap="goProtected"><view class="nav-icon remix-icon ri-file-list-3-line"></view><view>订单</view></view>
-  <view class="nav-item" data-url="/pages/client/messages/index" bindtap="goProtected"><view class="nav-icon remix-icon ri-message-3-line"><view class="nav-unread-count" wx:if="{{messageUnreadCount > 0}}">{{messageUnreadCountText}}</view></view><view>消息</view></view>
-  <view class="nav-item active"><view class="nav-icon remix-icon ri-user-3-fill"></view><view>我的</view></view>
-</view>
+<role-bottom-nav class="bottom-nav" role="client" active="/pages/client/profile/index" unread-count="{{messageUnreadCount || 0}}" unread-text="{{messageUnreadCountText || ''}}" delegate-nav="{{true}}" bind:navigate="onBottomNavTap" />
 <login-consent visible="{{showConsentModal}}" agreed="{{loginAgreed}}" theme-class="{{themeClass}}" bindchange="onLoginConsentChange" bindconfirm="onConsentConfirm" bindcancel="onConsentCancel" />
 <global-loading />

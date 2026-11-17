@@ -32,11 +32,6 @@
     </picker>
   </view>
 
-  <view class="bottom-nav">
-    <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon remix-icon ri-dashboard-3-line"></view><view>控制台</view></view>
-    <view class="nav-item" data-url="/pages/admin/coupons/index" bindtap="go"><view class="nav-icon remix-icon ri-coupon-3-line"></view><view>优惠券</view></view>
-    <view class="nav-item" data-url="/pages/admin/member-levels/index" bindtap="go"><view class="nav-icon remix-icon ri-vip-crown-line"></view><view>等级</view></view>
-    <view class="nav-item" data-url="/pages/admin/points/index" bindtap="go"><view class="nav-icon remix-icon ri-coins-line"></view><view>积分</view></view>
-  </view>
+  <role-bottom-nav class="bottom-nav" role="admin" variant="loyalty" active="/pages/admin/checkin-config/index" />
 </view>
 <global-loading />

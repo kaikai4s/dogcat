@@ -61,7 +61,7 @@
         <view class="group-remark" wx:if="{{item.remarkText}}">{{item.remarkText}}</view>
         <view class="image-list">
           <view class="photo-item" wx:for="{{item.photos}}" wx:for-item="photo" wx:key="_id">
-            <image class="security-image" src="{{photo.mediaFileId}}" mode="aspectFill" data-url="{{photo.mediaFileId}}" bindtap="previewPhoto" bindlongpress="savePhoto" />
+            <image class="security-image" src="{{photo.mediaFileId}}" mode="aspectFill" data-url="{{photo.mediaFileId}}" bindtap="previewPhoto" bindlongpress="savePhoto" lazy-load="true" />
             <view class="photo-time">{{photo.recordedAtText || '未记录时间'}}</view>
           </view>
         </view>
@@ -110,7 +110,7 @@
         <view class="selector-label">挑选海报主图：</view>
         <scroll-view scroll-x class="cover-thumbs-scroll">
           <view class="thumb-wrap {{selectedPhotoIndex === index ? 'active' : ''}}" wx:for="{{allPhotos}}" wx:key="*this" data-index="{{index}}" bindtap="selectPosterCover">
-            <image class="thumb-img" src="{{item}}" mode="aspectFill" />
+            <image class="thumb-img" src="{{item}}" mode="aspectFill" lazy-load="true" />
           </view>
         </scroll-view>
       </view>
@@ -142,7 +142,7 @@
 
           <!-- 海报 Hero 大图卡片 -->
           <view class="poster-hero-photo-wrap">
-            <image class="poster-hero-photo" src="{{heroPhotoUrl}}" mode="aspectFill" />
+            <image class="poster-hero-photo" src="{{heroPhotoUrl}}" mode="aspectFill" lazy-load="true" />
             <view class="hero-polaroid-caption" wx:if="{{currentTemplate === 'diary'}}">
               <text class="caption-icon remix-icon ri-heart-3-fill"></text>
               <text class="caption-text">{{serviceSummaryText}} · 快乐记录</text>
@@ -163,7 +163,7 @@
           <!-- 履约亮点多图拼贴（2~4张） -->
           <view class="poster-checkins-grid" wx:if="{{evidencePhotos.length}}">
             <view class="grid-item" wx:for="{{evidencePhotos}}" wx:key="*this">
-              <image class="grid-item-photo" src="{{item.url}}" mode="aspectFill" />
+              <image class="grid-item-photo" src="{{item.url}}" mode="aspectFill" lazy-load="true" />
               <view class="grid-item-tag">{{item.label}}</view>
             </view>
           </view>

@@ -3,6 +3,7 @@ const world = require('../config/memorial-world.json')
 const plotLayout = require('../config/memorial-plots.json')
 const nearby = (a, b) => Math.abs(a.x - b.x) < plotLayout.spacing && Math.abs(a.y - b.y) < plotLayout.spacing
 const { readOptionalDocument } = require('../utils/documentPages')
+const { normalizeMemorialYears, memorialYearFields } = require('../utils/memorialYears')
 const { DEFAULT, gardenId } = require('../services/memorialGardens')
 const offeringService = require('../services/memorialOfferings')
 const hash = text => crypto.createHash('sha256').update(text).digest('hex').slice(0, 32)
@@ -40,7 +41,7 @@ module.exports = function createHandler(context) {
       }
       const serverTime = (context.nowMs || Date.now)()
       return { serverTime, version: world.version, garden: gardens.publicRow(garden), occupied: [...new Set(plots.filter(p => p.status !== 'released').flatMap(p => [p.plotId, ...world.cells.filter(c => nearby(c, p)).map(c => c.id)]))],
-        memorials: plots.filter(p => p.status === 'approved').map(p => ({ id: p.plotId, applicationId: p.applicationId, style: p.style || 'arch', legacy: p.footprint !== 2, x: p.x, y: p.y, name: p.petName, epitaph: p.epitaph, date: p.date, offerings: offeringService.counts(p.offerings), offeringScene: offeringService.scene(p.offeringScene, serverTime), ...(p.portrait ? { portrait: { id: p.portrait.uploadId, ...(p.portrait.layoutVersion === 1 ? { layoutVersion: 1, width: p.portrait.width, height: p.portrait.height, bounds: p.portrait.bounds, scale: p.portrait.scale } : {}), url: urls.get(p.portrait.fileId) || '' } } : {}) })) }
+        memorials: plots.filter(p => p.status === 'approved').map(p => ({ id: p.plotId, applicationId: p.applicationId, style: p.style || 'arch', legacy: p.footprint !== 2, x: p.x, y: p.y, name: p.petName, epitaph: p.epitaph, date: p.date, ...memorialYearFields(p), offerings: offeringService.counts(p.offerings), offeringScene: offeringService.scene(p.offeringScene, serverTime), ...(p.portrait ? { portrait: { id: p.portrait.uploadId, ...(p.portrait.layoutVersion === 1 ? { layoutVersion: 1, width: p.portrait.width, height: p.portrait.height, bounds: p.portrait.bounds, scale: p.portrait.scale } : {}), url: urls.get(p.portrait.fileId) || '' } } : {}) })) }
     }
     if (['listMine', 'listAdmin', 'listUserMemorialsAdmin'].includes(action)) {
       const where = { key: 'memorial_application' }
@@ -53,7 +54,7 @@ module.exports = function createHandler(context) {
       const cursor = text(data.cursor)
       const result = await db.collection('platform_configs').where({ ...where, ...(cursor ? { _id: db.command.gt(cursor) } : {}) }).orderBy('_id', 'asc').limit(31).get()
       const rows = await gardens.labelRows((result.data || []).slice(0, 30).map(row => ({
-        style: row.style || 'arch', _id: row._id, petName: row.petName, epitaph: row.epitaph, date: row.date,
+        style: row.style || 'arch', _id: row._id, petName: row.petName, epitaph: row.epitaph, date: row.date, ...memorialYearFields(row),
         locationRevision: row.locationRevision || 0, plotId: row.plotId, lawn: row.lawn, x: row.x, y: row.y, gardenId: gardenId(row), status: row.status,
         reason: row.reason, createdAt: row.createdAt, reviewedAt: row.reviewedAt || (row.status !== 'pending' ? row.updatedAt : ''),
         ...(admin ? { applicant: row.applicant, ownerOpenid: row.ownerOpenid } : {})
@@ -71,11 +72,15 @@ module.exports = function createHandler(context) {
       if (!petName || petName.length > 20 || !epitaph || epitaph.length > 120) throw new Error('请填写宠物名字（20字以内）和寄语（120字以内）')
       const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10)
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date || date > today) throw new Error('请选择有效的纪念日期，不可晚于今天')
+      const years = normalizeMemorialYears(data, { requireExplicit: false, nowMs: context.nowMs && context.nowMs() })
+      const hasYears = !!(years.birthYear || years.passingYear)
       if (!/^[A-Za-z0-9_-]{8,80}$/.test(requestId)) throw new Error('提交编号无效，请重试')
       await checkTextSecurity(openid, petName + ' ' + epitaph, { scene: 1, label: '时光小筑申请' })
       const id = 'memorial_app_' + hash(scope + openid + '|' + requestId), plotKey = 'memorial_plot_' + hash(scope + plot.id)
       const ownerKey = 'memorial_pet_' + hash(openid + '|' + petName.toLowerCase())
-      const fingerprint = hash(JSON.stringify([plot.id, petName, epitaph, date, style]))
+      const fingerprint = hasYears
+        ? hash(JSON.stringify([plot.id, petName, epitaph, date, style, years.birthYear, years.passingYear]))
+        : hash(JSON.stringify([plot.id, petName, epitaph, date, style]))
       return db.runTransaction(async tx => {
         const existing = await read(tx, id)
         if (existing) {
@@ -99,12 +104,32 @@ module.exports = function createHandler(context) {
         await presence.changed(tx, garden._id)
         const stamp = now()
         await write(tx, id, { key: 'memorial_application', gardenId: garden._id, ownerOpenid: openid, ownerKey, plotKey, plotId: plot.id, lawn: plot.lawn,
-          x: plot.x, y: plot.y, style, petName, epitaph, date, fingerprint, applicant: user.nickname || '用户', status: 'pending', reason: '', createdAt: stamp, updatedAt: stamp })
+          x: plot.x, y: plot.y, style, petName, epitaph, date, ...(hasYears ? years : {}), fingerprint, applicant: user.nickname || '用户', status: 'pending', reason: '', createdAt: stamp, updatedAt: stamp })
         await write(tx, plotKey, { key: 'memorial_plot', gardenId: garden._id, footprint: 2, plotId: plot.id, applicationId: id, status: 'pending', x: plot.x, y: plot.y, updatedAt: stamp })
         await write(tx, ownerKey, { key: 'memorial_pet', applicationId: id, status: 'pending' })
         await context.enqueueAdminAuditNotification(tx, { auditType: 'memorial_application', targetId: id, applicant: user.nickname || '用户',
           type: '时光小筑申请', reason: petName + ' · ' + plot.lawn, page: 'pages/admin/memorial/index' })
         return { id, status: 'pending' }
+      })
+    }
+    if (action === 'updateYears') {
+      const id = text(data.id)
+      if (!id) throw new Error('纪念碑参数无效')
+      const years = normalizeMemorialYears(data, { requireExplicit: true, nowMs: context.nowMs && context.nowMs() })
+      return db.runTransaction(async tx => {
+        const app = await read(tx, id)
+        if (!app || app.key !== 'memorial_application' || app.status !== 'approved') throw new Error('这处时光小筑暂不可编辑，请刷新')
+        if (app.ownerOpenid !== openid) throw new Error('只有主人可以修改纪念碑信息')
+        const stamp = now()
+        await tx.collection('platform_configs').doc(app._id).update({ data: { birthYear: years.birthYear, passingYear: years.passingYear, updatedAt: stamp } })
+        if (app.plotKey) {
+          const plot = await read(tx, app.plotKey)
+          if (plot && plot.applicationId === app._id && plot.status === 'approved') {
+            await tx.collection('platform_configs').doc(app.plotKey).update({ data: { birthYear: years.birthYear, passingYear: years.passingYear, updatedAt: stamp } })
+          }
+        }
+        await presence.changed(tx, gardenId(app))
+        return memorialYearFields(years)
       })
     }
     if (action === 'review') {
@@ -124,8 +149,9 @@ module.exports = function createHandler(context) {
         await tx.collection('platform_configs').doc(id).update({ data: { status, reason, reviewedBy: openid, reviewedAt: stamp, updatedAt: stamp } })
         await write(tx, row.ownerKey, { key: 'memorial_pet', applicationId: id, status })
         const { _id: ignoredId, ...plotData } = plot
+        const rowYears = row.birthYear || row.passingYear ? { birthYear: row.birthYear || '', passingYear: row.passingYear || '' } : {}
         await write(tx, row.plotKey, { ...plotData, status: status === 'approved' ? 'approved' : 'released',
-          ...(status === 'approved' ? { style: row.style || 'arch', petName: row.petName, epitaph: row.epitaph, date: row.date } : {}), updatedAt: stamp })
+          ...(status === 'approved' ? { style: row.style || 'arch', petName: row.petName, epitaph: row.epitaph, date: row.date, ...rowYears } : {}), updatedAt: stamp })
         const noticeId = 'admin_audit_memorial_application_' + id
         if (await readOptionalDocument(tx, 'admin_notifications', noticeId)) {
           await tx.collection('admin_notifications').doc(noticeId).update({ data: { resolved: true, resolvedAt: stamp, updatedAt: stamp } })

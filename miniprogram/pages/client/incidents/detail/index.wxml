@@ -19,7 +19,7 @@
     <view class="card-subtitle"><text class="remix-icon ri-file-text-line sub-icon"></text><text>问题说明</text></view>
     <view class="desc-text">{{detail.incident.description}}</view>
     <view class="evidence-grid" wx:if="{{detail.incident.mediaFileIds.length}}">
-      <image class="evidence-image" wx:for="{{detail.incident.mediaFileIds}}" wx:key="*this" src="{{item}}" mode="aspectFill" />
+      <image class="evidence-image" wx:for="{{detail.incident.mediaFileIds}}" wx:key="*this" src="{{item}}" mode="aspectFill" lazy-load="true" />
     </view>
   </view>
 
@@ -48,7 +48,7 @@
           <view class="timeline-title">{{item.actorRoleText}}</view>
           <view class="timeline-desc">{{item.content}}</view>
           <view class="evidence-grid" wx:if="{{item.mediaFileIds.length}}">
-            <image class="evidence-image" wx:for="{{item.mediaFileIds}}" wx:key="*this" src="{{item}}" mode="aspectFill" />
+            <image class="evidence-image" wx:for="{{item.mediaFileIds}}" wx:key="*this" src="{{item}}" mode="aspectFill" lazy-load="true" />
           </view>
           <view class="timeline-time">{{beijingTime.format(item.createdAt)}}</view>
         </view>
@@ -65,7 +65,7 @@
     </view>
     <view class="evidence-grid" wx:if="{{mediaFileIds.length}}">
       <view class="evidence-item" wx:for="{{mediaFileIds}}" wx:key="*this">
-        <image src="{{item}}" mode="aspectFill" />
+        <image src="{{item}}" mode="aspectFill" lazy-load="true" />
         <view class="remove" data-index="{{index}}" bindtap="removeEvidence"><text class="remix-icon ri-close-line"></text></view>
       </view>
     </view>

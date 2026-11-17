@@ -92,15 +92,6 @@ page {
 
 .sitter-map-btn .remix-icon { font-size: 28rpx; }
 .sitter-map-btn-hover { background: #d95722; }
-.sitter-list-page.theme-night .sitter-hero { background: linear-gradient(180deg, #302933 0%, rgba(21, 19, 29, 0) 100%); }
-.sitter-list-page.theme-night .sitter-hero-title { color: #f2f7f1; }
-.sitter-list-page.theme-night .sitter-hero-filter { color: #f0b78e; }
-.sitter-list-page.theme-night .sitter-location-bar { border-color: rgba(246, 193, 159, .2); background: rgba(255, 237, 223, .08); }
-.sitter-list-page.theme-night .location-name { color: #f4ebe6; }
-.sitter-list-page.theme-night .location-pin,
-.sitter-list-page.theme-night .location-arrow { color: #f0b78e; }
-.sitter-map-btn.theme-night { background: #b95b32; }
-
 .sitter-location-bar {
   display: inline-flex;
   flex: 0 1 auto;

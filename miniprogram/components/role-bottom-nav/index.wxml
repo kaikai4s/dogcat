@@ -1,0 +1,15 @@
+<view class="role-bottom-nav role-bottom-nav--{{role}}">
+  <view
+    class="nav-item {{item.url === active ? 'active' : ''}}"
+    wx:for="{{navItems}}"
+    wx:key="url"
+    data-url="{{item.url}}"
+    data-protect="{{item.protected ? 1 : 0}}"
+    bindtap="onTapItem"
+  >
+    <view class="nav-icon remix-icon {{item.url === active ? item.activeIcon : item.icon}}">
+      <view class="nav-unread-count" wx:if="{{item.hasUnread && unreadCount > 0}}">{{unreadText || unreadCount}}</view>
+    </view>
+    <view>{{item.label}}</view>
+  </view>
+</view>

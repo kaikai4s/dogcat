@@ -27,7 +27,7 @@
     <!-- 宠物头部基础信息 -->
     <view class="pet-head">
       <view class="avatar-wrap">
-        <image wx:if="{{item.avatarFileId}}" class="pet-avatar" src="{{item.avatarFileId}}" mode="aspectFill" bindtap="previewPetPhotos" data-current="{{item.avatarFileId}}" data-urls="{{item.photoUrls}}" />
+        <image wx:if="{{item.avatarFileId}}" class="pet-avatar" src="{{item.avatarFileId}}" mode="aspectFill" bindtap="previewPetPhotos" data-current="{{item.avatarFileId}}" data-urls="{{item.photoUrls}}" lazy-load="true" />
         <view wx:else class="pet-avatar avatar-placeholder">{{item.avatarText}}</view>
         <view class="species-badge species-{{item.species}}">{{item.speciesText}}</view>
       </view>
@@ -62,7 +62,7 @@
     <!-- 主人归属信息卡片 -->
     <view class="owner-box">
       <view class="owner-head">
-        <image wx:if="{{item.owner.avatarUrl}}" class="owner-avatar" src="{{item.owner.avatarUrl}}" mode="aspectFill" />
+        <image wx:if="{{item.owner.avatarUrl}}" class="owner-avatar" src="{{item.owner.avatarUrl}}" mode="aspectFill" lazy-load="true" />
         <view wx:else class="owner-avatar owner-avatar-placeholder">主</view>
         <view class="owner-details">
           <view class="owner-name-row">
@@ -112,7 +112,7 @@
       <view class="photo-gallery" wx:if="{{item.beautyPhotos && item.beautyPhotos.length}}">
         <view class="sub-title">最美大赛图集 ({{item.beautyPhotos.length}} 张，点击可预览)</view>
         <view class="gallery-scroll">
-          <image wx:for="{{item.beautyPhotos}}" wx:for-item="photo" wx:key="id" class="gallery-thumb" src="{{photo.fileId || photo.url}}" mode="aspectFill" bindtap="previewPetPhotos" data-current="{{photo.fileId || photo.url}}" data-urls="{{item.photoUrls}}" />
+          <image wx:for="{{item.beautyPhotos}}" wx:for-item="photo" wx:key="id" class="gallery-thumb" src="{{photo.fileId || photo.url}}" mode="aspectFill" bindtap="previewPetPhotos" data-current="{{photo.fileId || photo.url}}" data-urls="{{item.photoUrls}}" lazy-load="true" />
         </view>
       </view>
 
@@ -191,11 +191,6 @@
   </view>
 
   <!-- 底部快捷导航 -->
-  <view class="bottom-nav">
-    <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon remix-icon ri-dashboard-3-line"></view><view>控制台</view></view>
-    <view class="nav-item" data-url="/pages/admin/users/list/index" bindtap="go"><view class="nav-icon remix-icon ri-user-heart-line"></view><view>用户</view></view>
-    <view class="nav-item active"><view class="nav-icon remix-icon ri-heart-pulse-fill"></view><view>宠物</view></view>
-    <view class="nav-item" data-url="/pages/admin/orders/list/index" bindtap="go"><view class="nav-icon remix-icon ri-file-list-3-line"></view><view>订单</view></view>
-  </view>
+  <role-bottom-nav class="bottom-nav" role="admin" variant="pets" active="/pages/admin/pets/list/index" />
 </view>
 <global-loading />

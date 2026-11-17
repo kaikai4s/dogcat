@@ -27,6 +27,7 @@ module.exports = function createHandler(context) {
     paginateList,
     releasePetTitleForPet,
     parsePetRecognitionText,
+    readScopedDocuments,
     recordAiLog,
     safeFileId,
     safeNumber,
@@ -80,8 +81,10 @@ module.exports = function createHandler(context) {
     if (action === 'listPets') {
       const keyword = safeText(data.keyword).trim().toLowerCase()
       const species = safeText(data.species).trim()
-      const res = await db.collection('pets').where({ openid }).orderBy('createdAt', 'desc').get()
-      const list = await Promise.all((res.data || [])
+      const rawPets = typeof readScopedDocuments === 'function'
+        ? await readScopedDocuments('pets', { openid }, 'createdAt', 'desc')
+        : ((await db.collection('pets').where({ openid }).orderBy('createdAt', 'desc').limit(1000).get()).data || [])
+      const list = await Promise.all(rawPets
         .filter((pet) => !species || pet.species === species)
         .filter((pet) => !keyword || [pet.name, pet.breed, pet.personality, pet.specialNotes, pet.healthNotes, pet.exclusiveId].some((value) => safeText(value).toLowerCase().includes(keyword)))
         .map(async (pet) => {

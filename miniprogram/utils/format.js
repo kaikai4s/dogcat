@@ -559,6 +559,15 @@ function buildCareContextSnapshot(order = {}) {
   }
 }
 
+function pageList(result) {
+  if (Array.isArray(result)) {
+    return { list: result, hasMore: false, page: 1, total: result.length }
+  }
+  return result
+    ? { ...result, list: Array.isArray(result.list) ? result.list : [] }
+    : { list: [], hasMore: false, page: 1, total: 0 }
+}
+
 module.exports = {
   formatOrderStatus,
   formatAuditStatus,
@@ -596,5 +605,6 @@ module.exports = {
   buildPetCareSummary,
   getCareCompleteness,
   getPetSnapshots,
-  getRiskInfo
+  getRiskInfo,
+  pageList
 }

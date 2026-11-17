@@ -5,7 +5,36 @@
     <view class="booking-desc">按步骤确认宠物、服务、地址和入户方式，系统会自动试算价格。</view>
   </view>
 
-  <view class="booking-step-card">
+  <view id="booking-steps-anchor" class="booking-steps-anchor">
+    <view class="booking-steps-bar {{bookingStepsFixed ? 'is-fixed' : ''}}">
+      <scroll-view scroll-x enhanced show-scrollbar="{{false}}" scroll-into-view="{{bookingStepScrollTarget}}" scroll-with-animation class="booking-steps-scroll">
+        <view class="booking-steps-track">
+          <view id="booking-step-pill-1" class="booking-step-pill {{activeBookingStep === 1 ? 'active' : ''}} done" data-step="1" bindtap="scrollToBookingStep">01 方式</view>
+          <view id="booking-step-pill-2" class="booking-step-pill {{activeBookingStep === 2 ? 'active' : ''}} {{selectedPets.length ? 'done' : ''}}" data-step="2" bindtap="scrollToBookingStep">02 宠物</view>
+          <view id="booking-step-pill-3" class="booking-step-pill {{activeBookingStep === 3 ? 'active' : ''}} {{form.serviceTypes.length > 1 ? 'done' : ''}}" data-step="3" bindtap="scrollToBookingStep">03 服务</view>
+          <view id="booking-step-pill-4" class="booking-step-pill {{activeBookingStep === 4 ? 'active' : ''}} {{form.serviceAddress ? 'done' : ''}}" data-step="4" bindtap="scrollToBookingStep">04 地点</view>
+          <view id="booking-step-pill-5" class="booking-step-pill {{activeBookingStep === 5 ? 'active' : ''}} {{form.lockMethod ? 'done' : ''}}" data-step="5" bindtap="scrollToBookingStep">05 安防</view>
+          <view id="booking-step-pill-6" class="booking-step-pill {{activeBookingStep === 6 ? 'active' : ''}} {{form.startDate && form.startClock ? 'done' : ''}}" data-step="6" bindtap="scrollToBookingStep">06 时间</view>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
+
+  <view wx:if="{{user && !user.phone}}" class="booking-phone-banner">
+    <view class="booking-phone-banner-main">
+      <text class="remix-icon ri-cellphone-line booking-phone-banner-icon"></text>
+      <view class="booking-phone-banner-copy">
+        <view class="booking-phone-banner-title">下单前需绑定手机号</view>
+        <view class="booking-phone-banner-desc">用于宠托师联系与订单通知，可直接微信一键绑定。</view>
+      </view>
+    </view>
+    <view class="booking-phone-banner-actions">
+      <button class="phone-bind-quick-btn" open-type="getPhoneNumber" disabled="{{bindingPhone}}" loading="{{bindingPhone}}" bindtap="preparePhonePrivacyAuthorize" bindgetphonenumber="bindPhoneNumber">一键绑定</button>
+      <view class="phone-bind-link" bindtap="goBindPhone">资料页绑定<text class="remix-icon ri-arrow-right-s-line"></text></view>
+    </view>
+  </view>
+
+  <view id="booking-step-1" class="booking-step-card">
     <view class="step-head">
       <view class="step-index">01</view>
       <view><view class="step-title">发布方式</view><view class="step-desc">选择公开抢单或指定宠托师</view></view>
@@ -33,7 +62,7 @@
     </view>
     <view class="sitter-summary" wx:if="{{form.publishMode === 'direct'}}">
       <view class="sitter-summary-top">
-        <image class="order-avatar" wx:if="{{requestedSitter && requestedSitter.avatarUrl}}" src="{{requestedSitter.avatarUrl}}" mode="aspectFill" />
+        <image class="order-avatar" wx:if="{{requestedSitter && requestedSitter.avatarUrl}}" src="{{requestedSitter.avatarUrl}}" mode="aspectFill" lazy-load="true" />
         <view class="order-avatar placeholder" wx:else><view class="remix-icon ri-service-line"></view></view>
         <view class="sitter-summary-main">
           <view class="sitter-summary-name-row">
@@ -63,14 +92,14 @@
     </view>
   </view>
 
-  <view class="booking-step-card">
+  <view id="booking-step-2" class="booking-step-card">
     <view class="step-head">
       <view class="step-index">02</view>
       <view><view class="step-title">服务对象</view><view class="step-desc">确认今天需要照护的宠物</view></view>
     </view>
     <view class="pet-selector" wx:if="{{pets.length}}">
       <view class="pet-option {{item.selected ? 'active' : ''}}" wx:for="{{pets}}" wx:key="_id" data-id="{{item._id}}" bindtap="choosePet">
-        <image class="pet-option-avatar" wx:if="{{item.avatarFileId}}" src="{{item.avatarFileId}}" mode="aspectFill" />
+        <image class="pet-option-avatar" wx:if="{{item.avatarFileId}}" src="{{item.avatarFileId}}" mode="aspectFill" lazy-load="true" />
         <view class="pet-option-avatar empty" wx:else><view class="remix-icon ri-file-user-line"></view></view>
         <view class="pet-option-info">
           <view class="pet-option-head"><view class="pet-option-name">{{item.name}}</view><view class="pet-selected-badge" wx:if="{{item.selected}}">已选中</view><view class="pet-selected-badge muted-badge" wx:else>可多选</view></view>
@@ -110,7 +139,7 @@
     </view>
   </view>
 
-  <view class="booking-step-card">
+  <view id="booking-step-3" class="booking-step-card">
     <view class="step-head">
       <view class="step-index">03</view>
       <view><view class="step-title">服务项目</view><view class="step-desc">上门费固定必选，再选择至少一项照护服务</view></view>
@@ -156,7 +185,7 @@
     </view>
   </view>
 
-  <view class="booking-step-card">
+  <view id="booking-step-4" class="booking-step-card">
     <view class="step-head">
       <view class="step-index">04</view>
       <view><view class="step-title">服务地点</view><view class="step-desc">选择常用地址或地图定位</view></view>
@@ -214,7 +243,7 @@
     </view>
   </view>
 
-  <view class="booking-step-card">
+  <view id="booking-step-5" class="booking-step-card">
     <view class="step-head">
       <view class="step-index">05</view>
       <view><view class="step-title">家庭安防 / 入户方式</view><view class="step-desc">选择宠托师如何安全入户</view></view>
@@ -345,7 +374,7 @@
     <textarea placeholder="入户备注（如敲门说明、安防提示、注意事项）" value="{{form.entryNotes}}" data-field="entryNotes" bindinput="input" />
   </view>
 
-  <view class="booking-step-card">
+  <view id="booking-step-6" class="booking-step-card">
     <view class="step-head">
       <view class="step-index">06</view>
       <view><view class="step-title">服务时间</view><view class="step-desc">确认单次预约或连续多天服务</view></view>
@@ -719,6 +748,22 @@
         </view>
         <button class="primary confirm-sheet-btn" bindtap="confirmCalendarSelection">确定选择</button>
       </view>
+    </view>
+  </view>
+
+  <view wx:if="{{showPhoneBindModal}}" class="phone-bind-modal-backdrop" bindtap="closePhoneBindModal" catchtouchmove="noop">
+    <view class="phone-bind-modal-card" catchtap="noop">
+      <view class="phone-bind-modal-close" bindtap="closePhoneBindModal">
+        <text class="remix-icon ri-close-line"></text>
+      </view>
+      <view class="phone-bind-modal-icon-wrap">
+        <text class="remix-icon ri-cellphone-line"></text>
+      </view>
+      <view class="phone-bind-modal-title">请先绑定手机号</view>
+      <view class="phone-bind-modal-desc">为保障上门照护沟通与订单交易安全，下单或使用优惠券前需要先绑定手机号。绑定后当前已填表单会保留。</view>
+      <button class="primary phone-bind-modal-btn" open-type="getPhoneNumber" disabled="{{bindingPhone}}" loading="{{bindingPhone}}" bindtap="preparePhonePrivacyAuthorize" bindgetphonenumber="bindPhoneNumber">{{bindingPhone ? '绑定中...' : '微信一键绑定手机号'}}</button>
+      <button class="ghost phone-bind-modal-alt-btn" bindtap="goBindPhone">前往个人资料页绑定</button>
+      <view class="phone-bind-modal-skip" bindtap="closePhoneBindModal">暂不绑定</view>
     </view>
   </view>
 </view>

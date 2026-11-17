@@ -23,6 +23,7 @@ module.exports = function createHandler(context) {
     nowText,
     paginateList,
     petSpeciesText,
+    readScopedDocuments,
     requireAdmin,
     requireClientOrder,
     safeFileId,
@@ -114,8 +115,8 @@ module.exports = function createHandler(context) {
     async function todayVoteState() {
       if (!openid) return { hasVotedToday: false, remainingVotesToday: 0, todayBonusVotes: 0, totalVotesToday: 1, usedVotesToday: 0 }
       const [votesRes, bonusVotesRes] = await Promise.all([
-        db.collection('pet_beauty_votes').where({ openid, dateKey: today.dateKey }).get(),
-        db.collection('pet_beauty_bonus_votes').where({ openid, dateKey: today.dateKey }).get().catch(() => ({ data: [] }))
+        db.collection('pet_beauty_votes').where({ openid, dateKey: today.dateKey }).limit(100).get(),
+        db.collection('pet_beauty_bonus_votes').where({ openid, dateKey: today.dateKey }).limit(100).get().catch(() => ({ data: [] }))
       ])
       const todayVotes = votesRes.data || []
       const bonusVotes = (bonusVotesRes && bonusVotesRes.data) || []
@@ -133,8 +134,11 @@ module.exports = function createHandler(context) {
     }
 
     if (action === 'listHistoryMonths') {
-      const locksRes = await db.collection('pet_beauty_month_locks').where({ status: 'locked' }).orderBy('monthKey', 'desc').get()
-      const months = (locksRes.data || []).map((item) => item.monthKey).filter(Boolean)
+      const locks = typeof readScopedDocuments === 'function'
+        ? (await readScopedDocuments('pet_beauty_month_locks', { status: 'locked' }))
+          .sort((a, b) => String(b.monthKey || '').localeCompare(String(a.monthKey || '')))
+        : ((await db.collection('pet_beauty_month_locks').where({ status: 'locked' }).orderBy('monthKey', 'desc').limit(200).get()).data || [])
+      const months = locks.map((item) => item.monthKey).filter(Boolean)
       return { months }
     }
 
@@ -186,8 +190,11 @@ module.exports = function createHandler(context) {
       const keyword = safeText(data.keyword).trim().toUpperCase()
       const historyMonthKey = safeText(data.historyMonthKey).trim()
       if (historyMonthKey && historyMonthKey !== monthKey) {
-        const histRes = await db.collection('pet_beauty_month_rankings').where({ monthKey: historyMonthKey, locked: true }).orderBy('rank', 'asc').get()
-        const histList = (histRes.data || [])
+        const histRows = typeof readScopedDocuments === 'function'
+          ? (await readScopedDocuments('pet_beauty_month_rankings', { monthKey: historyMonthKey, locked: true }))
+            .sort((a, b) => Number(a.rank || 0) - Number(b.rank || 0))
+          : ((await db.collection('pet_beauty_month_rankings').where({ monthKey: historyMonthKey, locked: true }).orderBy('rank', 'asc').limit(1000).get()).data || [])
+        const histList = histRows
           .filter((item) => !keyword || safeText(item.petExclusiveId).toUpperCase().includes(keyword) || safeText(item.petSnapshot && item.petSnapshot.name).toUpperCase().includes(keyword))
           .map((item) => ({
             petId: item.petId,
@@ -223,8 +230,8 @@ module.exports = function createHandler(context) {
 
       // 1. 事前核查当日基础票数与邀请新用户额外获赠票数
       const [votesRes, bonusVotesRes] = await Promise.all([
-        db.collection('pet_beauty_votes').where({ openid, dateKey: today.dateKey }).get(),
-        db.collection('pet_beauty_bonus_votes').where({ openid, dateKey: today.dateKey }).get().catch(() => ({ data: [] }))
+        db.collection('pet_beauty_votes').where({ openid, dateKey: today.dateKey }).limit(100).get(),
+        db.collection('pet_beauty_bonus_votes').where({ openid, dateKey: today.dateKey }).limit(100).get().catch(() => ({ data: [] }))
       ])
       const todayVotes = votesRes.data || []
       const bonusVotes = (bonusVotesRes && bonusVotesRes.data) || []

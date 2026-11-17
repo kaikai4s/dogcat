@@ -14,7 +14,7 @@
 
   <view class="admin-compact-card service-summary-card" wx:for="{{prices}}" wx:key="key">
     <view class="admin-summary-row">
-      <image class="admin-service-thumb" wx:if="{{item.coverDisplayUrl || item.coverUrl}}" src="{{item.coverDisplayUrl || item.coverUrl}}" mode="aspectFill" />
+      <image class="admin-service-thumb" wx:if="{{item.coverDisplayUrl || item.coverUrl}}" src="{{item.coverDisplayUrl || item.coverUrl}}" mode="aspectFill" lazy-load="true" />
       <view class="admin-service-thumb-placeholder" wx:else>
         <text class="remix-icon ri-image-line"></text>
       </view>
@@ -130,7 +130,7 @@
             <view class="muted">首页热门服务及预约列表展示（建议4:3比例）</view>
           </view>
           <view class="admin-cover-box interactive" wx:if="{{priceForm.coverDisplayUrl || priceForm.coverUrl}}" bindtap="previewCoverImage">
-            <image class="admin-cover-img" mode="aspectFill" src="{{priceForm.coverDisplayUrl || priceForm.coverUrl}}" />
+            <image class="admin-cover-img" mode="aspectFill" src="{{priceForm.coverDisplayUrl || priceForm.coverUrl}}" lazy-load="true" />
             <view class="cover-hover-tag">点击大图预览</view>
           </view>
           <view class="empty-cover-uploader interactive" wx:else bindtap="chooseCoverImage">
@@ -157,7 +157,7 @@
           </view>
           <view class="case-grid" wx:if="{{priceForm.caseImageFileIds.length}}">
             <view class="case-thumb" wx:for="{{priceForm.caseImageFileIds}}" wx:key="*this">
-              <image class="case-image" mode="aspectFill" src="{{priceForm.caseImageUrls[index] || item}}" data-url="{{priceForm.caseImageUrls[index] || item}}" bindtap="previewServiceCaseImage" />
+              <image class="case-image" mode="aspectFill" src="{{priceForm.caseImageUrls[index] || item}}" data-url="{{priceForm.caseImageUrls[index] || item}}" bindtap="previewServiceCaseImage" lazy-load="true" />
               <view class="case-remove" data-index="{{index}}" catchtap="removeServiceCaseImage">×</view>
             </view>
           </view>
@@ -171,11 +171,6 @@
     </view>
   </view>
 
-  <view class="bottom-nav">
-    <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon remix-icon ri-dashboard-3-line"></view><view>控制台</view></view>
-    <view class="nav-item" data-url="/pages/admin/orders/list/index" bindtap="go"><view class="nav-icon remix-icon ri-file-list-3-line"></view><view>订单</view></view>
-    <view class="nav-item" data-url="/pages/admin/staff-audit/list/index" bindtap="go"><view class="nav-icon remix-icon ri-checkbox-circle-line"></view><view>审核</view></view>
-    <view class="nav-item" data-url="/pages/admin/incidents/list/index" bindtap="go"><view class="nav-icon remix-icon ri-alarm-warning-line"></view><view>异常</view></view>
-  </view>
+  <role-bottom-nav class="bottom-nav" role="admin" active="/pages/admin/service-prices/index" />
 </view>
 <global-loading />

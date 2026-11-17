@@ -171,7 +171,7 @@ module.exports=function createDisputesService(context) {
     let bonusMsg = ''
     if (sceneId) {
       try {
-        const shopRes = await db.collection(COLLECTION).where({ kind: 'plot', communityId: sceneId, buildingType: 'repair_shop' }).get()
+        const shopRes = await db.collection(COLLECTION).where({ kind: 'plot', communityId: sceneId, buildingType: 'repair_shop' }).limit(50).get()
         const shop = (shopRes.data || []).find((p) => !p.demolished)
         if (shop && shop.ownerOpenid && shop.ownerOpenid !== openid) {
           const userRes = await db.collection('users').where({ openid: shop.ownerOpenid }).limit(1).get()

@@ -456,39 +456,6 @@ page {
   min-width: 0;
 }
 
-.client-bottom-nav {
-  border-top: 1rpx solid rgba(255, 153, 102, 0.12);
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 -12rpx 36rpx rgba(123, 89, 62, 0.08);
-}
-
-.client-bottom-nav .nav-item {
-  color: #8e8580;
-}
-
-.client-bottom-nav .nav-item.active {
-  color: #e9672f;
-  font-weight: 850;
-}
-
-.client-bottom-nav .nav-icon {
-  position: relative;
-  width: 48rpx;
-  height: 48rpx;
-}
-
-
-.nav-red-dot {
-  position: absolute;
-  top: 2rpx;
-  right: 2rpx;
-  width: 14rpx;
-  height: 14rpx;
-  border-radius: 50%;
-  background: #f53f3f;
-  box-shadow: 0 0 0 5rpx rgba(245, 63, 63, 0.12);
-}
-
 .status-tab:active,
 .order-card:active,
 .subscribe-card:active,
@@ -574,43 +541,4 @@ page {
 
 .group-buy-detail-link:active {
   background: rgba(209, 250, 229, 0.6);
-}
-
-.theme-night .group-buy-order-badge {
-  color: #34d399;
-  background: rgba(16, 185, 129, 0.22);
-  border-color: rgba(52, 211, 153, 0.35);
-  box-shadow: none;
-}
-
-.theme-night .badge.badge-group-recruiting {
-  color: #fde047;
-  background: rgba(234, 179, 8, 0.22);
-  border-color: rgba(234, 179, 8, 0.35);
-}
-
-.theme-night .badge.badge-group-formed {
-  color: #34d399;
-  background: rgba(16, 185, 129, 0.22);
-  border-color: rgba(52, 211, 153, 0.35);
-}
-
-.theme-night .group-buy-card-footer {
-  background: rgba(16, 185, 129, 0.10);
-  border-color: rgba(52, 211, 153, 0.25);
-}
-
-.theme-night .group-buy-tip-text {
-  color: #6ee7b7;
-}
-
-.theme-night .group-buy-tip-text .remix-icon {
-  color: #34d399;
-}
-
-.theme-night .group-buy-detail-link {
-  color: #34d399;
-  background: rgba(30, 41, 59, 0.85);
-  border-color: rgba(52, 211, 153, 0.35);
-  box-shadow: none;
 }

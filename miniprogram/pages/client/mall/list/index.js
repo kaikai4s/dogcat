@@ -15,6 +15,7 @@ Page({
     pageSize: 10,
     hasMore: true,
     loading: false,
+    loadError: false,
     total: 0,
     localLoaded: false,
     configLoaded: false,
@@ -117,7 +118,7 @@ Page({
     if (this.data.loading) return Promise.resolve()
     const reset = options.reset === true
     const page = reset ? 1 : this.data.page
-    this.setData({ loading: true })
+    this.setData({ loading: true, loadError: false })
     return callFunction('mall', 'listProducts', { keyword: this.data.keyword, categoryId: this.data.categoryId, sort: this.data.sort, page, pageSize: this.data.pageSize })
       .then((result) => {
         const pageData = pageList(result)
@@ -127,13 +128,18 @@ Page({
           hasMore: pageData.hasMore,
           total: pageData.total,
           loading: false,
-          localLoaded: true
+          localLoaded: true,
+          loadError: false
         })
       })
       .catch((error) => {
-        this.setData({ loading: false })
+        this.setData({ loading: false, loadError: reset && !this.data.products.length })
         showError(error)
       })
+  },
+
+  retryProducts() {
+    return this.loadLocalMall()
   },
 
   loadMore() {

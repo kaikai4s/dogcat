@@ -1,5 +1,11 @@
 const { callFunction, showError, ensureLogin } = require('../../../utils/cloud')
-const { formatDateTime, parseBeijingDate } = require('../../../utils/format')
+const formatUtils = require('../../../utils/format') || {}
+const formatDateTime = formatUtils.formatDateTime || ((v) => v || '')
+const parseBeijingDate = formatUtils.parseBeijingDate || (() => null)
+const pageList = formatUtils.pageList || ((r) => Array.isArray(r) ? { list: r, hasMore: false, page: 1, total: r.length } : (r || { list: [], hasMore: false, page: 1, total: 0 }))
+const navUtils = require('../../../utils/nav') || {}
+const getNavBarInfo = navUtils.getNavBarInfo || (() => ({ statusBarHeight: 44, titleBarHeight: 44, navBarHeight: 88 }))
+const navigateRoleRoute = navUtils.navigateRoleRoute || ((url) => wx.navigateTo({ url }))
 const clientNav = require('../../../utils/client-nav')
 const loadMessageUnread = clientNav.loadMessageUnread || (() => Promise.resolve())
 const refreshUnread = clientNav.refreshUnread || (() => Promise.resolve())
@@ -9,10 +15,6 @@ const { applyTheme, getThemeState } = require('../../../utils/theme')
 const cloudAssets = require('../../../utils/cloud-assets')
 const getDovlinLogoUrl = (cloudAssets && (cloudAssets.getDovlinLogoSrc || cloudAssets.getDovlinLogoUrl)) || (() => '')
 const applyDovlinLogo = (cloudAssets && cloudAssets.applyDovlinLogo) || (() => {})
-
-function pageList(result) {
-  return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result || { list: [], hasMore: false, page: 1, total: 0 })
-}
 
 function messageTimeValue(thread = {}) {
   const source = thread.lastMessageAt || thread.updatedAt || thread.createdAt
@@ -55,31 +57,6 @@ function withThreadText(thread) {
   }
 }
 
-function getNavBarInfo() {
-  let statusBarHeight = 44
-  let titleBarHeight = 44
-  try {
-    const windowInfo = (typeof wx !== 'undefined' && ((wx.getWindowInfo && wx.getWindowInfo()) || (wx.getSystemInfoSync && wx.getSystemInfoSync()))) || {}
-    if (windowInfo.statusBarHeight) {
-      statusBarHeight = windowInfo.statusBarHeight
-    }
-    const menu = typeof wx !== 'undefined' && wx.getMenuButtonBoundingClientRect ? wx.getMenuButtonBoundingClientRect() : null
-    if (menu && menu.top && menu.height) {
-      titleBarHeight = (menu.top - statusBarHeight) * 2 + menu.height
-    } else {
-      titleBarHeight = 44
-    }
-  } catch (_) {
-    statusBarHeight = 44
-    titleBarHeight = 44
-  }
-  return {
-    statusBarHeight,
-    titleBarHeight,
-    navBarHeight: statusBarHeight + titleBarHeight
-  }
-}
-
 Page({
   data: {
     statusBarHeight: 44,
@@ -87,7 +64,7 @@ Page({
     navBarHeight: 88,
     isNavScrolled: false,
     dovlinLogoDogUrl: getDovlinLogoUrl(),
-    ...getNavBarInfo(),
+    ...getNavBarInfo(typeof wx !== 'undefined' ? wx : null),
     themeClass: 'theme-day',
     activeTab: 'order', // 'order' | 'system'
     // 订单消息
@@ -122,7 +99,7 @@ Page({
     showNoticeModal: false
   },
   initNavBar() {
-    const navInfo = getNavBarInfo()
+    const navInfo = getNavBarInfo(typeof wx !== 'undefined' ? wx : null)
     if (
       this.data.statusBarHeight !== navInfo.statusBarHeight ||
       this.data.titleBarHeight !== navInfo.titleBarHeight ||
@@ -413,12 +390,6 @@ Page({
   go(e) {
     const url = e.currentTarget.dataset.url
     if (!url) return
-    const pages = getCurrentPages()
-    const current = pages[pages.length - 1]
-    const currentRoute = current && current.route ? '/' + current.route : ''
-    if (currentRoute === url) return
-    const mainNavUrls = ['/pages/client/home/index', '/pages/client/sitters/list/index', '/pages/client/orders/list/index', '/pages/client/messages/index', '/pages/client/profile/index']
-    const method = mainNavUrls.includes(url) ? 'redirectTo' : 'navigateTo'
-    wx[method]({ url })
+    navigateRoleRoute(url, 'client')
   }
 })

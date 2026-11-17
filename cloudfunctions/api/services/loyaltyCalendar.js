@@ -266,7 +266,7 @@ module.exports = function createService({
   async function buildMonthCalendar(openid, monthKey) {
     const user = await getUser(openid)
     const config = await ensureMonthConfig(monthKey)
-    const checkinsRes = await db.collection('user_checkins').where({ openid, monthKey }).get()
+    const checkinsRes = await db.collection('user_checkins').where({ openid, monthKey }).limit(100).get()
     const checkinMap = (checkinsRes.data || [])
       .filter((item) => item.status !== 'failed')
       .reduce((map, item) => ({ ...map, [item.day]: item }), {})

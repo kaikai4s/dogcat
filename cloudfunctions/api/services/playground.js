@@ -59,7 +59,7 @@ module.exports = function createService({
     const time = nowText()
     const playground = {
       ownerOpenid: openid,
-      name: '我的宠物乐园',
+      name: '我的宠物庄园',
       theme: 'sunny_garden',
       level: 1,
       maxVisiblePets: 8,

@@ -11,7 +11,7 @@
     <view class="beauty-tip">第一张会作为宠物头像；每月1日可删除美照，2日后将锁定保留。</view>
     <view class="beauty-grid">
       <view class="beauty-photo" wx:for="{{form.beautyPhotos}}" wx:key="id">
-        <image class="beauty-image" src="{{item.fileId}}" mode="aspectFill" data-url="{{item.fileId}}" bindtap="previewPhoto" />
+        <image class="beauty-image" src="{{item.fileId}}" mode="aspectFill" data-url="{{item.fileId}}" bindtap="previewPhoto" lazy-load="true" />
         <view class="cover-tag" wx:if="{{index === 0}}">头像</view>
         <view class="delete-photo {{canDeleteBeautyPhoto ? '' : 'disabled'}}" data-index="{{index}}" catchtap="removeBeautyPhoto"><text class="remix-icon ri-delete-bin-4-line"></text></view>
       </view>
@@ -88,7 +88,7 @@
       <view wx:if="{{id}}">
         <view class="vaccine-files">
           <view class="vaccine-file" wx:for="{{vaccineFileIds}}" wx:key="*this">
-            <image src="{{item}}" mode="aspectFill" />
+            <image src="{{item}}" mode="aspectFill" lazy-load="true" />
             <view class="delete-photo" data-index="{{index}}" catchtap="removeVaccineFile"><text class="remix-icon ri-close-line"></text></view>
           </view>
           <view class="vaccine-add" wx:if="{{vaccineFileIds.length < 9}}" bindtap="chooseVaccineFiles"><text class="remix-icon ri-upload-cloud-2-line"></text><text>{{uploadingVaccine ? '上传中' : '上传凭证'}}</text></view>

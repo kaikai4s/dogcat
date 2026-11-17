@@ -39,7 +39,7 @@ function decorate(item, access) {
     : '所有会员可用' }
 }
 async function validateLevels(db, ids) {
-  const levels = (await db.collection('member_levels').get()).data || []
+  const levels = (await db.collection('member_levels').limit(500).get()).data || []
   if (ids.some((id) => !levels.some((l) => l._id === id))) throw new Error('所选会员等级已变化，请刷新后重新选择')
 }
 module.exports = { memberAccess, levelIds, unlocked, plotAllowance, decorate, validateLevels }

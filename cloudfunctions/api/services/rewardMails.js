@@ -97,7 +97,7 @@ module.exports = function createService({
           status: 'active',
           openid: db.command && typeof db.command.in === 'function' ? db.command.in(chunk) : chunk
         }
-        const res = await db.collection('users').where(condition).get()
+        const res = await db.collection('users').where(condition).limit(50).get()
         targetUsers.push(...(res.data || []))
       } catch (_) {
         for (const id of chunk) {

@@ -6,11 +6,15 @@
   </view>
 
   <view class="card form-card">
+    <view class="booking-phone-tip" wx:if="{{returnOnPhoneBind}}">
+      <text class="remix-icon ri-cellphone-line"></text>
+      <text>创建订单需绑定手机号，点击下方「快捷授权」绑定后将自动返回下单页。</text>
+    </view>
     <view class="card-subtitle"><text class="remix-icon ri-image-edit-line sub-icon"></text><text>头像</text></view>
     <view class="avatar-picker-wrap">
       <button class="avatar-picker-btn" open-type="chooseAvatar" bindtap="preparePrivacyAuthorize" bindchooseavatar="onChooseAvatar">
         <view class="avatar-picker">
-          <image class="avatar-preview" wx:if="{{form.avatarUrl}}" src="{{form.avatarUrl}}" mode="aspectFill" />
+          <image class="avatar-preview" wx:if="{{form.avatarUrl}}" src="{{form.avatarUrl}}" mode="aspectFill" lazy-load="true" />
           <view class="avatar-empty" wx:else><text class="remix-icon ri-camera-line"></text><text>微信头像</text></view>
         </view>
       </button>
@@ -21,7 +25,7 @@
     <view class="card-subtitle"><text class="remix-icon ri-profile-line sub-icon"></text><text>基础资料</text></view>
     <input class="input-field" type="nickname" placeholder="昵称（点击键盘可一键填入微信昵称）" value="{{form.nickname}}" data-field="nickname" bindinput="input" bindblur="onNicknameBlur" />
     <view class="card-subtitle"><text class="remix-icon ri-phone-line sub-icon"></text><text>联系电话</text></view>
-    <view class="phone-input-card">
+    <view class="phone-input-card {{focusPhone ? 'phone-input-card--highlight' : ''}}">
       <input class="input-field phone-input" placeholder="请通过微信授权绑定手机号" value="{{form.phone}}" disabled />
       <button class="phone-auth-btn" open-type="getPhoneNumber" bindtap="preparePrivacyAuthorize" bindgetphonenumber="bindPhone">快捷授权</button>
     </view>

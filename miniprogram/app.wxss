@@ -57,29 +57,7 @@ page {
   font-family: var(--app-font-family);
 }
 
-.theme-night {
-  position: relative;
-  overflow: hidden;
-  --theme-bg: linear-gradient(180deg, #15131d 0%, #1f2030 48%, #11131b 100%);
-  --theme-bg-soft: #242638;
-  --theme-card-bg: rgba(36, 38, 54, 0.96);
-  --theme-primary: #7c8cff;
-  --theme-primary-2: #a78bfa;
-  --theme-primary-soft: #2e335f;
-  --theme-text: #f5f4fb;
-  --theme-title: #ffffff;
-  --theme-muted: #b9b6c8;
-  --theme-border: rgba(124, 140, 255, 0.24);
-  --theme-shadow: rgba(0, 0, 0, 0.32);
-  --theme-hero: linear-gradient(135deg, #20233a 0%, #373154 58%, #181927 100%);
-  --theme-hero-text: #ffffff;
-}
-
-
-.page.theme-day,
-.page.theme-night,
-.profile-settings-page.theme-day,
-.profile-settings-page.theme-night {
+.page.theme-day, .profile-settings-page.theme-day {
   background: var(--theme-bg);
   color: var(--theme-text);
 }
@@ -242,42 +220,6 @@ button::after { border: none; }
 .badge-pill.green { color: #18a87c; background: #eafaf3; }
 .badge-pill.blue { color: #2563eb; background: #eff6ff; }
 .badge-pill.gray { color: #8e8580; background: #f7f5f4; }
-
-.theme-night::before {
-  content: "";
-  position: absolute;
-  right: 0;
-  top: 118rpx;
-  width: 100%;
-  height: 520rpx;
-  border-radius: 0;
-  background:
-    radial-gradient(circle, rgba(255, 255, 255, 0.92) 0 3rpx, transparent 4rpx) 12% 18% / 180rpx 170rpx,
-    radial-gradient(circle, rgba(167, 139, 250, 0.72) 0 4rpx, transparent 5rpx) 72% 10% / 230rpx 210rpx,
-    radial-gradient(circle, rgba(124, 140, 255, 0.7) 0 3rpx, transparent 4rpx) 38% 58% / 210rpx 190rpx,
-    radial-gradient(circle, rgba(255, 255, 255, 0.56) 0 2rpx, transparent 3rpx) 86% 54% / 150rpx 130rpx,
-    radial-gradient(circle at 82% 18%, #fff8cf 0 34rpx, transparent 35rpx);
-  opacity: 0.78;
-  pointer-events: none;
-}
-
-.theme-night::after {
-  content: "✦  ✧   ✦";
-  position: absolute;
-  left: 44rpx;
-  top: 180rpx;
-  color: rgba(255, 248, 207, 0.78);
-  font-size: 38rpx;
-  letter-spacing: 28rpx;
-  transform: rotate(-8deg);
-  text-shadow: 160rpx 76rpx 0 rgba(255,255,255,0.45), 420rpx -20rpx 0 rgba(167,139,250,0.52), 540rpx 138rpx 0 rgba(255,255,255,0.36);
-  pointer-events: none;
-}
-
-.page.theme-night::after {
-  content: "✦  ✧   ✦";
-}
-
 .login-page {
   padding-top: 84rpx;
   background: linear-gradient(180deg, #ffdbe6 0%, #fff5f8 56%, #fff 100%);
@@ -1494,6 +1436,16 @@ textarea {
   margin-top: 8rpx;
   color: var(--theme-muted);
   font-size: 25rpx;
+}
+
+role-bottom-nav.bottom-nav {
+  display: block;
+  position: static;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
 }
 
 .bottom-nav {

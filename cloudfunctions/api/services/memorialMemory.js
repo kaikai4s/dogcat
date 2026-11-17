@@ -1,5 +1,6 @@
 const crypto = require('crypto')
 const { readOptionalDocument } = require('../utils/documentPages')
+const { memorialYearFields } = require('../utils/memorialYears')
 const digest = s => crypto.createHash('sha256').update(String(s)).digest('hex').slice(0, 32)
 const clean = v => String(v || '').normalize('NFKC').trim()
 const LIMITS = { image: 1024 * 1024, video: 30 * 1024 * 1024, music: 10 * 1024 * 1024 }
@@ -45,7 +46,7 @@ module.exports = context => {
       if (!app || app.key !== 'memorial_application') throw new Error('时光小筑申请不存在')
       const row = await read(db, memoryId(app._id)), garden = await gardens.get(gardenId(app))
       return { id: app._id, ownerOpenid: app.ownerOpenid, applicant: app.applicant, petName: app.petName, epitaph: app.epitaph,
-        date: app.date, lawn: app.lawn, plotId: app.plotId, x: app.x, y: app.y, gardenId: garden._id, gardenName: garden.name,
+        date: app.date, ...memorialYearFields(app), lawn: app.lawn, plotId: app.plotId, x: app.x, y: app.y, gardenId: garden._id, gardenName: garden.name,
         status: app.status, createdAt: app.createdAt, reviewedAt: app.reviewedAt || (app.status !== 'pending' ? app.updatedAt : ''),
         reason: app.reason || '', style: app.style || 'arch', isPublic: !!(row && row.isPublic), reviewStatus: row && row.status || 'empty',
         memoryUpdatedAt: row && row.updatedAt, memoryReason: row && row.reason || '',
@@ -57,7 +58,7 @@ module.exports = context => {
       const garden = await gardens.get(gardenId(app))
       const owner = app.ownerOpenid === openid, row = await read(db, memoryId(app._id))
       const visible = !!(row && row.isPublic && row.publicContent)
-      return { id: app._id, gardenId: garden._id, gardenName: garden.name, petName: app.petName, epitaph: app.epitaph, date: app.date, lawn: app.lawn, plotId: app.plotId,
+      return { id: app._id, gardenId: garden._id, gardenName: garden.name, petName: app.petName, epitaph: app.epitaph, date: app.date, ...memorialYearFields(app), lawn: app.lawn, plotId: app.plotId,
         style: app.style || 'arch', locationRevision: app.locationRevision || 0, owner, isPublic: !!(row && row.isPublic), hasPublicStory: visible,
         story: visible ? await hydrate(row.publicContent) : null,
         ...(owner ? { revision: row && row.revision || 0, mediaRevision: row && row.mediaRevision || 0, reviewStatus: row && row.status || 'empty', reason: row && row.reason || '', draft: await hydrate(row && row.draft) } : {}) }

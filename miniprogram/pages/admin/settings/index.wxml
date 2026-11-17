@@ -308,7 +308,7 @@
           <view class="section-subtitle" style="margin-top: 24rpx; font-weight: bold;">芝麻信用分截屏参考模板</view>
           <view class="muted" style="margin-bottom: 12rpx;">管理员上传示例模板后，宠托师申请时可点击查看模板大图，引导其在支付宝中截取正确的分数页面。</view>
           <view class="template-upload-box" style="display: flex; align-items: center; gap: 20rpx; margin-bottom: 24rpx;">
-            <image wx:if="{{settings.staffZhima.scoreTemplateTempUrl || settings.staffZhima.scoreTemplateUrl}}" src="{{settings.staffZhima.scoreTemplateTempUrl || settings.staffZhima.scoreTemplateUrl}}" mode="aspectFill" style="width: 140rpx; height: 140rpx; border-radius: 12rpx; border: 1rpx solid #e5e7eb;" data-url="{{settings.staffZhima.scoreTemplateTempUrl || settings.staffZhima.scoreTemplateUrl}}" bindtap="previewStaffZhimaTemplate" />
+            <image wx:if="{{settings.staffZhima.scoreTemplateTempUrl || settings.staffZhima.scoreTemplateUrl}}" src="{{settings.staffZhima.scoreTemplateTempUrl || settings.staffZhima.scoreTemplateUrl}}" mode="aspectFill" style="width: 140rpx; height: 140rpx; border-radius: 12rpx; border: 1rpx solid #e5e7eb;" data-url="{{settings.staffZhima.scoreTemplateTempUrl || settings.staffZhima.scoreTemplateUrl}}" bindtap="previewStaffZhimaTemplate" lazy-load="true" />
             <view style="display: flex; flex-direction: column; gap: 10rpx;">
               <button class="mini-btn" data-type="score" bindtap="chooseStaffZhimaTemplate">{{settings.staffZhima.scoreTemplateUrl ? '更换模板' : '上传分数模板'}}</button>
               <button class="mini-danger-btn" wx:if="{{settings.staffZhima.scoreTemplateUrl}}" data-type="score" bindtap="removeStaffZhimaTemplate">清除模板</button>
@@ -318,7 +318,7 @@
           <view class="section-subtitle" style="margin-top: 24rpx; font-weight: bold;">支付宝个人主页截屏参考模板</view>
           <view class="muted" style="margin-bottom: 12rpx;">引导宠托师在支付宝【我的】页面截屏，管理员审核时核对该截屏中的账号/实名与申请人是否一致。</view>
           <view class="template-upload-box" style="display: flex; align-items: center; gap: 20rpx; margin-bottom: 24rpx;">
-            <image wx:if="{{settings.staffZhima.profileTemplateTempUrl || settings.staffZhima.profileTemplateUrl}}" src="{{settings.staffZhima.profileTemplateTempUrl || settings.staffZhima.profileTemplateUrl}}" mode="aspectFill" style="width: 140rpx; height: 140rpx; border-radius: 12rpx; border: 1rpx solid #e5e7eb;" data-url="{{settings.staffZhima.profileTemplateTempUrl || settings.staffZhima.profileTemplateUrl}}" bindtap="previewStaffZhimaTemplate" />
+            <image wx:if="{{settings.staffZhima.profileTemplateTempUrl || settings.staffZhima.profileTemplateUrl}}" src="{{settings.staffZhima.profileTemplateTempUrl || settings.staffZhima.profileTemplateUrl}}" mode="aspectFill" style="width: 140rpx; height: 140rpx; border-radius: 12rpx; border: 1rpx solid #e5e7eb;" data-url="{{settings.staffZhima.profileTemplateTempUrl || settings.staffZhima.profileTemplateUrl}}" bindtap="previewStaffZhimaTemplate" lazy-load="true" />
             <view style="display: flex; flex-direction: column; gap: 10rpx;">
               <button class="mini-btn" data-type="profile" bindtap="chooseStaffZhimaTemplate">{{settings.staffZhima.profileTemplateUrl ? '更换模板' : '上传主页模板'}}</button>
               <button class="mini-danger-btn" wx:if="{{settings.staffZhima.profileTemplateUrl}}" data-type="profile" bindtap="removeStaffZhimaTemplate">清除模板</button>
@@ -452,7 +452,7 @@
           <view class="field-item">
             <text class="label">邀请分享封面</text>
             <view class="checkin-share-upload" bindtap="chooseInvitationShareImage">
-              <image wx:if="{{settings.invitation.shareImageTempUrl}}" class="checkin-share-preview" src="{{settings.invitation.shareImageTempUrl}}" mode="aspectFill" />
+              <image wx:if="{{settings.invitation.shareImageTempUrl}}" class="checkin-share-preview" src="{{settings.invitation.shareImageTempUrl}}" mode="aspectFill" lazy-load="true" />
               <view wx:else class="checkin-share-placeholder"><text class="remix-icon ri-image-add-line"></text><text>{{uploadingInvitationShareImage ? '上传中...' : '上传邀请分享封面'}}</text></view>
             </view>
             <view class="oa-qrcode-ops" wx:if="{{settings.invitation.shareImageUrl}}">
@@ -605,7 +605,7 @@
             <text class="label">服务号二维码</text>
             <view class="oa-qrcode-upload-box">
               <view wx:if="{{settings.officialAccount.qrCodeTempUrl || settings.officialAccount.qrCodeUrl}}" class="oa-qrcode-preview-card">
-                <image class="oa-qrcode-img" src="{{settings.officialAccount.qrCodeTempUrl || settings.officialAccount.qrCodeUrl}}" mode="aspectFit" bindtap="previewOfficialAccountQrCode" />
+                <image class="oa-qrcode-img" src="{{settings.officialAccount.qrCodeTempUrl || settings.officialAccount.qrCodeUrl}}" mode="aspectFit" bindtap="previewOfficialAccountQrCode" lazy-load="true" />
                 <view class="oa-qrcode-ops">
                   <button class="btn btn-outline btn-xs" bindtap="previewOfficialAccountQrCode">查看大图</button>
                   <button class="btn btn-outline btn-xs" bindtap="chooseOfficialAccountQrCodeImage">{{uploadingOfficialAccountQrCode ? '上传中...' : '重新上传'}}</button>
@@ -660,7 +660,7 @@
           <view class="field-item">
             <text class="label">封面图片</text>
             <view class="checkin-share-upload" bindtap="chooseCheckinShareImage">
-              <image wx:if="{{settings.checkinShare.imageTempUrl}}" class="checkin-share-preview" src="{{settings.checkinShare.imageTempUrl}}" mode="aspectFill" />
+              <image wx:if="{{settings.checkinShare.imageTempUrl}}" class="checkin-share-preview" src="{{settings.checkinShare.imageTempUrl}}" mode="aspectFill" lazy-load="true" />
               <view wx:else class="checkin-share-placeholder"><text class="remix-icon ri-image-add-line"></text><text>{{uploadingCheckinShareImage ? '上传中...' : '上传分享封面图'}}</text></view>
             </view>
             <view class="checkin-share-file" wx:if="{{settings.checkinShare.imageUrl}}">{{settings.checkinShare.imageUrl}}</view>
@@ -671,10 +671,10 @@
           <view class="field-item">
             <text class="label">好友卡片与朋友圈封面</text>
             <view class="checkin-share-upload" wx:if="{{adminSuper}}" bindtap="chooseGeneralShareImage">
-              <image wx:if="{{settings.generalShare.imageTempUrl}}" class="checkin-share-preview" src="{{settings.generalShare.imageTempUrl}}" mode="aspectFill" />
+              <image wx:if="{{settings.generalShare.imageTempUrl}}" class="checkin-share-preview" src="{{settings.generalShare.imageTempUrl}}" mode="aspectFill" lazy-load="true" />
               <view wx:else class="checkin-share-placeholder"><text class="remix-icon ri-image-add-line"></text><text>{{uploadingGeneralShareImage ? '上传中...' : '上传通用分享封面'}}</text></view>
             </view>
-            <image wx:elif="{{settings.generalShare.imageTempUrl}}" class="checkin-share-preview" src="{{settings.generalShare.imageTempUrl}}" mode="aspectFill" />
+            <image wx:elif="{{settings.generalShare.imageTempUrl}}" class="checkin-share-preview" src="{{settings.generalShare.imageTempUrl}}" mode="aspectFill" lazy-load="true" />
             <view class="oa-qrcode-ops" wx:if="{{adminSuper && settings.generalShare.imageUrl}}">
               <button class="btn btn-outline btn-xs" bindtap="previewGeneralShareImage">查看大图</button>
               <button class="btn btn-outline btn-xs btn-danger" bindtap="removeGeneralShareImage">删除</button>
@@ -717,7 +717,7 @@
           <view class="section-title-row between"><text class="section-title">轮播素材 ({{settings.homeHeroCarousel.items.length}} / 5)</text><button class="small-btn primary-btn" wx:if="{{settings.homeHeroCarousel.items.length < 5}}" bindtap="startAddItem">添加</button></view>
           <view class="carousel-list" wx:if="{{settings.homeHeroCarousel.items.length > 0}}">
             <view class="carousel-compact-item" wx:for="{{settings.homeHeroCarousel.items}}" wx:key="id">
-              <view class="item-preview"><image wx:if="{{item.type === 'image'}}" src="{{item.tempUrl}}" mode="aspectFill" class="preview-img" /><view wx:else class="preview-video-box"><image src="{{item.posterTempUrl || item.tempUrl}}" mode="aspectFill" class="preview-img" /><view class="video-tag">视频</view></view></view>
+              <view class="item-preview"><image wx:if="{{item.type === 'image'}}" src="{{item.tempUrl}}" mode="aspectFill" class="preview-img" lazy-load="true" /><view wx:else class="preview-video-box"><image src="{{item.posterTempUrl || item.tempUrl}}" mode="aspectFill" class="preview-img" lazy-load="true" /><view class="video-tag">视频</view></view></view>
               <view class="item-info">
                 <view class="item-title-line"><text class="item-title">{{item.title || '(无标题)'}}</text><text class="badge-type">{{item.type === 'video' ? '视频' : '图片'}}</text></view>
                 <view class="item-sub" wx:if="{{item.subtitle}}">{{item.subtitle}}</view>
@@ -732,8 +732,8 @@
           <view class="edit-form-box" wx:if="{{showCarouselEditor}}">
             <view class="form-title">{{editingIndex >= 0 ? '编辑轮播素材' : '新增轮播素材'}}</view>
             <view class="field-item"><text class="label">素材类型</text><radio-group bindchange="typeChange" class="radio-group"><label class="radio-label"><radio value="image" checked="{{editingItem.type === 'image'}}" /> 图片</label><label class="radio-label"><radio value="video" checked="{{editingItem.type === 'video'}}" /> 视频</label></radio-group></view>
-            <view class="field-item"><text class="label">{{editingItem.type === 'video' ? '视频文件' : '图片文件'}}</text><view class="upload-trigger" bindtap="chooseMediaFile"><view wx:if="{{editingItem.tempUrl}}" class="upload-preview-box"><image wx:if="{{editingItem.type === 'image'}}" src="{{editingItem.tempUrl}}" mode="aspectFill" class="upload-preview" /><text wx:else class="upload-preview-text">视频已选择/上传 (FileID: {{editingItem.fileId}})</text></view><view wx:else class="upload-placeholder">+ 上传{{editingItem.type === 'video' ? '视频' : '图片'}}</view></view></view>
-            <view class="field-item" wx:if="{{editingItem.type === 'video'}}"><text class="label">视频封面图 (必填)</text><view class="upload-trigger" bindtap="choosePosterFile"><view wx:if="{{editingItem.posterTempUrl}}" class="upload-preview-box"><image src="{{editingItem.posterTempUrl}}" mode="aspectFill" class="upload-preview" /></view><view wx:else class="upload-placeholder">+ 上传视频封面图片</view></view></view>
+            <view class="field-item"><text class="label">{{editingItem.type === 'video' ? '视频文件' : '图片文件'}}</text><view class="upload-trigger" bindtap="chooseMediaFile"><view wx:if="{{editingItem.tempUrl}}" class="upload-preview-box"><image wx:if="{{editingItem.type === 'image'}}" src="{{editingItem.tempUrl}}" mode="aspectFill" class="upload-preview" lazy-load="true" /><text wx:else class="upload-preview-text">视频已选择/上传 (FileID: {{editingItem.fileId}})</text></view><view wx:else class="upload-placeholder">+ 上传{{editingItem.type === 'video' ? '视频' : '图片'}}</view></view></view>
+            <view class="field-item" wx:if="{{editingItem.type === 'video'}}"><text class="label">视频封面图 (必填)</text><view class="upload-trigger" bindtap="choosePosterFile"><view wx:if="{{editingItem.posterTempUrl}}" class="upload-preview-box"><image src="{{editingItem.posterTempUrl}}" mode="aspectFill" class="upload-preview" lazy-load="true" /></view><view wx:else class="upload-placeholder">+ 上传视频封面图片</view></view></view>
             <view class="field-item"><text class="label">主标题</text><input class="input" value="{{editingItem.title}}" placeholder="如：专业的上门宠托服务" data-field="title" bindinput="editingInput" /></view>
             <view class="field-item"><text class="label">副标题</text><input class="input" value="{{editingItem.subtitle}}" placeholder="如：安全 · 贴心 · 实时反馈" data-field="subtitle" bindinput="editingInput" /></view>
             <view class="field-item">
@@ -794,7 +794,7 @@
             <text class="label">海报图片</text>
             <view class="upload-trigger" bindtap="choosePetBeautyPoster">
               <view wx:if="{{settings.petBeautyContest.posterTempUrl || settings.petBeautyContest.posterUrl}}" class="upload-preview-box">
-                <image src="{{settings.petBeautyContest.posterTempUrl || settings.petBeautyContest.posterUrl}}" mode="aspectFill" class="upload-preview" />
+                <image src="{{settings.petBeautyContest.posterTempUrl || settings.petBeautyContest.posterUrl}}" mode="aspectFill" class="upload-preview" lazy-load="true" />
               </view>
               <view wx:else class="upload-placeholder">{{uploadingPetBeautyPoster ? '上传中...' : '+ 点击上传活动海报'}}</view>
             </view>
@@ -877,7 +877,7 @@
             </view>
             <view class="field-item">
               <text class="label">视频封面</text>
-              <view class="upload-trigger" data-index="{{vIndex}}" bindtap="chooseTrainingPosterFile"><view wx:if="{{v.posterTempUrl}}" class="upload-preview-box"><image src="{{v.posterTempUrl}}" mode="aspectFill" class="upload-preview" /></view><view wx:else class="upload-placeholder">{{uploadingTrainingPoster ? '上传中...' : '+ 上传视频封面'}}</view></view>
+              <view class="upload-trigger" data-index="{{vIndex}}" bindtap="chooseTrainingPosterFile"><view wx:if="{{v.posterTempUrl}}" class="upload-preview-box"><image src="{{v.posterTempUrl}}" mode="aspectFill" class="upload-preview" lazy-load="true" /></view><view wx:else class="upload-placeholder">{{uploadingTrainingPoster ? '上传中...' : '+ 上传视频封面'}}</view></view>
             </view>
           </view>
           <view class="empty-tip" wx:if="{{!settings.staffTraining.videos.length}}">暂无培训视频，请点击添加视频。</view>
@@ -1112,11 +1112,6 @@
     </view>
   </view>
 
-  <view class="bottom-nav">
-    <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon remix-icon ri-dashboard-3-line"></view><view>控制台</view></view>
-    <view class="nav-item" data-url="/pages/admin/coupons/index" bindtap="go"><view class="nav-icon remix-icon ri-coupon-3-line"></view><view>优惠券</view></view>
-    <view class="nav-item" data-url="/pages/admin/member-levels/index" bindtap="go"><view class="nav-icon remix-icon ri-vip-crown-line"></view><view>等级</view></view>
-    <view class="nav-item active"><view class="nav-icon remix-icon ri-settings-4-line"></view><view>设置</view></view>
-  </view>
+  <role-bottom-nav class="bottom-nav" role="admin" variant="settings" active="/pages/admin/settings/index" />
 </view>
 <global-loading />

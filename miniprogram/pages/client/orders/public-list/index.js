@@ -1,3 +1,4 @@
+const { pageList } = require('../../../../utils/format')
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
@@ -6,10 +7,6 @@ const tabs = [
   { label: '遛狗', value: 'walk' },
   { label: '喂养', value: 'feed' }
 ]
-
-function pageList(result) {
-  return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result || { list: [], hasMore: false, page: 1, total: 0 })
-}
 
 Page({
   data: {

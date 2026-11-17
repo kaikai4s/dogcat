@@ -1,6 +1,16 @@
 const { uploadImage } = require('../../../../utils/image-upload')
 const cloud = require('../../../../utils/cloud') || {}
 const { callFunction, showError, requestSubscribeTemplates, loadSystemSettings, getCachedSystemSettings } = cloud
+const preparePhonePrivacyAuthorizeHelper = typeof cloud.preparePhonePrivacyAuthorize === 'function'
+  ? cloud.preparePhonePrivacyAuthorize
+  : () => Promise.resolve()
+const bindPhoneByWechatEventHelper = typeof cloud.bindPhoneByWechatEvent === 'function'
+  ? cloud.bindPhoneByWechatEvent
+  : (e) => {
+    const code = e && e.detail && e.detail.code
+    if (!code) return Promise.resolve(null)
+    return callFunction('auth', 'loginByPhoneCode', { code })
+  }
 const showLoading = (opts) => {
   if (typeof cloud.showLoading === 'function') return cloud.showLoading(opts)
   if (typeof wx !== 'undefined' && typeof wx.showLoading === 'function') return wx.showLoading(opts)
@@ -12,7 +22,9 @@ const hideLoading = () => {
   }
 }
 const { createClientRequestId } = require('../../../../utils/offlineQueue')
-const { createPageNav, navMethods } = require('../../../../utils/nav')
+const navUtils = require('../../../../utils/nav') || {}
+const { createPageNav, navMethods } = navUtils
+const safeNavigateTo = typeof navUtils.safeNavigateTo === 'function' ? navUtils.safeNavigateTo : (opts) => wx.navigateTo(opts)
 const { getSelectedLocation, chooseSelectedLocation } = require('../../../../utils/cloud')
 const { ensureLogin } = require('../../../../utils/cloud')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
@@ -542,7 +554,117 @@ typeof Page === 'function' ? Page({
     surchargeDateMap: {},
     surchargeSlotList: [],
     sitterScheduleWarningText: '',
-    currentSitterScheduleTip: ''
+    currentSitterScheduleTip: '',
+    activeBookingStep: 1,
+    bookingStepsFixed: false,
+    bookingStepScrollTarget: '',
+    showPhoneBindModal: false,
+    bindingPhone: false
+  },
+
+  measureBookingStepsAnchor(immediate = false) {
+    if (this._closed || this.data.bookingMaintenance || this.data.maintenanceLoading) return
+    if (typeof wx === 'undefined' || typeof wx.createSelectorQuery !== 'function') return
+    const run = () => {
+      if (this._closed || this._measuringSteps) return
+      this._measuringSteps = true
+      const rawQuery = wx.createSelectorQuery()
+      const query = rawQuery && typeof rawQuery.in === 'function' ? rawQuery.in(this) : rawQuery
+      if (!query || typeof query.select !== 'function' || typeof query.exec !== 'function') {
+        this._measuringSteps = false
+        return
+      }
+      query.select('#booking-steps-anchor').boundingClientRect()
+      query.selectViewport().scrollOffset()
+      query.exec((res) => {
+        this._measuringSteps = false
+        if (this._closed || !Array.isArray(res)) return
+        const anchorRect = res[0]
+        const viewport = res[1]
+        const scrollTop = Math.max(0, Number(viewport && viewport.scrollTop) || 0)
+        if (anchorRect && typeof anchorRect.top === 'number') {
+          this._bookingStepsTop = Math.max(0, anchorRect.top + scrollTop)
+          this._bookingStepsHeight = Math.max(36, anchorRect.height || 44)
+          const shouldFix = anchorRect.top <= 2 || scrollTop >= Math.max(0, this._bookingStepsTop - 2)
+          if (shouldFix !== this.data.bookingStepsFixed) {
+            this.setData({ bookingStepsFixed: shouldFix })
+          }
+        }
+      })
+    }
+    clearTimeout(this._measureStepsTimer)
+    if (immediate) {
+      run()
+    } else {
+      this._measureStepsTimer = setTimeout(run, 60)
+    }
+  },
+
+  scheduleSyncBookingStep() {
+    if (this._closed || Date.now() < (this._programmaticStepUntil || 0)) return
+    if (typeof wx === 'undefined' || typeof wx.createSelectorQuery !== 'function') return
+    clearTimeout(this._scrollSpyTimer)
+    this._scrollSpyTimer = setTimeout(() => {
+      if (this._closed || Date.now() < (this._programmaticStepUntil || 0)) return
+      const rawQuery = wx.createSelectorQuery()
+      const query = rawQuery && typeof rawQuery.in === 'function' ? rawQuery.in(this) : rawQuery
+      if (!query || typeof query.selectAll !== 'function' || typeof query.exec !== 'function') return
+      query.selectAll('.booking-step-card').boundingClientRect()
+      query.exec((res) => {
+        if (this._closed || !Array.isArray(res) || !Array.isArray(res[0]) || !res[0].length) return
+        const headerOffset = (this._bookingStepsHeight || 44) + 28
+        let currentStep = 1
+        for (let i = 0; i < res[0].length; i += 1) {
+          const rect = res[0][i]
+          if (rect && typeof rect.top === 'number' && rect.top <= headerOffset) {
+            const matched = Number(String(rect.id || '').replace('booking-step-', ''))
+            currentStep = matched || (i + 1)
+          }
+        }
+        if (currentStep !== this.data.activeBookingStep) {
+          this.setData({
+            activeBookingStep: currentStep,
+            bookingStepScrollTarget: `booking-step-pill-${currentStep}`
+          })
+        }
+      })
+    }, 90)
+  },
+
+  onReady() {
+    this.measureBookingStepsAnchor()
+  },
+
+  onPageScroll(e) {
+    if (this._closed || this.data.bookingMaintenance || this.data.maintenanceLoading) return
+    const scrollTop = Math.max(0, Number(e && e.scrollTop) || 0)
+    this._lastScrollTop = scrollTop
+    if (!Number.isFinite(this._bookingStepsTop)) {
+      this.measureBookingStepsAnchor(true)
+    } else {
+      const shouldFix = scrollTop >= Math.max(0, this._bookingStepsTop - 2)
+      if (shouldFix !== this.data.bookingStepsFixed) {
+        this.setData({ bookingStepsFixed: shouldFix })
+      }
+    }
+    this.scheduleSyncBookingStep()
+  },
+
+  scrollToBookingStep(e) {
+    const step = Number(e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.step) || 1
+    this._programmaticStepUntil = Date.now() + 420
+    const barHeight = Math.ceil(this._bookingStepsHeight || 44)
+    this.setData({
+      activeBookingStep: step,
+      bookingStepScrollTarget: `booking-step-pill-${step}`
+    })
+    if (typeof wx !== 'undefined' && typeof wx.pageScrollTo === 'function') {
+      wx.pageScrollTo({ selector: `#booking-step-${step}`, offsetTop: -(barHeight + 12), duration: 240 })
+    }
+    clearTimeout(this._postScrollMeasureTimer)
+    this._postScrollMeasureTimer = setTimeout(() => {
+      if (!this._closed) this.measureBookingStepsAnchor(true)
+    }, 280)
   },
 
   onLoad(options = {}) {
@@ -574,6 +696,7 @@ typeof Page === 'function' ? Page({
   },
 
   onShow() {
+    this._bookingStepsTop = undefined
     this.applyCurrentTheme()
     const cached = getCachedSystemSettings()
     this.setData({ bookingMaintenance: cached.maintenance?.booking === true, maintenanceLoading: true })
@@ -583,12 +706,17 @@ typeof Page === 'function' ? Page({
       const paused = settings.maintenance?.booking === true
       this.setData({ bookingMaintenance: paused, maintenanceLoading: false })
       if (paused) return null
+      this.measureBookingStepsAnchor()
       this.initPricingSurcharges(settings && settings.pricingSurcharges)
       return ensureLogin({ content: '登录后可创建预约订单。' })
     })
       .then((user) => {
         if (!user) return
-        this.setData({ user })
+        const hasPhone = !!String(user.phone || '').trim()
+        this.setData({
+          user,
+          showPhoneBindModal: hasPhone ? false : this.data.showPhoneBindModal
+        })
         return this.loadPageData()
       }, () => {
         // Let ensureLogin finish its login navigation; data errors must not send users home.
@@ -2053,14 +2181,65 @@ typeof Page === 'function' ? Page({
     }
   },
 
+  openPhoneBindModal() {
+    this.dismissBookingNotice()
+    this.setData({ showPhoneBindModal: true })
+  },
+
+  closePhoneBindModal() {
+    this.setData({ showPhoneBindModal: false })
+  },
+
+  goBindPhone() {
+    this.setData({ showPhoneBindModal: false })
+    safeNavigateTo({ url: '/pages/client/profile/edit/index?from=booking&focus=phone' })
+  },
+
+  preparePhonePrivacyAuthorize() {
+    return preparePhonePrivacyAuthorizeHelper()
+  },
+
+  bindPhoneNumber(e) {
+    if (this.data.bindingPhone) return Promise.resolve(null)
+    this.setData({ bindingPhone: true })
+    return bindPhoneByWechatEventHelper(e)
+      .then((user) => {
+        if (!user) {
+          this.setData({ bindingPhone: false })
+          return null
+        }
+        const nextUser = { ...(this.data.user || {}), ...user }
+        this.setData({
+          user: nextUser,
+          bindingPhone: false,
+          showPhoneBindModal: !String(nextUser.phone || '').trim()
+        })
+        if (typeof wx !== 'undefined' && typeof wx.showToast === 'function') {
+          wx.showToast({ title: '手机号已绑定，可继续下单' })
+        }
+        return nextUser
+      })
+      .catch(() => {
+        this.setData({ bindingPhone: false })
+        return null
+      })
+  },
+
+  handleValidationError(error) {
+    if (!error) return false
+    if (error === '请先绑定手机号') {
+      this.openPhoneBindModal()
+      return true
+    }
+    this.showBookingNotice({ title: error, icon: 'none' })
+    return true
+  },
+
   chooseCoupon() {
     if (this.data.groupBuyMode) return this.showBookingNotice({ title: '拼单优惠不可与优惠券叠加' })
     this.prepareTime()
     const error = this.validateRequired()
-    if (error) {
-      this.showBookingNotice({ title: error, icon: 'none' })
-      return
-    }
+    if (this.handleValidationError(error)) return
     wx.setStorageSync(COUPON_CONTEXT_KEY, this.buildOrderPayload())
     wx.navigateTo({ url: `/pages/client/coupons/select/index?selectedCouponId=${this.data.selectedCouponId || ''}` })
   },
@@ -2094,8 +2273,7 @@ typeof Page === 'function' ? Page({
     if (!this.canAutoQuote()) {
       this.setData({ quote: null, displayPriceDigits: getPriceDigitsArray(0) })
       if (showToast) {
-        const error = this.validateRequired()
-        if (error) this.showBookingNotice({ title: error, icon: 'none' })
+        this.handleValidationError(this.validateRequired())
       }
       return Promise.resolve(null)
     }
@@ -2170,8 +2348,16 @@ typeof Page === 'function' ? Page({
     this.setData({ bookingNotice: '' })
   },
 
+  clearStepNavigationTimers() {
+    clearTimeout(this._measureStepsTimer)
+    clearTimeout(this._scrollSpyTimer)
+    clearTimeout(this._postScrollMeasureTimer)
+    this._measuringSteps = false
+  },
+
   onHide() {
     this.dismissBookingNotice()
+    this.clearStepNavigationTimers()
   },
 
   onUnload() {
@@ -2182,6 +2368,7 @@ typeof Page === 'function' ? Page({
     this._quoteRequest = (this._quoteRequest || 0) + 1
     clearTimeout(this.bookingNoticeTimer)
     clearTimeout(this._autoQuoteTimer)
+    this.clearStepNavigationTimers()
   },
 
   toggleAgreement() {
@@ -2206,7 +2393,7 @@ typeof Page === 'function' ? Page({
     if (!this.data.agreeAgreement) {
       this.showBookingNotice({ title: '请先阅读并勾选同意服务保障协议与取消规则', icon: 'none' })
       this.setData({ agreementRequired: true }, () => {
-        wx.pageScrollTo({ selector: '#booking-agreement', offsetTop: -24, duration: 300 })
+        wx.pageScrollTo({ selector: '#booking-agreement', offsetTop: -64, duration: 300 })
       })
       return
     }
@@ -2217,14 +2404,14 @@ typeof Page === 'function' ? Page({
     if (error) {
       this.creatingOrder = false
       this.setData({ creating: false })
-      this.showBookingNotice({ title: error, icon: 'none' })
+      this.handleValidationError(error)
       return
     }
     if (this.data.selectedPetCareCards.length && !this.data.careSyncConfirmed) {
       this.creatingOrder = false
       this.setData({ creating: false, careConfirmRequired: true })
       this.showBookingNotice({ title: '请先确认宠物照护卡会同步给接单宠托师', icon: 'none' })
-      wx.pageScrollTo({ selector: '#care-sync-confirm', offsetTop: -24, duration: 300 })
+      wx.pageScrollTo({ selector: '#care-sync-confirm', offsetTop: -64, duration: 300 })
       return
     }
     showLoading({ title: '正在创建订单...', mask: true })
@@ -2238,6 +2425,8 @@ typeof Page === 'function' ? Page({
       .then(() => callFunction('order', 'createOrder', { ...payload, clientRequestId }))
       .then((order) => {
         hideLoading()
+        const app = typeof getApp === 'function' ? getApp() : null
+        if (app && app.globalData) app.globalData.ordersDirty = true
         if (this.data.saveAddress && order.savedAddress) wx.showToast({ title: '已保存常用地址' })
         return new Promise((resolve, reject) => wx.redirectTo({ url: '/pages/client/orders/detail/index?id=' + order._id, success: resolve, fail: reject }))
       })
@@ -2245,6 +2434,11 @@ typeof Page === 'function' ? Page({
         hideLoading()
         this.creatingOrder = false
         this.setData({ creating: false })
+        const msg = String((error && (error.message || error.errMsg)) || '')
+        if (msg.includes('请先绑定手机号')) {
+          this.openPhoneBindModal()
+          return
+        }
         showError(error)
       })
   },

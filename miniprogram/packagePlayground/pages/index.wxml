@@ -1,7 +1,7 @@
 <view class="page playground-page">
   <view class="playground-hero">
     <view class="hero-copy">
-      <view class="hero-badge"><text class="remix-icon ri-gamepad-fill"></text><text>宠物乐园 · 2D 互动</text></view>
+      <view class="hero-badge"><text>宠物庄园 · 宠物也是我们家庭的一份子</text></view>
       <view class="hero-title">进入爱宠的阳光庄园</view>
       <view class="hero-desc">在大草地上拖动、缩放浏览，点击地面控制爱宠行走，为自己选择宅基地。</view>
     </view>
@@ -9,24 +9,24 @@
       <button class="ghost-btn small-btn" bindtap="customize">专属形象定制</button>
       <button class="ghost-btn small-btn" bindtap="goPets">宠物档案</button>
       <button class="ghost-btn small-btn" bindtap="openUserTitles">我的头衔</button>
-      <button class="primary-btn small-btn" bindtap="load" loading="{{loading}}">刷新乐园</button>
+      <button class="primary-btn small-btn" bindtap="load" loading="{{loading}}">刷新庄园</button>
     </view>
   </view>
 
   <view class="memorial-entry">
-    <view><view class="memorial-entry-title">纪念园</view><view class="memorial-entry-description">在草木与阳光之间，留住爱与思念。</view></view>
-    <button bindtap="openMemorial">入园散步 →</button>
+    <view class="memorial-entry-info"><view class="memorial-entry-title">纪念园</view><view class="memorial-entry-description">在草木与阳光之间，留住爱与思念。</view></view>
+    <button class="memorial-entry-btn" bindtap="openMemorial">入园看看</button>
   </view>
 
   <view class="loading-card" wx:if="{{loading}}">
     <view class="remix-icon ri-loader-4-line loading-icon"></view>
-    <view class="strong">正在唤醒宠物乐园...</view>
+    <view class="strong">正在唤醒宠物庄园...</view>
     <view class="muted">正在读取 2D 草地场景和宠物档案</view>
   </view>
 
   <view class="empty-card" wx:elif="{{empty}}">
     <view class="remix-icon ri-paw-print-line empty-icon"></view>
-    <view class="empty-title">还没有宠物进入乐园</view>
+    <view class="empty-title">还没有宠物进入庄园</view>
     <view class="empty-desc">先添加宠物档案，带 TA 进入 2D 庄园散步。</view>
     <button class="primary-btn empty-btn" bindtap="goAddPet">添加宠物</button>
   </view>
@@ -60,7 +60,7 @@
   </view></scroll-view>
 
   <view class="pet-strip" wx:if="{{pets.length}}">
-    <view class="strip-title">乐园成员</view>
+    <view class="strip-title">庄园成员</view>
     <scroll-view scroll-x class="pet-scroll">
       <view class="pet-chip {{selectedPet && selectedPet._id === item._id ? 'active' : ''}}" wx:for="{{pets}}" wx:key="_id" data-id="{{item._id}}" bindtap="choosePet">
         <image class="pet-avatar" wx:if="{{item.avatarFileId}}" src="{{item.avatarFileId}}" mode="aspectFill" />

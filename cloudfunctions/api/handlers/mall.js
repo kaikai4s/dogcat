@@ -62,8 +62,8 @@ module.exports = function createHandler(context) {
         : { enabled: false, appid: '', hideLegacyMall: false }
     }
     if (action === 'listCategories') {
-      const res = await db.collection('mall_categories').where({ enabled: true }).get()
-      return (res.data || []).map(normalizeMallCategory).sort((a, b) => a.sortOrder - b.sortOrder)
+      const categories = await readAll('mall_categories', { enabled: true })
+      return categories.map(normalizeMallCategory).sort((a, b) => a.sortOrder - b.sortOrder)
     }
     if (action === 'listProducts') {
       const keyword = safeText(data.keyword).trim().toLowerCase()

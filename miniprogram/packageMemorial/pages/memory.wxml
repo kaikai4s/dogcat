@@ -3,10 +3,42 @@
   <view wx:elif="{{loading}}" class="memory-empty"><view class="memory-loading-mark"><view class="remix-icon ri-leaf-line"></view></view><view>正在翻开回忆…</view></view>
   <view wx:elif="{{error}}" class="memory-empty">{{error}}<button class="memory-button button-primary" bindtap="load">重新加载</button></view>
   <block wx:elif="{{detail}}">
-    <view class="hero"><view class="hero-mark">✧</view><view class="eyebrow">留在时光里的陪伴</view><view class="title">{{detail.petName}}</view><view class="date">{{detail.date}} · {{detail.gardenName}} · {{detail.lawn}} {{plotNumber}}号</view><view class="epitaph">“{{detail.epitaph}}”</view></view>
+    <view class="hero"><view class="hero-mark">✧</view><view class="eyebrow">留在时光里的陪伴</view><view class="title">{{detail.petName}}</view><view class="date">{{detail.lifeSpanText ? detail.lifeSpanText + ' · ' : ''}}{{detail.date}} · {{detail.gardenName}} · {{detail.lawn}} {{plotNumber}}号</view><view class="epitaph">“{{detail.epitaph}}”</view></view>
     <view class="owner-bar" wx:if="{{detail.owner}}">
       <block wx:if="{{previewing}}"><view class="status-line">访客视角 · 仅显示已公开的回忆</view><button class="memory-button button-secondary" bindtap="closePreview">返回主人视角</button></block>
       <block wx:else><view class="owner-heading"><text>把陪伴好好珍藏</text><text class="status-tag">{{reviewLabel}}</text></view><view class="tip">故事、照片与旋律，留住它来过的痕迹。</view><view class="actions"><button class="memory-button button-primary" bindtap="edit" disabled="{{managing || uploading || saving || mediaSaving}}">整理回忆</button><button class="memory-button button-secondary" bindtap="preview" disabled="{{managing || uploading || saving || mediaSaving}}">像访客一样看看</button></view><view wx:if="{{detail.reason}}" class="review-note">审核意见：{{detail.reason}}</view></block>
+    </view>
+    <view class="card years-card" wx:if="{{detail.owner && !previewing}}">
+      <view class="section-heading">
+        <view>
+          <view class="section-kicker">MONUMENT YEARS</view>
+          <view class="section-title">出生与去世年份</view>
+        </view>
+        <text class="status-tag">{{editLifeSpanPreview || detail.lifeSpanText || '未知 — 未知'}}</text>
+      </view>
+      <view class="tip">可随时补充或修改出生与去世年份，不确定时可设为「未知」。</view>
+      <view class="life-years-row">
+        <view class="life-year-col">
+          <view class="life-year-head">
+            <text class="life-year-caption">出生年份</text>
+            <text class="year-unknown-chip {{editBirthYear === 'unknown' ? 'active' : ''}}" data-field="birthYear" bindtap="setYearUnknown">未知</text>
+          </view>
+          <picker mode="selector" range="{{yearOptions}}" range-key="label" value="{{birthYearIndex}}" data-field="birthYear" bindchange="chooseYear" disabled="{{managing || yearSaving}}">
+            <view class="year-field">{{editBirthYear === 'unknown' ? '未知' : (editBirthYear ? editBirthYear + '年' : '请选择')}}</view>
+          </picker>
+        </view>
+        <view class="life-year-col">
+          <view class="life-year-head">
+            <text class="life-year-caption">去世年份</text>
+            <text class="year-unknown-chip {{editPassingYear === 'unknown' ? 'active' : ''}}" data-field="passingYear" bindtap="setYearUnknown">未知</text>
+          </view>
+          <picker mode="selector" range="{{yearOptions}}" range-key="label" value="{{passingYearIndex}}" data-field="passingYear" bindchange="chooseYear" disabled="{{managing || yearSaving}}">
+            <view class="year-field">{{editPassingYear === 'unknown' ? '未知' : (editPassingYear ? editPassingYear + '年' : '请选择')}}</view>
+          </picker>
+        </view>
+      </view>
+      <view class="media-save-error" wx:if="{{yearError}}">{{yearError}}</view>
+      <button class="memory-button button-primary years-save-btn" bindtap="saveYears" loading="{{yearSaving}}" disabled="{{managing || yearSaving || !hasYearChanges}}">{{hasYearChanges ? '保存生卒年份' : '生卒年份已是最新'}}</button>
     </view>
     <view class="card management-card" wx:if="{{detail.owner && !previewing && !editing && !portraitForm}}">
       <view class="section-title">小筑管理</view><view class="tip">迁移可更换园区、位置和碑型，全部已保存内容随小筑保留。</view><view class="management-note">拆除后原位置释放，内容在回收站保留 7 天。</view><view class="media-save-error" wx:if="{{managementError}}">{{managementError}}</view>

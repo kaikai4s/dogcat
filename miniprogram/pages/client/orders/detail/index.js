@@ -6,6 +6,16 @@ const { ensureLogin } = require('../../../../utils/cloud')
 const { withOrderText, formatCheckinEvent, buildOrderCareCards } = require('../../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
+const CHECKIN_EVENT_LABELS = {
+  sanitization: '进门消毒',
+  feed: '添加粮食',
+  water: '更换饮水',
+  litter: '清理猫砂',
+  play: '陪伴玩耍',
+  medicine: '喂药照料',
+  pet_beauty_photo: '毛孩子美照'
+}
+
 function getRefundText(order = {}) {
   if (!order.refundStatus || order.refundStatus === 'not_required') return ''
   if (order.refundStatus === 'processing') return `退款处理中 ¥${order.refundAmount || 0}`
@@ -77,6 +87,8 @@ Page({
     themeClass: 'theme-day',
     id: '',
     order: null,
+    loading: true,
+    loadError: false,
     timeline: [],
     review: null,
     liveCheckins: [],
@@ -141,22 +153,34 @@ Page({
     this.setData(getThemeState(theme.value))
   },
   load() {
-    Promise.all([
+    if (!this.data.id) {
+      this.setData({ loading: false, loadError: true })
+      return Promise.resolve()
+    }
+    this.setData({ loading: !this.data.order, loadError: false })
+    return Promise.all([
       callFunction('order', 'getOrderDetail', { id: this.data.id }),
       callFunction('order', 'getOrderTimeline', { orderId: this.data.id }),
       callFunction('order', 'getOrderReview', { orderId: this.data.id }),
       callFunction('checkin', 'listOrderCheckins', { orderId: this.data.id }).catch(() => [])
     ])
       .then(([order, timeline, review, checkins]) => {
-        if (!order) return
+        if (!order) {
+          this.setData({ loading: false, loadError: !this.data.order })
+          return
+        }
         const displayOrder = withOrderText(order)
         const careCards = buildOrderCareCards(displayOrder)
-        const liveCheckins = (checkins || []).filter(item => item.mediaFileId)
+        const liveCheckins = (checkins || [])
+          .filter(item => item.mediaFileId)
+          .map(item => ({ ...item, eventTypeLabel: CHECKIN_EVENT_LABELS[item.eventType] || '现场打卡' }))
         this.setData({
           order: { ...displayOrder, refundText: getRefundText(displayOrder), careCards, hasHighRiskCare: careCards.some((card) => card.isHighRisk) },
           timeline: withTimelineText(timeline),
           review,
-          liveCheckins
+          liveCheckins,
+          loading: false,
+          loadError: false
         })
         callFunction('message', 'markOrderThreadRead', { orderId: this.data.id }).catch(() => {})
         if (displayOrder.earlyStartRequest && displayOrder.earlyStartRequest.status === 'pending') {
@@ -168,7 +192,17 @@ Page({
           this.stopEarlyStartPolling()
         }
       })
-      .catch(showError)
+      .catch((error) => {
+        this.setData({ loading: false, loadError: !this.data.order })
+        showError(error)
+      })
+  },
+  retryLoad() {
+    return this.load()
+  },
+  markOrdersDirty() {
+    const app = typeof getApp === 'function' ? getApp() : null
+    if (app && app.globalData) app.globalData.ordersDirty = true
   },
   checkPromptEarlyStart(earlyStartRequest) {
     if (!earlyStartRequest || earlyStartRequest.status !== 'pending') return
@@ -315,6 +349,7 @@ Page({
         hideLoading()
         this._payingLock = false
         const paid = isPaidResult(result)
+        this.markOrdersDirty()
         wx.showToast({ title: paid ? '已支付' : '支付处理中，请稍后刷新订单状态', icon: paid ? 'success' : 'none' })
         this.setData({ paying: false })
         this.load()
@@ -453,6 +488,7 @@ Page({
       })
       .then(() => callFunction('order', approve ? 'approveEarlyStart' : 'rejectEarlyStart', { id: this.data.id }))
       .then(() => {
+        this.markOrdersDirty()
         wx.showToast({ title: approve ? '已同意提前开始' : '已拒绝', icon: 'none' })
         this.setData({ handlingEarlyStart: false })
         this.load()
@@ -506,6 +542,7 @@ Page({
               : Promise.resolve()
             consent.then(() => callFunction('order', 'cancelOrder', { orderId: this.data.id, reason: '宠物主取消', clientRequestId: createClientRequestId('cancel') }))
               .then(() => {
+                this.markOrdersDirty()
                 wx.showToast({ title: '已取消' })
                 this.setData({ cancelling: false })
                 this.load()

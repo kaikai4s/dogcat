@@ -10,6 +10,7 @@ module.exports = function createService({
   normalizeMemberNameColor,
   normalizeMemberNameEffect,
   now,
+  readScopedDocuments,
   safeText,
   toCstParts
 }) {
@@ -127,7 +128,11 @@ module.exports = function createService({
   }
 
   async function getMemberLevels() {
-    const levelsRes = await db.collection('member_levels').orderBy('minPoints', 'asc').get()
+    if (typeof readScopedDocuments === 'function') {
+      const rows = await readScopedDocuments('member_levels', {})
+      return rows.sort((a, b) => Number(a.minPoints || 0) - Number(b.minPoints || 0) || String(a._id || '').localeCompare(String(b._id || '')))
+    }
+    const levelsRes = await db.collection('member_levels').orderBy('minPoints', 'asc').limit(500).get()
     return levelsRes.data || []
   }
 

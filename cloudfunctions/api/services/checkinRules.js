@@ -107,8 +107,10 @@ module.exports = function createService({
   }
 
   async function listServiceCheckinRules() {
-    const res = await db.collection('service_checkin_rules').orderBy('sortOrder', 'asc').get()
-    const rules = res.data && res.data.length ? res.data : defaultServiceCheckinRules
+    const rawRules = typeof readScopedDocuments === 'function'
+      ? await readScopedDocuments('service_checkin_rules', {})
+      : ((await db.collection('service_checkin_rules').orderBy('sortOrder', 'asc').limit(500).get()).data || [])
+    const rules = rawRules.length ? rawRules : defaultServiceCheckinRules
     const validServiceKeys = (await listServicePrices(true)).map((item) => item.key)
     return rules
       .filter((rule) => validServiceKeys.includes(safeText(rule.serviceType).trim()))

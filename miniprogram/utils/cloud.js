@@ -687,6 +687,75 @@ function ensureLogin(options = {}) {
     })
 }
 
+/**
+ * 触发微信隐私授权检查，未配置隐私声明时弹出明确指引。
+ */
+function preparePhonePrivacyAuthorize() {
+  return requirePrivacyAuthorize().catch((error) => {
+    const message = String((error && (error.errMsg || error.message)) || '')
+    if (message.includes('privacy agreement') || message.includes('not declared')) {
+      wx.showModal({
+        title: '隐私协议未配置',
+        content: '微信后台隐私协议还没有声明“手机号”或“头像昵称”用途，请先在微信公众平台补充隐私协议后再使用快捷授权。',
+        showCancel: false
+      })
+    }
+    throw error
+  })
+}
+
+/**
+ * 解析微信手机号授权事件并完成绑定，返回更新后的用户信息；取消或无授权码时返回 null。
+ */
+function bindPhoneByWechatEvent(e) {
+  const detail = (e && e.detail) || {}
+  const code = detail.code
+  if (!code) {
+    const errMsg = String(detail.errMsg || detail.message || '')
+    if (errMsg.includes('deny') || errMsg.includes('cancel')) {
+      wx.showToast({ title: '已取消授权', icon: 'none' })
+      return Promise.resolve(null)
+    }
+    if (errMsg.includes('privacy agreement') || errMsg.includes('not declared') || errMsg.includes('errno:112')) {
+      wx.showModal({
+        title: '隐私协议未配置',
+        content: '微信后台隐私协议还没有声明“手机号”用途，所以微信拦截了快捷授权。请在微信公众平台「设置与开发 > 服务内容声明 > 用户隐私保护指引」补充手机号用途；请稍后重试微信授权，或联系平台客服。',
+        showCancel: false
+      })
+      return Promise.resolve(null)
+    }
+    if (errMsg.includes('no permission') || errMsg.includes('not support') || errMsg.includes('fail')) {
+      wx.showModal({
+        title: '快捷授权不可用',
+        content: '当前小程序主体、调试环境或权限未返回手机号授权码。请稍后重试微信授权，或联系平台客服。',
+        showCancel: false
+      })
+      return Promise.resolve(null)
+    }
+    wx.showModal({
+      title: '快捷授权未完成',
+      content: '微信没有返回手机号授权码，请稍后重试微信授权，或联系平台客服。',
+      showCancel: false
+    })
+    return Promise.resolve(null)
+  }
+
+  wx.showLoading({ title: '绑定中...' })
+  return callFunction('auth', 'loginByPhoneCode', { code })
+    .then((user) => {
+      wx.hideLoading()
+      setCachedUser(user)
+      const appData = getAppData()
+      if (appData) appData.user = user
+      return user
+    })
+    .catch((err) => {
+      wx.hideLoading()
+      showError(err)
+      throw err
+    })
+}
+
 module.exports = {
   getCloudEnv,
   callFunction,
@@ -694,6 +763,8 @@ module.exports = {
   getSelectedLocation,
   saveSelectedLocation,
   requirePrivacyAuthorize,
+  preparePhonePrivacyAuthorize,
+  bindPhoneByWechatEvent,
   loadSystemSettings,
   setCachedSystemSettings,
   getCachedSystemSettings,

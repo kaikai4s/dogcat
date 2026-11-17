@@ -27,8 +27,8 @@
   <view class="sitter-body" style="{{heroBodyStyle}}">
   <view class="card sitter-main-card">
     <view class="sitter-head">
-      <image class="sitter-avatar" wx:if="{{sitter.avatarUrl}}" src="{{sitter.avatarUrl}}" mode="aspectFill" />
-      <image class="sitter-avatar" wx:else src="../../../../images/icons/avatar.png" mode="aspectFill" />
+      <image class="sitter-avatar" wx:if="{{sitter.avatarUrl}}" src="{{sitter.avatarUrl}}" mode="aspectFill" lazy-load="true" />
+      <image class="sitter-avatar" wx:else src="../../../../images/icons/avatar.png" mode="aspectFill" lazy-load="true" />
       <view class="sitter-main">
         <view class="sitter-name-row">
           <text class="sitter-name">{{sitter.displayName}}</text>
@@ -128,7 +128,7 @@
     <view class="review-head">
       <view class="review-user">
         <view class="avatar-level-wrap">
-          <image class="avatar-placeholder" wx:if="{{item.clientAvatarUrl}}" src="{{item.clientAvatarUrl}}" mode="aspectFill" style="padding: 0; overflow: hidden;" />
+          <image class="avatar-placeholder" wx:if="{{item.clientAvatarUrl}}" src="{{item.clientAvatarUrl}}" mode="aspectFill" lazy-load="true" style="padding: 0; overflow: hidden;" />
           <view class="avatar-placeholder" wx:else><text class="remix-icon ri-user-heart-line"></text></view>
           <view class="avatar-level-badge badge-{{item.badgeStyle || 'gold'}}" wx:if="{{item.badgeTag || item.memberLevelName}}">{{item.badgeTag || item.memberLevelName}}</view>
         </view>
@@ -161,5 +161,28 @@
     </button>
   </view>
 </view>
+</view>
+<view class="page sitter-detail-page {{themeClass}} {{fontClass}}" wx:elif="{{loading}}">
+  <view class="sitter-hero sitter-skeleton-hero">
+    <view class="skeleton-shimmer sk-pill"></view>
+    <view class="skeleton-shimmer sk-hero-title"></view>
+    <view class="skeleton-shimmer sk-hero-sub"></view>
+  </view>
+  <view class="card sitter-skeleton-card" wx:for="{{[1,2,3]}}" wx:key="*this">
+    <view class="skeleton-shimmer sk-line sk-card-title"></view>
+    <view class="skeleton-shimmer sk-line sk-card-body"></view>
+    <view class="skeleton-shimmer sk-line sk-card-sub"></view>
+  </view>
+</view>
+<view class="page sitter-detail-page {{themeClass}} {{fontClass}}" wx:elif="{{loadError}}">
+  <view class="card empty review-empty">
+    <view class="empty-icon remix-icon ri-wifi-off-line"></view>
+    <view class="empty-title">宠托师资料加载失败</view>
+    <view class="empty-desc">请检查网络后重试，或返回列表选择其他宠托师。</view>
+    <view class="sitter-actions">
+      <button class="ghost compact-btn" bindtap="goList">返回列表</button>
+      <button class="primary compact-btn" bindtap="retryLoad">重新加载</button>
+    </view>
+  </view>
 </view>
 <global-loading />

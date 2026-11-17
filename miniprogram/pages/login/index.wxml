@@ -36,7 +36,7 @@
 
       <view class="avatar-section">
         <button class="avatar-picker-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
-          <image class="avatar-preview" wx:if="{{form.avatarUrl}}" src="{{form.avatarUrl}}" mode="aspectFill" />
+          <image class="avatar-preview" wx:if="{{form.avatarUrl}}" src="{{form.avatarUrl}}" mode="aspectFill" lazy-load="true" />
           <view class="avatar-empty" wx:else>
             <text class="remix-icon ri-camera-line avatar-icon"></text>
             <text class="avatar-text">微信头像</text>

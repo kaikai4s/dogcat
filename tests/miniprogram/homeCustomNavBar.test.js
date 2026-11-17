@@ -3,6 +3,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
+const { getNavBarInfo } = require('../../miniprogram/utils/nav')
 
 const root = path.join(__dirname, '../../miniprogram')
 
@@ -88,6 +89,7 @@ test('首页自定义导航栏交互逻辑: 胶囊适配、滚动阈值切换 is
     applyTheme: () => ({}),
     getThemeState: () => ({}),
     safeNavigateTo: () => {},
+    getNavBarInfo,
     formatDateTime: () => '',
     getDovlinLogoUrl: () => 'cloud://mock/packagePlayground/dovlin-logo-dog.png'
   }

@@ -117,7 +117,7 @@ module.exports = function createHandler(context) {
       const careType = data.careType === 'treat' ? 'treat' : 'wash'
       const petId = String(data.petId || '')
       // 更新爱宠的健康或洗护状态并持久化，同时同步实时场景
-      await db.collection('pet_playground_plots').where({ kind: 'resident', ownerOpenid: openid }).get().then(async (res) => {
+      await db.collection('pet_playground_plots').where({ kind: 'resident', ownerOpenid: openid }).limit(50).get().then(async (res) => {
         const published = []
         for (const doc of (res.data || [])) {
           const stamp = Date.now()
@@ -151,7 +151,7 @@ module.exports = function createHandler(context) {
       let bonusMsg = ''
       if (sceneId) {
         try {
-          const hospitalRes = await db.collection('pet_playground_plots').where({ kind: 'plot', communityId: sceneId, buildingType: 'pet_hospital' }).get()
+          const hospitalRes = await db.collection('pet_playground_plots').where({ kind: 'plot', communityId: sceneId, buildingType: 'pet_hospital' }).limit(50).get()
           const hospital = (hospitalRes.data || []).find((p) => !p.demolished)
           if (hospital && hospital.ownerOpenid && hospital.ownerOpenid !== openid) {
             const userRes = await db.collection('users').where({ openid: hospital.ownerOpenid }).limit(1).get()
@@ -451,7 +451,7 @@ module.exports = function createHandler(context) {
       const scale = data.scale
       if (!petId || typeof scale !== 'number' || !Number.isFinite(scale) || scale < 0.5 || scale > 2)
         throw new Error('宠物大小须在 50%～200% 之间')
-      const result = await db.collection('pets').where({ _id: petId, openid }).get()
+      const result = await db.collection('pets').where({ _id: petId, openid }).limit(1).get()
       const pet = (result.data || [])[0]
       if (!pet || pet.deletedAt) throw new Error('宠物不存在或无权修改')
       const playgroundScale = Math.round(scale * 100) / 100

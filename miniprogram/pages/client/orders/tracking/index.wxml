@@ -56,7 +56,7 @@
           <view class="timeline-desc">{{item.remarkText || '暂无备注'}}</view>
           <view class="image-list" wx:if="{{item.photos.length}}">
             <view class="photo-item" wx:for="{{item.photos}}" wx:for-item="photo" wx:key="_id">
-              <image class="security-image" src="{{photo.mediaFileId}}" mode="aspectFill" data-url="{{photo.mediaFileId}}" bindtap="previewCheckinPhoto" />
+              <image class="security-image" src="{{photo.mediaFileId}}" mode="aspectFill" data-url="{{photo.mediaFileId}}" bindtap="previewCheckinPhoto" lazy-load="true" />
               <view class="photo-time">{{photo.recordedAtText || '未记录时间'}}</view>
             </view>
           </view>

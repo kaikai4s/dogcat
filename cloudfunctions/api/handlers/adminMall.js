@@ -74,8 +74,8 @@ module.exports = function createHandler(context) {
       return { appid, enabled, hideLegacyMall }
     }
     if (action === 'listCategories') {
-      const res = await db.collection('mall_categories').get()
-      return (res.data || []).map(normalizeMallCategory).sort((a, b) => a.sortOrder - b.sortOrder)
+      const categories = await readAll('mall_categories', {})
+      return categories.map(normalizeMallCategory).sort((a, b) => a.sortOrder - b.sortOrder)
     }
     if (action === 'saveCategory') {
       const id = safeText(data.id || data._id).trim()
@@ -98,7 +98,7 @@ module.exports = function createHandler(context) {
     if (action === 'deleteCategory') {
       const id = safeText(data.id).trim()
       if (!id) throw new Error('请选择分类')
-      const products = await db.collection('mall_products').where({ categoryId: id }).get()
+      const products = await db.collection('mall_products').where({ categoryId: id }).limit(1).get()
       if ((products.data || []).length) throw new Error('分类下已有商品，不能删除')
       await db.collection('mall_categories').doc(id).remove()
       await logAdmin(admin, 'mall_category', id, 'deleteCategory')
@@ -231,7 +231,8 @@ module.exports = function createHandler(context) {
         }
       }
       const payAmount = Number(order.payAmount || 0)
-      const existingRefundsRes = await db.collection('refunds').where({ orderId: order._id }).get()
+      const refundsQuery = db.collection('refunds').where({ orderId: order._id })
+      const existingRefundsRes = await (typeof refundsQuery.limit === 'function' ? refundsQuery.limit(100) : refundsQuery).get()
       const successfulRefundsAmount = (existingRefundsRes.data || [])
         .filter((r) => ['success', 'processing'].includes(r.status))
         .reduce((sum, r) => sum + Number(r.refundAmount || 0), 0)

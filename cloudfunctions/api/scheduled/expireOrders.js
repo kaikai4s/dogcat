@@ -119,7 +119,7 @@ async function expireUnacceptedOrder(orderId, order, time = now(), forceGroupExp
         groupBuyId: order.groupBuyId,
         status: ORDER_STATUS.PAID,
         _id: db.command.neq(orderId)
-      }).get().catch(() => ({ data: [] }))
+      }).limit(100).get().catch(() => ({ data: [] }))
       for (const sib of siblingRes.data || []) {
         if (!safeText(sib.staffOpenid).trim()) {
           try {

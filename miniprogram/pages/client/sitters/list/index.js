@@ -1,6 +1,11 @@
 const { callFunction, showError, getSelectedLocation, chooseSelectedLocation } = require('../../../../utils/cloud')
 const { ensureLogin } = require('../../../../utils/cloud')
 const { loadMessageUnread } = require('../../../../utils/client-nav')
+const formatUtils = require('../../../../utils/format') || {}
+const pageList = formatUtils.pageList || ((r) => Array.isArray(r) ? { list: r, hasMore: false, page: 1, total: r.length } : (r || { list: [], hasMore: false, page: 1, total: 0 }))
+const navUtils = require('../../../../utils/nav') || {}
+const getNavBarInfo = navUtils.getNavBarInfo || (() => ({ statusBarHeight: 44, titleBarHeight: 44, navBarHeight: 88 }))
+const navigateRoleRoute = navUtils.navigateRoleRoute || ((url) => wx.navigateTo({ url }))
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
 const ALL = '全部'
@@ -18,10 +23,6 @@ function unique(values) {
   return Array.from(new Set(values.filter(Boolean)))
 }
 
-function pageList(result) {
-  return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result || { list: [], hasMore: false, page: 1, total: 0 })
-}
-
 function areaTags(sitter) {
   return Array.isArray(sitter.areaTags) ? sitter.areaTags : []
 }
@@ -34,31 +35,6 @@ function visibleOptions(options, active, count) {
   return list
 }
 
-function getNavBarInfo() {
-  let statusBarHeight = 44
-  let titleBarHeight = 44
-  try {
-    const windowInfo = (typeof wx !== 'undefined' && ((wx.getWindowInfo && wx.getWindowInfo()) || (wx.getSystemInfoSync && wx.getSystemInfoSync()))) || {}
-    if (windowInfo.statusBarHeight) {
-      statusBarHeight = windowInfo.statusBarHeight
-    }
-    const menu = typeof wx !== 'undefined' && wx.getMenuButtonBoundingClientRect ? wx.getMenuButtonBoundingClientRect() : null
-    if (menu && menu.top && menu.height) {
-      titleBarHeight = (menu.top - statusBarHeight) * 2 + menu.height
-    } else {
-      titleBarHeight = 44
-    }
-  } catch (_) {
-    statusBarHeight = 44
-    titleBarHeight = 44
-  }
-  return {
-    statusBarHeight,
-    titleBarHeight,
-    navBarHeight: statusBarHeight + titleBarHeight
-  }
-}
-
 Page({
   openMap() {
     const city = this.data.activeCity === '全部' ? '' : this.data.activeCity
@@ -69,7 +45,7 @@ Page({
     titleBarHeight: 44,
     navBarHeight: 88,
     isNavScrolled: false,
-    ...getNavBarInfo(),
+    ...getNavBarInfo(typeof wx !== 'undefined' ? wx : null),
     themeClass: 'theme-day',
     staffGenderRequirement: 'any',
     keyword: '',
@@ -100,7 +76,7 @@ Page({
   },
 
   initNavBar() {
-    const navInfo = getNavBarInfo()
+    const navInfo = getNavBarInfo(typeof wx !== 'undefined' ? wx : null)
     if (
       this.data.statusBarHeight !== navInfo.statusBarHeight ||
       this.data.titleBarHeight !== navInfo.titleBarHeight ||
@@ -358,16 +334,17 @@ Page({
     })
   },
 
+  onBottomNavTap(e) {
+    const detail = (e && e.detail) || {}
+    if (!detail.url) return
+    const fakeEvent = { currentTarget: { dataset: { url: detail.url } } }
+    return detail.protected ? this.goProtected(fakeEvent) : this.go(fakeEvent)
+  },
+
   go(e) {
     const url = e.currentTarget.dataset.url
     if (!url) return
-    const pages = getCurrentPages()
-    const current = pages[pages.length - 1]
-    const currentRoute = current && current.route ? '/' + current.route : ''
-    if (currentRoute === url) return
-    const mainNavUrls = ['/pages/client/home/index', '/pages/client/sitters/list/index', '/pages/client/orders/list/index', '/pages/client/messages/index', '/pages/client/profile/index']
-    const method = mainNavUrls.includes(url) ? 'redirectTo' : 'navigateTo'
-    wx[method]({ url })
+    navigateRoleRoute(url, 'client')
   },
 
   goProtected(e) {
@@ -375,13 +352,7 @@ Page({
     if (!url) return
     ensureLogin({ content: '登录后可查看订单和消息。' })
       .then(() => {
-        const pages = getCurrentPages()
-        const current = pages[pages.length - 1]
-        const currentRoute = current && current.route ? '/' + current.route : ''
-        if (currentRoute === url) return
-        const mainNavUrls = ['/pages/client/home/index', '/pages/client/sitters/list/index', '/pages/client/orders/list/index', '/pages/client/messages/index', '/pages/client/profile/index']
-        const method = mainNavUrls.includes(url) ? 'redirectTo' : 'navigateTo'
-        wx[method]({ url })
+        navigateRoleRoute(url, 'client')
       })
       .catch(() => {})
   }

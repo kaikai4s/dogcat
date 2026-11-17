@@ -272,7 +272,7 @@ module.exports = function createBuildingsService(context) {
   }
 
   async function list() {
-    return {...await readCatalog(db),levels:(await db.collection('member_levels').orderBy('minPoints','asc').get()).data||[]}
+    return {...await readCatalog(db),levels:(await db.collection('member_levels').orderBy('minPoints','asc').limit(500).get()).data||[]}
   }
 
   async function prepareUpload(openid, data) {

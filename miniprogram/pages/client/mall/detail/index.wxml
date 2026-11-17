@@ -3,7 +3,7 @@
   <view class="swiper-wrap">
     <swiper class="detail-swiper" indicator-dots="true" indicator-active-color="#ff7a45" indicator-color="rgba(255,255,255,0.6)" autoplay="true" interval="4000" circular="true">
       <swiper-item wx:for="{{displayImages}}" wx:key="*this">
-        <image class="swiper-img" src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="previewCarouselImage" />
+        <image class="swiper-img" src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="previewCarouselImage" lazy-load="true" />
       </swiper-item>
     </swiper>
     <view class="swiper-corner-badge">点击图片可放大查看</view>

@@ -16,7 +16,7 @@ function pageFrom(file, dependencies, wx = {}) {
       if (name.endsWith('/theme')) return { applyTheme: () => ({ value: 'day' }), getThemeState: () => ({}) }
       if (name.endsWith('/format')) return require(path.join(root, 'utils/format.js'))
       if (name.endsWith('/clipboard')) return { copyText() {} }
-      if (name.endsWith('/nav')) return { createPageNav: () => ({}), navMethods: () => ({}) }
+      if (name.endsWith('/nav')) return require(path.join(root, 'utils/nav.js'))
       return dependencies
     }
   })

@@ -4,6 +4,7 @@ module.exports = function createService({
   VISIT_FEE_SERVICE_KEY,
   db,
   defaultServicePrices,
+  readScopedDocuments,
   safeText
 }) {
   function isPresetServiceKey(key) {
@@ -71,8 +72,14 @@ module.exports = function createService({
   async function listServicePrices(includeDisabled = false) {
     let configured = []
     try {
-      const res = await db.collection('service_prices').orderBy('sortOrder', 'asc').get()
-      configured = res.data || []
+      if (typeof readScopedDocuments === 'function') {
+        configured = (await readScopedDocuments('service_prices', {}))
+          .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
+      } else {
+        const query = db.collection('service_prices').orderBy('sortOrder', 'asc')
+        const res = await (typeof query.limit === 'function' ? query.limit(500) : query).get()
+        configured = res.data || []
+      }
     } catch (error) {
       configured = []
     }

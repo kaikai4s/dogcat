@@ -21,7 +21,7 @@
   <view class="admin-card">
     <view class="card-subtitle"><text class="remix-icon ri-file-warning-line sub-icon"></text><text>问题说明</text></view>
     <view class="problem-text">{{detail.incident.description}}</view>
-    <view class="evidence-grid" wx:if="{{detail.incident.mediaFileIds.length}}"><image class="evidence-image" wx:for="{{detail.incident.mediaFileIds}}" wx:key="*this" src="{{item}}" mode="aspectFill" /></view>
+    <view class="evidence-grid" wx:if="{{detail.incident.mediaFileIds.length}}"><image class="evidence-image" wx:for="{{detail.incident.mediaFileIds}}" wx:key="*this" src="{{item}}" mode="aspectFill" lazy-load="true" /></view>
   </view>
 
   <view class="admin-card care-context-card" wx:if="{{detail.incident.careContextSnapshot && detail.incident.careContextSnapshot.cards && detail.incident.careContextSnapshot.cards.length}}">
@@ -73,7 +73,7 @@
 
   <view class="admin-card" wx:if="{{detail.comments.length}}">
     <view class="card-subtitle"><text class="remix-icon ri-chat-3-line sub-icon"></text><text>沟通记录</text></view>
-    <view class="timeline"><view class="timeline-item" wx:for="{{detail.comments}}" wx:key="_id"><view class="strong">{{item.actorRoleText}}</view><view class="muted">{{item.content}}</view><view class="evidence-grid" wx:if="{{item.mediaFileIds.length}}"><image class="evidence-image" wx:for="{{item.mediaFileIds}}" wx:key="*this" src="{{item}}" mode="aspectFill" /></view><view class="muted">{{beijingTime.format(item.createdAt)}}</view></view></view>
+    <view class="timeline"><view class="timeline-item" wx:for="{{detail.comments}}" wx:key="_id"><view class="strong">{{item.actorRoleText}}</view><view class="muted">{{item.content}}</view><view class="evidence-grid" wx:if="{{item.mediaFileIds.length}}"><image class="evidence-image" wx:for="{{item.mediaFileIds}}" wx:key="*this" src="{{item}}" mode="aspectFill" lazy-load="true" /></view><view class="muted">{{beijingTime.format(item.createdAt)}}</view></view></view>
   </view>
 
   <view class="admin-card" wx:if="{{detail.actions.length}}">

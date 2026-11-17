@@ -216,7 +216,7 @@ module.exports = function createService({
       const chunkSize = 50
       for (let i = 0; i < votedPetIds.length; i += chunkSize) {
         const chunk = votedPetIds.slice(i, i + chunkSize)
-        const res = await db.collection('pets').where({ _id: db.command.in(chunk) }).get().catch(() => ({ data: [] }))
+        const res = await db.collection('pets').where({ _id: db.command.in(chunk) }).limit(50).get().catch(() => ({ data: [] }))
         candidatePets.push(...(res.data || []))
       }
     }

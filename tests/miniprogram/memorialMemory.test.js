@@ -16,7 +16,7 @@ function fixture(owner = true, overrides = {}) {
     return {}
   }
   vm.runInNewContext(fs.readFileSync(require.resolve('../../miniprogram/packageMemorial/pages/memory'), 'utf8'), {
-    Page: def => { page = def }, require: name => name.endsWith('/cloud') ? { callFunction: api } : name.endsWith('/image-upload') ? { prepareImage: overrides.prepareImage } : name.endsWith('/memorial-portrait-layout') ? require('../../miniprogram/packageMemorial/scene/memorial-portrait-layout') : name.endsWith('/recovery-time') ? require('../../miniprogram/packageMemorial/scene/recovery-time') : name.endsWith('/plot-number') ? { plotNumber: () => '01-01' } : {},
+    Page: def => { page = def }, require: name => name.endsWith('/cloud') ? { callFunction: api } : name.endsWith('/image-upload') ? { prepareImage: overrides.prepareImage } : name.endsWith('/memorial-portrait-layout') ? require('../../miniprogram/packageMemorial/scene/memorial-portrait-layout') : name.endsWith('/recovery-time') ? require('../../miniprogram/packageMemorial/scene/recovery-time') : name.endsWith('/memorial-years') ? require('../../miniprogram/packageMemorial/scene/memorial-years') : name.endsWith('/plot-number') ? { plotNumber: () => '01-01' } : {},
     wx: { showToast: v => toasts.push(v.title), ...overrides.wx }
   })
   page.setData = values => Object.entries(values).forEach(([key, value]) => { const parts = key.split('.'); let object = page.data; for (const part of parts.slice(0,-1)) object = object[part]; object[parts.at(-1)] = value })

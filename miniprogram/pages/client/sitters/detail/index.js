@@ -11,6 +11,8 @@ Page({
     id: '',
     staffGenderRequirement: 'any',
     sitter: null,
+    loading: true,
+    loadError: false,
     heroExpanded: false,
     heroLayoutStyle: '',
     heroBodyStyle: '',
@@ -32,22 +34,37 @@ Page({
     this.load()
   },
 
+  onPullDownRefresh() {
+    Promise.resolve(this.load()).finally(() => wx.stopPullDownRefresh())
+  },
+
+  retryLoad() {
+    return this.load()
+  },
+
   applyCurrentTheme() {
     const theme = applyTheme()
     this.setData(getThemeState(theme.value))
   },
 
   load() {
-    if (!this.data.id) return
-    callFunction('staff', 'getPublicSitterDetail', { staffProfileId: this.data.id })
+    if (!this.data.id) {
+      this.setData({ loading: false, loadError: true })
+      return Promise.resolve()
+    }
+    this.setData({ loading: !this.data.sitter, loadError: false })
+    return callFunction('staff', 'getPublicSitterDetail', { staffProfileId: this.data.id })
       .then((sitter) => {
         if (this._heroDisposed) return
         const card = normalizeCardStyle(sitter)
         // 动画表面不使用 backdrop-filter；磨砂来自下方固定尺寸的图片层。
         const surface = buildCardStyle({ ...card, profileCardBlur: 0 }).replace(/(?:-webkit-)?backdrop-filter:[^;]+;/g, '')
-        this.setData({ sitter: { ...sitter, ...card }, profileCardStyle: buildCardStyle(sitter), heroSurfaceStyle: surface }, () => this.measureHeroLayout())
+        this.setData({ sitter: { ...sitter, ...card }, loading: false, loadError: false, profileCardStyle: buildCardStyle(sitter), heroSurfaceStyle: surface }, () => this.measureHeroLayout())
       })
-      .catch(showError)
+      .catch((error) => {
+        this.setData({ loading: false, loadError: !this.data.sitter })
+        showError(error)
+      })
   },
 
   toggleHeroExpand() {

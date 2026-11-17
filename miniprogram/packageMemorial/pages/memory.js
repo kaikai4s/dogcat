@@ -2,6 +2,12 @@ const { poseLabel } = require('../scene/memorial-portrait-layout')
 const { callFunction } = require('../../utils/cloud')
 const { prepareImage } = require('../../utils/image-upload')
 const { plotNumber } = require('../scene/plot-number')
+const yearsMod = require('../scene/memorial-years') || {}
+const buildMemorialYearOptions = yearsMod.buildMemorialYearOptions || (() => [{ value: 'unknown', label: '未知' }])
+const yearOptionIndex = yearsMod.yearOptionIndex || (() => 0)
+const validateMemorialYearRange = yearsMod.validateMemorialYearRange || (() => '')
+const formatMemorialLifeSpan = yearsMod.formatMemorialLifeSpan || (() => '')
+const MEMORY_YEAR_OPTIONS = buildMemorialYearOptions()
 const native = (name, options) => new Promise((resolve, reject) => wx[name]({ ...options, success: resolve, fail: reject }))
 const reviewLabel = status => ({ pending: '公开回忆待审核', private: '仅自己可见', approved: '回忆已公开', rejected: '请调整后重新提交', empty: '尚未整理回忆' }[status] || '')
 const copyContent = value => ({ ...(value || {}), text: value && value.text || '', images: (value && value.images || []).map(m => ({ ...m })),
@@ -14,6 +20,8 @@ const changeContent = (value, change) => !value ? value : { ...value, [change.ki
 Page({
   data: { loading: true, saving: false, uploading: false, error: '', detail: null, editing: false, previewing: false,
     managing: false, managementError: '', mediaSaving: false, mediaSavingId: '', mediaSaveError: '', hasUnsavedChanges: false,
+    yearOptions: MEMORY_YEAR_OPTIONS, birthYearIndex: 0, passingYearIndex: 0, editBirthYear: 'unknown', editPassingYear: 'unknown', editLifeSpanPreview: '',
+    yearSaving: false, yearError: '', hasYearChanges: false,
     textCount: 0, portrait: null, portraitForm: false, portraitPhotos: {}, portraitNote: '', portraitPose: 'sitting',
     draft: { text: '', images: [], videos: [], music: null }, isPublic: false, playing: false, uploadTip: '' },
   onLoad(options = {}) { this._alive = true; this.id = options.id || ''; this.load() },
@@ -26,10 +34,80 @@ Page({
       const detail = await this.api('detail')
       if (!this._alive) return
       if (detail.owner) this.loadPortrait()
+      const yearOptions = buildMemorialYearOptions()
+      const editBirthYear = detail.birthYear || 'unknown'
+      const editPassingYear = detail.passingYear || 'unknown'
+      const hasYearChanges = editBirthYear !== (detail.birthYear || '') || editPassingYear !== (detail.passingYear || '')
       this.setData({ detail, demolished: false, plotNumber: plotNumber(detail.plotId), draft: copyContent(detail.draft), isPublic: detail.isPublic,
+        yearOptions, editBirthYear, editPassingYear,
+        birthYearIndex: yearOptionIndex(yearOptions, editBirthYear),
+        passingYearIndex: yearOptionIndex(yearOptions, editPassingYear),
+        editLifeSpanPreview: formatMemorialLifeSpan(editBirthYear, editPassingYear),
+        yearError: '', hasYearChanges,
         hasUnsavedChanges: false, mediaSaveError: '', textCount: Array.from(detail.draft && detail.draft.text || '').length, story: detail.story, reviewLabel: reviewLabel(detail.reviewStatus) })
     } catch (error) { if (this._alive) this.setData({ error: error.message || '回忆加载失败，请重试' }) }
     finally { if (this._alive) this.setData({ loading: false }) }
+  },
+  updateEditYear(field, value) {
+    if (!this.data.detail || !this.data.detail.owner || this.data.managing || this.data.yearSaving) return
+    if (!['birthYear', 'passingYear'].includes(field)) return
+    const editBirthYear = field === 'birthYear' ? value : (this.data.editBirthYear || 'unknown')
+    const editPassingYear = field === 'passingYear' ? value : (this.data.editPassingYear || 'unknown')
+    const options = this.data.yearOptions || MEMORY_YEAR_OPTIONS
+    const hasYearChanges = editBirthYear !== (this.data.detail.birthYear || '') || editPassingYear !== (this.data.detail.passingYear || '')
+    this.setData({
+      editBirthYear,
+      editPassingYear,
+      birthYearIndex: yearOptionIndex(options, editBirthYear),
+      passingYearIndex: yearOptionIndex(options, editPassingYear),
+      editLifeSpanPreview: formatMemorialLifeSpan(editBirthYear, editPassingYear),
+      yearError: '',
+      hasYearChanges
+    })
+  },
+  chooseYear(e) {
+    const field = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.field
+    const options = this.data.yearOptions || MEMORY_YEAR_OPTIONS
+    const picked = options[Number(e && e.detail && e.detail.value)] || options[0]
+    this.updateEditYear(field, picked ? picked.value : 'unknown')
+  },
+  setYearUnknown(e) {
+    const field = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.field
+    this.updateEditYear(field, 'unknown')
+  },
+  async saveYears() {
+    const detail = this.data.detail
+    if (!this._alive || !detail || !detail.owner || this.data.managing || this.data.yearSaving) return
+    const birthYear = this.data.editBirthYear || 'unknown'
+    const passingYear = this.data.editPassingYear || 'unknown'
+    const rangeError = validateMemorialYearRange(birthYear, passingYear)
+    if (rangeError) {
+      this.setData({ yearError: rangeError })
+      return
+    }
+    this.setData({ yearSaving: true, yearError: '' })
+    try {
+      const saved = await this.api('updateYears', { birthYear, passingYear })
+      if (!this._alive) return
+      const nextBirth = (saved && saved.birthYear) || birthYear
+      const nextPassing = (saved && saved.passingYear) || passingYear
+      const lifeSpanText = (saved && saved.lifeSpanText) || formatMemorialLifeSpan(nextBirth, nextPassing)
+      const options = this.data.yearOptions || MEMORY_YEAR_OPTIONS
+      this.setData({
+        detail: { ...detail, birthYear: nextBirth, passingYear: nextPassing, lifeSpanText },
+        editBirthYear: nextBirth,
+        editPassingYear: nextPassing,
+        birthYearIndex: yearOptionIndex(options, nextBirth),
+        passingYearIndex: yearOptionIndex(options, nextPassing),
+        editLifeSpanPreview: lifeSpanText,
+        hasYearChanges: false
+      })
+      wx.showToast({ title: '年份已更新', icon: 'none' })
+    } catch (error) {
+      if (this._alive) this.setData({ yearError: (error && error.message) || '年份保存失败，请重试' })
+    } finally {
+      if (this._alive) this.setData({ yearSaving: false })
+    }
   },
   async manageMemorial(e) {
     const detail = this.data.detail, operation = e.currentTarget.dataset.operation

@@ -37,7 +37,7 @@
 
     <view class="photo-grid" wx:if="{{photos.length}}">
       <view class="photo-cell" wx:for="{{photos}}" wx:key="_id">
-        <image class="checkin-photo" src="{{item.mediaFileId}}" mode="aspectFill" data-url="{{item.mediaFileId}}" bindtap="previewPhoto" />
+        <image class="checkin-photo" src="{{item.mediaFileId}}" mode="aspectFill" data-url="{{item.mediaFileId}}" bindtap="previewPhoto" lazy-load="true" />
         <view class="photo-meta">{{item.remark || '无备注'}}</view>
         <button wx:if="{{item.canDelete}}" class="mini-delete" data-id="{{item._id}}" loading="{{deletingId === item._id}}" disabled="{{deletingId === item._id}}" bindtap="deletePhoto">
           <text class="remix-icon ri-delete-bin-line"></text>

@@ -21,7 +21,7 @@
   <view class="card user-card" wx:for="{{users}}" wx:key="_id">
     <view class="user-head">
       <view class="avatar-level-wrap">
-        <image wx:if="{{item.avatarUrl}}" class="user-avatar" src="{{item.avatarUrl}}" mode="aspectFill" />
+        <image wx:if="{{item.avatarUrl}}" class="user-avatar" src="{{item.avatarUrl}}" mode="aspectFill" lazy-load="true" />
         <view wx:else class="user-avatar avatar-placeholder">{{item.avatarText}}</view>
         <view class="avatar-level-badge badge-{{item.badgeStyle || 'gold'}}" wx:if="{{item.badgeTag || item.memberLevelName}}">{{item.badgeTag || item.memberLevelName}}</view>
       </view>
@@ -65,11 +65,6 @@
 
   <button class="ghost" wx:if="{{hasMore}}" loading="{{loading}}" disabled="{{loading}}" bindtap="loadMore">{{loading ? '加载中...' : '加载更多'}}</button>
 
-  <view class="bottom-nav">
-    <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon remix-icon ri-dashboard-3-line"></view><view>控制台</view></view>
-    <view class="nav-item" data-url="/pages/admin/orders/list/index" bindtap="go"><view class="nav-icon remix-icon ri-file-list-3-line"></view><view>订单</view></view>
-    <view class="nav-item" data-url="/pages/admin/staff-audit/list/index" bindtap="go"><view class="nav-icon remix-icon ri-shield-check-line"></view><view>审核</view></view>
-    <view class="nav-item" data-url="/pages/admin/incidents/list/index" bindtap="go"><view class="nav-icon remix-icon ri-alarm-warning-line"></view><view>异常</view></view>
-  </view>
+  <role-bottom-nav class="bottom-nav" role="admin" active="/pages/admin/users/list/index" />
 </view>
 <global-loading />

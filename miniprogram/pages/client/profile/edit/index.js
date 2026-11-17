@@ -1,10 +1,12 @@
 const { uploadImage } = require('../../../../utils/image-upload')
-const { callFunction, showError, ensureLogin, setCachedUser, requirePrivacyAuthorize } = require('../../../../utils/cloud')
+const { callFunction, showError, ensureLogin, setCachedUser, preparePhonePrivacyAuthorize, bindPhoneByWechatEvent } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 
 Page({
   data: {
     from: 'client',
+    returnOnPhoneBind: false,
+    focusPhone: false,
     initialized: false,
     form: {
       nickname: '',
@@ -15,8 +17,14 @@ Page({
     canGoBack: false
   },
 
-  onLoad(query) {
-    this.setData({ ...createPageNav(query), from: query.from === 'staff' ? 'staff' : 'client' })
+  onLoad(query = {}) {
+    const returnOnPhoneBind = query.from === 'booking'
+    this.setData({
+      ...createPageNav(query),
+      from: query.from === 'staff' ? 'staff' : 'client',
+      returnOnPhoneBind,
+      focusPhone: query.focus === 'phone' || returnOnPhoneBind
+    })
   },
 
   onShow() {
@@ -40,49 +48,27 @@ Page({
     this.setData({ ['form.' + e.currentTarget.dataset.field]: e.detail.value })
   },
 
+  onUnload() {
+    clearTimeout(this._backTimer)
+  },
+
   preparePrivacyAuthorize() {
-    return requirePrivacyAuthorize().catch((error) => {
-      const message = String((error && (error.errMsg || error.message)) || '')
-      if (message.includes('privacy agreement') || message.includes('not declared')) {
-        wx.showModal({ title: '隐私协议未配置', content: '微信后台隐私协议还没有声明“手机号”或“头像昵称”用途，请先在微信公众平台补充隐私协议后再使用快捷授权。', showCancel: false })
-      }
-      throw error
-    })
+    return preparePhonePrivacyAuthorize()
   },
 
   bindPhone(e) {
-    const detail = e.detail || {}
-    const code = detail.code
-    if (!code) {
-      const errMsg = String(detail.errMsg || detail.message || '')
-      if (errMsg.includes('deny') || errMsg.includes('cancel')) {
-        wx.showToast({ title: '已取消授权', icon: 'none' })
-        return
-      }
-      if (errMsg.includes('privacy agreement') || errMsg.includes('not declared') || errMsg.includes('errno:112')) {
-        wx.showModal({ title: '隐私协议未配置', content: '微信后台隐私协议还没有声明“手机号”用途，所以微信拦截了快捷授权。请在微信公众平台「设置与开发 > 服务内容声明 > 用户隐私保护指引」补充手机号用途；请稍后重试微信授权，或联系平台客服。', showCancel: false })
-        return
-      }
-      if (errMsg.includes('no permission') || errMsg.includes('not support') || errMsg.includes('fail')) {
-        wx.showModal({ title: '快捷授权不可用', content: '当前小程序主体、调试环境或权限未返回手机号授权码。请稍后重试微信授权，或联系平台客服。', showCancel: false })
-        return
-      }
-      wx.showModal({ title: '快捷授权未完成', content: '微信没有返回手机号授权码，请稍后重试微信授权，或联系平台客服。', showCancel: false })
-      return
-    }
-    wx.showLoading({ title: '绑定中...' })
-    callFunction('auth', 'loginByPhoneCode', { code })
+    return bindPhoneByWechatEvent(e)
       .then((user) => {
-        wx.hideLoading()
-        setCachedUser(user)
-        if (getApp().globalData) getApp().globalData.user = user
-        this.setData({ ['form.phone']: user.phone || '' })
+        if (!user) return null
+        this.setData({ ['form.phone']: user.phone || '', focusPhone: false })
         wx.showToast({ title: '手机号已绑定' })
+        if (this.data.returnOnPhoneBind && user.phone && getCurrentPages().length > 1) {
+          clearTimeout(this._backTimer)
+          this._backTimer = setTimeout(() => wx.navigateBack({ delta: 1 }), 450)
+        }
+        return user
       })
-      .catch((err) => {
-        wx.hideLoading()
-        showError(err)
-      })
+      .catch(() => null)
   },
 
   uploadAvatar(filePath, successTitle = '已选择头像') {

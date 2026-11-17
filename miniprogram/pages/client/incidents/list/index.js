@@ -1,6 +1,6 @@
 const { callFunction, showError, ensureLogin } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
-const { withIncidentText } = require('../../../../utils/format')
+const { withIncidentText , pageList } = require('../../../../utils/format')
 
 const tabs = [
   { label: '全部', value: 'all' },
@@ -10,10 +10,6 @@ const tabs = [
   { label: '已解决', value: 'resolved' },
   { label: '已关闭', value: 'closed' }
 ]
-
-function pageList(result) {
-  return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result || { list: [], hasMore: false, page: 1, total: 0 })
-}
 
 Page({
   data: {

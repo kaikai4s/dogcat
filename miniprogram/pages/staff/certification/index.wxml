@@ -78,7 +78,7 @@
 
     <view class="photo-upload-grid">
       <view class="upload-item" data-field="idCardFrontFileId" bindtap="chooseIdentityPhoto">
-        <image wx:if="{{identityPreviews.idCardFrontFileId}}" src="{{identityPreviews.idCardFrontFileId}}" mode="aspectFill" class="preview-img" />
+        <image wx:if="{{identityPreviews.idCardFrontFileId}}" src="{{identityPreviews.idCardFrontFileId}}" mode="aspectFill" class="preview-img" lazy-load="true" />
         <view class="upload-placeholder" wx:else>
           <text class="remix-icon ri-camera-switch-line upload-icon"></text>
           <text class="upload-title">身份证人像面</text>
@@ -87,7 +87,7 @@
       </view>
 
       <view class="upload-item" data-field="idCardBackFileId" bindtap="chooseIdentityPhoto">
-        <image wx:if="{{identityPreviews.idCardBackFileId}}" src="{{identityPreviews.idCardBackFileId}}" mode="aspectFill" class="preview-img" />
+        <image wx:if="{{identityPreviews.idCardBackFileId}}" src="{{identityPreviews.idCardBackFileId}}" mode="aspectFill" class="preview-img" lazy-load="true" />
         <view class="upload-placeholder" wx:else>
           <text class="remix-icon ri-bank-card-line upload-icon"></text>
           <text class="upload-title">身份证国徽面</text>
@@ -96,7 +96,7 @@
       </view>
 
       <view class="upload-item" data-field="facePhotoFileId" bindtap="chooseIdentityPhoto">
-        <image wx:if="{{identityPreviews.facePhotoFileId}}" src="{{identityPreviews.facePhotoFileId}}" mode="aspectFill" class="preview-img" />
+        <image wx:if="{{identityPreviews.facePhotoFileId}}" src="{{identityPreviews.facePhotoFileId}}" mode="aspectFill" class="preview-img" lazy-load="true" />
         <view class="upload-placeholder" wx:else>
           <text class="remix-icon ri-user-smile-line upload-icon"></text>
           <text class="upload-title">自拍/人脸照</text>
@@ -131,7 +131,7 @@
       <view class="photo-upload-grid zhima-upload-grid">
         <view class="upload-item-col">
           <view class="upload-item" data-field="zhimaScoreFileId" bindtap="chooseIdentityPhoto">
-            <image wx:if="{{identityPreviews.zhimaScoreFileId}}" src="{{identityPreviews.zhimaScoreFileId}}" mode="aspectFill" class="preview-img" />
+            <image wx:if="{{identityPreviews.zhimaScoreFileId}}" src="{{identityPreviews.zhimaScoreFileId}}" mode="aspectFill" class="preview-img" lazy-load="true" />
             <view class="upload-placeholder" wx:else>
               <text class="remix-icon ri-award-line upload-icon"></text>
               <text class="upload-title">芝麻信用分截图</text>
@@ -146,7 +146,7 @@
 
         <view class="upload-item-col">
           <view class="upload-item" data-field="alipayProfileFileId" bindtap="chooseIdentityPhoto">
-            <image wx:if="{{identityPreviews.alipayProfileFileId}}" src="{{identityPreviews.alipayProfileFileId}}" mode="aspectFill" class="preview-img" />
+            <image wx:if="{{identityPreviews.alipayProfileFileId}}" src="{{identityPreviews.alipayProfileFileId}}" mode="aspectFill" class="preview-img" lazy-load="true" />
             <view class="upload-placeholder" wx:else>
               <text class="remix-icon ri-user-shared-line upload-icon"></text>
               <text class="upload-title">支付宝主页截图</text>
@@ -238,12 +238,6 @@
     <text>返回宠托师个人中心</text>
   </button>
 
-  <view class="bottom-nav staff-bottom-nav">
-    <view class="nav-item" data-url="/pages/staff/home/index" bindtap="go"><view class="nav-icon remix-icon ri-home-5-line"></view><view>工作台</view></view>
-    <view class="nav-item" data-url="/pages/staff/orders/list/index" bindtap="go"><view class="nav-icon remix-icon ri-file-list-3-line"></view><view>任务</view></view>
-    <view class="nav-item" data-url="/pages/staff/messages/index" bindtap="go"><view class="nav-icon remix-icon ri-message-3-line"><view class="nav-unread-count" wx:if="{{messageUnreadCount > 0}}">{{messageUnreadCountText}}</view></view><view>消息</view></view>
-    <view class="nav-item active"><view class="nav-icon remix-icon ri-checkbox-circle-fill"></view><view>认证</view></view>
-    <view class="nav-item" bindtap="backProfile"><view class="nav-icon remix-icon ri-user-3-line"></view><view>我的</view></view>
-  </view>
+  <role-bottom-nav class="bottom-nav" role="staff" active="/pages/staff/certification/index" unread-count="{{messageUnreadCount || 0}}" unread-text="{{messageUnreadCountText || ''}}" />
 </view>
 <global-loading />

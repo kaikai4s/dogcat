@@ -1,5 +1,6 @@
 const crypto = require('crypto')
 const { readOptionalDocument } = require('../utils/documentPages')
+const { memorialYearFields } = require('../utils/memorialYears')
 const { DEFAULT, gardenId } = require('./memorialGardens')
 const world = require('../config/memorial-world.json')
 const layout = require('../config/memorial-plots.json')
@@ -20,7 +21,7 @@ module.exports = context => {
   const clock = () => (context.nowMs || Date.now)()
   const recoveryPlotId = id => 'memorial_recovery_plot_' + hash(id)
   const response = app => ({ id: app._id, status: app.status, locationRevision: app.locationRevision || 0, gardenId: gardenId(app), plotId: app.plotId, ...(app.recoverUntil ? { recoverUntil: app.recoverUntil } : {}) })
-  const recycleRow = app => ({ ...response(app), petName: app.petName, style: app.style || 'arch', lawn: app.lawn, owner: true, recoverUntil: app.recoverUntil, demolishedAt: app.demolishedAt })
+  const recycleRow = app => ({ ...response(app), petName: app.petName, style: app.style || 'arch', lawn: app.lawn, date: app.date || '', ...memorialYearFields(app), owner: true, recoverUntil: app.recoverUntil, demolishedAt: app.demolishedAt })
   async function handle(openid, action, data) {
     if (action === 'listRecycle') {
       const result = await db.collection('platform_configs').where({ key: 'memorial_recycle', ownerOpenid: openid, recoverUntil: db.command.gt(clock()), ...(data.cursor ? { _id: db.command.gt(String(data.cursor)) } : {}) }).orderBy('_id', 'asc').limit(31).get()

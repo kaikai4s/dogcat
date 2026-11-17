@@ -87,7 +87,7 @@
       <view class="check-box item-check-box {{item.selected ? 'checked' : ''}}" data-id="{{item._id}}" catchtap="toggleSelect">
         <text class="remix-icon ri-check-line" wx:if="{{item.selected}}"></text>
       </view>
-      <image wx:if="{{item.userAvatarUrl}}" class="sitter-avatar compact-avatar" src="{{item.userAvatarUrl}}" mode="aspectFill" />
+      <image wx:if="{{item.userAvatarUrl}}" class="sitter-avatar compact-avatar" src="{{item.userAvatarUrl}}" mode="aspectFill" lazy-load="true" />
       <view wx:else class="sitter-avatar compact-avatar avatar-placeholder">{{item.avatarText}}</view>
       <view class="sitter-main">
         <view class="between compact-title-row">
@@ -234,7 +234,7 @@
       <view class="settlement-note" wx:if="{{redemptionPreview.maxRedemptionAmount < redemptionPreview.available}}">本次最多可登记 ¥{{redemptionPreview.maxRedemptionAmountText}}，超过此金额请分次登记。</view>
       <view class="muted" wx:if="{{redemptionLocked}}">上次登记结果待确认，请点击“核对上次登记”继续。</view>
       <view class="form-section"><view class="form-label">已兑换金额（元）</view><input class="input" type="digit" value="{{redemptionAmount}}" data-field="redemptionAmount" bindinput="redemptionInput" disabled="{{redemptionBusy || redemptionLocked}}" placeholder="填写本次实际转账金额" /></view>
-      <view class="form-section"><view class="form-label">转账截图（必填，JPG / PNG）</view><image wx:if="{{redemptionImage}}" class="redemption-proof" src="{{redemptionImage}}" mode="aspectFit" data-url="{{redemptionImage}}" bindtap="previewPaymentProof" /><button class="ghost-btn" bindtap="chooseRedemptionImage" disabled="{{redemptionBusy || redemptionLocked}}">{{redemptionImage ? '更换截图' : '上传转账截图'}}</button></view>
+      <view class="form-section"><view class="form-label">转账截图（必填，JPG / PNG）</view><image wx:if="{{redemptionImage}}" class="redemption-proof" src="{{redemptionImage}}" mode="aspectFit" data-url="{{redemptionImage}}" bindtap="previewPaymentProof" lazy-load="true" /><button class="ghost-btn" bindtap="chooseRedemptionImage" disabled="{{redemptionBusy || redemptionLocked}}">{{redemptionImage ? '更换截图' : '上传转账截图'}}</button></view>
       <view class="form-section"><view class="form-label">备注（选填）</view><textarea maxlength="500" value="{{redemptionRemark}}" data-field="redemptionRemark" bindinput="redemptionInput" disabled="{{redemptionBusy || redemptionLocked}}" placeholder="例如：本月服务收益兑换" /></view>
       <checkbox-group bindchange="confirmRedemptionPayment"><label class="redemption-confirm"><checkbox value="confirmed" checked="{{redemptionConfirmed}}" disabled="{{redemptionBusy || redemptionLocked}}" />我已完成转账，确认扣减对应收益</label></checkbox-group>
       <view class="modal-actions"><button class="ghost-btn" bindtap="closeRedemption" disabled="{{redemptionBusy}}">关闭</button><button class="primary-btn" bindtap="submitRedemption" loading="{{redemptionBusy}}" disabled="{{redemptionBusy || (!redemptionLocked && (redemptionLoading || !redemptionPreview.enabled || !redemptionConfirmed))}}">{{redemptionLocked ? '核对上次登记' : '确认登记并扣减'}}</button></view>
@@ -341,7 +341,7 @@
         </view>
         <view class="forfeit-uploader-grid">
           <view class="uploader-thumb" wx:for="{{forfeitImages}}" wx:key="*this">
-            <image src="{{item}}" mode="aspectFill" class="thumb-img" data-url="{{item}}" bindtap="previewForfeitModalImage" />
+            <image src="{{item}}" mode="aspectFill" class="thumb-img" data-url="{{item}}" bindtap="previewForfeitModalImage" lazy-load="true" />
             <view class="thumb-remove" data-index="{{index}}" bindtap="removeForfeitImage">×</view>
           </view>
           <view class="uploader-add-btn" wx:if="{{forfeitImages.length < 4}}" bindtap="chooseForfeitImages">
@@ -387,11 +387,6 @@
     </view>
   </view>
 
-  <view class="bottom-nav">
-    <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon remix-icon ri-dashboard-3-line"></view><view>控制台</view></view>
-    <view class="nav-item" data-url="/pages/admin/orders/list/index" bindtap="go"><view class="nav-icon remix-icon ri-file-list-3-line"></view><view>订单</view></view>
-    <view class="nav-item" data-url="/pages/admin/staff-audit/list/index" bindtap="go"><view class="nav-icon remix-icon ri-shield-check-line"></view><view>审核</view></view>
-    <view class="nav-item" data-url="/pages/admin/incidents/list/index" bindtap="go"><view class="nav-icon remix-icon ri-alarm-warning-line"></view><view>异常</view></view>
-  </view>
+  <role-bottom-nav class="bottom-nav" role="admin" active="/pages/admin/sitters/list/index" />
 </view>
 <global-loading />

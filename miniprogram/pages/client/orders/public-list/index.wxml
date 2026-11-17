@@ -39,7 +39,7 @@
       <view class="checkin-line" wx:if="{{item.checkinCount}}"><text class="remix-icon ri-camera-lens-line"></text><text>完成 {{item.checkinCount}} 个服务环节 · {{item.checkinSummary}}</text></view>
       <view class="photo-grid" wx:if="{{item.checkinPhotos.length}}">
         <view class="checkin-preview-item" wx:for="{{item.checkinPhotos}}" wx:for-item="photo" wx:key="_id">
-          <image class="checkin-photo" src="{{photo.mediaFileId}}" mode="aspectFill" data-url="{{photo.mediaFileId}}" data-order-id="{{item._id}}" catchtap="previewPhoto" />
+          <image class="checkin-photo" src="{{photo.mediaFileId}}" mode="aspectFill" data-url="{{photo.mediaFileId}}" data-order-id="{{item._id}}" catchtap="previewPhoto" lazy-load="true" />
           <view class="checkin-badge" wx:if="{{photo.eventText}}">{{photo.eventText}}</view>
         </view>
       </view>

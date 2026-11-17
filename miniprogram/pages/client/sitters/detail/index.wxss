@@ -548,3 +548,26 @@
   box-shadow: 0 2rpx 8rpx rgba(37, 99, 235, 0.08);
 }
 
+.sitter-skeleton-hero,
+.sitter-skeleton-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
+}
+.sk-pill { width: 180rpx; height: 40rpx; border-radius: 999rpx; }
+.sk-hero-title { width: 58%; height: 48rpx; border-radius: 16rpx; }
+.sk-hero-sub { width: 76%; height: 28rpx; border-radius: 12rpx; }
+.sk-line { height: 26rpx; border-radius: 12rpx; }
+.sk-card-title { width: 42%; }
+.sk-card-body { width: 88%; }
+.sk-card-sub { width: 64%; }
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #f6ece2 25%, #fff6ed 50%, #f6ece2 75%);
+  background-size: 200% 100%;
+  animation: sitterShimmer 1.3s ease-in-out infinite;
+}
+@keyframes sitterShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+

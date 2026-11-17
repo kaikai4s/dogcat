@@ -36,11 +36,6 @@
 .notice-track { display: inline-flex; align-items: center; height: 100%; white-space: nowrap; animation: notice-scroll 12s linear infinite; }
 .notice-group { display: flex; flex: none; align-items: center; height: 100%; }
 .notice-item { display: block; flex: none; margin-right: 48rpx; font-size: 25rpx; line-height: 68rpx; white-space: nowrap; }
-
-.notice-marquee.theme-night { border-color: rgba(147, 177, 159, .27); background: rgba(36, 43, 43, .96); color: #eff5ef; }
-.theme-night .notice-icon { background: #344d41; color: #a7d8b4; }
-.theme-night .notice-divider { background: #58635b; }
-
 @keyframes notice-scroll {
   from { transform: translateX(0); }
   to { transform: translateX(-50%); }

@@ -102,7 +102,7 @@
       <text>服务对象与照顾备注</text>
     </view>
     <view class="pet-row">
-      <image class="pet-photo" wx:if="{{order.petSnapshot.avatarFileId}}" src="{{order.petSnapshot.avatarFileId}}" mode="aspectFill" bindtap="previewPetPhoto" />
+      <image class="pet-photo" wx:if="{{order.petSnapshot.avatarFileId}}" src="{{order.petSnapshot.avatarFileId}}" mode="aspectFill" bindtap="previewPetPhoto" lazy-load="true" />
       <view class="pet-photo placeholder" wx:else><text class="remix-icon ri-footprint-line"></text></view>
       <view class="pet-info">
         <view class="pet-name">{{order.petSnapshot.name || order.petName}} · {{order.petSnapshot.breed || '未知品种'}}</view>
@@ -242,10 +242,10 @@
 
       <view wx:if="{{order.orderHomeSecurity.type === 'key'}}">
         <view class="info-row"><view class="label">钥匙位置</view><view class="value">{{order.orderHomeSecurity.key.location}}</view></view>
-        <view class="image-list" wx:if="{{order.orderHomeSecurity.key.imageFileIds.length}}"><image wx:for="{{order.orderHomeSecurity.key.imageFileIds}}" wx:key="*this" class="security-image" src="{{item}}" mode="aspectFill" /></view>
+        <view class="image-list" wx:if="{{order.orderHomeSecurity.key.imageFileIds.length}}"><image wx:for="{{order.orderHomeSecurity.key.imageFileIds}}" wx:key="*this" class="security-image" src="{{item}}" mode="aspectFill" lazy-load="true" /></view>
         <view class="security-desc">{{order.orderHomeSecurity.key.returnedAt ? '已完成放回钥匙打卡，照片已留存' : '钥匙安全责任：请核对照片寻匙开门；服务结束离开前必须原位放回并拍照打卡，确保锁闭'}}</view>
         <button class="ghost-btn full-btn" wx:if="{{order.status === 'in_service' && !order.orderHomeSecurity.key.returnedAt}}" loading="{{returningKey}}" disabled="{{returningKey}}" bindtap="chooseKeyReturnImage">上传放回钥匙图片</button>
-        <view class="image-list" wx:if="{{keyReturnImageFileIds.length}}"><image wx:for="{{keyReturnImageFileIds}}" wx:key="*this" class="security-image" src="{{item}}" mode="aspectFill" /></view>
+        <view class="image-list" wx:if="{{keyReturnImageFileIds.length}}"><image wx:for="{{keyReturnImageFileIds}}" wx:key="*this" class="security-image" src="{{item}}" mode="aspectFill" lazy-load="true" /></view>
         <button class="primary-btn full-btn" wx:if="{{order.status === 'in_service' && !order.orderHomeSecurity.key.returnedAt}}" loading="{{returningKey}}" disabled="{{returningKey}}" bindtap="recordKeyReturned">确认已放回钥匙</button>
       </view>
     </view>

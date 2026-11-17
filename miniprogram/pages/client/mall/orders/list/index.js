@@ -1,3 +1,4 @@
+const { pageList } = require('../../../../../utils/format')
 const { callFunction, showError, ensureLogin } = require('../../../../../utils/cloud')
 
 const tabs = [
@@ -9,12 +10,8 @@ const tabs = [
   { label: '售后', value: 'after_sale' }
 ]
 
-function pageList(result) {
-  return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result || { list: [], hasMore: false, page: 1, total: 0 })
-}
-
 Page({
-  data: { tabs, activeStatus: 'all', orders: [], page: 1, pageSize: 10, hasMore: true, loading: false },
+  data: { tabs, activeStatus: 'all', orders: [], page: 1, pageSize: 10, hasMore: true, loading: false, contentLoaded: false, loadError: false },
 
     onPullDownRefresh() {
     Promise.resolve(this.load({ reset: true })).finally(() => wx.stopPullDownRefresh())
@@ -32,17 +29,26 @@ Page({
     if (this.data.loading) return
     const reset = options.reset === true
     const page = reset ? 1 : this.data.page
-    this.setData({ loading: true })
+    this.setData({ loading: true, loadError: false })
     callFunction('mall', 'listMyOrders', { status: this.data.activeStatus, page, pageSize: this.data.pageSize })
       .then((result) => {
         const pageData = pageList(result)
-        this.setData({ orders: reset ? pageData.list : this.data.orders.concat(pageData.list), page: pageData.page, hasMore: pageData.hasMore, loading: false })
+        this.setData({
+          orders: reset ? pageData.list : this.data.orders.concat(pageData.list),
+          page: pageData.page,
+          hasMore: pageData.hasMore,
+          loading: false,
+          contentLoaded: true,
+          loadError: false
+        })
       })
       .catch((error) => {
-        this.setData({ loading: false })
+        this.setData({ loading: false, loadError: reset && !this.data.orders.length })
         showError(error)
       })
   },
+
+  retryLoad() { return this.load({ reset: true }) },
 
   loadMore() {
     if (!this.data.hasMore || this.data.loading) return

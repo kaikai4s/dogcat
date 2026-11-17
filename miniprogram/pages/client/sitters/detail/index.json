@@ -1,3 +1,6 @@
 {
-  "navigationBarTitleText": "宠托师详情"
+  "navigationBarTitleText": "宠托师详情",
+  "enablePullDownRefresh": true,
+  "backgroundColor": "#FFF8EC",
+  "backgroundColorTop": "#FFF8EC"
 }

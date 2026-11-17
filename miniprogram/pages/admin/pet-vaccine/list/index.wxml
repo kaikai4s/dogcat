@@ -21,7 +21,7 @@
 
   <view class="admin-card vaccine-card" wx:for="{{applications}}" wx:key="_id">
     <view class="vaccine-head">
-      <image class="pet-avatar" wx:if="{{item.petSnapshot.avatarFileId}}" src="{{item.petSnapshot.avatarFileId}}" mode="aspectFill" />
+      <image class="pet-avatar" wx:if="{{item.petSnapshot.avatarFileId}}" src="{{item.petSnapshot.avatarFileId}}" mode="aspectFill" lazy-load="true" />
       <view class="pet-avatar empty" wx:else><text class="remix-icon ri-paw-print-line"></text></view>
       <view class="vaccine-main">
         <view class="strong">{{item.petSnapshot.name || '宠物'}} <text class="muted">{{item.petSnapshot.breed || ''}}</text></view>
@@ -34,7 +34,7 @@
     <view class="info-line" wx:if="{{item.validUntil}}">有效期：{{item.validUntil}}</view>
     <view class="info-line" wx:if="{{item.ownerRemark}}">说明：{{item.ownerRemark}}</view>
     <view class="file-row" wx:if="{{item.fileIds && item.fileIds.length}}">
-      <image class="file-thumb" wx:for="{{item.fileIds}}" wx:for-item="fileId" wx:key="*this" src="{{fileId}}" mode="aspectFill" data-id="{{item._id}}" data-file="{{fileId}}" bindtap="previewFile" />
+      <image class="file-thumb" wx:for="{{item.fileIds}}" wx:for-item="fileId" wx:key="*this" src="{{fileId}}" mode="aspectFill" data-id="{{item._id}}" data-file="{{fileId}}" bindtap="previewFile" lazy-load="true" />
     </view>
     <view class="action-row" wx:if="{{item.status === 'pending'}}">
       <button wx:if="{{adminSuper || adminPermissions.admin_auditPetVaccineCertification}}" class="ghost-btn compact-btn" data-id="{{item._id}}" bindtap="reject">驳回</button>
@@ -45,11 +45,6 @@
   <view class="load-tip" wx:if="{{loading && applications.length}}">正在加载更多...</view>
   <view class="load-tip" wx:if="{{!loading && applications.length && !hasMore}}">已显示全部申请</view>
 
-  <view class="bottom-nav admin-bottom-nav">
-    <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon remix-icon ri-dashboard-3-line"></view><view>控制台</view></view>
-    <view class="nav-item" data-url="/pages/admin/orders/list/index" bindtap="go"><view class="nav-icon remix-icon ri-file-list-3-line"></view><view>订单</view></view>
-    <view class="nav-item active"><view class="nav-icon remix-icon ri-shield-check-fill"></view><view>审核</view></view>
-    <view class="nav-item" data-url="/pages/admin/incidents/list/index" bindtap="go"><view class="nav-icon remix-icon ri-alarm-warning-line"></view><view>异常</view></view>
-  </view>
+  <role-bottom-nav class="bottom-nav" role="admin" active="/pages/admin/pet-vaccine/list/index" />
 </view>
 <global-loading />

@@ -47,7 +47,7 @@
     </view>
     <view class="evidence-grid" wx:if="{{mediaFileIds.length}}">
       <view class="evidence-item" wx:for="{{mediaFileIds}}" wx:key="*this">
-        <image src="{{item}}" mode="aspectFill" />
+        <image src="{{item}}" mode="aspectFill" lazy-load="true" />
         <view class="remove" data-index="{{index}}" bindtap="removeEvidence"><text class="remix-icon ri-close-line"></text></view>
       </view>
     </view>

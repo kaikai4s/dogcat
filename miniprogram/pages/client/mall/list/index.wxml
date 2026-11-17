@@ -56,22 +56,37 @@
     <view class="sort-chip {{sort === 'price_desc' ? 'active' : ''}}" data-sort="price_desc" bindtap="chooseSort">价格降序</view>
   </view>
 
-  <view class="product-grid">
-    <view class="product-card" wx:for="{{products}}" wx:key="_id">
-      <image class="product-img" src="{{item.coverFileId || item.imageFileIds[0]}}" mode="aspectFill" data-id="{{item._id}}" bindtap="detail" />
-      <view class="product-body" data-id="{{item._id}}" bindtap="detail">
-        <view class="product-name">{{item.name}}</view>
-        <view class="product-sub">{{item.subtitle || item.specText}}</view>
-      </view>
-      <view class="product-foot">
-        <view class="price-block"><text class="price">{{item.priceText || item.displayPrice}}</text><text class="stock">库存{{item.totalStock || item.stock}}</text></view>
-        <button class="cart-btn" data-id="{{item._id}}" data-index="{{index}}" bindtap="addCart" disabled="{{item.soldOut}}">{{item.soldOut ? '售罄' : (item.hasSku ? '选规格' : '加购')}}</button>
+  <view class="product-grid" wx:if="{{loading && !products.length}}">
+    <view class="product-card mall-skeleton-card" wx:for="{{[1,2,3,4]}}" wx:key="*this">
+      <view class="skeleton-shimmer sk-product-img"></view>
+      <view class="sk-product-body">
+        <view class="skeleton-shimmer sk-line sk-p-title"></view>
+        <view class="skeleton-shimmer sk-line sk-p-sub"></view>
+        <view class="skeleton-shimmer sk-line sk-p-btn"></view>
       </view>
     </view>
   </view>
 
-  <view class="list-state" wx:if="{{loading}}">加载中...</view>
-  <view class="empty" wx:if="{{!loading && !products.length}}">暂无商品</view>
+  <block wx:else>
+    <view class="product-grid">
+      <view class="product-card" wx:for="{{products}}" wx:key="_id">
+        <image class="product-img" src="{{item.coverFileId || item.imageFileIds[0]}}" mode="aspectFill" lazy-load="true" data-id="{{item._id}}" bindtap="detail" />
+        <view class="product-body" data-id="{{item._id}}" bindtap="detail">
+          <view class="product-name">{{item.name}}</view>
+          <view class="product-sub">{{item.subtitle || item.specText}}</view>
+        </view>
+        <view class="product-foot">
+          <view class="price-block"><text class="price">{{item.priceText || item.displayPrice}}</text><text class="stock">库存{{item.totalStock || item.stock}}</text></view>
+          <button class="cart-btn" data-id="{{item._id}}" data-index="{{index}}" bindtap="addCart" disabled="{{item.soldOut}}">{{item.soldOut ? '售罄' : (item.hasSku ? '选规格' : '加购')}}</button>
+        </view>
+      </view>
+    </view>
+
+    <view class="list-state" wx:if="{{loading && products.length}}">正在加载更多商品...</view>
+    <view class="list-state" wx:if="{{!loading && products.length && !hasMore}}">已显示全部商品</view>
+    <view class="empty" wx:if="{{!loading && loadError && !products.length}}"><view>商品加载失败，请重试</view><button bindtap="retryProducts">重新加载</button></view>
+    <view class="empty" wx:elif="{{!loading && !products.length}}">暂无商品</view>
+  </block>
 </view>
 </dovlin-refresh>
 <global-loading />

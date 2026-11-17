@@ -77,23 +77,5 @@
 }
 .send-btn::after { display: none !important; }
 .send-btn .remix-icon { font-size: 28rpx; line-height: 1; }
-
-/* Night theme adaptations */
-.theme-night.ai-page { background: linear-gradient(180deg, #15131d 0%, #1f2030 42%, #11131b 100%); color: #f5f4fb; }
-.theme-night .ai-hero { background: linear-gradient(135deg, #20233a 0%, #373154 58%, #181927 100%); box-shadow: 0 18rpx 44rpx rgba(0,0,0,0.3); }
-.theme-night .hero-title { color: #ffffff; }
-.theme-night .hero-desc { color: #b9b6c8; }
-.theme-night .hero-badge { background: rgba(36, 38, 54, 0.85); color: #a78bfa; }
-.theme-night .preset-chip { background: rgba(36, 38, 54, 0.86); color: #a78bfa; border-color: rgba(124, 140, 255, 0.2); }
-.theme-night .ai-disclaimer-strip { background: rgba(46, 51, 95, 0.5); border-color: rgba(124, 140, 255, 0.25); }
-.theme-night .strip-text { color: #d1ccf0; }
-.theme-night .chat-msg.ai { background: rgba(36, 38, 54, 0.96); color: #f5f4fb; border-color: rgba(124, 140, 255, 0.2); }
-.theme-night .history-controls, .theme-night .chat-time { color: #b9b6c8; }
-.theme-night .history-controls button { color: #d1ccf0; background: #242636; }
-.theme-night .input-wrap { background: rgba(36, 38, 54, 0.96); border-color: rgba(124, 140, 255, 0.2); }
-.theme-night .input-row .ai-input,
-.theme-night .input-row input { background: #1f2030 !important; color: #f5f4fb !important; border-color: rgba(124, 140, 255, 0.25) !important; }
-.theme-night .ai-input-ph { color: #79768f; }
-
 .ai-error { margin: 24rpx; padding: 24rpx; border-radius: 16rpx; background: #fff1dc; color: #9b6124; font-size: 26rpx; }
 .ai-error button { margin-top: 16rpx; font-size: 26rpx; }

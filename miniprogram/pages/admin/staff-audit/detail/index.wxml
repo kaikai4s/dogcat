@@ -23,15 +23,15 @@
     <view class="card-subtitle"><text class="remix-icon ri-id-card-line sub-icon"></text><text>实名认证材料</text></view>
     <view class="evidence-grid">
       <view class="service-option" wx:if="{{staff.idCardFrontFileId}}" data-url="{{staff.idCardFrontFileId}}" bindtap="preview">
-        <image class="evidence-image" src="{{staff.idCardFrontFileId}}" mode="aspectFill" />
+        <image class="evidence-image" src="{{staff.idCardFrontFileId}}" mode="aspectFill" lazy-load="true" />
         <view class="service-title">身份证人像面</view>
       </view>
       <view class="service-option" wx:if="{{staff.idCardBackFileId}}" data-url="{{staff.idCardBackFileId}}" bindtap="preview">
-        <image class="evidence-image" src="{{staff.idCardBackFileId}}" mode="aspectFill" />
+        <image class="evidence-image" src="{{staff.idCardBackFileId}}" mode="aspectFill" lazy-load="true" />
         <view class="service-title">身份证国徽面</view>
       </view>
       <view class="service-option" wx:if="{{staff.facePhotoFileId}}" data-url="{{staff.facePhotoFileId}}" bindtap="preview">
-        <image class="evidence-image" src="{{staff.facePhotoFileId}}" mode="aspectFill" />
+        <image class="evidence-image" src="{{staff.facePhotoFileId}}" mode="aspectFill" lazy-load="true" />
         <view class="service-title">自拍/人脸照</view>
       </view>
     </view>
@@ -48,11 +48,11 @@
     </view>
     <view class="evidence-grid" style="margin-top: 16rpx;">
       <view class="service-option" wx:if="{{staff.zhimaScoreFileId || (staff.zhimaCredit && staff.zhimaCredit.scoreFileId)}}" data-url="{{staff.zhimaScoreFileId || (staff.zhimaCredit && staff.zhimaCredit.scoreFileId)}}" bindtap="preview">
-        <image class="evidence-image" src="{{staff.zhimaScoreFileId || (staff.zhimaCredit && staff.zhimaCredit.scoreFileId)}}" mode="aspectFill" />
+        <image class="evidence-image" src="{{staff.zhimaScoreFileId || (staff.zhimaCredit && staff.zhimaCredit.scoreFileId)}}" mode="aspectFill" lazy-load="true" />
         <view class="service-title">芝麻信用分截图</view>
       </view>
       <view class="service-option" wx:if="{{staff.alipayProfileFileId || (staff.zhimaCredit && staff.zhimaCredit.profileFileId)}}" data-url="{{staff.alipayProfileFileId || (staff.zhimaCredit && staff.zhimaCredit.profileFileId)}}" bindtap="preview">
-        <image class="evidence-image" src="{{staff.alipayProfileFileId || (staff.zhimaCredit && staff.zhimaCredit.profileFileId)}}" mode="aspectFill" />
+        <image class="evidence-image" src="{{staff.alipayProfileFileId || (staff.zhimaCredit && staff.zhimaCredit.profileFileId)}}" mode="aspectFill" lazy-load="true" />
         <view class="service-title">支付宝主页截图</view>
       </view>
     </view>

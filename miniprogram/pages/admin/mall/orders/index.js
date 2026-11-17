@@ -1,6 +1,6 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { copyText } = require('../../../../utils/clipboard')
-const { formatPaymentStatus, formatRefundStatus } = require('../../../../utils/format')
+const { formatPaymentStatus, formatRefundStatus , pageList } = require('../../../../utils/format')
 
 const tabs = [
   { label: '全部', value: '' },
@@ -32,10 +32,6 @@ const MALL_STATUS_TEXT_MAP = {
   partial_refunded: '部分退款',
   closed: '已关闭',
   timeout_closed: '超时关闭'
-}
-
-function pageList(result) {
-  return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result || { list: [], hasMore: false, page: 1, total: 0 })
 }
 
 function paymentStatusText(status) {

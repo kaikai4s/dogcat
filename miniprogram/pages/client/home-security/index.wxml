@@ -38,7 +38,7 @@
 
     <view wx:if="{{item.orderHomeSecurity.key}}" class="security-block">
       <view class="info-row"><view class="label">钥匙位置</view><view class="value">{{item.orderHomeSecurity.key.location}}</view></view>
-      <view class="image-list" wx:if="{{item.orderHomeSecurity.key.imageFileIds.length}}"><image wx:for="{{item.orderHomeSecurity.key.imageFileIds}}" wx:key="*this" class="security-image" src="{{item}}" mode="aspectFill" /></view>
+      <view class="image-list" wx:if="{{item.orderHomeSecurity.key.imageFileIds.length}}"><image wx:for="{{item.orderHomeSecurity.key.imageFileIds}}" wx:key="*this" class="security-image" src="{{item}}" mode="aspectFill" lazy-load="true" /></view>
       <view class="notice-text">{{item.orderHomeSecurity.key.returnedAt ? '宠托师已打卡放回钥匙' : '该订单暂无放回打卡记录'}}</view>
     </view>
 

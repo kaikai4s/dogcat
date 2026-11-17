@@ -59,7 +59,7 @@
       <view class="warning" wx:if="{{failureReason}}">驳回 / 失败原因：{{failureReason}}</view>
       <view class="receipt-grid" wx:if="{{submittedReceipts.length}}">
         <view class="receipt" wx:for="{{submittedReceipts}}" wx:key="*this">
-          <image class="receipt-image" src="{{item}}" mode="aspectFill" data-submitted="yes" data-index="{{index}}" bindtap="previewReceipt" />
+          <image class="receipt-image" src="{{item}}" mode="aspectFill" data-submitted="yes" data-index="{{index}}" bindtap="previewReceipt" lazy-load="true" />
           <view class="muted">已提交凭证 {{index + 1}}</view>
         </view>
       </view>
@@ -80,7 +80,7 @@
     </picker>
     <view class="receipt-grid">
       <view class="receipt" wx:for="{{receipts}}" wx:key="fileId">
-        <image class="receipt-image" src="{{item.preview}}" mode="aspectFill" data-index="{{index}}" bindtap="previewReceipt" />
+        <image class="receipt-image" src="{{item.preview}}" mode="aspectFill" data-index="{{index}}" bindtap="previewReceipt" lazy-load="true" />
         <button class="remove-btn" data-index="{{index}}" bindtap="removeReceipt" disabled="{{busy || uploading}}">移除</button>
       </view>
     </view>

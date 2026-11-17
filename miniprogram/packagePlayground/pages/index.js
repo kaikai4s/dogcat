@@ -16,7 +16,7 @@ Page({
   onShow() {
     this._visible = true
     const generation = this._pageGeneration = (this._pageGeneration || 0) + 1
-    ensureLogin({ content: '登录后可进入宠物乐园。' })
+    ensureLogin({ content: '登录后可进入宠物庄园。' })
       .then(() => { if (this._visible && generation === this._pageGeneration) return this.load() })
       .catch(() => { if (this._visible && generation === this._pageGeneration) wx.redirectTo({ url: '/pages/client/home/index' }) })
   },

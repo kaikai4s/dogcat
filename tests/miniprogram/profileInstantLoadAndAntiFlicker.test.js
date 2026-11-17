@@ -56,6 +56,7 @@ function createProfilePage(options = {}) {
       if (modulePath.includes('utils/cloud')) return cloudMock
       if (modulePath.includes('theme')) return { themeOptions: [], applyTheme: () => ({ value: 'day' }), saveTheme: () => {}, getThemeState: () => ({}) }
       if (modulePath.includes('font')) return { fontOptions: [], applyFont: () => ({ value: 'system' }), saveFont: () => {}, getFontState: () => ({}) }
+      if (modulePath.includes('utils/nav')) return require(path.join(root, 'utils/nav.js'))
       if (modulePath.includes('clipboard')) return { copyText: () => {} }
       return {}
     },

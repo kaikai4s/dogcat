@@ -476,7 +476,8 @@ page {
 
 .profile-grid-panel {
   display: grid;
-  gap: 24rpx 6rpx;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 24rpx 12rpx;
   width: 100%;
   box-sizing: border-box;
   padding-top: 10rpx;
@@ -484,10 +485,6 @@ page {
 
 .profile-grid-panel.cols-4 {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.profile-grid-panel.cols-5 {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .profile-grid-item {
@@ -536,8 +533,8 @@ page {
 .profile-grid-label {
   position: relative;
   z-index: 10;
-  margin-top: 12rpx;
-  max-width: 128rpx;
+  margin-top: 4rpx;
+  max-width: 152rpx;
   color: #5f5650;
   background: rgba(255, 255, 255, 0.92);
   border-radius: 8rpx;
@@ -745,34 +742,6 @@ page {
 .feedback-input {
   min-height: 88rpx;
   padding: 0 22rpx;
-}
-
-.client-bottom-nav {
-  border-top: 1rpx solid rgba(255, 153, 102, 0.12);
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 -12rpx 36rpx rgba(123, 89, 62, 0.08);
-}
-
-.client-bottom-nav .nav-item {
-  color: #8e8580;
-}
-
-.client-bottom-nav .nav-item.active {
-  color: #e9672f;
-  font-weight: 850;
-}
-
-.client-bottom-nav .nav-icon {
-  position: relative;
-  width: 48rpx;
-  height: 48rpx;
-}
-
-
-.client-bottom-nav .nav-red-dot {
-  position: absolute;
-  top: 2rpx;
-  right: 2rpx;
 }
 
 .interactive:active,

@@ -7,7 +7,7 @@
   </view>
   <view class="checkout-card">
     <view class="card-head">商品明细</view>
-    <view class="mini-item" wx:for="{{items}}" wx:key="skuId"><image src="{{item.coverFileId}}" mode="aspectFill" /><view><view class="mini-name">{{item.name}}</view><view class="mini-sub">{{item.specText}} × {{item.quantity}}</view></view><view class="price">¥{{item.price}}</view></view>
+    <view class="mini-item" wx:for="{{items}}" wx:key="skuId"><image src="{{item.coverFileId}}" mode="aspectFill" lazy-load="true" /><view><view class="mini-name">{{item.name}}</view><view class="mini-sub">{{item.specText}} × {{item.quantity}}</view></view><view class="price">¥{{item.price}}</view></view>
   </view>
   <view class="checkout-card">
     <view class="card-head">优惠券 <text wx:if="{{couponId}}" bindtap="clearCoupon">不使用</text></view>

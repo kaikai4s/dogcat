@@ -21,7 +21,7 @@
   </view>
 
   <view class="card pet-card" wx:for="{{pets}}" wx:key="_id" data-id="{{item._id}}" bindtap="edit">
-    <image class="pet-photo" wx:if="{{item.avatarFileId || (item.beautyPhotos && item.beautyPhotos[0] && item.beautyPhotos[0].fileId)}}" src="{{item.avatarFileId || item.beautyPhotos[0].fileId}}" mode="aspectFill" />
+    <image class="pet-photo" wx:if="{{item.avatarFileId || (item.beautyPhotos && item.beautyPhotos[0] && item.beautyPhotos[0].fileId)}}" src="{{item.avatarFileId || item.beautyPhotos[0].fileId}}" mode="aspectFill" lazy-load="true" />
     <view class="pet-photo empty-photo" wx:else><text class="remix-icon ri-paw-print-line"></text></view>
     <view class="pet-main">
       <view class="pet-head">

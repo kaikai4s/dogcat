@@ -1,5 +1,5 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
-const { withOrderText, buildOrderCareCards } = require('../../../../utils/format')
+const { withOrderText, buildOrderCareCards , pageList } = require('../../../../utils/format')
 const { getSelectedLocation } = require('../../../../utils/cloud')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 const { loadMessageUnread } = require('../../../../utils/client-nav')
@@ -10,10 +10,6 @@ const tabs = [
   { label: '服务中', value: 'in_service' },
   { label: '已完成', value: 'completed' }
 ]
-
-function pageList(result) {
-  return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result ? { ...result, list: Array.isArray(result.list) ? result.list : [] } : { list: [], hasMore: false, page: 1, total: 0 })
-}
 
 Page({
   data: {

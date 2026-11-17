@@ -2,7 +2,7 @@
   <view class="page-title">购物车</view>
   <view class="cart-item" wx:for="{{cart.items}}" wx:key="skuId">
     <view class="check {{item.selected !== false ? 'active' : ''}}" data-index="{{index}}" bindtap="toggle">✓</view>
-    <image src="{{item.snapshot.coverFileId || item.product.coverFileId || item.product.imageFileIds[0]}}" mode="aspectFill" data-id="{{item.productId}}" bindtap="detail" />
+    <image src="{{item.snapshot.coverFileId || item.product.coverFileId || item.product.imageFileIds[0]}}" mode="aspectFill" data-id="{{item.productId}}" bindtap="detail" lazy-load="true" />
     <view class="cart-main">
       <view class="cart-name">{{item.snapshot.name || item.product.name}}</view>
       <view class="cart-sub">{{item.specText || item.snapshot.specText || item.product.specText}} {{item.invalid ? '已下架' : ''}} {{item.soldOut ? '售罄' : ''}}</view>

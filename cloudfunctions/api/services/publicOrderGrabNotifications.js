@@ -71,6 +71,7 @@ module.exports = function createService(context) {
     makeIdempotencyKey,
     now,
     orderMatchesCity,
+    readScopedDocuments,
     safeText,
     sendSubscribeMessage,
     toTimeValue,
@@ -183,8 +184,9 @@ module.exports = function createService(context) {
     // 10.2 排班检查（按需获取特殊休息日并校验周排班）
     let exceptions = scheduleExceptions
     if (!Array.isArray(exceptions)) {
-      const exceptionsRes = await db.collection('staff_schedule_exceptions').where({ staffOpenid: profile.openid }).get().catch(() => ({ data: [] }))
-      exceptions = exceptionsRes.data || []
+      exceptions = typeof readScopedDocuments === 'function'
+        ? await readScopedDocuments('staff_schedule_exceptions', { staffOpenid: profile.openid }).catch(() => [])
+        : ((await db.collection('staff_schedule_exceptions').where({ staffOpenid: profile.openid }).limit(200).get().catch(() => ({ data: [] }))).data || [])
     }
     try {
       for (const session of sessions) {
@@ -216,11 +218,14 @@ module.exports = function createService(context) {
 
     const targetDate = getDateKeyFromTime(order.startTime) || String(order.serviceStartDate || '').slice(0, 10)
     if (targetDate) {
-      const dailyOrdersRes = await db.collection('orders').where({
+      const dailyWhere = {
         staffOpenid: profile.openid,
         status: inOp(['assigned', 'on_the_way', 'in_service', 'day_completed', 'completed'])
-      }).get().catch(() => ({ data: [] }))
-      const sameDayOrders = (dailyOrdersRes.data || []).filter((o) => {
+      }
+      const dailyOrders = typeof readScopedDocuments === 'function'
+        ? await readScopedDocuments('orders', dailyWhere).catch(() => [])
+        : ((await db.collection('orders').where(dailyWhere).limit(1000).get().catch(() => ({ data: [] }))).data || [])
+      const sameDayOrders = dailyOrders.filter((o) => {
         const oDate = getDateKeyFromTime(o.startTime) || String(o.serviceStartDate || '').slice(0, 10)
         return oDate === targetDate && o._id !== order._id
       })

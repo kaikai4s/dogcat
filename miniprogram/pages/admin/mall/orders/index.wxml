@@ -40,7 +40,7 @@
     </view>
 
     <view class="goods-line" wx:for="{{item.items}}" wx:for-item="goods" wx:key="productId">
-      <image wx:if="{{goods.coverFileId}}" src="{{goods.coverFileId}}" mode="aspectFill" />
+      <image wx:if="{{goods.coverFileId}}" src="{{goods.coverFileId}}" mode="aspectFill" lazy-load="true" />
       <view wx:else class="goods-placeholder">图</view>
       <view class="goods-main">
         <view class="strong small">{{goods.name}}</view>
@@ -116,7 +116,7 @@
           📦 买家已寄回：{{activeOrder.returnExpress.expressCompany}} · {{activeOrder.returnExpress.trackingNo}}
         </view>
         <view class="refund-images" wx:if="{{activeOrder.refundImages && activeOrder.refundImages.length}}">
-          <image wx:for="{{activeOrder.refundImages}}" wx:key="*this" src="{{item}}" mode="aspectFill" />
+          <image wx:for="{{activeOrder.refundImages}}" wx:key="*this" src="{{item}}" mode="aspectFill" lazy-load="true" />
         </view>
       </view>
       <view class="form-section">

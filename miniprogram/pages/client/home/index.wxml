@@ -110,10 +110,10 @@
       <swiper class="hero-swiper" autoplay="{{heroAutoplay}}" interval="{{heroRotateInterval}}" circular="{{true}}" previous-margin="0rpx" next-margin="0rpx" bindchange="onSwiperChange">
         <swiper-item wx:for="{{heroSlides}}" wx:key="id" class="hero-swiper-item">
           <view class="hero-slide {{index === heroCurrent ? 'is-active' : 'is-muted'}}" data-item="{{item}}" bindtap="onHeroSlideTap">
-            <image wx:if="{{item.type === 'image'}}" src="{{item.url}}" mode="scaleToFill" class="hero-slide-media" data-id="{{item.id}}" data-url="{{item.url}}" binderror="onHeroMediaError" />
+            <image wx:if="{{item.type === 'image'}}" src="{{item.url}}" mode="aspectFill" class="hero-slide-media" data-id="{{item.id}}" data-url="{{item.url}}" binderror="onHeroMediaError" />
             <view wx:else class="hero-slide-video">
               <view wx:if="{{heroPlayingVideoId !== item.id}}" class="hero-video-poster">
-                <image src="{{item.posterUrl || item.url}}" mode="scaleToFill" class="hero-slide-media" data-id="{{item.id}}" data-url="{{item.posterUrl || item.url}}" binderror="onHeroMediaError" />
+                <image src="{{item.posterUrl || item.url}}" mode="aspectFill" class="hero-slide-media" data-id="{{item.id}}" data-url="{{item.posterUrl || item.url}}" binderror="onHeroMediaError" />
                 <view class="hero-play-mask" catchtap="playHeroVideo" data-id="{{item.id}}"><view class="remix-icon ri-play-circle-fill hero-play-icon"></view></view>
               </view>
               <video wx:else id="hero_video_{{item.id}}" src="{{item.url}}" poster="{{item.posterUrl}}" controls="{{true}}" autoplay="{{true}}" show-fullscreen-btn="{{false}}" class="hero-slide-media" data-id="{{item.id}}" bindpause="onVideoPauseOrEnded" bindended="onVideoPauseOrEnded" catchtap="noBubble" />
@@ -195,7 +195,7 @@
       <view class="remix-icon ri-file-user-fill quick-action-icon blue"></view><view class="quick-action-label">宠物档案</view>
     </view>
     <view class="quick-action-item interactive" data-url="/packagePlayground/pages/index" bindtap="goProtected">
-      <view class="remix-icon ri-gamepad-fill quick-action-icon green"></view><view class="quick-action-label">宠物乐园</view>
+      <view class="remix-icon ri-gamepad-fill quick-action-icon green"></view><view class="quick-action-label">宠物庄园</view>
     </view>
     <view class="quick-action-item interactive" data-url="/pages/client/home-security/index" bindtap="goProtected">
       <view class="remix-icon ri-shield-keyhole-fill quick-action-icon purple"></view><view class="quick-action-label">家庭安防</view>
@@ -228,7 +228,7 @@
       binddragend="onHotServicesTouchEnd">
       <view class="service-price-card interactive" wx:for="{{displayServicePrices.length ? displayServicePrices : servicePrices}}" wx:key="uniqueKey" data-url="/pages/client/orders/service-detail/index?key={{item.key}}" bindtap="go">
         <view class="service-cover-wrap">
-          <image class="service-cover-img" wx:if="{{item.coverUrl}}" src="{{item.coverUrl}}" mode="aspectFill" />
+          <image class="service-cover-img" wx:if="{{item.coverUrl}}" src="{{item.coverUrl}}" mode="aspectFill" lazy-load="true" />
           <view class="remix-icon {{item.serviceIcon || 'ri-price-tag-3-fill'}} service-price-icon" wx:else></view>
         </view>
         <view class="service-price-name">{{item.label}}</view>
@@ -274,7 +274,7 @@
     </view>
     <scroll-view scroll-x class="sitter-scroll">
       <view class="sitter-home-card interactive" wx:for="{{featuredSitters}}" wx:key="_id" data-url="/pages/client/sitters/detail/index?id={{item._id}}" bindtap="go">
-        <view class="sitter-avatar-wrapper"><image class="sitter-avatar-img" wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill" /><view class="remix-icon ri-user-smile-fill" wx:else></view></view>
+        <view class="sitter-avatar-wrapper"><image class="sitter-avatar-img" wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill" lazy-load="true" /><view class="remix-icon ri-user-smile-fill" wx:else></view></view>
         <view class="sitter-name-line"><view class="sitter-name">{{item.displayName}}</view><view class="featured-badge" wx:if="{{item.isFeatured}}">精选</view></view>
         <view class="sitter-rating-line"><text class="stars remix-icon ri-star-fill"></text><text class="score">{{item.ratingAverage || '新'}}</text><text class="divider">|</text><text class="count">{{item.reviewCount}}条评价</text></view>
         <view class="sitter-bio">{{item.serviceSummary}}</view>
@@ -325,11 +325,5 @@
   <view class="lottery-btn">立即抽</view>
 </view>
 
-<view class="bottom-nav client-bottom-nav">
-  <view class="nav-item active"><view class="nav-icon remix-icon ri-home-5-fill"></view><view>首页</view></view>
-  <view class="nav-item" data-url="/pages/client/sitters/list/index" bindtap="go"><view class="nav-icon remix-icon ri-team-line"></view><view>宠托师</view></view>
-  <view class="nav-item" data-url="/pages/client/orders/list/index" bindtap="goProtected"><view class="nav-icon remix-icon ri-file-list-3-line"></view><view>订单</view></view>
-  <view class="nav-item" data-url="/pages/client/messages/index" bindtap="goProtected"><view class="nav-icon remix-icon ri-message-3-line"><view class="nav-unread-count" wx:if="{{messageUnreadCount > 0}}">{{messageUnreadCountText}}</view></view><view>消息</view></view>
-  <view class="nav-item" data-url="/pages/client/profile/index" bindtap="go"><view class="nav-icon remix-icon ri-user-3-line"></view><view>我的</view></view>
-</view>
+<role-bottom-nav class="bottom-nav" role="client" active="/pages/client/home/index" unread-count="{{messageUnreadCount || 0}}" unread-text="{{messageUnreadCountText || ''}}" delegate-nav="{{true}}" bind:navigate="onBottomNavTap" />
 <global-loading />

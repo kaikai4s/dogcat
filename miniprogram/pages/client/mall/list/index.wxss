@@ -18,3 +18,12 @@
 .shop-config-error{display:flex;align-items:center;justify-content:space-between;gap:16rpx;padding:16rpx 24rpx;background:#fff4dd;color:#664613;font-size:24rpx}
 .shop-config-error text{flex:1;min-width:0}
 .shop-config-error button{flex-shrink:0;margin:0;padding:0 20rpx;height:58rpx;line-height:58rpx;border-radius:8rpx;background:#fff;color:#664613;font-size:24rpx}
+.mall-skeleton-card{display:flex;flex-direction:column}
+.sk-product-img{width:100%;height:250rpx}
+.sk-product-body{padding:18rpx;display:flex;flex-direction:column;gap:14rpx}
+.sk-line{height:24rpx;border-radius:12rpx}
+.sk-p-title{width:84%}
+.sk-p-sub{width:56%}
+.sk-p-btn{width:100%;height:56rpx;border-radius:999rpx;margin-top:8rpx}
+.skeleton-shimmer{background:linear-gradient(90deg,#f6ece2 25%,#fff6ed 50%,#f6ece2 75%);background-size:200% 100%;animation:mallShimmer 1.3s ease-in-out infinite}
+@keyframes mallShimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}

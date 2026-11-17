@@ -4,6 +4,3 @@
 .subscription-entry-title { font-size: 29rpx; font-weight: 750; color: #7b461b; }
 .subscription-entry-desc { font-size: 22rpx; color: #aa815e; line-height: 1.5; margin-top: 7rpx; }
 .subscription-entry-action { display: flex; align-items: center; flex-shrink: 0; gap: 3rpx; color: #db771c; font-size: 25rpx; font-weight: 650; }
-.theme-night .subscription-entry { background: #30271f; border-color: #55402b; }
-.theme-night .subscription-entry-title { color: #f4d5aa; }
-.theme-night .subscription-entry-desc { color: #c3a387; }

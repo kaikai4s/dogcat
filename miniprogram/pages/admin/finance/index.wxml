@@ -175,7 +175,7 @@
         <view class="value">{{item.lastForfeitImages.length}}张（仅管理员可见）</view>
       </view>
       <scroll-view scroll-x class="chip-tabs" wx:if="{{item.lastForfeitImages && item.lastForfeitImages.length}}" style="margin-top: 8rpx; margin-bottom: 12rpx;">
-        <image wx:for="{{item.lastForfeitImages}}" wx:for-item="img" wx:key="*this" src="{{img}}" mode="aspectFill" style="width: 120rpx; height: 120rpx; border-radius: 12rpx; margin-right: 12rpx; border: 1rpx solid #fed7aa;" data-urls="{{item.lastForfeitImages}}" data-current="{{img}}" bindtap="previewForfeitReceipt" />
+        <image wx:for="{{item.lastForfeitImages}}" wx:for-item="img" wx:key="*this" src="{{img}}" mode="aspectFill" style="width: 120rpx; height: 120rpx; border-radius: 12rpx; margin-right: 12rpx; border: 1rpx solid #fed7aa;" data-urls="{{item.lastForfeitImages}}" data-current="{{img}}" bindtap="previewForfeitReceipt" lazy-load="true" />
       </scroll-view>
       <view class="info-row"><view class="label">记录时间</view><view class="value">{{beijingTime.format(item.paidAt || item.createdAt)}}</view></view>
       
@@ -211,7 +211,7 @@
         <view class="value">{{item.mediaFileIds.length}}张</view>
       </view>
       <scroll-view scroll-x class="chip-tabs" wx:if="{{item.mediaFileIds && item.mediaFileIds.length}}">
-        <image wx:for="{{item.mediaFileIds}}" wx:for-item="img" wx:key="*this" src="{{img}}" mode="aspectFill" style="width: 120rpx; height: 120rpx; border-radius: 12rpx; margin-right: 12rpx;" data-urls="{{item.mediaFileIds}}" data-current="{{img}}" bindtap="previewReceipt" />
+        <image wx:for="{{item.mediaFileIds}}" wx:for-item="img" wx:key="*this" src="{{img}}" mode="aspectFill" style="width: 120rpx; height: 120rpx; border-radius: 12rpx; margin-right: 12rpx;" data-urls="{{item.mediaFileIds}}" data-current="{{img}}" bindtap="previewReceipt" lazy-load="true" />
       </scroll-view>
 
       <view class="action-row" wx:if="{{item.status === 'pending'}}">
@@ -342,7 +342,7 @@
         </view>
         <view class="forfeit-uploader-grid">
           <view class="uploader-thumb" wx:for="{{forfeitImages}}" wx:key="*this">
-            <image src="{{item}}" mode="aspectFill" class="thumb-img" data-url="{{item}}" bindtap="previewForfeitModalImage" />
+            <image src="{{item}}" mode="aspectFill" class="thumb-img" data-url="{{item}}" bindtap="previewForfeitModalImage" lazy-load="true" />
             <view class="thumb-remove" data-index="{{index}}" bindtap="removeForfeitImage">×</view>
           </view>
           <view class="uploader-add-btn" wx:if="{{forfeitImages.length < 4}}" bindtap="chooseForfeitImages">

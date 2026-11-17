@@ -155,6 +155,37 @@ module.exports = function createHandler(context) {
     }
     return rows
   }
+  async function assertStaffOrderCapacity(openid, order, orderId, settings) {
+    const inOp = db.command && typeof db.command.in === 'function' ? db.command.in : (list) => list
+    const activeStatuses = ['assigned', 'on_the_way', 'in_service', 'day_completed']
+    const activeOrdersRes = await db.collection('orders').where({
+      staffOpenid: openid,
+      status: inOp(activeStatuses)
+    }).count().catch(() => ({ total: 0 }))
+    const currentActiveCount = activeOrdersRes.total || 0
+    const maxActiveOrders = Number(settings.dispatch && settings.dispatch.maxStaffActiveOrders || 8)
+    if (currentActiveCount >= maxActiveOrders) {
+      throw new Error(`您当前进行中订单已有 ${currentActiveCount} 笔，已达接单上限（最多 ${maxActiveOrders} 笔），请先履约完成后再接新单`)
+    }
+
+    const targetDate = beijingDateText(order.serviceStartDate || order.startTime || '')
+    if (!targetDate) return
+    const dailyWhere = {
+      staffOpenid: openid,
+      status: inOp(['assigned', 'on_the_way', 'in_service', 'day_completed', 'completed'])
+    }
+    const dailyOrders = typeof readScopedDocuments === 'function'
+      ? await readScopedDocuments('orders', dailyWhere).catch(() => [])
+      : ((await db.collection('orders').where(dailyWhere).limit(1000).get().catch(() => ({ data: [] }))).data || [])
+    const sameDayOrders = dailyOrders.filter((o) => {
+      const oDate = beijingDateText(o.serviceStartDate || o.startTime || '')
+      return oDate === targetDate && o._id !== orderId
+    })
+    const maxDailyOrders = Number(settings.dispatch && settings.dispatch.maxStaffDailyOrders || 6)
+    if (sameDayOrders.length >= maxDailyOrders) {
+      throw new Error(`您在 ${targetDate} 已接单 ${sameDayOrders.length} 笔，已达单日接单上限（${maxDailyOrders} 笔），请合理规划时间避免服务延误`)
+    }
+  }
   const staffDepositStandard = depositPolicy.standardAmount
   const staffDepositBalance = depositPolicy.balanceAmount
   async function ensureStaffDepositStandard(profile, fallbackAmount) {
@@ -538,11 +569,13 @@ module.exports = function createHandler(context) {
       const userLng = Number(data.longitude !== undefined ? data.longitude : (data.addressLongitude || 0))
       const userHasLoc = hasCoordinate(userLat, userLng)
 
-      const favorites = await db.collection('sitter_favorites').where({ openid }).orderBy('createdAt', 'desc').get()
+      const favoriteRows = typeof readScopedDocuments === 'function'
+        ? await readScopedDocuments('sitter_favorites', { openid }, 'createdAt', 'desc')
+        : ((await db.collection('sitter_favorites').where({ openid }).orderBy('createdAt', 'desc').limit(500).get()).data || [])
       const list = []
-      for (let i = 0; i < favorites.data.length; i += 1) {
+      for (let i = 0; i < favoriteRows.length; i += 1) {
         try {
-          const profileRes = await db.collection('staff_profiles').doc(favorites.data[i].staffProfileId).get()
+          const profileRes = await db.collection('staff_profiles').doc(favoriteRows[i].staffProfileId).get()
           if (profileRes.data && canTakeOrders(profileRes.data, settings.staffDeposit)) {
             const rawProfile = profileRes.data
             const booking = context.getBookingPoint(rawProfile)
@@ -1753,33 +1786,7 @@ module.exports = function createHandler(context) {
       const conflict = await findStaffOrderConflict(profile.openid, order, orderId)
       if (conflict) throw new Error('宠托师该时间段已有订单，无法重复预约')
 
-      const inOp = db.command && typeof db.command.in === 'function' ? db.command.in : (list) => list
-      const activeStatuses = ['assigned', 'on_the_way', 'in_service', 'day_completed']
-      const activeOrdersRes = await db.collection('orders').where({
-        staffOpenid: openid,
-        status: inOp(activeStatuses)
-      }).count().catch(() => ({ total: 0 }))
-      const currentActiveCount = activeOrdersRes.total || 0
-      const maxActiveOrders = Number(settings.dispatch && settings.dispatch.maxStaffActiveOrders || 8)
-      if (currentActiveCount >= maxActiveOrders) {
-        throw new Error(`您当前进行中订单已有 ${currentActiveCount} 笔，已达接单上限（最多 ${maxActiveOrders} 笔），请先履约完成后再接新单`)
-      }
-
-      const targetDate = beijingDateText(order.serviceStartDate || order.startTime || '')
-      if (targetDate) {
-        const dailyOrdersRes = await db.collection('orders').where({
-          staffOpenid: openid,
-          status: inOp(['assigned', 'on_the_way', 'in_service', 'day_completed', 'completed'])
-        }).get().catch(() => ({ data: [] }))
-        const sameDayOrders = (dailyOrdersRes.data || []).filter((o) => {
-          const oDate = beijingDateText(o.serviceStartDate || o.startTime || '')
-          return oDate === targetDate && o._id !== orderId
-        })
-        const maxDailyOrders = Number(settings.dispatch && settings.dispatch.maxStaffDailyOrders || 6)
-        if (sameDayOrders.length >= maxDailyOrders) {
-          throw new Error(`您在 ${targetDate} 已接单 ${sameDayOrders.length} 笔，已达单日接单上限（${maxDailyOrders} 笔），请合理规划时间避免服务延误`)
-        }
-      }
+      await assertStaffOrderCapacity(openid, order, orderId, settings)
 
       return checkAcceptOrderRisk(profile, order)
     }
@@ -1817,35 +1824,8 @@ module.exports = function createHandler(context) {
       if (publishMode === 'open' && order.requestedStaffOpenid) throw new Error('该订单指定了其他宠托师')
       assertStaffCanAcceptOrderVaccines(profile, await attachOrderDisplayData(order))
 
-      // 校验进行中订单总数上限（防止名下在途订单积压）
-      const inOp = db.command && typeof db.command.in === 'function' ? db.command.in : (list) => list
-      const activeStatuses = ['assigned', 'on_the_way', 'in_service', 'day_completed']
-      const activeOrdersRes = await db.collection('orders').where({
-        staffOpenid: openid,
-        status: inOp(activeStatuses)
-      }).count().catch(() => ({ total: 0 }))
-      const currentActiveCount = activeOrdersRes.total || 0
-      const maxActiveOrders = Number(settings.dispatch && settings.dispatch.maxStaffActiveOrders || 8)
-      if (currentActiveCount >= maxActiveOrders) {
-        throw new Error(`您当前进行中订单已有 ${currentActiveCount} 笔，已达接单上限（最多 ${maxActiveOrders} 笔），请先履约完成后再接新单`)
-      }
-
-      // 校验目标服务日期的单日接单上限（防止单日接单过多导致疲劳超时违约）
-      const targetDate = beijingDateText(order.serviceStartDate || order.startTime || '')
-      if (targetDate) {
-        const dailyOrdersRes = await db.collection('orders').where({
-          staffOpenid: openid,
-          status: inOp(['assigned', 'on_the_way', 'in_service', 'day_completed', 'completed'])
-        }).get().catch(() => ({ data: [] }))
-        const sameDayOrders = (dailyOrdersRes.data || []).filter((o) => {
-          const oDate = beijingDateText(o.serviceStartDate || o.startTime || '')
-          return oDate === targetDate && o._id !== orderId
-        })
-        const maxDailyOrders = Number(settings.dispatch && settings.dispatch.maxStaffDailyOrders || 6)
-        if (sameDayOrders.length >= maxDailyOrders) {
-          throw new Error(`您在 ${targetDate} 已接单 ${sameDayOrders.length} 笔，已达单日接单上限（${maxDailyOrders} 笔），请合理规划时间避免服务延误`)
-        }
-      }
+      // 校验进行中订单总数上限与目标日期单日接单上限
+      await assertStaffOrderCapacity(openid, order, orderId, settings)
 
       // 验证抢单时的实时位置与订单距离
       const currentLat = Number(data.currentLatitude)

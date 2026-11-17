@@ -5,6 +5,9 @@ const { themeOptions, applyTheme, saveTheme, getThemeState } = require('../../..
 const { fontOptions, applyFont, saveFont, getFontState } = require('../../../utils/font')
 // Unread data here is fetched under this page's identity/request guards, not the shared role-only cache.
 const { copyText } = require('../../../utils/clipboard')
+const navUtils = require('../../../utils/nav') || {}
+const getNavBarInfo = navUtils.getNavBarInfo || (() => ({ statusBarHeight: 44, titleBarHeight: 44, navBarHeight: 88 }))
+const navigateRoleRoute = navUtils.navigateRoleRoute || ((url) => wx.navigateTo({ url }))
 const cloudAssets = require('../../../utils/cloud-assets')
 const getDovlinLogoUrl = (cloudAssets && (cloudAssets.getDovlinLogoSrc || cloudAssets.getDovlinLogoUrl)) || (() => '')
 const applyDovlinLogo = (cloudAssets && cloudAssets.applyDovlinLogo) || (() => {})
@@ -29,31 +32,6 @@ const emptySummary = {
   levelDescription: '', badgeTag: '', badgeStyle: '', nameColor: '', nameEffect: ''
 }
 
-function getNavBarInfo() {
-  let statusBarHeight = 44
-  let titleBarHeight = 44
-  try {
-    const windowInfo = (typeof wx !== 'undefined' && ((wx.getWindowInfo && wx.getWindowInfo()) || (wx.getSystemInfoSync && wx.getSystemInfoSync()))) || {}
-    if (windowInfo.statusBarHeight) {
-      statusBarHeight = windowInfo.statusBarHeight
-    }
-    const menu = typeof wx !== 'undefined' && wx.getMenuButtonBoundingClientRect ? wx.getMenuButtonBoundingClientRect() : null
-    if (menu && menu.top && menu.height) {
-      titleBarHeight = (menu.top - statusBarHeight) * 2 + menu.height
-    } else {
-      titleBarHeight = 44
-    }
-  } catch (_) {
-    statusBarHeight = 44
-    titleBarHeight = 44
-  }
-  return {
-    statusBarHeight,
-    titleBarHeight,
-    navBarHeight: statusBarHeight + titleBarHeight
-  }
-}
-
 function getInitialProfileData() {
   let user = null
   try {
@@ -64,7 +42,7 @@ function getInitialProfileData() {
   const roles = Array.isArray(user?.roles) ? user.roles : []
   const rawPhone = String(user?.phone || '')
   const phone = rawPhone ? `${rawPhone.slice(0, 3)}****${rawPhone.slice(-4)}` : ''
-  const navInfo = getNavBarInfo()
+  const navInfo = getNavBarInfo(typeof wx !== 'undefined' ? wx : null)
 
   const base = {
     statusBarHeight: navInfo.statusBarHeight,
@@ -166,7 +144,7 @@ Page({
   data: getInitialProfileData(),
 
   initNavBar() {
-    const navInfo = getNavBarInfo()
+    const navInfo = getNavBarInfo(typeof wx !== 'undefined' ? wx : null)
     if (
       this.data.statusBarHeight !== navInfo.statusBarHeight ||
       this.data.titleBarHeight !== navInfo.titleBarHeight ||
@@ -661,16 +639,17 @@ Page({
       .catch(() => {})
   },
 
+  onBottomNavTap(e) {
+    const detail = (e && e.detail) || {}
+    if (!detail.url) return
+    const fakeEvent = { currentTarget: { dataset: { url: detail.url } } }
+    return detail.protected ? this.goProtected(fakeEvent) : this.go(fakeEvent)
+  },
+
   go(e) {
     const url = e.currentTarget.dataset.url
     if (!url) return
-    const pages = getCurrentPages()
-    const current = pages[pages.length - 1]
-    const currentRoute = current && current.route ? '/' + current.route : ''
-    if (currentRoute === url) return
-    const mainNavUrls = ['/pages/client/home/index', '/pages/client/sitters/list/index', '/pages/client/orders/list/index', '/pages/client/messages/index', '/pages/client/profile/index']
-    const method = mainNavUrls.includes(url) ? 'redirectTo' : 'navigateTo'
-    wx[method]({ url })
+    navigateRoleRoute(url, 'client')
   },
 
   goProtected(e) {
@@ -679,13 +658,7 @@ Page({
     return this.ensurePageLogin({ content: '登录后可查看订单和消息。' })
       .then(() => {
         if (!this.active(this._entryTicket)) return
-        const pages = getCurrentPages()
-        const current = pages[pages.length - 1]
-        const currentRoute = current && current.route ? '/' + current.route : ''
-        if (currentRoute === url) return
-        const mainNavUrls = ['/pages/client/home/index', '/pages/client/sitters/list/index', '/pages/client/orders/list/index', '/pages/client/messages/index', '/pages/client/profile/index']
-        const method = mainNavUrls.includes(url) ? 'redirectTo' : 'navigateTo'
-        wx[method]({ url })
+        navigateRoleRoute(url, 'client')
       })
       .catch(() => {})
   },

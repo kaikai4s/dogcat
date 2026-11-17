@@ -12,9 +12,9 @@ test('client profile entries converted to icon grid with badges and styling', as
   const wxss = fs.readFileSync(wxssPath, 'utf8')
   const appWxss = fs.readFileSync(appWxssPath, 'utf8')
 
-  // 1. Check WXML sections have profile-grid-panel
+  // 1. Check WXML sections all use 4-column profile-grid-panel
   assert.ok(wxml.includes('class="profile-grid-panel cols-4"'), 'should have cols-4 grid panels')
-  assert.ok(wxml.includes('class="profile-grid-panel cols-5"'), 'should have cols-5 grid panels')
+  assert.ok(!wxml.includes('cols-5'), 'profile grids should all use 4 columns per row')
 
   // 2. Check all entries are present with expected handlers and icons
   const entries = [

@@ -51,7 +51,7 @@
         </view>
         <view class="section-photo-grid">
           <view class="section-photo-card" wx:for="{{sec.photos}}" wx:key="_id" wx:for-item="photo">
-            <image class="section-photo-img" src="{{photo.mediaFileId}}" mode="aspectFill" data-url="{{photo.mediaFileId}}" data-section-index="{{secIndex}}" bindtap="previewPhoto" />
+            <image class="section-photo-img" src="{{photo.mediaFileId}}" mode="aspectFill" data-url="{{photo.mediaFileId}}" data-section-index="{{secIndex}}" bindtap="previewPhoto" lazy-load="true" />
             <view class="section-photo-time" wx:if="{{photo.timeText}}">{{photo.timeText}}</view>
           </view>
         </view>
@@ -59,7 +59,7 @@
     </view>
     <view class="public-checkin-grid" wx:elif="{{detail.checkinPhotos && detail.checkinPhotos.length}}">
       <view class="public-checkin-item" wx:for="{{detail.checkinPhotos}}" wx:key="_id">
-        <image class="public-checkin-photo" src="{{item.mediaFileId}}" mode="aspectFill" data-url="{{item.mediaFileId}}" bindtap="previewPhoto" />
+        <image class="public-checkin-photo" src="{{item.mediaFileId}}" mode="aspectFill" data-url="{{item.mediaFileId}}" bindtap="previewPhoto" lazy-load="true" />
         <view class="photo-caption">{{item.eventText}}</view>
       </view>
     </view>

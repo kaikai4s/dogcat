@@ -1,7 +1,13 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { ensureLogin } = require('../../../../utils/cloud')
 const { loadMessageUnread } = require('../../../../utils/client-nav')
-const { withOrderText } = require('../../../../utils/format')
+const formatUtils = require('../../../../utils/format') || {}
+const withOrderText = formatUtils.withOrderText || ((x) => x)
+const pageList = formatUtils.pageList || ((r) => Array.isArray(r) ? { list: r, hasMore: false, page: 1, total: r.length } : (r || { list: [], hasMore: false, page: 1, total: 0 }))
+const navUtils = require('../../../../utils/nav') || {}
+const safeNavigateTo = navUtils.safeNavigateTo || ((opts) => wx.navigateTo(opts))
+const getNavBarInfo = navUtils.getNavBarInfo || (() => ({ statusBarHeight: 44, titleBarHeight: 44, navBarHeight: 88 }))
+const navigateRoleRoute = navUtils.navigateRoleRoute || ((url) => wx.navigateTo({ url }))
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 const cloudAssets = require('../../../../utils/cloud-assets')
 const getDovlinLogoUrl = (cloudAssets && (cloudAssets.getDovlinLogoSrc || cloudAssets.getDovlinLogoUrl)) || (() => '')
@@ -18,35 +24,6 @@ const tabs = [
   { label: '已过期', value: 'expired' }
 ]
 
-function pageList(result) {
-  return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result ? { ...result, list: Array.isArray(result.list) ? result.list : [] } : { list: [], hasMore: false, page: 1, total: 0 })
-}
-
-function getNavBarInfo() {
-  let statusBarHeight = 44
-  let titleBarHeight = 44
-  try {
-    const windowInfo = (typeof wx !== 'undefined' && ((wx.getWindowInfo && wx.getWindowInfo()) || (wx.getSystemInfoSync && wx.getSystemInfoSync()))) || {}
-    if (windowInfo.statusBarHeight) {
-      statusBarHeight = windowInfo.statusBarHeight
-    }
-    const menu = typeof wx !== 'undefined' && wx.getMenuButtonBoundingClientRect ? wx.getMenuButtonBoundingClientRect() : null
-    if (menu && menu.top && menu.height) {
-      titleBarHeight = (menu.top - statusBarHeight) * 2 + menu.height
-    } else {
-      titleBarHeight = 44
-    }
-  } catch (_) {
-    statusBarHeight = 44
-    titleBarHeight = 44
-  }
-  return {
-    statusBarHeight,
-    titleBarHeight,
-    navBarHeight: statusBarHeight + titleBarHeight
-  }
-}
-
 Page({
   data: {
     statusBarHeight: 44,
@@ -54,7 +31,7 @@ Page({
     navBarHeight: 88,
     isNavScrolled: false,
     dovlinLogoDogUrl: getDovlinLogoUrl(),
-    ...getNavBarInfo(),
+    ...getNavBarInfo(typeof wx !== 'undefined' ? wx : null),
     themeClass: 'theme-day',
     tabs,
     activeStatus: 'all',
@@ -64,6 +41,7 @@ Page({
     hasMore: true,
     loading: false,
     contentLoaded: false,
+    loadError: false,
     total: 0,
     orderKeyword: '',
     startDate: '',
@@ -72,7 +50,7 @@ Page({
     messageHasUnread: false
   },
   initNavBar() {
-    const navInfo = getNavBarInfo()
+    const navInfo = getNavBarInfo(typeof wx !== 'undefined' ? wx : null)
     if (
       this.data.statusBarHeight !== navInfo.statusBarHeight ||
       this.data.titleBarHeight !== navInfo.titleBarHeight ||
@@ -88,13 +66,23 @@ Page({
   onLoad(options = {}) {
     applyDovlinLogo(this)
     this.initNavBar()
+    const requestedStatus = options && (options.status || options.activeStatus)
+    if (requestedStatus && tabs.some(item => item.value === requestedStatus)) {
+      this.setData({ activeStatus: requestedStatus })
+    }
   },
   onShow() {
     this.initNavBar()
     this.applyCurrentTheme()
     ensureLogin({ content: '登录后可查看订单。' })
       .then(() => {
-        this.load({ reset: true })
+        const app = typeof getApp === 'function' ? getApp() : null
+        const dirty = Boolean(app && app.globalData && app.globalData.ordersDirty)
+        if (dirty && app && app.globalData) app.globalData.ordersDirty = false
+        if (!this._hasLoadedOnce || dirty || !this.data.orders.length) {
+          this._hasLoadedOnce = true
+          this.load({ reset: true })
+        }
         loadMessageUnread(this)
       })
       .catch(() => wx.redirectTo({ url: '/pages/client/home/index' }))
@@ -142,7 +130,7 @@ Page({
 
     const requestSeq = (this._requestSeq || 0) + 1
     this._requestSeq = requestSeq
-    this.setData({ loading: true })
+    this.setData({ loading: true, loadError: false })
     return callFunction('order', 'listOrders', params)
       .then((result) => {
         if (requestSeq !== this._requestSeq) return
@@ -154,18 +142,22 @@ Page({
           hasMore: pageData.hasMore,
           total: pageData.total,
           loading: false,
-          contentLoaded: true
+          contentLoaded: true,
+          loadError: false
         })
       })
       .catch((error) => {
         if (requestSeq !== this._requestSeq) return
-        this.setData({ loading: false })
+        this.setData({ loading: false, loadError: reset })
         showError(error)
       })
   },
   loadMore() {
     if (!this.data.hasMore || this.data.loading) return
     this.setData({ page: this.data.page + 1 }, () => this.load())
+  },
+  retryLoad() {
+    return this.load({ reset: true })
   },
   chooseStatus(e) {
     const status = e.currentTarget.dataset.status
@@ -191,6 +183,11 @@ Page({
     this.setData({ orderKeyword: '', startDate: '', endDate: '', page: 1, hasMore: true }, () => this.load({ reset: true }))
   },
   detail(e) { wx.navigateTo({ url: '/pages/client/orders/detail/index?id=' + e.currentTarget.dataset.id }) },
+  openSubscriptions() {
+    ensureLogin({ content: '登录后可管理服务提醒订阅。' })
+      .then(() => safeNavigateTo({ url: '/pages/common/subscriptions/index?role=client' }))
+      .catch(() => {})
+  },
   openGroupBuyDetail(e) {
     const groupId = e.currentTarget.dataset.groupId
     if (groupId) {
@@ -199,15 +196,14 @@ Page({
       wx.navigateTo({ url: '/pages/client/orders/group-buy/index' })
     }
   },
+  onBottomNavTap(e) {
+    const detail = (e && e.detail) || {}
+    if (!detail.url) return
+    return this.go({ currentTarget: { dataset: { url: detail.url } } })
+  },
   go(e) {
     const url = e.currentTarget.dataset.url
     if (!url) return
-    const pages = getCurrentPages()
-    const current = pages[pages.length - 1]
-    const currentRoute = current && current.route ? '/' + current.route : ''
-    if (currentRoute === url) return
-    const mainNavUrls = ['/pages/client/home/index', '/pages/client/sitters/list/index', '/pages/client/orders/list/index', '/pages/client/messages/index', '/pages/client/profile/index']
-    const method = mainNavUrls.includes(url) ? 'redirectTo' : 'navigateTo'
-    wx[method]({ url })
+    navigateRoleRoute(url, 'client')
   }
 })
