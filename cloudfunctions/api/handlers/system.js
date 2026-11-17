@@ -1,19 +1,39 @@
 module.exports = function createHandler(context) {
   const {
+    VISIT_FEE_SERVICE_KEY,
     checkImageSecurity,
     checkTextSecurity,
+    checkinEventText,
     crypto,
     db,
     getHomePageData,
     getSubscriptionBalanceSummary,
     getSystemSettings,
     getUser,
+    listServiceCheckinRules,
+    listServicePrices,
     notifyAdminAudit,
     now,
     recordSubscriptionBalance,
+    resolveCheckinRequirements,
     safeFileId,
     safeText
   } = context
+
+  const DEFAULT_STEP_DESCRIPTIONS = {
+    sanitization: '上门前穿戴一次性防护用品，并使用宠物安全消毒液完成手部与随身工具消毒',
+    enter_door: '宠托师按预约时间准时到达，拍照打卡确认入户并留意门锁与室内环境',
+    leash_on: '仔细核对并佩戴好牵引绳、胸背带或防逃脱装备后再外出',
+    feed: '按宠物主喂养说明清洗食碗、定量添粮，并记录进食情况',
+    water: '彻底清洗饮水盆并更换新鲜干净饮用水',
+    clean: '清理猫砂盆/宠物厕所及周边散落物，保持居家环境整洁卫生',
+    medicine: '严格核对药品名称、剂量与喂食时间，按要求温柔协助喂药',
+    pet_status: '观察宠物精神状态、食欲及排便情况，拍照或视频同步给家长',
+    return_home: '安全护送宠物返家，擦拭脚爪并确认室内水电门窗安全',
+    leave_door: '整理物品、确认门锁落锁到位后拍照打卡离户，同步生成服务报告',
+    video_checkin: '通过视频记录互动或服务关键瞬间，让家长更直观了解爱宠状态',
+    pet_beauty_photo: '为爱宠拍摄可爱定妆美照，记录本次上门的美好瞬间'
+  }
 
   const feedbackTimestamps = new Map()
   function checkFeedbackRateLimit(userOpenid, maxPerMinute = 5) {
@@ -32,6 +52,44 @@ module.exports = function createHandler(context) {
   return async function system(openid, action, data) {
     if (action === 'getSettings') return getSystemSettings()
     if (action === 'getHomePageData') return getHomePageData(openid, data)
+    if (action === 'getPublicServiceDetail') {
+      const key = safeText(data.key || data.serviceType).trim()
+      if (!key) throw new Error('缺少服务项目标识')
+      const [services, rules, requirements, settings] = await Promise.all([
+        listServicePrices(false),
+        listServiceCheckinRules(),
+        resolveCheckinRequirements([key]),
+        getSystemSettings()
+      ])
+      const service = services.find((item) => item.key === key)
+      if (!service) throw new Error('服务项目不存在或已下架')
+      const visitFeeItem = services.find((item) => item.key === VISIT_FEE_SERVICE_KEY)
+      const ruleMap = rules
+        .filter((rule) => rule.serviceType === key && rule.enabled !== false)
+        .reduce((map, rule) => ({ ...map, [rule.eventType]: rule }), {})
+      const flowSteps = (requirements || []).map((step, index) => {
+        const rule = ruleMap[step.eventType] || {}
+        const label = safeText(step.label || rule.label || checkinEventText(step.eventType)).trim() || '服务环节'
+        const description = safeText(rule.description || DEFAULT_STEP_DESCRIPTIONS[step.eventType] || '').trim()
+        return {
+          stepNumber: String(index + 1).padStart(2, '0'),
+          eventType: step.eventType,
+          label,
+          description,
+          required: step.required !== false && !step.optional,
+          optional: Boolean(step.optional)
+        }
+      })
+      return {
+        service: {
+          ...service,
+          priceText: `¥${service.price}起`
+        },
+        visitFeePrice: visitFeeItem ? Number(visitFeeItem.price || 0) : 0,
+        flowSteps,
+        maintenance: (settings && settings.maintenance) || {}
+      }
+    }
     if (action === 'getSubscriptionSummary') {
       await getUser(openid)
       const settings = await getSystemSettings()

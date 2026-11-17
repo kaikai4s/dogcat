@@ -226,7 +226,7 @@
       bindtouchcancel="onHotServicesTouchEnd"
       binddragstart="onHotServicesTouchStart"
       binddragend="onHotServicesTouchEnd">
-      <view class="service-price-card interactive" wx:for="{{displayServicePrices.length ? displayServicePrices : servicePrices}}" wx:key="uniqueKey" data-url="/pages/client/orders/create/index?serviceType={{item.key}}" bindtap="goProtected">
+      <view class="service-price-card interactive" wx:for="{{displayServicePrices.length ? displayServicePrices : servicePrices}}" wx:key="uniqueKey" data-url="/pages/client/orders/service-detail/index?key={{item.key}}" bindtap="go">
         <view class="service-cover-wrap">
           <image class="service-cover-img" wx:if="{{item.coverUrl}}" src="{{item.coverUrl}}" mode="aspectFill" />
           <view class="remix-icon {{item.serviceIcon || 'ri-price-tag-3-fill'}} service-price-icon" wx:else></view>
