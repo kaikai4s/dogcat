@@ -19,7 +19,7 @@ function fixture(owner = true, overrides = {}) {
     Page: def => { page = def }, require: name => name.endsWith('/cloud') ? { callFunction: api } : name.endsWith('/image-upload') ? { prepareImage: overrides.prepareImage } : name.endsWith('/memorial-portrait-layout') ? require('../../miniprogram/packageMemorial/scene/memorial-portrait-layout') : name.endsWith('/recovery-time') ? require('../../miniprogram/packageMemorial/scene/recovery-time') : name.endsWith('/memorial-years') ? require('../../miniprogram/packageMemorial/scene/memorial-years') : name.endsWith('/plot-number') ? { plotNumber: () => '01-01' } : {},
     wx: { showToast: v => toasts.push(v.title), ...overrides.wx }
   })
-  page.setData = values => Object.entries(values).forEach(([key, value]) => { const parts = key.split('.'); let object = page.data; for (const part of parts.slice(0,-1)) object = object[part]; object[parts.at(-1)] = value })
+  page.setData = (values, callback) => { Object.entries(values).forEach(([key, value]) => { const parts = key.split('.'); let object = page.data; for (const part of parts.slice(0,-1)) object = object[part]; object[parts.at(-1)] = value }); if (typeof callback === 'function') callback() }
   page._alive = true; page.id = 'app'
   return { page, calls, detail, toasts }
 }
@@ -33,6 +33,34 @@ test('owner editor sends ordered upload references and revision, visitor preview
   assert.equal(saved.revision, 4); assert.equal(saved.isPublic, true)
   assert.equal(saved.text, '新的回忆'); assert.deepEqual(Array.from(saved.images), ['photo1'])
   assert.deepEqual(Array.from(saved.videos), ['video1', 'video2']); assert.equal(saved.music, 'song1')
+})
+test('editor starts unselected, shows its active state, and scrolls into view', async () => {
+  const scrolls = []
+  const { page } = fixture(true, { wx: { pageScrollTo: options => scrolls.push(options) } })
+  await page.load()
+  assert.equal(page.data.editing, false)
+  const wxml = fs.readFileSync(require.resolve('../../miniprogram/packageMemorial/pages/memory').replace(/\.js$/, '.wxml'), 'utf8')
+  assert.match(wxml, /editing \? 'button-primary editing-mode-button' : 'button-secondary'/)
+  assert.match(wxml, /id="memory-editor"/)
+  assert.match(wxml, /编辑模式 · 文字保存后提交审核/)
+  page.edit()
+  assert.equal(page.data.editing, true)
+  assert.equal(scrolls.length, 1)
+  assert.equal(scrolls[0].selector, '#memory-editor')
+  assert.equal(scrolls[0].offsetTop, -16)
+  assert.equal(scrolls[0].duration, 280)
+  page.edit()
+  assert.equal(scrolls.length, 2)
+
+  const blocked = fixture(true)
+  await blocked.page.load()
+  blocked.page.data.uploading = true
+  blocked.page.edit()
+  assert.equal(blocked.page.data.editing, false)
+  blocked.page.data.uploading = false
+  blocked.page.data.managing = true
+  blocked.page.edit()
+  assert.equal(blocked.page.data.editing, false)
 })
 test('visitors cannot enter editor or save; busy uploads block save and media removal', async () => {
   const visitor = fixture(false); await visitor.page.load(); visitor.page.edit(); await visitor.page.save()
@@ -109,6 +137,45 @@ test('novel editing saves ordered chapters and reading advances through pages an
   assert.equal(saved.mode, 'novel'); assert.equal(saved.chapters.length, 2)
   assert.equal(saved.chapters[0].title, '幼年'); assert.equal(saved.chapters[0].text, longText)
   assert.match(page.data.reviewLabel, /待审核|已审核|自己可见/)
+})
+test('novel editor can opt into a prologue and keeps it ahead of chapter one', async () => {
+  const { page, calls } = fixture(); await page.load(); page.edit()
+  page.selectFormat({ currentTarget: { dataset: { mode: 'novel' } } })
+  page.togglePrologue({ detail: { value: true } })
+  page.inputPrologueTitle({ detail: { value: '故事开始以前' } })
+  page.inputPrologueText({ detail: { value: '这是序章。' } })
+  page.togglePrologue({ detail: { value: false } })
+  assert.equal(page.data.draft.prologue, null)
+  page.togglePrologue({ detail: { value: true } })
+  assert.equal(page.data.draft.prologue.text, '这是序章。')
+  page.inputChapterTitle({ currentTarget: { dataset: { index: 0 } }, detail: { value: '第一章' } })
+  page.inputChapterText({ currentTarget: { dataset: { index: 0 } }, detail: { value: '这是第一章。' } })
+  assert.equal(page.data.textCount, Array.from('故事开始以前这是序章。第一章这是第一章。').length)
+  page.finishEditing()
+  assert.equal(page.data.readerSectionLabel, '序章')
+  page.moveReader({ currentTarget: { dataset: { direction: 'next' } } })
+  assert.equal(page.data.readerSectionLabel, '第 1 章')
+  page.edit(); await page.save()
+  const saved = calls.find(c => c.action === 'saveMemory').data
+  assert.equal(saved.prologue.title, '故事开始以前')
+  assert.equal(saved.prologue.text, '这是序章。')
+  assert.equal(saved.chapters[0].title, '第一章')
+})
+test('switching a novel draft to plain text keeps the written sections', async () => {
+  const { page } = fixture(); await page.load(); page.edit()
+  page.selectFormat({ currentTarget: { dataset: { mode: 'novel' } } })
+  page.togglePrologue({ detail: { value: true } })
+  page.inputPrologueText({ detail: { value: '序章内容' } })
+  page.inputChapterTitle({ currentTarget: { dataset: { index: 0 } }, detail: { value: '第一章' } })
+  page.inputChapterText({ currentTarget: { dataset: { index: 0 } }, detail: { value: '第一章内容' } })
+  page.selectFormat({ currentTarget: { dataset: { mode: 'plain' } } })
+  assert.match(page.data.draft.text, /序章内容/)
+  assert.match(page.data.draft.text, /第一章内容/)
+  assert.equal(page.data.draft.chapters.length, 0)
+  assert.equal(page.data.draft.prologue, null)
+  page.selectFormat({ currentTarget: { dataset: { mode: 'novel' } } })
+  assert.equal(page.data.draft.prologue.text, '序章内容')
+  assert.equal(page.data.draft.chapters[0].title, '第一章')
 })
 test('owner submits the two distinct portrait photos and current request revision', async () => {
   const { page, calls, toasts } = fixture(true, { api: async action => action === 'portraitDetail' ? { revision: 3, status: 'rejected', photos: [] } : {} })

@@ -26,6 +26,26 @@ module.exports = function createHandler(context) {
     if (['listGardens', 'listGardensAdmin', 'createGarden', 'updateGarden'].includes(action)) return gardens.handle(openid, action, data)
     if (action === 'getMemorialAdmin') return memory(openid, action, data, user)
     if (['portraitDetail', 'submitPortrait', 'listPortraitsAdmin', 'preparePortraitAsset', 'reviewPortrait'].includes(action)) return portrait(openid, action, data, user)
+    if (action === 'updateYears') {
+      const id = text(data.id)
+      if (!id) throw new Error('纪念碑参数无效')
+      const years = normalizeMemorialYears(data, { requireExplicit: true, nowMs: context.nowMs && context.nowMs() })
+      return db.runTransaction(async tx => {
+        const app = await read(tx, id)
+        if (!app || app.key !== 'memorial_application' || app.status !== 'approved') throw new Error('这处时光小筑暂不可编辑，请刷新')
+        if (app.ownerOpenid !== openid) throw new Error('只有主人可以修改纪念碑信息')
+        const stamp = now()
+        await tx.collection('platform_configs').doc(app._id).update({ data: { birthYear: years.birthYear, passingYear: years.passingYear, updatedAt: stamp } })
+        if (app.plotKey) {
+          const plot = await read(tx, app.plotKey)
+          if (plot && plot.applicationId === app._id && plot.status === 'approved') {
+            await tx.collection('platform_configs').doc(app.plotKey).update({ data: { birthYear: years.birthYear, passingYear: years.passingYear, updatedAt: stamp } })
+          }
+        }
+        await presence.changed(tx, gardenId(app))
+        return memorialYearFields(years)
+      })
+    }
     if (['detail', 'entrance', 'prepareMedia', 'finishMedia', 'saveMemory', 'updateMemoryMedia', 'listMemoriesAdmin', 'reviewMemory'].includes(action)) return memory(openid, action, data, user)
     if (['demolish', 'relocate', 'restore', 'listRecycle', 'recycleDetail'].includes(action)) return require('../services/memorialLifecycle')(context).handle(openid, action, data)
     if (action === 'world') {
@@ -110,26 +130,6 @@ module.exports = function createHandler(context) {
         await context.enqueueAdminAuditNotification(tx, { auditType: 'memorial_application', targetId: id, applicant: user.nickname || '用户',
           type: '时光小筑申请', reason: petName + ' · ' + plot.lawn, page: 'pages/admin/memorial/index' })
         return { id, status: 'pending' }
-      })
-    }
-    if (action === 'updateYears') {
-      const id = text(data.id)
-      if (!id) throw new Error('纪念碑参数无效')
-      const years = normalizeMemorialYears(data, { requireExplicit: true, nowMs: context.nowMs && context.nowMs() })
-      return db.runTransaction(async tx => {
-        const app = await read(tx, id)
-        if (!app || app.key !== 'memorial_application' || app.status !== 'approved') throw new Error('这处时光小筑暂不可编辑，请刷新')
-        if (app.ownerOpenid !== openid) throw new Error('只有主人可以修改纪念碑信息')
-        const stamp = now()
-        await tx.collection('platform_configs').doc(app._id).update({ data: { birthYear: years.birthYear, passingYear: years.passingYear, updatedAt: stamp } })
-        if (app.plotKey) {
-          const plot = await read(tx, app.plotKey)
-          if (plot && plot.applicationId === app._id && plot.status === 'approved') {
-            await tx.collection('platform_configs').doc(app.plotKey).update({ data: { birthYear: years.birthYear, passingYear: years.passingYear, updatedAt: stamp } })
-          }
-        }
-        await presence.changed(tx, gardenId(app))
-        return memorialYearFields(years)
       })
     }
     if (action === 'review') {

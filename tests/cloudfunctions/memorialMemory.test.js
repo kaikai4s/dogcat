@@ -171,6 +171,20 @@ test('novel chapters stay private until review, then publish as chapters with pa
   assert.deepEqual((await f.call('visitor', 'detail', { id: 'app' })).story.chapters, chapters)
 })
 
+test('novel optional prologue is retained through owner draft, admin review and public story', async () => {
+  const f = fixture()
+  const prologue = { id: 'prologue', title: '序章', text: '在故事开始以前，它已经把家记在心里。' }
+  const chapters = [{ id: 'first', title: '第一章', text: '它第一次走进我们的生活。' }]
+  await f.call('owner', 'saveMemory', { id: 'app', revision: 0, mode: 'novel', prologue, chapters, isPublic: true, images: [], videos: [] })
+  const row = f.db.state.platform_configs.find(r => r.key === 'memorial_memory')
+  assert.deepEqual(row.draft.prologue, prologue)
+  assert.deepEqual((await f.call('owner', 'detail', { id: 'app' })).draft.prologue, prologue)
+  assert.deepEqual((await f.call('admin', 'listMemoriesAdmin')).list[0].memory.prologue, prologue)
+  await f.call('admin', 'reviewMemory', { id: row._id, revision: 1, status: 'approved' })
+  assert.deepEqual((await f.call('visitor', 'detail', { id: 'app' })).story.prologue, prologue)
+  await assert.rejects(f.call('owner', 'saveMemory', { id: 'app', revision: 1, mode: 'novel', prologue: { ...prologue, id: 'first' }, chapters, isPublic: true, images: [], videos: [] }), /序章标题、编号或正文无效/)
+})
+
 test('private text edits still require review and approval never reopens a private story', async () => {
   const f = fixture()
   await f.call('owner', 'saveMemory', { id: 'app', revision: 0, mode: 'plain', text: '只留给自己的第一版', isPublic: false, images: [], videos: [] })
@@ -202,6 +216,20 @@ test('large novel chapter sets use immutable text storage and hydrate through re
   assert.equal((await f.call('admin', 'listMemoriesAdmin')).list[0].memory.chapters[0].text, text)
   await f.call('admin', 'reviewMemory', { id: row._id, revision: 1, status: 'approved' })
   assert.equal((await f.call('visitor', 'detail', { id: 'app' })).story.chapters[0].text, text)
+})
+
+test('large novel prologue is included in immutable text storage and review snapshots', async () => {
+  const f = fixture()
+  const prologue = { id: 'prologue', title: '序章', text: '序言🐾'.repeat(4000) }
+  const chapters = [{ id: 'chapter', title: '第一章', text: '正文🐾'.repeat(100) }]
+  await f.call('owner', 'saveMemory', { id: 'app', revision: 0, mode: 'novel', prologue, chapters, isPublic: true, images: [], videos: [] })
+  const row = f.db.state.platform_configs.find(r => r.key === 'memorial_memory')
+  assert.ok(row.draft.textFileId)
+  assert.equal(row.draft.prologue.text, '')
+  assert.equal((await f.call('owner', 'detail', { id: 'app' })).draft.prologue.text, prologue.text)
+  assert.equal((await f.call('admin', 'listMemoriesAdmin')).list[0].memory.prologue.text, prologue.text)
+  await f.call('admin', 'reviewMemory', { id: row._id, revision: 1, status: 'approved' })
+  assert.equal((await f.call('visitor', 'detail', { id: 'app' })).story.prologue.text, prologue.text)
 })
 
 async function portraitPending(f) {

@@ -227,3 +227,19 @@ test('memory owner editor saves updated birth/passing years including unknown an
   await visitor.page.saveYears()
   assert.equal(visitor.calls.some((c) => c.action === 'updateYears'), false)
 })
+
+test('legacy memorials without stored years do not start with a false pending year edit', async () => {
+  const { page, calls } = loadMemory(true)
+  await page.load()
+  assert.equal(page.data.editBirthYear, 'unknown')
+  assert.equal(page.data.editPassingYear, 'unknown')
+  assert.equal(page.data.hasYearChanges, false)
+
+  const yearIndex = page.data.yearOptions.findIndex((option) => option.value === '2020')
+  page.chooseYear({ currentTarget: { dataset: { field: 'birthYear' } }, detail: { value: yearIndex } })
+  assert.equal(page.data.hasYearChanges, true)
+  page.setYearUnknown({ currentTarget: { dataset: { field: 'birthYear' } } })
+  assert.equal(page.data.hasYearChanges, false)
+  await page.saveYears()
+  assert.equal(calls.some((call) => call.action === 'updateYears'), false)
+})

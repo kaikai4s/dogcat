@@ -10,10 +10,16 @@ const formatMemorialLifeSpan = yearsMod.formatMemorialLifeSpan || (() => '')
 const MEMORY_YEAR_OPTIONS = buildMemorialYearOptions()
 const native = (name, options) => new Promise((resolve, reject) => wx[name]({ ...options, success: resolve, fail: reject }))
 const reviewLabel = (status, isPublic) => ({ pending: isPublic ? '公开回忆待审核' : '文字修改待审核', private: '仅自己可见', approved: isPublic ? '回忆已公开' : '文字已审核 · 仅自己可见', rejected: '请调整后重新提交', empty: '尚未整理回忆' }[status] || '')
+const copyPrologue = value => value && typeof value === 'object' ? { id: value.id || 'prologue', title: value.title || '序章', text: value.text || '' } : null
+const novelToPlainText = value => [
+  ...(value && value.prologue ? [['序章 · ' + (value.prologue.title || '序章'), value.prologue.text || ''].filter(Boolean).join('\n')] : []),
+  ...((value && value.chapters) || []).map((chapter, index) => ['第 ' + (index + 1) + ' 章 · ' + (chapter.title || '未命名章节'), chapter.text || ''].filter(Boolean).join('\n'))
+].filter(Boolean).join('\n\n')
 const copyContent = value => ({ ...(value || {}), mode: value && value.mode === 'novel' ? 'novel' : 'plain', text: value && value.text || '',
-  chapters: (value && value.chapters || []).map((chapter, index) => ({ id: chapter.id || 'chapter-' + index, title: chapter.title || '', text: chapter.text || '' })), images: (value && value.images || []).map(m => ({ ...m })),
+  prologue: copyPrologue(value && value.prologue), chapters: (value && value.chapters || []).map((chapter, index) => ({ id: chapter.id || 'chapter-' + index, title: chapter.title || '', text: chapter.text || '' })), images: (value && value.images || []).map(m => ({ ...m })),
   videos: (value && value.videos || []).map(m => ({ ...m })), music: value && value.music ? { ...value.music } : null })
 const contentKey = (value, isPublic) => JSON.stringify([!!isPublic, value && value.mode || 'plain', value && value.text || '',
+  value && value.prologue ? [value.prologue.id, value.prologue.title, value.prologue.text] : null,
   (value && value.chapters || []).map(chapter => [chapter.id, chapter.title, chapter.text]),
   ...['images', 'videos'].map(kind => (value && value[kind] || []).map(m => [m.uploadId, !!m.entrance])), value && value.music && value.music.uploadId || null])
 const changeContent = (value, change) => !value ? value : { ...value, [change.kind]: change.operation === 'remove'
@@ -25,8 +31,8 @@ Page({
     yearOptions: MEMORY_YEAR_OPTIONS, birthYearIndex: 0, passingYearIndex: 0, editBirthYear: 'unknown', editPassingYear: 'unknown', editLifeSpanPreview: '',
     yearSaving: false, yearError: '', hasYearChanges: false,
     textCount: 0, portrait: null, portraitForm: false, portraitPhotos: {}, portraitNote: '', portraitPose: 'sitting',
-    draft: { mode: 'plain', text: '', chapters: [], images: [], videos: [], music: null }, isPublic: false, playing: false, uploadTip: '',
-    readerChapterIndex: 0, readerPageIndex: 0, readerPageCount: 1, readerChapterTitle: '', readerPageText: '', readerCanPrev: false, readerCanNext: false },
+    draft: { mode: 'plain', text: '', prologue: null, chapters: [], images: [], videos: [], music: null }, hasPrologue: false, isPublic: false, playing: false, uploadTip: '',
+    readerChapterIndex: 0, readerPageIndex: 0, readerPageCount: 1, readerChapterTitle: '', readerSectionLabel: '', readerSectionCount: 0, readerIsPrologue: false, readerPageText: '', readerCanPrev: false, readerCanNext: false },
   onLoad(options = {}) { this._alive = true; this.id = options.id || ''; this.load() },
   onHide() { this._confirmVersion = (this._confirmVersion || 0) + 1; this.stopMusic() },
   onUnload() { this._alive = false; if (this._uploadTask && this._uploadTask.abort) this._uploadTask.abort(); this.stopMusic(); if (this.audio) this.audio.destroy() },
@@ -40,14 +46,16 @@ Page({
       const yearOptions = buildMemorialYearOptions()
       const editBirthYear = detail.birthYear || 'unknown'
       const editPassingYear = detail.passingYear || 'unknown'
-      const hasYearChanges = editBirthYear !== (detail.birthYear || '') || editPassingYear !== (detail.passingYear || '')
+      const hasYearChanges = editBirthYear !== (detail.birthYear || 'unknown') || editPassingYear !== (detail.passingYear || 'unknown')
+      this._prologueBackup = null
+      this._novelBackup = null
       this.setData({ detail, demolished: false, plotNumber: plotNumber(detail.plotId), draft: copyContent(detail.draft), isPublic: detail.isPublic,
         yearOptions, editBirthYear, editPassingYear,
         birthYearIndex: yearOptionIndex(yearOptions, editBirthYear),
         passingYearIndex: yearOptionIndex(yearOptions, editPassingYear),
         editLifeSpanPreview: formatMemorialLifeSpan(editBirthYear, editPassingYear),
         yearError: '', hasYearChanges,
-        hasUnsavedChanges: false, mediaSaveError: '', textCount: this.contentLength(detail.draft), story: detail.story, reviewLabel: reviewLabel(detail.reviewStatus, detail.isPublic) })
+        hasUnsavedChanges: false, mediaSaveError: '', textCount: this.contentLength(detail.draft), hasPrologue: !!(detail.draft && detail.draft.prologue), story: detail.story, reviewLabel: reviewLabel(detail.reviewStatus, detail.isPublic) })
       this.syncReader(detail.owner ? detail.draft : detail.story)
     } catch (error) { if (this._alive) this.setData({ error: error.message || '回忆加载失败，请重试' }) }
     finally { if (this._alive) this.setData({ loading: false }) }
@@ -58,7 +66,7 @@ Page({
     const editBirthYear = field === 'birthYear' ? value : (this.data.editBirthYear || 'unknown')
     const editPassingYear = field === 'passingYear' ? value : (this.data.editPassingYear || 'unknown')
     const options = this.data.yearOptions || MEMORY_YEAR_OPTIONS
-    const hasYearChanges = editBirthYear !== (this.data.detail.birthYear || '') || editPassingYear !== (this.data.detail.passingYear || '')
+    const hasYearChanges = editBirthYear !== (this.data.detail.birthYear || 'unknown') || editPassingYear !== (this.data.detail.passingYear || 'unknown')
     this.setData({
       editBirthYear,
       editPassingYear,
@@ -81,7 +89,7 @@ Page({
   },
   async saveYears() {
     const detail = this.data.detail
-    if (!this._alive || !detail || !detail.owner || this.data.managing || this.data.yearSaving) return
+    if (!this._alive || !detail || !detail.owner || this.data.managing || this.data.yearSaving || !this.data.hasYearChanges) return
     const birthYear = this.data.editBirthYear || 'unknown'
     const passingYear = this.data.editPassingYear || 'unknown'
     const rangeError = validateMemorialYearRange(birthYear, passingYear)
@@ -152,7 +160,20 @@ Page({
   onShow() { if (this._refreshOnReturn) { this._refreshOnReturn = false; this.load() } },
   openRecycle() { wx.redirectTo({ url: '/packageMemorial/pages/recycle' }) },
   chooseGarden() { wx.redirectTo({ url: '/packageMemorial/pages/entrance' }) },
-  edit() { if (this.data.detail && this.data.detail.owner && !this.data.saving && !this.data.mediaSaving) { this.stopMusic(); this.setData({ editing: true, previewing: false }) } },
+  focusEditor() {
+    if (typeof wx === 'undefined' || typeof wx.pageScrollTo !== 'function') return
+    wx.pageScrollTo({ selector: '#memory-editor', offsetTop: -16, duration: 280 })
+  },
+  edit() {
+    if (!this.data.detail || !this.data.detail.owner || this.data.managing || this.data.uploading || this.data.saving || this.data.mediaSaving) return
+    this.stopMusic()
+    if (this.data.editing) { this.focusEditor(); return }
+    this.setData({ editing: true, previewing: false }, () => {
+      // The editor is conditionally rendered, so scroll after setData has
+      // committed the new view tree.
+      this.focusEditor()
+    })
+  },
   finishEditing() { if (!this.data.saving && !this.data.uploading && !this.data.mediaSaving) { this.setData({ editing: false }); this.syncReader(this.data.draft) } },
   preview() { this.stopMusic(); this.setData({ editing: false, previewing: true, story: this.data.detail.story }); this.syncReader(this.data.detail.story) },
   closePreview() { this.stopMusic(); this.setData({ previewing: false }); this.syncReader(this.data.draft) },
@@ -160,62 +181,106 @@ Page({
     const detail = this.data.detail
     this.setData({ hasUnsavedChanges: !!detail && contentKey(this.data.draft, this.data.isPublic) !== contentKey(detail.draft, detail.isPublic) })
   },
-  contentLength(value) { return value && value.mode === 'novel' ? (value.chapters || []).reduce((sum, chapter) => sum + Array.from(chapter.title || '').length + Array.from(chapter.text || '').length, 0) : Array.from(value && value.text || '').length },
+  contentLength(value) {
+    if (!value || value.mode !== 'novel') return Array.from(value && value.text || '').length
+    const prologue = value.prologue ? Array.from(value.prologue.title || '').length + Array.from(value.prologue.text || '').length : 0
+    return prologue + (value.chapters || []).reduce((sum, chapter) => sum + Array.from(chapter.title || '').length + Array.from(chapter.text || '').length, 0)
+  },
   selectFormat(e) {
     if (this.data.saving || this.data.uploading || this.data.mediaSaving) return
     const mode = e.currentTarget.dataset.mode
     if (!['plain', 'novel'].includes(mode) || mode === this.data.draft.mode) return
-    const chapters = mode === 'novel' ? (this.data.draft.chapters.length ? this.data.draft.chapters : [{ id: this.newChapterId(), title: '相遇', text: this.data.draft.text }]) : this.data.draft.chapters
-    this.setData({ 'draft.mode': mode, 'draft.chapters': chapters, textCount: mode === 'novel' ? this.contentLength({ mode, chapters }) : this.contentLength({ mode, text: this.data.draft.text }) })
+    if (mode === 'novel') {
+      const restore = this._novelBackup && this.data.draft.text === novelToPlainText(this._novelBackup)
+      const prologue = restore ? this._novelBackup.prologue : this.data.draft.prologue
+      const chapters = restore ? this._novelBackup.chapters : (this.data.draft.chapters.length ? this.data.draft.chapters : [{ id: this.newChapterId(), title: '相遇', text: this.data.draft.text }])
+      this._novelBackup = null
+      this.setData({ 'draft.mode': mode, 'draft.prologue': prologue, 'draft.chapters': chapters, hasPrologue: !!prologue, textCount: this.contentLength({ mode, prologue, chapters }) })
+    } else {
+      const novel = this.data.draft.mode === 'novel' ? copyContent(this.data.draft) : null
+      const text = novel ? novelToPlainText(novel) : this.data.draft.text
+      if (novel) this._novelBackup = novel
+      this._prologueBackup = null
+      this.setData({ 'draft.mode': mode, 'draft.text': text, 'draft.prologue': null, 'draft.chapters': [], hasPrologue: false, textCount: this.contentLength({ mode, text }) })
+    }
     this.updateDirty()
   },
   newChapterId() { return 'chapter-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8) },
+  newPrologueId() { return 'prologue-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8) },
+  togglePrologue(e) {
+    if (this.data.saving || this.data.uploading || this.data.mediaSaving || this.data.draft.mode !== 'novel') return
+    const enabled = !!(e && e.detail && e.detail.value)
+    if (!enabled && this.data.draft.prologue) this._prologueBackup = { ...this.data.draft.prologue }
+    const prologue = enabled ? (this.data.draft.prologue || this._prologueBackup || { id: this.newPrologueId(), title: '序章', text: '' }) : null
+    if (enabled) this._prologueBackup = null
+    this.setData({ 'draft.prologue': prologue, hasPrologue: enabled, textCount: this.contentLength({ mode: 'novel', prologue, chapters: this.data.draft.chapters }) })
+    this.updateDirty()
+  },
+  inputPrologueTitle(e) {
+    if (this.data.saving || !this.data.draft.prologue) return
+    const prologue = { ...this.data.draft.prologue, title: e.detail.value }
+    this.setData({ 'draft.prologue': prologue, textCount: this.contentLength({ mode: 'novel', prologue, chapters: this.data.draft.chapters }) }); this.updateDirty()
+  },
+  inputPrologueText(e) {
+    if (this.data.saving || !this.data.draft.prologue) return
+    const prologue = { ...this.data.draft.prologue, text: e.detail.value }
+    this.setData({ 'draft.prologue': prologue, textCount: this.contentLength({ mode: 'novel', prologue, chapters: this.data.draft.chapters }) }); this.updateDirty()
+  },
   input(e) { if (!this.data.saving) { this.setData({ 'draft.text': e.detail.value, textCount: Array.from(e.detail.value).length }); this.updateDirty() } },
   inputChapterTitle(e) {
     if (this.data.saving) return
     const index = Number(e.currentTarget.dataset.index), chapters = this.data.draft.chapters.slice()
     if (!chapters[index]) return
     chapters[index] = { ...chapters[index], title: e.detail.value }
-    this.setData({ 'draft.chapters': chapters, textCount: this.contentLength({ mode: 'novel', chapters }) }); this.updateDirty()
+    this.setData({ 'draft.chapters': chapters, textCount: this.contentLength({ mode: 'novel', prologue: this.data.draft.prologue, chapters }) }); this.updateDirty()
   },
   inputChapterText(e) {
     if (this.data.saving) return
     const index = Number(e.currentTarget.dataset.index), chapters = this.data.draft.chapters.slice()
     if (!chapters[index]) return
     chapters[index] = { ...chapters[index], text: e.detail.value }
-    this.setData({ 'draft.chapters': chapters, textCount: this.contentLength({ mode: 'novel', chapters }) }); this.updateDirty()
+    this.setData({ 'draft.chapters': chapters, textCount: this.contentLength({ mode: 'novel', prologue: this.data.draft.prologue, chapters }) }); this.updateDirty()
   },
   addChapter() {
     if (this.data.saving || this.data.uploading || this.data.mediaSaving || this.data.draft.chapters.length >= 100) return
     const chapters = this.data.draft.chapters.concat({ id: this.newChapterId(), title: '', text: '' })
-    this.setData({ 'draft.chapters': chapters, textCount: this.contentLength({ mode: 'novel', chapters }) }); this.updateDirty()
+    this.setData({ 'draft.chapters': chapters, textCount: this.contentLength({ mode: 'novel', prologue: this.data.draft.prologue, chapters }) }); this.updateDirty()
   },
   removeChapter(e) {
     if (this.data.saving || this.data.uploading || this.data.mediaSaving) return
     const index = Number(e.currentTarget.dataset.index), chapters = this.data.draft.chapters.filter((_, i) => i !== index)
     if (!chapters.length) chapters.push({ id: this.newChapterId(), title: '', text: '' })
-    this.setData({ 'draft.chapters': chapters, textCount: this.contentLength({ mode: 'novel', chapters }) }); this.updateDirty()
+    this.setData({ 'draft.chapters': chapters, textCount: this.contentLength({ mode: 'novel', prologue: this.data.draft.prologue, chapters }) }); this.updateDirty()
   },
+  readerSections(content) {
+    if (!content || content.mode !== 'novel') return []
+    return (content.prologue ? [{ ...content.prologue, isPrologue: true }] : []).concat((content.chapters || []).map(chapter => ({ ...chapter, isPrologue: false })))
+  },
+  readerLabel(section, index, hasPrologue = this._readerHasPrologue) { return section && section.isPrologue ? '序章' : '第 ' + (index + 1 - (hasPrologue ? 1 : 0)) + ' 章' },
   syncReader(content) {
-    if (!content || content.mode !== 'novel' || !content.chapters || !content.chapters.length) {
-      this.setData({ readerChapterIndex: 0, readerPageIndex: 0, readerPageCount: 1, readerPageText: '', readerChapterTitle: '', readerCanPrev: false, readerCanNext: false }); return
+    const sections = this.readerSections(content)
+    this._readerHasPrologue = !!(content && content.prologue)
+    if (!sections.length) {
+      this.setData({ readerChapterIndex: 0, readerPageIndex: 0, readerPageCount: 1, readerSectionCount: 0, readerSectionLabel: '', readerIsPrologue: false, readerPageText: '', readerChapterTitle: '', readerCanPrev: false, readerCanNext: false }); return
     }
-    const chapter = content.chapters[0], pages = this.splitPages(chapter.text || '')
-    this.setData({ readerChapterIndex: 0, readerPageIndex: 0, readerPageCount: pages.length, readerPageText: pages[0], readerChapterTitle: chapter.title || '未命名章节', readerCanPrev: false, readerCanNext: pages.length > 1 || content.chapters.length > 1 })
+    const chapter = sections[0], pages = this.splitPages(chapter.text || '')
+    this.setData({ readerChapterIndex: 0, readerPageIndex: 0, readerPageCount: pages.length, readerSectionCount: sections.length, readerSectionLabel: this.readerLabel(chapter, 0), readerIsPrologue: !!chapter.isPrologue, readerPageText: pages[0], readerChapterTitle: chapter.title || (chapter.isPrologue ? '序章' : '未命名章节'), readerCanPrev: false, readerCanNext: pages.length > 1 || sections.length > 1 })
   },
   splitPages(text) { const chars = Array.from(text || ''), pages = []; for (let i = 0; i < chars.length; i += 150) pages.push(chars.slice(i, i + 150).join('')); return pages.length ? pages : [''] },
   moveReader(e) {
     const content = this.data.detail && (this.data.detail.owner && !this.data.previewing ? this.data.draft : this.data.story)
-    if (!content || content.mode !== 'novel' || !content.chapters || !content.chapters.length) return
+    const sections = this.readerSections(content)
+    this._readerHasPrologue = !!(content && content.prologue)
+    if (!sections.length) return
     const direction = e.currentTarget.dataset.direction === 'next' ? 1 : -1
     let chapterIndex = this.data.readerChapterIndex, pageIndex = this.data.readerPageIndex
-    const pages = this.splitPages(content.chapters[chapterIndex].text)
+    const pages = this.splitPages(sections[chapterIndex].text)
     if (direction > 0 && pageIndex + 1 < pages.length) pageIndex++
     else if (direction < 0 && pageIndex > 0) pageIndex--
-    else { chapterIndex += direction; if (chapterIndex < 0 || chapterIndex >= content.chapters.length) return; pageIndex = direction > 0 ? 0 : this.splitPages(content.chapters[chapterIndex].text).length - 1 }
-    const chapter = content.chapters[chapterIndex], nextPages = this.splitPages(chapter.text)
-    this.setData({ readerChapterIndex: chapterIndex, readerPageIndex: pageIndex, readerPageCount: nextPages.length, readerPageText: nextPages[pageIndex], readerChapterTitle: chapter.title || '未命名章节',
-      readerCanPrev: chapterIndex > 0 || pageIndex > 0, readerCanNext: pageIndex + 1 < nextPages.length || chapterIndex + 1 < content.chapters.length })
+    else { chapterIndex += direction; if (chapterIndex < 0 || chapterIndex >= sections.length) return; pageIndex = direction > 0 ? 0 : this.splitPages(sections[chapterIndex].text).length - 1 }
+    const chapter = sections[chapterIndex], nextPages = this.splitPages(chapter.text)
+    this.setData({ readerChapterIndex: chapterIndex, readerPageIndex: pageIndex, readerPageCount: nextPages.length, readerSectionLabel: this.readerLabel(chapter, chapterIndex), readerIsPrologue: !!chapter.isPrologue, readerPageText: nextPages[pageIndex], readerChapterTitle: chapter.title || (chapter.isPrologue ? '序章' : '未命名章节'),
+      readerCanPrev: chapterIndex > 0 || pageIndex > 0, readerCanNext: pageIndex + 1 < nextPages.length || chapterIndex + 1 < sections.length })
   },
   privacy(e) { if (!this.data.saving) { this.setData({ isPublic: e.detail.value }); this.updateDirty() } },
   async toggleEntrance(e) {
@@ -306,13 +371,18 @@ Page({
       wx.showToast({ title: '没有需要保存的修改', icon: 'none' }); return
     }
     this.setData({ saving: true })
-    const draft = this.data.draft
+    // Clone the editor state before awaiting the network request. This keeps
+    // the submitted novel contents stable if an input event arrives while
+    // the request is in flight.
+    const draft = copyContent(this.data.draft)
     try {
       const saved = await this.api('saveMemory', { revision: this.data.detail.revision, mediaRevision: this.data.detail.mediaRevision || 0, mode: draft.mode, text: draft.text,
-        chapters: draft.mode === 'novel' ? draft.chapters : undefined, isPublic: this.data.isPublic,
+        prologue: draft.mode === 'novel' ? draft.prologue : null, chapters: draft.mode === 'novel' ? draft.chapters : undefined, isPublic: this.data.isPublic,
         images: draft.images.map(m => m.uploadId), videos: draft.videos.map(m => m.uploadId), music: draft.music && draft.music.uploadId,
         entranceImages: draft.images.filter(m => m.entrance).map(m => m.uploadId), entranceVideos: draft.videos.filter(m => m.entrance).map(m => m.uploadId) })
       if (!this._alive) return
+      this._prologueBackup = null
+      this._novelBackup = null
       this.setData({ editing: false }); await this.load()
       if (this._alive) wx.showToast({ title: saved.status === 'pending' ? (this.data.isPublic ? '已保存，等待管理员审核' : '文字修改已保存，等待管理员审核') : '已保存，仅自己可见', icon: 'none' })
     } catch (error) { if (this._alive) wx.showToast({ title: error.message || '保存失败，请重试', icon: 'none' }) }

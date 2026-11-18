@@ -19,6 +19,7 @@ module.exports = context => {
     return app
   }
   const content = row => ({ mode: row.mode === 'novel' ? 'novel' : 'plain', text: row.text || '',
+    ...(row.mode === 'novel' ? { prologue: row.prologue && typeof row.prologue === 'object' ? row.prologue : null } : {}),
     chapters: Array.isArray(row.chapters) ? row.chapters : [], images: row.images || [], videos: row.videos || [], music: row.music || null })
   async function hydrate(value) {
     const result = content(value || {})
@@ -27,7 +28,17 @@ module.exports = context => {
       if (!file || !Buffer.isBuffer(file.fileContent)) throw new Error('回忆文字暂时未能读取，请重试')
       const savedText = file.fileContent.toString('utf8')
       if (result.mode === 'novel') {
-        try { result.chapters = JSON.parse(savedText) } catch (_) { throw new Error('小说章节暂时未能读取，请重试') }
+        try {
+          // New novel files bundle the optional prologue with chapters. Keep
+          // accepting the old array-only format for stories saved before it.
+          const parsed = JSON.parse(savedText)
+          if (Array.isArray(parsed)) result.chapters = parsed
+          else if (parsed && typeof parsed === 'object') {
+            if (Array.isArray(parsed.chapters)) result.chapters = parsed.chapters
+            if (parsed.prologue === null || typeof parsed.prologue === 'object') result.prologue = parsed.prologue || null
+          }
+          if (!Array.isArray(result.chapters)) throw new Error('章节数据无效')
+        } catch (_) { throw new Error('小说章节暂时未能读取，请重试') }
       } else result.text = savedText
     }
     const media = result.images.concat(result.videos, result.music ? [result.music] : [])
@@ -164,7 +175,7 @@ module.exports = context => {
       const app = await application(data.id, openid, true), mode = data.mode === undefined ? 'plain' : data.mode
       if (!['plain', 'novel'].includes(mode)) throw new Error('回忆格式无效')
       const story = mode === 'plain' && typeof data.text === 'string' ? data.text : ''
-      let chapters = []
+      let chapters = [], prologue = null
       if (mode === 'novel') {
         if (!Array.isArray(data.chapters) || !data.chapters.length || data.chapters.length > 100) throw new Error('小说至少需要一章，最多 100 章')
         const ids = new Set()
@@ -174,6 +185,17 @@ module.exports = context => {
           ids.add(chapter.id)
           return { id: chapter.id, title: chapter.title.trim(), text: chapter.text }
         })
+        if (data.prologue !== undefined && data.prologue !== null) {
+          const candidate = data.prologue
+          if (typeof candidate !== 'object' || Array.isArray(candidate) || typeof candidate.id !== 'string' ||
+            !/^[A-Za-z0-9_-]{1,80}$/.test(candidate.id) || ids.has(candidate.id) || typeof candidate.title !== 'string' ||
+            !candidate.title.trim() || Array.from(candidate.title.trim()).length > 50 || typeof candidate.text !== 'string') {
+            throw new Error('序章标题、编号或正文无效')
+          }
+          prologue = { id: candidate.id, title: candidate.title.trim(), text: candidate.text }
+        }
+      } else if (data.prologue !== undefined && data.prologue !== null) {
+        throw new Error('序章只能用于小说模式')
       }
       if (typeof data.isPublic !== 'boolean' || !Number.isInteger(data.revision) || data.revision < 0) throw new Error('回忆版本或公开设置无效')
       const mediaRevision = data.mediaRevision === undefined ? 0 : data.mediaRevision
@@ -195,8 +217,12 @@ module.exports = context => {
         if (!m || m.kind !== kind) throw new Error('媒体类型不匹配')
         return { uploadId: m._id, fileId: m.fileId, name: m.name, kind, ...(kind !== 'music' ? { entrance: selections[kind === 'image' ? 'entranceImages' : 'entranceVideos'].has(id) } : {}) }
       }
-      const draft = { mode, text: story, ...(mode === 'novel' ? { chapters } : {}), images: data.images.map(id => pick(id, 'image')), videos: data.videos.map(id => pick(id, 'video')), music: data.music ? pick(data.music, 'music') : null }
-      const textFingerprint = digest(JSON.stringify(mode === 'novel' ? [mode, chapters.map(chapter => [chapter.id, chapter.title, chapter.text])] : [mode, story]))
+      const draft = { mode, text: story, ...(mode === 'novel' ? { prologue, chapters } : {}), images: data.images.map(id => pick(id, 'image')), videos: data.videos.map(id => pick(id, 'video')), music: data.music ? pick(data.music, 'music') : null }
+      const textFingerprint = digest(JSON.stringify(mode === 'novel'
+        ? (prologue
+          ? [mode, [prologue.id, prologue.title, prologue.text], chapters.map(chapter => [chapter.id, chapter.title, chapter.text])]
+          : [mode, chapters.map(chapter => [chapter.id, chapter.title, chapter.text])])
+        : [mode, story]))
       const saveFingerprint = digest(JSON.stringify([data.revision, textFingerprint, data.isPublic, data.images, data.videos, data.music || null,
         data.images.filter(id => selections.entranceImages.has(id)), data.videos.filter(id => selections.entranceVideos.has(id))]))
       // Check bounded UTF-8 chunks without truncating the user's story. Long
@@ -211,13 +237,17 @@ module.exports = context => {
         if (part) await checkTextSecurity(openid, part, { label: '宠物回忆' })
       }
       if (mode === 'novel') {
+        if (prologue) await checkStoryText(prologue.title + '\n' + prologue.text)
         for (const chapter of chapters) await checkStoryText(chapter.title + '\n' + chapter.text)
       } else await checkStoryText(story)
-      const serializedText = mode === 'novel' ? JSON.stringify(chapters) : story
+      const serializedText = mode === 'novel' ? JSON.stringify({ prologue, chapters }) : story
       if (Buffer.byteLength(serializedText) > 16000) {
         const saved = await cloud.uploadFile({ cloudPath: 'memorial-memories/vault/' + crypto.randomBytes(24).toString('hex') + '.txt', fileContent: Buffer.from(serializedText) })
         if (!saved || !saved.fileID) throw new Error('回忆文字保存失败，请重试')
-        if (mode === 'novel') draft.chapters = chapters.map(({ id, title }) => ({ id, title, text: '' }))
+        if (mode === 'novel') {
+          draft.prologue = prologue ? { id: prologue.id, title: prologue.title, text: '' } : null
+          draft.chapters = chapters.map(({ id, title }) => ({ id, title, text: '' }))
+        }
         else draft.text = ''
         draft.textFileId = saved.fileID
       }
@@ -234,9 +264,14 @@ module.exports = context => {
           if ((previous && previous.revision || 0) !== data.revision) throw new Error('回忆已在其他页面更新，请重新打开后编辑')
           const previousTextFingerprint = previous && (previous.textFingerprint || (previous.draft && !previous.draft.textFileId
             ? digest(JSON.stringify(previous.draft.mode === 'novel'
-              ? ['novel', (previous.draft.chapters || []).map(chapter => [chapter.id, chapter.title, chapter.text || ''])]
+              ? (previous.draft.prologue
+                ? ['novel', [previous.draft.prologue.id, previous.draft.prologue.title, previous.draft.prologue.text || ''],
+                  (previous.draft.chapters || []).map(chapter => [chapter.id, chapter.title, chapter.text || ''])]
+                : ['novel', (previous.draft.chapters || []).map(chapter => [chapter.id, chapter.title, chapter.text || ''])])
               : ['plain', previous.draft.text || ''])) : null))
-          const textChanged = previous ? previousTextFingerprint !== textFingerprint : (mode === 'novel' ? chapters.some(chapter => chapter.title || chapter.text) : !!story)
+          const textChanged = previous ? previousTextFingerprint !== textFingerprint : (mode === 'novel'
+            ? Boolean((prologue && (prologue.title || prologue.text)) || chapters.some(chapter => chapter.title || chapter.text))
+            : !!story)
           const requiresReview = data.isPublic || textChanged
           if (previous && previous.status === 'pending') {
             const oldNotice = 'admin_audit_memorial_memory_' + id + ':' + previous.revision
