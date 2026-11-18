@@ -176,6 +176,11 @@
       ]
     },
     {
+      "root": "packageManor3d",
+      "name": "manor3d",
+      "pages": ["pages/index"]
+    },
+    {
       "root": "pages/staff",
       "name": "staff",
       "pages": [

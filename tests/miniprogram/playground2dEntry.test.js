@@ -5,14 +5,18 @@ const path = require('node:path')
 
 const root = path.resolve(__dirname, '../../miniprogram/packagePlayground')
 
-test('playground entry exposes only 2D game actions', () => {
+test('the 2D manor keeps its original entry and canvas when the 3D manor gets a separate subpackage', () => {
   const wxml = fs.readFileSync(path.join(root, 'pages/index.wxml'), 'utf8')
   const worldWxml = fs.readFileSync(path.join(root, 'pages/world.wxml'), 'utf8')
   const page = fs.readFileSync(path.join(root, 'pages/index.js'), 'utf8')
   const styles = fs.readFileSync(path.join(root, 'pages/index.wxss'), 'utf8')
   const worldPage = fs.readFileSync(path.join(root, 'pages/world.js'), 'utf8')
 
-  assert.match(wxml, /2D 互动/)
+  const app = JSON.parse(fs.readFileSync(path.resolve(root, '../app.json'), 'utf8'))
+  assert.match(wxml, /bindtap="openWorld"/)
+  assert.match(wxml, /bindtap="openManor3d"/)
+  assert.ok(page.includes("url: '/packagePlayground/pages/world'"))
+  assert.deepEqual(app.subpackages.find(pkg => pkg.root === 'packageManor3d')?.pages, ['pages/index'])
   assert.match(wxml, /打开庄园/)
   assert.match(wxml, /进入小区宠物庄园/)
   assert.match(styles, /\.small-btn\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;[^}]*justify-content:\s*center;/s)

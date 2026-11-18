@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#dbe9df">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='5' fill='%232a5145'/%3E%3Cpath d='m5 24 7-14 5 8 4-6 6 12z' fill='none' stroke='%23fff8db' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E">
+<title>晴溪庄园 · 场景预览</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden}body{background:#d4e6e4;color:#203a33;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}button{font:inherit;cursor:pointer}#scene{display:block;width:100%;height:100%;touch-action:none;outline:0;cursor:grab}#scene:active{cursor:grabbing}.hud{position:fixed;z-index:1}.glass{background:rgba(249,251,242,.94);box-shadow:0 3px 17px #18372b20;border:1px solid #fff9}.brand{top:max(17px,env(safe-area-inset-top));left:max(18px,env(safe-area-inset-left));display:flex;gap:12px;align-items:center;padding:10px 15px 10px 11px;border-radius:6px;pointer-events:none}.brandstamp{display:grid;place-items:center;background:#2a5145;color:#fff8db;border-radius:4px;width:38px;height:41px}.brandstamp svg{width:25px;height:25px}.brand h1{margin:0 0 2px;font-size:18px;line-height:1.25}.brand small{color:#516760;font-size:11px;font-variant-numeric:tabular-nums}.compass{right:max(19px,env(safe-area-inset-right));top:max(17px,env(safe-area-inset-top));display:grid;justify-items:center;padding:6px 10px;color:#264e42;border-radius:6px;font-size:10px;font-weight:700;pointer-events:none}.compass svg{height:24px;width:24px;display:block}.dock{left:50%;bottom:max(20px,env(safe-area-inset-bottom));transform:translateX(-50%);max-width:calc(100% - 20px);display:flex;align-items:center;justify-content:center;gap:5px;padding:5px;border-radius:7px}.dock button{display:inline-flex;align-items:center;justify-content:center;gap:5px;background:transparent;border:0;color:#314d43;border-radius:4px;height:36px;padding:0 11px;line-height:1;white-space:nowrap;font-size:13px;font-weight:600}.dock button:hover,.dock button:focus-visible{background:#e0e9df}.dock button:focus-visible,button:focus-visible{outline:2px solid #087c72;outline-offset:1px}.dock button[aria-pressed=true]{background:#315b4c;color:white}.dock button:disabled{opacity:.4;cursor:wait}.dock svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round}.sep{width:1px;height:20px;background:#c7d1c7;margin:0 2px}.state{position:fixed;z-index:3;left:50%;top:50%;transform:translate(-50%,-50%);max-width:calc(100% - 24px);width:max-content;padding:14px 20px;text-align:center;border-radius:7px;background:#f8faf1;box-shadow:0 7px 35px #122d272a;font-size:14px;line-height:1.5}.state button{display:block;background:#315b4c;color:#fff;border:0;border-radius:4px;padding:7px 12px;margin:9px auto 0}.state[hidden],.chrome-off .hud,[hidden]{display:none!important}.symbols{display:none}
+@media(max-width:820px){.dock{gap:1px;bottom:max(10px,env(safe-area-inset-bottom));padding:4px}.dock button{flex-direction:column;gap:4px;font-size:11px;height:44px;padding:0 7px;min-width:45px}.dock svg{width:16px;height:16px}.brand{left:10px;top:max(10px,env(safe-area-inset-top));gap:8px;padding:7px 10px}.brand h1{font-size:16px}.brandstamp{width:30px;height:35px}.compass{top:max(10px,env(safe-area-inset-top));right:10px}.sep{margin:0 1px}}
+@media(max-width:390px){.dock{gap:0}.dock button{min-width:41px;padding:0 4px;font-size:10px}.sep{margin:0}}
+.tree-dock{bottom:calc(max(20px,env(safe-area-inset-bottom)) + 53px)}.tree-dock button{min-width:65px}
+@media(max-width:820px){.tree-dock{bottom:calc(max(10px,env(safe-area-inset-bottom)) + 59px)}.tree-dock button{height:34px}}
+@media(max-width:490px){.dock:not(.tree-dock){display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;width:calc(100% - 20px);max-width:340px}.dock:not(.tree-dock) button{min-width:0;padding:0 2px}.dock .sep{display:none}.tree-dock{bottom:calc(max(10px,env(safe-area-inset-bottom)) + 103px);max-width:calc(100% - 20px);width:260px}.tree-dock button{flex:1;min-width:0;padding:0 2px}}
+</style>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" class="symbols" aria-hidden="true">
+ <symbol id="mountain" viewBox="0 0 24 24"><path d="m8 3 4 8 5-5 5 15H2L8 3Z"/><path d="m5 12 3-3 3 4"/></symbol>
+ <symbol id="map" viewBox="0 0 24 24"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6Z"/><path d="M9 3v15m6-12v15"/></symbol>
+ <symbol id="focus" viewBox="0 0 24 24"><path d="M8 3H4v4m12-4h4v4M4 17v4h4m12-4v4h-4"/><circle cx="12" cy="12" r="4"/></symbol>
+ <symbol id="plot" viewBox="0 0 24 24"><path d="m3 14 9-8 9 6-9 8z" stroke-dasharray="3 2"/><path d="M3 14v-3m9-5V3m9 9V9m-9 11v-3"/></symbol>
+ <symbol id="house" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 21v-7h6v7"/></symbol>
+ <symbol id="sprout" viewBox="0 0 24 24"><path d="M7 20h10M10 20c5.5-2.5.8-6.4 3-10M9.5 14A4.5 4.5 0 0 1 5 9.5V8h1.5A4.5 4.5 0 0 1 11 12.5V14zM14 11a5 5 0 0 1 5-5h1v1a5 5 0 0 1-5 5h-1z"/></symbol>
+ <symbol id="tree" viewBox="0 0 24 24"><path d="M12 22v-9m0 5 3-3M8 22h8M8 17H7a4 4 0 0 1-2-7.5 4 4 0 0 1 4.6-5.3 3.7 3.7 0 0 1 6.8 1.5 4.2 4.2 0 0 1 2.8 4.1A4 4 0 0 1 17 17h-1"/></symbol>
+ <symbol id="pause-glyph" viewBox="0 0 24 24"><path d="M7 4h3v16H7zM14 4h3v16h-3z"/></symbol>
+ <symbol id="play-glyph" viewBox="0 0 24 24"><path d="m6 3 14 9-14 9z"/></symbol>
+</svg>
+<canvas id="scene" tabindex="0" aria-label="三维庄园场景。鼠标拖动旋转，右键拖动平移，滚轮缩放；触屏单指旋转，双指缩放或平移。"></canvas>
+<header class="hud glass brand"><span class="brandstamp" aria-hidden="true"><svg viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="m2 19 6-11 5 8 4-10 7 13M2 22c6 0 8-4 12-4s5 3 10 2"/><circle cx="12" cy="4.5" r="1.3" fill="currentColor" stroke="none"/></svg></span><div><h1 id="title">晴溪庄园</h1><small id="summary">庄园地形预览</small></div></header>
+<div class="hud glass compass" title="北向指示"><span>N</span><svg id="needle" viewBox="0 0 24 24"><path fill="#b55b48" d="m12 1 4 11-4-1-4 1z"/><path fill="#8ba296" d="m12 23-4-11 4 1 4-1z"/></svg></div>
+<nav class="hud glass dock" aria-label="场景视角和图层">
+ <button type="button" disabled data-view="wide" aria-pressed="true" title="回到全庄园鸟瞰"><svg><use href="#mountain"/></svg>庄园全景</button>
+ <button type="button" disabled data-view="top" aria-pressed="false" title="从上方查看庄园布局"><svg><use href="#map"/></svg>建造总览</button>
+ <button type="button" disabled data-view="close" aria-pressed="false" title="查看中央石桥和溪流"><svg><use href="#focus"/></svg>石桥近景</button>
+ <button type="button" disabled data-view="detail" aria-pressed="false" title="从地面观察草叶和树木"><svg><use href="#sprout"/></svg>地面细节</button>
+ <span class="sep" aria-hidden="true"></span>
+ <button type="button" disabled data-view="trees" aria-pressed="false" title="查看庄园里的树木"><svg><use href="#tree"/></svg>树木近景</button>
+ <button type="button" disabled id="plots" aria-pressed="false" title="显示或隐藏推荐建造范围"><svg><use href="#plot"/></svg>建造区</button>
+ <button type="button" disabled id="houses" aria-pressed="false" title="显示或隐藏地块中的示意房屋"><svg><use href="#house"/></svg>房屋示意</button>
+ <button type="button" disabled id="motion" title="暂停溪流和风"><svg><use href="#pause-glyph"/></svg><span>暂停</span></button>
+</nav>
+<nav class="hud glass dock tree-dock" id="treeDock" aria-label="树木" hidden>
+ <button type="button" data-tree="bloom" aria-pressed="false">樱树</button>
+ <button type="button" data-tree="oak" aria-pressed="false">栎树</button>
+ <button type="button" data-tree="apple" aria-pressed="false">苹果树</button>
+ <button type="button" data-tree="birch" aria-pressed="false">白桦</button>
+</nav>
+<div class="state" id="state" role="status"><span id="message">正在载入庄园场景…</span><button id="localButton" hidden>选择场景文件</button><input id="localFiles" type="file" multiple accept=".glb,.json" hidden></div>
+<script src="./vendor/scene-runtime.js"></script>
+<script>
+(() => {
+'use strict';
+const $=id=>document.getElementById(id), param=new URLSearchParams(location.search);
+if(param.get('ui')==='0') document.body.classList.add('chrome-off');
+const canvas=$('scene'), status=$('state'), msg=$('message'), local=$('localButton');
+function error(message,files=false){status.hidden=false;msg.textContent=message;local.hidden=!files;document.documentElement.dataset.sceneStatus='error';}
+if(!window.THREE||!THREE.OrbitControls||!THREE.GLTFLoader){error('预览组件缺失，请将 vendor 文件夹放在预览页旁。');return;}
+let renderer;
+try {renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false,powerPreference:'high-performance'});}catch(e){error('此浏览器无法启动 3D 预览，请使用已启用图形加速的浏览器。');return;}
+const scene=new THREE.Scene(), sky=0x9acbe8;
+scene.background=new THREE.Color(sky);scene.fog=new THREE.Fog(0xc7dfec,1400,3700);
+if('outputColorSpace' in renderer)renderer.outputColorSpace=THREE.SRGBColorSpace;
+else renderer.outputEncoding=THREE.sRGBEncoding;
+renderer.toneMapping=THREE.NoToneMapping;
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFShadowMap;renderer.shadowMap.autoUpdate=false;
+scene.add(new THREE.HemisphereLight(0xf4fbff,0xbad1a1,1.38));
+const sun=new THREE.DirectionalLight(0xfff6df,1.69);sun.target.position.set(0,4,38);sun.position.copy(sun.target.position).add(new THREE.Vector3(135,192,55));scene.add(sun,sun.target);
+sun.castShadow=true;const shadow=sun.shadow,shadowSize=Math.min(renderer.capabilities.maxTextureSize,matchMedia('(pointer:coarse)').matches?2048:4096);
+shadow.mapSize.set(shadowSize,shadowSize);Object.assign(shadow.camera,{left:-158,right:158,top:145,bottom:-145,near:8,far:520});shadow.camera.updateProjectionMatrix();
+shadow.bias=-.00014;shadow.normalBias=.09;shadow.radius=1.8;shadow.intensity=.78;
+const rim=new THREE.DirectionalLight(0xdbedff,.29);rim.position.set(-95,88,-150);scene.add(rim);
+const camera=new THREE.PerspectiveCamera(36,1,0.35,14000), controls=new THREE.OrbitControls(camera,canvas);
+controls.enableDamping=true;controls.dampingFactor=.125;controls.rotateSpeed=.65;controls.zoomSpeed=.95;controls.panSpeed=.82;controls.screenSpacePanning=false;controls.minDistance=16;controls.maxDistance=2200;controls.maxPolarAngle=Math.PI*.487;
+const outline=new THREE.Group();
+scene.add(outline);outline.visible=false;
+const V=(x,y,z)=>new THREE.Vector3(x,y,z);
+let data=null,ready=false,raf=0,flight=null,view='wide',viewLocked=true,houses=null,buildBounds=null;
+const treeDirections={bloom:[-.57,.19,.81],oak:[.21,.18,-.97],apple:[.54,.17,.83],birch:[-.47,.17,.88]};
+const treeViews=new Map();let selectedTree='bloom';
+const reduce=matchMedia('(prefers-reduced-motion: reduce)'),mobile=matchMedia('(pointer:coarse)').matches;
+let nature=null,moving=!reduce.matches&&param.get('motion')!=='0',time=0,lastTime=null,dirty=true;
+let world={width:480,depth:360};
+function schedule(){if(!raf&&!document.hidden)raf=requestAnimationFrame(draw);}
+function invalidate(){dirty=true;schedule();}
+function motionState(){const b=$('motion');b.querySelector('span').textContent=moving?'暂停':'播放';b.title=b.ariaLabel=moving?'暂停溪流和风':'播放溪流和风';b.querySelector('use').setAttribute('href',moving?'#pause-glyph':'#play-glyph');}
+$('motion').onclick=()=>{moving=!moving;lastTime=null;motionState();invalidate();};motionState();
+reduce.addEventListener('change',e=>{moving=!e.matches;lastTime=null;motionState();invalidate();});
+function draw(now){
+ raf=0;
+ if(document.hidden)return;
+ const playing=ready&&moving&&nature?.active, animationView=playing&&!flight;
+ if(!dirty&&animationView&&lastTime!==null&&now-lastTime<((mobile?1000/24:1000/30)-1)){schedule();return;}
+ if(playing){if(lastTime!==null)time+=Math.max(0,(now-lastTime)/1000);lastTime=now;nature.setTime(time);}
+ dirty=false;
+ if(flight){let t=Math.min((now-flight.start)/600,1);const smooth=t*t*(3-2*t);camera.position.lerpVectors(flight.posA,flight.posB,smooth);controls.target.lerpVectors(flight.tarA,flight.tarB,smooth);if(t===1)flight=null;}
+ controls.update();
+ // Keep panning within the terrain footprint while preserving orbit offset.
+ if(ready){const a=controls.target,x=Math.max(-world.width*.51,Math.min(world.width*.51,a.x)),z=Math.max(-world.depth*.51,Math.min(world.depth*.51,a.z));if(x!==a.x||z!==a.z){camera.position.x+=x-a.x;camera.position.z+=z-a.z;a.x=x;a.z=z;}}
+ $('needle').style.transform='rotate('+controls.getAzimuthalAngle()+'rad)';
+ const fogOffset=Math.max(0,camera.position.distanceTo(controls.target)-970);
+ scene.fog.near=1400+fogOffset;scene.fog.far=3700+fogOffset;
+ nature?.updateView(camera.position);renderer.render(scene,camera);if(flight||playing)schedule();
+}
+controls.addEventListener('change',invalidate);
+controls.addEventListener('start',()=>{flight=null;viewLocked=false;setButtons('');});
+function setButtons(s){document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(s===b.dataset.view)));}
+function dimensions(){
+ const w=canvas.clientWidth,h=canvas.clientHeight;renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));renderer.setSize(w,h,false);camera.aspect=w/Math.max(1,h);camera.updateProjectionMatrix();
+ if(ready&&viewLocked)stage(view,true);else invalidate();
+}
+window.addEventListener('resize',dimensions);document.addEventListener('visibilitychange',()=>{lastTime=null;if(document.hidden){if(raf)cancelAnimationFrame(raf);raf=0;}else invalidate();});
+camera.position.set(25,220,260);controls.update();dimensions();
+function fitBuildingArea(target,direction){
+ const right=V(0,1,0).cross(direction).normalize(),up=direction.clone().cross(right);
+ const tangent=Math.tan(camera.fov*Math.PI/360),v=new THREE.Vector3();
+ const {minX,maxX,minZ,maxZ,y}=buildBounds;
+ let dist=0;
+ for(const x of [minX,maxX])for(const z of [minZ,maxZ])for(const level of [y,y+16]){
+  v.set(x,level,z).sub(target);
+  dist=Math.max(dist,v.dot(direction)+Math.max(Math.abs(v.dot(right))/(tangent*camera.aspect*.91),Math.abs(v.dot(up))/(tangent*.83)));
+ }
+ return target.clone().addScaledVector(direction,dist);
+}
+function stage(key,snap=false){
+ if(!ready)return;
+ const tree=key==='trees'?treeViews.get(selectedTree):null;
+ if(key==='trees'&&!tree)return;
+ view=key;viewLocked=true;setButtons(key);$('treeDock').hidden=!tree;
+ for(const b of document.querySelectorAll('[data-tree]'))b.setAttribute('aria-pressed',String(b.dataset.tree===selectedTree));
+ const cfg=data.camera||{};
+ const valid=v=>Array.isArray(v)&&v.length===3&&v.every(Number.isFinite);
+ let target,pos;
+ if(key==='wide'||key==='top'){
+  const {minX,maxX,minZ,maxZ,y}=buildBounds;
+  target=V((minX+maxX)*.5,y,(minZ+maxZ)*.5);
+  pos=fitBuildingArea(target,(key==='top'?V(0,1,.025):V(.07,.83,1)).normalize());
+ }else if(tree){
+  target=V(tree.x,tree.y+tree.h*(camera.aspect<.8?.43:.51),tree.z);
+  const direction=V(...treeDirections[tree.kind]).normalize(),tangent=Math.tan(camera.fov*Math.PI/360);
+  const size=Math.max(tree.h*.75,tree.r*1.23/Math.max(.37,camera.aspect));
+  pos=target.clone().addScaledVector(direction,size/tangent);
+ }else{
+  const bridge=data.bridge||{x:0,z:66},detail=key==='detail';
+  target=valid(cfg[key+'Target'])?V(...cfg[key+'Target']):V(bridge.x,4.5,bridge.z);
+  pos=valid(cfg[key+'Position'])?V(...cfg[key+'Position']):target.clone().add(detail?V(23,1.6,29):V(7,8,43));
+  if(camera.aspect<.8)pos.sub(target).multiplyScalar(detail?1+.18*(.8-camera.aspect):Math.max(1,1.03/camera.aspect)).add(target);
+ }
+ controls.maxDistance=Math.max(5000,pos.distanceTo(target)*1.3);
+ if(snap||reduce.matches){flight=null;controls.target.copy(target);camera.position.copy(pos);controls.update();}else{flight={start:performance.now(),posA:camera.position.clone(),posB:pos,tarA:controls.target.clone(),tarB:target};}invalidate();
+}
+function buildOutline(){
+ for(const mesh of outline.children){mesh.geometry.dispose();mesh.material.dispose();}outline.clear();
+ const points=[],pars=data.plots;
+ for(const p of pars){const {x,z,width:w,depth:d}=p,y=(p.y||0)+.22;
+  for(const [a,b,c,e] of [[-1,-1,1,-1],[1,-1,1,1],[1,1,-1,1],[-1,1,-1,-1]])points.push(x+a*w/2,y,z+b*d/2,x+c*w/2,y,z+e*d/2);
+ }
+ const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(points,3));
+ const mat=new THREE.LineBasicMaterial({color:0xfff2a6,transparent:true,opacity:.94,depthTest:false});const lines=new THREE.LineSegments(geo,mat);lines.renderOrder=4;outline.add(lines);
+}
+function showPlots(on){outline.visible=on;$('plots').setAttribute('aria-pressed',String(on));invalidate();}
+function showHouses(on){
+ if(on&&!houses){houses=THREE.createBuildSamples(data.plots);scene.add(houses);}
+ if(houses)houses.visible=on;
+ $('houses').setAttribute('aria-pressed',String(on));invalidate();
+}
+for(const button of document.querySelectorAll('[data-view]'))button.onclick=()=>stage(button.dataset.view);
+for(const button of document.querySelectorAll('[data-tree]'))button.onclick=()=>{selectedTree=button.dataset.tree;stage('trees');};
+$('plots').onclick=()=>showPlots(!outline.visible);
+$('houses').onclick=()=>showHouses(!houses?.visible);
+function install(gltf,layout){
+ const width=Number(layout.world.width),depth=Number(layout.world.depth);
+ if(![width,depth].every(v=>Number.isFinite(v)&&v>0)||!Array.isArray(layout.plots)||layout.plots.some(p=>![p.x,p.y,p.z,p.width,p.depth].every(Number.isFinite)||!(p.width>0&&p.depth>0)))throw new Error('layout');
+ data=layout;world={width,depth};
+ treeViews.clear();
+ for(const t of Array.isArray(data.landmarkTrees)?data.landmarkTrees:[]){
+  if(!Object.hasOwn(treeDirections,t.kind)||treeViews.has(t.kind)||![t.x,t.z,t.h,t.r].every(Number.isFinite)||t.h<=0||t.r<=0)continue;
+  treeViews.set(t.kind,{...t,y:Number.isFinite(t.y)?t.y:(data.groundLevel||0)});
+ }
+ const requestedTree=param.get('tree');selectedTree=treeViews.has(requestedTree)?requestedTree:treeViews.keys().next().value;
+ for(const b of document.querySelectorAll('[data-tree]'))b.hidden=!treeViews.has(b.dataset.tree);
+ const plots=data.plots, pad=13;
+ buildBounds=plots.length?{
+  minX:Math.min(...plots.map(p=>p.x-p.width*.5))-pad, maxX:Math.max(...plots.map(p=>p.x+p.width*.5))+pad,
+  minZ:Math.min(...plots.map(p=>p.z-p.depth*.5))-pad, maxZ:Math.max(...plots.map(p=>p.z+p.depth*.5))+pad,
+  y:Number.isFinite(data.groundLevel)?data.groundLevel:plots[0].y
+ }:{minX:-width*.5,maxX:width*.5,minZ:-depth*.5,maxZ:depth*.5,y:0};
+ gltf.scene.traverse(node=>{
+  const materials=Array.isArray(node.material)?node.material:[node.material];
+  if(node.isMesh){
+   const name=node.name.replace(/_/g,' ').toLowerCase(),display=materials.map(v=>v?.name||'').join(' ').toLowerCase();
+   const structure=/stone arch|landmark trees|canopy \d|outcrops \d|rounded creek stones/.test(name)||/painted leaf and blossom tips/.test(display);
+   node.castShadow=structure;
+   node.receiveShadow=structure||/sunlit meadow|meadow grass|sky-blue current|handlaid buff limestone|spring \| grasses|reference wildflowers|handpainted woodland/.test(display);
+  }
+  for(const material of materials){
+   if(material && (material.name==='Painted valley sky'||material.map?.name==='sky.jpg')){
+    material.fog=false;material.toneMapped=false;material.needsUpdate=true;
+   }
+  }
+ });
+ nature=THREE.createValleyNature(gltf.scene,{mobile});scene.add(gltf.scene);renderer.shadowMap.needsUpdate=true;ready=true;buildOutline();status.hidden=true;const name=data.title||data.name;if(typeof name==='string'&&/[\u3400-\u9fff]/.test(name))$('title').textContent=name;document.title=$('title').textContent+' · 场景预览';
+ $('summary').textContent=world.width+' × '+world.depth+' 米 · '+data.plots.length+' 处推荐用地';
+ document.querySelectorAll('.dock button').forEach(b=>b.disabled=false);
+ $('houses').disabled=$('plots').disabled=plots.length===0;
+ document.querySelector('[data-view="trees"]').hidden=!treeViews.size;
+ const key=param.get('view'), available=key==='trees'?treeViews.size>0:['wide','top','close','detail'].includes(key);
+ stage(available?key:'wide',true);
+ if(plots.length){showPlots(param.get('plots')==='1');showHouses(param.get('houses')==='1');}
+ document.documentElement.dataset.sceneStatus='ready';invalidate();
+}
+const loader=new THREE.GLTFLoader();
+function loadFile(url){return new Promise((yes,no)=>loader.load(url,yes,e=>{if(e.total)msg.textContent='正在载入庄园场景… '+Math.round(e.loaded/e.total*100)+'%';},no));}
+async function load(){if(location.protocol==='file:'){error('请选择同目录的 manor.glb 和 layout.json 以打开庄园。',true);return;}
+ try{const [model,layout]=await Promise.all([loadFile('./manor.glb'),fetch('./layout.json').then(r=>{if(!r.ok)throw Error('layout');return r.json();})]);install(model,layout);}catch(e){console.error('Scene loading failed',e);error('场景载入失败，请检查 manor.glb 和 layout.json。',true);}}
+$('localButton').onclick=()=>$('localFiles').click();
+$('localFiles').onchange=async e=>{const files=Array.from(e.target.files),glb=files.find(f=>/\.glb$/i.test(f.name)),json=files.find(f=>/\.json$/i.test(f.name));if(!glb||!json){error('请同时选择 manor.glb 和 layout.json。',true);return;}
+ try{const [buf,layout]=await Promise.all([glb.arrayBuffer(),json.text().then(JSON.parse)]);const model=await new Promise((yes,no)=>loader.parse(buf,'',yes,no));install(model,layout);}catch(err){error('无法读取所选场景文件，请重新选择。',true);}e.target.value='';};
+canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();ready=false;moving=false;if(raf)cancelAnimationFrame(raf);raf=0;error('图形上下文已中断，请重新载入预览。');});
+load();
+})();
+</script>
+</body></html>

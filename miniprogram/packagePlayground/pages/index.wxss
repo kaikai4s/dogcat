@@ -131,6 +131,28 @@ button::after { border: none; }
 .manor-entry-btn::after { border: 0; }
 .manor-entry-btn text:last-child { margin-left: auto; }
 .manor-entry-btn text:first-child { margin-right: auto; }
+.manor3d-entry {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  width: 100%;
+  min-height: 104rpx;
+  margin: 22rpx 0 0;
+  padding: 18rpx 24rpx;
+  border: 1rpx solid #c6ded2;
+  border-radius: 26rpx;
+  background: linear-gradient(115deg, #f4fcf7, #e6f4e9);
+  color: #244b41;
+  text-align: left;
+  line-height: 1.35;
+}
+.manor3d-entry-pressed { background: #dceee3; }
+.manor3d-entry-icon { flex: 0 0 64rpx; line-height: 64rpx; border-radius: 18rpx; background: #397360; color: #fff; font-size: 34rpx; text-align: center; }
+.manor3d-entry-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3rpx; }
+.manor3d-entry-title { font-size: 30rpx; font-weight: 800; }
+.manor3d-entry-name { color: #4b6658; font-size: 22rpx; }
+.manor3d-entry-arrow { flex-shrink: 0; font-size: 34rpx; }
 .feature-scroll { width: 100%; margin-top: 22rpx; border-radius: 26rpx; background: rgba(255,255,255,.82); }
 .game-features { display: inline-flex; width: max-content; min-width: 100%; box-sizing: border-box; gap: 0; margin: 0; padding: 22rpx 8rpx; background: transparent; border-radius: 0; }
 .feature-item { flex: 0 0 auto; width: auto; min-width: 260rpx; padding: 0 24rpx; box-sizing: border-box; gap: 14rpx; border-right: 1rpx solid #e7eadc; }

@@ -1,0 +1,222 @@
+page { width: 100%; height: 100%; overflow: hidden; background: #e1eadb; }
+.manor-screen, .manor-shade { top: 0; right: 0; bottom: 0; left: 0; }
+.manor-screen { position: fixed; isolation: isolate; color: #17352e; }
+.manor-action, .manor-back, .manor-link, .manor-tool, .manor-joystick, .manor-run,
+.manor-character-option, .manor-control-hint, .manor-notice-text {
+  -webkit-user-select: none;
+  user-select: none;
+}
+.manor-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+.manor-shade, .manor-notices, .manor-controls, .manor-walk-controls { z-index: 1; }
+.manor-shade {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at 50% 20%, #f3f7e5, #cbdfd0);
+  padding: 20px;
+}
+.manor-panel {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 24px;
+  border-radius: 20px;
+  background: #fafbf5;
+  box-shadow: 0 8px 28px rgba(28, 60, 47, .13);
+}
+.manor-kicker { color: #356452; font-size: 12px; font-weight: 700; }
+.manor-title { font-size: 25px; font-weight: 800; line-height: 1.2; }
+.manor-caption { font-size: 14px; line-height: 1.55; color: #405b51; }
+.manor-percent { text-align: right; font-size: 12px; color: #405b51; }
+.manor-panel-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 5px; }
+.manor-panel-actions .manor-action { flex: 1 0 auto; }
+.manor-action, .manor-back, .manor-link, .manor-tool, .manor-run, .manor-character-option {
+  box-sizing: border-box;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 13px;
+  min-height: 44px;
+  font-size: 13px;
+  line-height: 1.2;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.manor-action, .manor-tool { color: #244a3e; background: #e9f0e6; border-radius: 9px; }
+.manor-primary, .manor-tool-active { color: #fff; background: #2f6a57; }
+.manor-link { color: #236451; background: transparent; padding: 0 7px; flex-shrink: 0; }
+.manor-action::after, .manor-back::after, .manor-link::after, .manor-tool::after,
+.manor-run::after, .manor-character-option::after { border: 0; }
+.manor-action.button-hover, .manor-back.button-hover, .manor-link.button-hover,
+.manor-tool.button-hover, .manor-run.button-hover, .manor-character-option.button-hover { opacity: .72; }
+.manor-top-controls {
+  position: absolute;
+  z-index: 2;
+  top: 46px;
+  top: max(46px, calc(env(safe-area-inset-top) + 12px));
+  left: 12px;
+  left: calc(12px + env(safe-area-inset-left));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.manor-back, .manor-character-select {
+  border-radius: 22px;
+  background: rgba(250, 252, 245, .95);
+  box-shadow: 0 3px 12px rgba(23, 53, 46, .15);
+}
+.manor-back {
+  gap: 6px;
+  color: #244a3e;
+}
+.manor-character-select { display: flex; padding: 2px; }
+.manor-character-option {
+  min-width: 44px;
+  border-radius: 20px;
+  padding: 0 11px;
+  background: transparent;
+  color: #244a3e;
+}
+.manor-character-selected { background: #2f6a57; color: #fff; }
+.manor-back-arrow {
+  width: 7px;
+  height: 7px;
+  border-bottom: 2px solid currentColor;
+  border-left: 2px solid currentColor;
+  transform: rotate(45deg);
+}
+.manor-notices {
+  position: absolute;
+  top: 104px;
+  top: max(104px, calc(env(safe-area-inset-top) + 70px));
+  left: 12px;
+  left: calc(12px + env(safe-area-inset-left));
+  right: 12px;
+  right: calc(12px + env(safe-area-inset-right));
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 5px;
+  pointer-events: none;
+}
+.manor-notice {
+  box-sizing: border-box;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 11px;
+  border-radius: 11px;
+  box-shadow: 0 3px 12px rgba(23, 53, 46, .13);
+  background: rgba(250, 252, 245, .95);
+  color: #294c40;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.manor-notice-text { padding: 8px 0; }
+.manor-notice .manor-link { pointer-events: auto; }
+.manor-walk-controls {
+  position: absolute;
+  left: 12px;
+  left: calc(12px + env(safe-area-inset-left));
+  bottom: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.manor-joystick {
+  box-sizing: border-box;
+  position: relative;
+  width: 108px;
+  height: 108px;
+  border: 1px solid rgba(255, 255, 255, .7);
+  border-radius: 50%;
+  background: rgba(16, 53, 42, .49);
+  box-shadow: 0 3px 14px rgba(21, 50, 41, .24), inset 0 0 0 5px rgba(236, 253, 227, .12);
+  touch-action: none;
+  pointer-events: auto;
+}
+.manor-joystick-active {
+  background: rgba(16, 53, 42, .67);
+}
+.manor-stick-knob {
+  box-sizing: border-box;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 40px;
+  height: 40px;
+  margin: -20px 0 0 -20px;
+  border: 2px solid #f8fff6;
+  border-radius: 50%;
+  background: linear-gradient(140deg, #f3f8ea, #bcd5c4);
+  box-shadow: 0 2px 7px rgba(11, 37, 31, .35);
+  pointer-events: none;
+}
+.manor-stick-axis {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  box-sizing: border-box;
+  border-top: 2px solid rgba(246, 255, 243, .8);
+  border-left: 2px solid rgba(246, 255, 243, .8);
+  pointer-events: none;
+}
+.manor-stick-north { top: 13px; left: calc(50% - 3px); transform: rotate(45deg); }
+.manor-stick-south { bottom: 13px; left: calc(50% - 3px); transform: rotate(-135deg); }
+.manor-stick-west { top: calc(50% - 3px); left: 13px; transform: rotate(-45deg); }
+.manor-stick-east { top: calc(50% - 3px); right: 13px; transform: rotate(135deg); }
+.manor-run {
+  border-radius: 22px;
+  padding: 0 12px;
+  min-width: 78px;
+  background: rgba(250, 252, 245, .95);
+  box-shadow: 0 3px 12px rgba(23, 53, 46, .15);
+  color: #244a3e;
+  pointer-events: auto;
+}
+.manor-run-active { background: #2f6a57; color: #fff; }
+.manor-controls {
+  position: absolute;
+  right: 12px;
+  right: calc(12px + env(safe-area-inset-right));
+  bottom: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  padding: 6px;
+  border-radius: 14px;
+  background: rgba(250, 252, 245, .95);
+  box-shadow: 0 3px 12px rgba(23, 53, 46, .13);
+}
+.manor-control-hint { color: #405b51; font-size: 11px; line-height: 1.35; padding: 0 5px; }
+.manor-toolbar { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 5px; }
+.manor-tool { padding: 0 10px; }
+
+@media (orientation: landscape) {
+  .manor-top-controls { top: 12px; top: calc(12px + env(safe-area-inset-top)); }
+  .manor-notices { top: 70px; top: calc(70px + env(safe-area-inset-top)); flex-direction: row; flex-wrap: wrap; }
+}
+@media (max-width: 480px) and (orientation: portrait) {
+  .manor-controls-with-player { left: 132px; left: calc(132px + env(safe-area-inset-left)); }
+  .manor-controls-with-player .manor-toolbar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+}
+@media (max-height: 340px), (max-width: 350px) {
+  .manor-joystick { width: 96px; height: 96px; }
+  .manor-panel { padding: 16px; gap: 7px; }
+}
+@media (max-width: 350px) and (orientation: portrait) {
+  .manor-controls-with-player { left: 120px; left: calc(120px + env(safe-area-inset-left)); }
+  .manor-tool { padding: 0 6px; }
+}

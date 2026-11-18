@@ -53,6 +53,15 @@
     <view class="muted">玩法：点选宠物、拖动地图、双指缩放，再用底部按钮安排吃饭、喝水和休息。</view>
   </view>
 
+  <button wx:if="{{showManor3d && !loading}}" class="manor3d-entry" hover-class="manor3d-entry-pressed" bindtap="openManor3d">
+    <text class="remix-icon ri-building-line manor3d-entry-icon"></text>
+    <view class="manor3d-entry-copy">
+      <text class="manor3d-entry-title">3D 庄园</text>
+      <text class="manor3d-entry-name">晴溪庄园</text>
+    </view>
+    <text class="remix-icon ri-arrow-right-s-line manor3d-entry-arrow"></text>
+  </button>
+
   <scroll-view scroll-x enhanced show-scrollbar="{{false}}" class="feature-scroll" wx:if="{{!loading && !empty}}"><view class="game-features">
     <view class="feature-item"><text class="feature-icon">🐾</text><view><view class="feature-title">手动控制行走</view><view class="muted">点击目的地、从院门进出</view></view></view>
     <view class="feature-item"><text class="feature-icon">🏡</text><view><view class="feature-title">邻里庄园</view><view class="muted">查看相邻别墅和绿化</view></view></view>

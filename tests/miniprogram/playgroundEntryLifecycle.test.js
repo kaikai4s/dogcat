@@ -2,15 +2,21 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const vm = require('node:vm')
+const { ENV_MAP, hasManorAssets } = require('../../miniprogram/envList')
 const flush = () => new Promise(resolve => setImmediate(resolve))
-function fixture(respond, login = async () => {}) {
+function fixture(respond, login = async () => {}, envVersion = 'develop') {
   let definition
   const calls = [], navigation = [], toasts = [], errors = [], loading = []
   vm.runInNewContext(fs.readFileSync(require.resolve('../../miniprogram/packagePlayground/pages/index.js'), 'utf8'), {
-    Page(value) { definition = value }, require() { return {
-      callFunction: async (module, action, data) => { calls.push({ action, data }); return respond(action, data) },
-      ensureLogin: login, showError: error => errors.push(error)
-    } }, wx: { navigateTo: value => navigation.push(value), redirectTo: value => navigation.push(value),
+    Page(value) { definition = value }, require(path) {
+      if (path === '../../envList') return { getActiveEnvId: () => ENV_MAP[envVersion], hasManorAssets }
+      assert.equal(path, '../../utils/cloud')
+      return {
+        callFunction: async (module, action, data) => { calls.push({ action, data }); return respond(action, data) },
+        ensureLogin: login, showError: error => errors.push(error)
+      }
+    }, wx: { getAccountInfoSync: () => ({ miniProgram: { envVersion } }),
+      navigateTo: value => navigation.push(value), redirectTo: value => navigation.push(value),
       showToast: value => toasts.push(value), showLoading: () => loading.push('show'), hideLoading: () => loading.push('hide') }
   })
   const page = { ...definition, data: structuredClone(definition.data), setData(data) { Object.assign(this.data, data) } }
@@ -85,4 +91,36 @@ test('a delayed login failure cannot redirect after the entry page is hidden', a
   await flush()
   assert.equal(f.navigation.length, 0)
   assert.equal(f.calls.length, 0)
+})
+
+test('the experience version offers 3D without a community and preserves the 2D community prompt', async () => {
+  const { page, navigation, toasts } = fixture(() => ({ pets: [], hasCommunity: false }), undefined, 'trial')
+  page.onLoad()
+  page.openManor3d()
+  assert.equal(navigation.length, 0)
+  await page.load()
+  page.openWorld()
+  assert.equal(page.data.showCommunityModal, true)
+  assert.equal(navigation.length, 0)
+  page.closeCommunityModal()
+  page.openManor3d()
+  page.openManor3d()
+  assert.equal(navigation.length, 1)
+  assert.equal(navigation[0].url, '/packageManor3d/pages/index')
+  navigation[0].fail()
+  navigation[0].complete()
+  assert.equal(toasts[0].title, '暂时无法打开 3D 庄园')
+  page.openManor3d()
+  assert.equal(navigation.length, 2)
+})
+
+test('the release version only offers the existing route while its 3D cloud files are unconfirmed', async () => {
+  const { page, navigation } = fixture(() => ({ pets: [], hasCommunity: true }), undefined, 'release')
+  page.onLoad()
+  await page.load()
+  assert.equal(page.data.showManor3d, false)
+  page.openManor3d()
+  assert.equal(navigation.length, 0)
+  page.openWorld()
+  assert.equal(navigation[0].url, '/packagePlayground/pages/world')
 })

@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="zh-CN" data-scene-status="loading">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#d7dfcf">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%233c5046'/%3E%3Cpath d='M7 15l9-7 9 7v9H7zM13 24v-7h6v7' fill='none' stroke='%23f8f6ed' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E">
+<title>晴溪庄园 · 别墅模型</title>
+<style>
+:root{color-scheme:light;--ink:#283b34;--muted:#52665c;--surface:#fbfaf3f2;--accent:#3c594b}
+*{box-sizing:border-box}
+html,body{width:100%;height:100%;margin:0;overflow:hidden}
+body{background:#d7dfcf;color:var(--ink);font:14px system-ui,"PingFang SC","Microsoft YaHei",sans-serif}
+button,a{font:inherit}
+button{cursor:pointer}
+button:disabled{cursor:wait;opacity:.45}
+:focus-visible{outline:2px solid #1e7159;outline-offset:2px}
+[hidden],.quiet .chrome{display:none!important}
+#scene{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+#scene:active{cursor:grabbing}
+#scene:focus-visible{outline-offset:-3px}
+.chrome{position:fixed;z-index:1}
+.surface{background:var(--surface);border:1px solid #ffffffe0;border-radius:8px;box-shadow:0 4px 18px #223c2d1a}
+.titlebar{top:max(19px,env(safe-area-inset-top));left:max(22px,env(safe-area-inset-left));right:max(22px,env(safe-area-inset-right));display:flex;justify-content:space-between;align-items:flex-start;gap:8px;pointer-events:none}
+.identity{display:flex;align-items:center;gap:11px;padding:8px 13px 8px 8px}
+.emblem{display:grid;place-items:center;width:39px;height:39px;border-radius:5px;background:var(--accent);color:#f8f6ed;flex:none}
+.identity p{font-size:11px;color:var(--muted);margin:0 0 1px}
+.identity h1{font-size:19px;line-height:1.18;margin:0;font-weight:700;white-space:nowrap}
+.glyph{display:block;width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.download{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:42px;padding:0 12px;color:var(--ink);font-weight:650;text-decoration:none;white-space:nowrap;pointer-events:auto}
+.download:hover{background:#fff}
+.download .glyph{width:18px;height:18px}
+.bottom{left:50%;bottom:max(20px,env(safe-area-inset-bottom));transform:translateX(-50%);display:flex;align-items:center;gap:6px;padding:5px;width:max-content;max-width:calc(100vw - 16px)}
+.views,.zooms{display:flex;align-items:center;gap:2px}
+.toolbar-button{display:grid;place-items:center;height:42px;padding:0 13px;border:0;border-radius:5px;background:transparent;color:var(--ink);white-space:nowrap;font-weight:630}
+.toolbar-button:hover:not(:disabled){background:#e7ece0}
+.toolbar-button[aria-pressed="true"],.toolbar-button[aria-pressed="true"]:hover:not(:disabled){background:var(--accent);color:#fff}
+.zooms .toolbar-button{width:41px;padding:0}
+.divider{width:1px;height:24px;background:#c8d1c6}
+.status{position:fixed;z-index:2;inset:50% auto auto 50%;transform:translate(-50%,-50%);display:grid;justify-items:center;gap:10px;width:max-content;max-width:calc(100vw - 26px);padding:15px 20px;text-align:center;line-height:1.5}
+.status button{min-height:40px;border:0;border-radius:5px;background:var(--accent);color:#fff;padding:0 13px}
+@media(max-width:560px){
+ .titlebar{left:max(10px,env(safe-area-inset-left));right:max(10px,env(safe-area-inset-right));top:max(10px,env(safe-area-inset-top))}
+ .identity{gap:7px;padding:6px 9px 6px 6px}
+ .emblem{width:34px;height:36px}
+ .identity h1{font-size:17px}
+ .download{min-width:44px;min-height:44px;padding:0 9px;font-size:12px}
+ .bottom{bottom:max(10px,env(safe-area-inset-bottom));gap:3px}
+ .toolbar-button{height:44px;padding:0 10px}
+ .zooms .toolbar-button{width:43px}
+}
+@media(max-width:325px){.download span{display:none}.toolbar-button{padding:0 7px}.zooms .toolbar-button{width:39px}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" aria-hidden="true" style="position:absolute">
+  <symbol id="house" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 21v-6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v6"/></symbol>
+  <symbol id="download-icon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
+  <symbol id="zoom-out" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35M8 11h6"/></symbol>
+  <symbol id="zoom-in" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35M8 11h6m-3-3v6"/></symbol>
+</svg>
+<canvas id="scene" tabindex="0" aria-label="别墅三维模型。拖动旋转，滚轮或双指缩放。也可用方向键旋转。"></canvas>
+<header class="chrome titlebar">
+  <div class="surface identity">
+    <span class="emblem" aria-hidden="true"><svg class="glyph"><use href="#house"/></svg></span>
+    <div><p>晴溪庄园</p><h1>红瓦别墅</h1></div>
+  </div>
+  <a id="download" class="surface download" href="./manor-villa.glb" download="manor-villa.glb" aria-label="下载别墅 GLB 模型" title="下载别墅 GLB 模型"><svg class="glyph" aria-hidden="true"><use href="#download-icon"/></svg><span>下载 GLB</span></a>
+</header>
+<nav class="chrome surface bottom" aria-label="模型视角">
+  <div class="views" role="group" aria-label="预设角度">
+    <button class="toolbar-button" type="button" data-view="front" aria-pressed="true" disabled>正面</button>
+    <button class="toolbar-button" type="button" data-view="side" aria-pressed="false" disabled>侧面</button>
+    <button class="toolbar-button" type="button" data-view="rear" aria-pressed="false" disabled>背面</button>
+  </div>
+  <span class="divider" aria-hidden="true"></span>
+  <div class="zooms" role="group" aria-label="模型缩放">
+    <button class="toolbar-button" id="minus" type="button" aria-label="缩小" title="缩小" disabled><svg class="glyph" aria-hidden="true"><use href="#zoom-out"/></svg></button>
+    <button class="toolbar-button" id="plus" type="button" aria-label="放大" title="放大" disabled><svg class="glyph" aria-hidden="true"><use href="#zoom-in"/></svg></button>
+  </div>
+</nav>
+<div id="status" class="surface status" role="status">
+  <span id="message">正在载入别墅模型…</span>
+  <button id="choose" type="button" hidden>选择 GLB 文件</button>
+  <input id="local" type="file" accept=".glb" hidden>
+</div>
+<script src="./vendor/scene-runtime.js"></script>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const root = document.documentElement;
+  const canvas = $('scene'), status = $('status'), message = $('message');
+  const chooser = $('choose'), local = $('local');
+  const viewButtons = [...document.querySelectorAll('[data-view]')];
+  const toolbar = [...document.querySelectorAll('.bottom button')];
+  const params = new URLSearchParams(location.search);
+  const quiet = params.get('ui') === '0';
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+  const coarse = matchMedia('(pointer: coarse)');
+  const directions = {front:[.14,.118,1], side:[1,.25,.39], rear:[-.61,.26,-1]};
+  const backdrop = 0xd7dfcf;
+  const source = './manor-villa.glb';
+  if (quiet) document.body.classList.add('quiet');
+
+  function fail(text, allowLocal = false) {
+    root.dataset.sceneStatus = 'error';
+    root.dataset.sceneMotion = 'idle';
+    status.hidden = false;
+    message.textContent = text;
+    chooser.hidden = !allowLocal;
+    toolbar.forEach(b => b.disabled = true);
+  }
+
+  const THREE = window.THREE;
+  if (!THREE?.GLTFLoader || !THREE?.OrbitControls) {
+    fail('预览组件缺失，请检查同目录的 vendor 文件夹。');
+    return;
+  }
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({canvas, antialias:true, powerPreference:'high-performance'});
+  } catch {
+    fail('当前浏览器无法启动三维预览。');
+    return;
+  }
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.NeutralToneMapping;
+  renderer.toneMappingExposure = 1.10;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
+  renderer.shadowMap.autoUpdate = false;
+
+  const vec = (x, y, z) => new THREE.Vector3(x, y, z);
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(backdrop);
+  scene.fog = new THREE.Fog(backdrop, 44, 145);
+  const camera = new THREE.PerspectiveCamera(32, 1, .08, 425);
+  camera.position.set(7, 9, 28);
+  const controls = new THREE.OrbitControls(camera, canvas);
+  controls.enableDamping = !reduce.matches;
+  controls.enablePan = false;
+  controls.dampingFactor = .14;
+  controls.rotateSpeed = .7;
+  controls.zoomSpeed = .85;
+  controls.minPolarAngle = .19;
+  controls.maxPolarAngle = Math.PI / 2 - .023;
+  controls.touches.TWO = THREE.TOUCH.DOLLY_PAN;
+
+  scene.add(new THREE.HemisphereLight(0xf1f5ff, 0xd3cdbc, 1.58));
+  const sun = new THREE.DirectionalLight(0xfff5e5, 2.25);
+  sun.castShadow = true;
+  const mapSize = Math.min(renderer.capabilities.maxTextureSize, coarse.matches ? 2048 : 4096);
+  sun.shadow.mapSize.set(mapSize, mapSize);
+  sun.shadow.bias = -.00016;
+  sun.shadow.normalBias = .028;
+  sun.shadow.radius = 4;
+  sun.shadow.intensity = .65;
+  const bounce = new THREE.DirectionalLight(0xe7f1ff, 1.03);
+  scene.add(sun, sun.target, bounce);
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(1450, 1450),
+    new THREE.MeshStandardMaterial({color:0xb6bfa5, roughness:1})
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = -.19;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  let dimensions, center, target, points, padCorners, clearRadius, activeView, flight, enabled = false;
+  let model, pad, raf = 0, announce = false;
+  const anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 8);
+
+  function invalidate() {
+    if (!raf && !document.hidden) raf = requestAnimationFrame(draw);
+  }
+
+  function draw(now) {
+    raf = 0;
+    if (flight) {
+      const t = Math.min(1, (now - flight.start) / 440);
+      const ease = t * t * (3 - 2 * t);
+      const sphere = new THREE.Spherical(
+        THREE.MathUtils.lerp(flight.from.radius, flight.to.radius, ease),
+        THREE.MathUtils.lerp(flight.from.phi, flight.to.phi, ease),
+        flight.from.theta + flight.arc * ease
+      );
+      camera.position.setFromSpherical(sphere).add(target);
+      if (t < 1) invalidate();
+      else {
+        flight = null;
+        root.dataset.sceneMotion = 'idle';
+      }
+    }
+    controls.update();
+    if (target) {
+      scene.fog.near = camera.position.distanceTo(target) + clearRadius;
+      scene.fog.far = scene.fog.near + 101;
+    }
+    renderer.render(scene, camera);
+    if (announce) {
+      announce = false;
+      root.dataset.sceneStatus = 'ready';
+      status.hidden = true;
+    }
+  }
+
+  function collectPoints(object) {
+    const meshes = [];
+    let count = 0;
+    object.traverse(node => {
+      const position = node.geometry?.getAttribute('position');
+      if (!node.isMesh || !position) return;
+      meshes.push([node, position]);
+      count += position.count;
+    });
+    const output = new Float32Array(count * 3), point = new THREE.Vector3();
+    let i = 0;
+    for (const [mesh, position] of meshes) {
+      for (let j = 0; j < position.count; j++) {
+        point.fromBufferAttribute(position, j).applyMatrix4(mesh.matrixWorld).toArray(output, i);
+        i += 3;
+      }
+    }
+    return output;
+  }
+
+  function fit(direction) {
+    const right = vec(0, 1, 0).cross(direction).normalize();
+    const up = direction.clone().cross(right);
+    const tangent = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    const yFraction = quiet ? .88 : Math.min(.81, Math.max(.44, 1 - 126 / canvas.clientHeight));
+    const xLimit = tangent * camera.aspect * (quiet ? .92 : .86);
+    const padXLimit = tangent * camera.aspect * .965;
+    const yLimit = tangent * yFraction;
+    const point = new THREE.Vector3();
+    let distance = 0;
+    // Fit the silhouette rather than the far corners of a rectangular box around the roof.
+    for (let i = 0; i < points.length; i += 3) {
+      point.fromArray(points, i).sub(target);
+      distance = Math.max(distance, point.dot(direction) + Math.max(
+        Math.abs(point.dot(right)) / xLimit, Math.abs(point.dot(up)) / yLimit
+      ));
+    }
+    for (const corner of padCorners) {
+      point.copy(corner).sub(target);
+      distance = Math.max(distance, point.dot(direction) + Math.max(
+        Math.abs(point.dot(right)) / padXLimit, Math.abs(point.dot(up)) / yLimit
+      ));
+    }
+    return Math.min(controls.maxDistance, Math.max(controls.minDistance, distance));
+  }
+
+  function setView(key, snap = false) {
+    if (!enabled) return;
+    activeView = key;
+    root.dataset.sceneView = key;
+    viewButtons.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === key)));
+    const direction = vec(...directions[key]).normalize();
+    const destination = direction.multiplyScalar(fit(direction));
+    const from = new THREE.Spherical().setFromVector3(camera.position.clone().sub(target));
+    const to = new THREE.Spherical().setFromVector3(destination);
+    const arc = THREE.MathUtils.euclideanModulo(to.theta - from.theta + Math.PI, 2 * Math.PI) - Math.PI;
+    // Drop any residual inertia before flying to a fixed camera pose.
+    const damping = controls.enableDamping;
+    controls.enableDamping = false;
+    controls.update();
+    controls.enableDamping = damping;
+    if (snap || reduce.matches) {
+      flight = null;
+      camera.position.copy(target).add(destination);
+      controls.update();
+      root.dataset.sceneMotion = 'idle';
+    } else {
+      flight = {from, to, arc, start:performance.now()};
+      root.dataset.sceneMotion = 'transition';
+    }
+    invalidate();
+  }
+
+  function freeOrbit() {
+    flight = null;
+    activeView = null;
+    root.dataset.sceneView = 'orbit';
+    root.dataset.sceneMotion = 'idle';
+    viewButtons.forEach(b => b.setAttribute('aria-pressed', 'false'));
+  }
+  controls.addEventListener('change', invalidate);
+  controls.addEventListener('start', () => { if (enabled) freeOrbit(); });
+  viewButtons.forEach(button => button.addEventListener('click', () => setView(button.dataset.view)));
+  reduce.addEventListener('change', () => { controls.enableDamping = !reduce.matches; });
+
+  function zoom(factor) {
+    if (!enabled) return;
+    freeOrbit();
+    const offset = camera.position.clone().sub(target);
+    offset.setLength(THREE.MathUtils.clamp(offset.length() * factor, controls.minDistance, controls.maxDistance));
+    camera.position.copy(target).add(offset);
+    controls.update();
+    invalidate();
+  }
+  $('minus').addEventListener('click', () => zoom(1.20));
+  $('plus').addEventListener('click', () => zoom(1 / 1.20));
+  canvas.addEventListener('keydown', event => {
+    if (!enabled) return;
+    const delta = {ArrowLeft:[-.13,0], ArrowRight:[.13,0], ArrowUp:[0,-.10], ArrowDown:[0,.10]}[event.key];
+    if (!delta) return;
+    event.preventDefault();
+    freeOrbit();
+    const s = new THREE.Spherical().setFromVector3(camera.position.clone().sub(target));
+    s.theta += delta[0];
+    s.phi = THREE.MathUtils.clamp(s.phi + delta[1], controls.minPolarAngle, controls.maxPolarAngle);
+    camera.position.setFromSpherical(s).add(target);
+    controls.update();
+    invalidate();
+  });
+
+  function resize() {
+    const width = Math.max(1, canvas.clientWidth), height = Math.max(1, canvas.clientHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, coarse.matches ? 1.65 : 2));
+    renderer.setSize(width, height, false);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+    if (enabled && activeView) setView(activeView, true);
+    else invalidate();
+  }
+  window.addEventListener('resize', resize);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0;
+    } else invalidate();
+  });
+  controls.update();
+  resize();
+
+  function paving() {
+    const art = document.createElement('canvas');
+    art.width = art.height = 512;
+    const ctx = art.getContext('2d');
+    if (!ctx) return null;
+    ctx.fillStyle = '#b0aa95';
+    ctx.fillRect(0, 0, 512, 512);
+    let state = 985319;
+    const rand = () => ((state = (Math.imul(state, 1664525) + 1013904223) >>> 0) / 4294967296);
+    for (let row = 0; row < 8; row++) {
+      for (let col = 0; col < 7; col++) {
+        const x = col * 128 - 140 + (row % 2) * 64, y = row * 64;
+        const variation = Math.round(rand() * 17);
+        ctx.fillStyle = 'rgb(' + (176 + variation) + ',' + (170 + variation) + ',' + (153 + variation) + ')';
+        ctx.fillRect(x + 1.3, y + 1.3, 125.4, 61.4);
+      }
+    }
+    const pixels = ctx.getImageData(0, 0, 512, 512);
+    for (let i = 0; i < pixels.data.length; i += 4) {
+      const grain = rand() * 10 - 5;
+      for (let channel = 0; channel < 3; channel++) pixels.data[i + channel] += grain;
+    }
+    ctx.putImageData(pixels, 0, 0);
+    const map = new THREE.CanvasTexture(art);
+    map.colorSpace = THREE.SRGBColorSpace;
+    map.wrapS = map.wrapT = THREE.RepeatWrapping;
+    map.anisotropy = anisotropy;
+    return map;
+  }
+
+  function courtyard(box) {
+    const w = dimensions.x / 2 + 1.25, d = dimensions.z / 2 + 1.20;
+    const r = Math.min(.84, w / 3, d / 3);
+    padCorners = [];
+    for (const x of [-w,w]) for (const z of [-d,d]) padCorners.push(vec(center.x + x, box.min.y - .16, center.z + z));
+    const shape = new THREE.Shape();
+    shape.moveTo(-w + r, -d);
+    shape.lineTo(w - r, -d); shape.quadraticCurveTo(w, -d, w, -d + r);
+    shape.lineTo(w, d - r); shape.quadraticCurveTo(w, d, w - r, d);
+    shape.lineTo(-w + r, d); shape.quadraticCurveTo(-w, d, -w, d - r);
+    shape.lineTo(-w, -d + r); shape.quadraticCurveTo(-w, -d, -w + r, -d);
+    const group = new THREE.Group();
+    group.position.set(center.x, box.min.y, center.z);
+    group.rotation.x = -Math.PI / 2;
+    const edge = new THREE.Mesh(
+      new THREE.ExtrudeGeometry(shape,{depth:.14, bevelEnabled:false, curveSegments:6}),
+      new THREE.MeshStandardMaterial({color:0x9e9a84, roughness:1})
+    );
+    edge.position.z = -.16;
+    edge.receiveShadow = true;
+    group.add(edge);
+    const surface = new THREE.ShapeGeometry(shape, 6), uv = surface.getAttribute('uv');
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / 3.4, uv.getY(i) / 3.4);
+    const top = new THREE.Mesh(surface, new THREE.MeshStandardMaterial({color:0xe8e0cd, map:paving(), roughness:.97}));
+    top.position.z = -.006;
+    top.receiveShadow = true;
+    group.add(top);
+    return group;
+  }
+
+  function install(gltf) {
+    const next = gltf.scene;
+    next.updateMatrixWorld(true);
+    const bounds = new THREE.Box3().setFromObject(next, true);
+    if (bounds.isEmpty()) throw new Error('Empty model');
+    const size = bounds.getSize(new THREE.Vector3());
+    if (![size.x, size.y, size.z].every(v => Number.isFinite(v) && v > 0)) throw new Error('Invalid model dimensions');
+    const nextPoints = collectPoints(next);
+    if (!nextPoints.length) throw new Error('Missing model geometry');
+    if (model) scene.remove(model, pad);
+    model = next;
+    dimensions = size;
+    center = bounds.getCenter(new THREE.Vector3());
+    target = vec(center.x, bounds.min.y + size.y * .44, center.z);
+    points = nextPoints;
+    const extent = size.length();
+    clearRadius = extent * .60 + 1;
+    controls.target.copy(target);
+    controls.minDistance = Math.max(4, .56 * extent);
+    controls.maxDistance = Math.max(145, extent * 8);
+    camera.far = Math.max(425, extent * 15);
+    camera.updateProjectionMatrix();
+    const shadowSpan = Math.max(17, extent * .82);
+    sun.target.position.copy(center);
+    sun.position.copy(center).add(vec(-.8, 1.15, .83).multiplyScalar(extent));
+    Object.assign(sun.shadow.camera,{left:-shadowSpan, right:shadowSpan, top:shadowSpan, bottom:-shadowSpan, near:.25, far:extent * 4.2});
+    sun.shadow.camera.updateProjectionMatrix();
+    bounce.position.copy(center).add(vec(.85, .55, -1).multiplyScalar(extent));
+    ground.position.set(center.x, bounds.min.y - .16, center.z);
+    model.traverse(node => {
+      if (!node.isMesh) return;
+      const materials = Array.isArray(node.material) ? node.material : [node.material];
+      node.castShadow = materials.some(m => !m.transparent || m.alphaTest > 0);
+      node.receiveShadow = true;
+      for (const material of materials) {
+        for (const key of ['map','normalMap','roughnessMap','metalnessMap','aoMap']) {
+          const map = material[key];
+          if (map) map.anisotropy = anisotropy;
+        }
+      }
+    });
+    pad = courtyard(bounds);
+    scene.add(pad, model);
+    renderer.shadowMap.needsUpdate = true;
+    const key = params.get('view');
+    enabled = true;
+    toolbar.forEach(b => b.disabled = false);
+    setView(Object.hasOwn(directions, key) ? key : 'front', true);
+    announce = true;
+  }
+
+  const loader = new THREE.GLTFLoader();
+  if (location.protocol === 'file:') {
+    fail('选择同目录的 manor-villa.glb 打开预览。', true);
+  } else {
+    loader.loadAsync(source, event => {
+      if (event.total > 0) message.textContent = '正在载入别墅模型… ' + Math.round(event.loaded / event.total * 100) + '%';
+    }).then(install).catch(error => {
+      console.error('Villa model load failed', error);
+      fail('别墅模型载入失败，请选择 manor-villa.glb。', true);
+    });
+  }
+  chooser.addEventListener('click', () => local.click());
+  local.addEventListener('change', async () => {
+    const file = local.files[0];
+    if (!file) return;
+    chooser.hidden = true;
+    root.dataset.sceneStatus = 'loading';
+    message.textContent = '正在载入别墅模型…';
+    try {
+      install(await loader.parseAsync(await file.arrayBuffer(), './'));
+    } catch {
+      fail('无法读取所选模型，请重新选择 GLB 文件。', true);
+    } finally {
+      local.value = '';
+    }
+  });
+  canvas.addEventListener('webglcontextlost', event => {
+    event.preventDefault();
+    enabled = announce = false;
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0;
+    fail('图形上下文已中断，请重新载入预览。');
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,78 @@
+<view class="manor-screen">
+  <canvas wx:if="{{mountCanvas}}" id="manor-canvas" type="webgl" class="manor-canvas"
+    catchtouchstart="onTouchStart" catchtouchmove="onTouchMove" catchtouchend="onTouchEnd" catchtouchcancel="onTouchCancel" />
+
+  <view wx:if="{{status === 'loading'}}" class="manor-shade">
+    <view class="manor-panel">
+      <text class="manor-kicker">3D 庄园</text>
+      <text class="manor-title">晴溪庄园</text>
+      <text class="manor-caption">{{stage}}</text>
+      <progress wx:if="{{progress >= 0}}" percent="{{progress}}" activeColor="#337364" backgroundColor="#e6eee4" border-radius="4" stroke-width="5" />
+      <text wx:if="{{progress >= 0}}" class="manor-percent">{{progress}}%</text>
+    </view>
+  </view>
+  <view wx:elif="{{status === 'error' || status === 'unavailable'}}" class="manor-shade">
+    <view class="manor-panel">
+      <text class="manor-kicker">3D 庄园</text>
+      <text class="manor-title">{{status === 'unavailable' ? '暂未开放' : '加载中断'}}</text>
+      <text class="manor-caption">{{status === 'unavailable' ? '当前版本可继续进入 2D 庄园' : error}}</text>
+      <view class="manor-panel-actions">
+        <button wx:if="{{status === 'error'}}" class="manor-action manor-primary" bindtap="retryLandscape">重新加载</button>
+        <button class="manor-action" bindtap="goBack">返回宠物庄园</button>
+      </view>
+    </view>
+  </view>
+  <block wx:elif="{{status === 'ready'}}">
+    <view class="manor-notices">
+      <view wx:if="{{characterStatus === 'loading' || characterStatus === 'drawing' || characterStatus === 'error'}}" class="manor-notice">
+        <text wx:if="{{characterStatus === 'drawing'}}" class="manor-notice-text">正在准备角色</text>
+        <text wx:elif="{{characterStatus === 'loading'}}" class="manor-notice-text">正在加载角色{{characterProgress >= 0 ? ' ' + characterProgress + '%' : ''}}</text>
+        <block wx:else>
+          <text class="manor-notice-text">{{characterError}}</text>
+          <button class="manor-link" bindtap="retryCharacter">重试</button>
+        </block>
+      </view>
+      <view wx:if="{{villaStatus === 'loading' || villaStatus === 'drawing' || villaStatus === 'error'}}" class="manor-notice">
+        <text wx:if="{{villaStatus === 'drawing'}}" class="manor-notice-text">正在绘制别墅</text>
+        <text wx:elif="{{villaStatus === 'loading'}}" class="manor-notice-text">正在加载别墅{{villaProgress >= 0 ? ' ' + villaProgress + '%' : ''}}</text>
+        <block wx:else>
+          <text class="manor-notice-text">{{villaError}}</text>
+          <button class="manor-link" bindtap="retryVilla">重试</button>
+        </block>
+      </view>
+    </view>
+    <view wx:if="{{activeCharacter}}" class="manor-walk-controls">
+      <button class="manor-run {{running ? 'manor-run-active' : ''}}" bindtap="toggleRun"
+        aria-label="{{running ? '当前为奔跑模式，点击切换行走' : '当前为行走模式，点击切换奔跑'}}">{{running ? '切回行走' : '切换跑步'}}</button>
+      <view class="manor-joystick {{stickActive ? 'manor-joystick-active' : ''}}" id="manor-stick"
+        aria-label="拖动摇杆控制角色移动" catchtouchstart="onStickStart" catchtouchmove="onStickMove"
+        catchtouchend="onStickEnd" catchtouchcancel="onStickCancel">
+        <view class="manor-stick-axis manor-stick-north"></view>
+        <view class="manor-stick-axis manor-stick-south"></view>
+        <view class="manor-stick-axis manor-stick-west"></view>
+        <view class="manor-stick-axis manor-stick-east"></view>
+        <view class="manor-stick-knob" style="transform: translate({{stickX}}px, {{stickY}}px);"></view>
+      </view>
+    </view>
+    <view class="manor-controls {{activeCharacter ? 'manor-controls-with-player' : ''}}">
+      <text class="manor-control-hint">{{orbitMode ? '拖动旋转' : '拖动平移'}} · 双指缩放</text>
+      <view class="manor-toolbar">
+        <button class="manor-tool {{orbitMode ? 'manor-tool-active' : ''}}" bindtap="toggleOrbit">{{orbitMode ? '切换平移' : '切换旋转'}}</button>
+        <button class="manor-tool" bindtap="resetView">全景</button>
+        <button wx:if="{{villaStatus === 'ready'}}" class="manor-tool" bindtap="focusVilla">看别墅</button>
+        <button wx:if="{{activeCharacter}}" class="manor-tool manor-tool-active" bindtap="focusCharacter">回到角色</button>
+      </view>
+    </view>
+  </block>
+  <view wx:if="{{status === 'loading' || status === 'ready'}}" class="manor-top-controls">
+    <button class="manor-back" bindtap="goBack" aria-label="返回宠物庄园">
+      <view class="manor-back-arrow"></view><text>返回</text>
+    </button>
+    <view wx:if="{{status === 'ready'}}" class="manor-character-select" aria-label="选择角色">
+      <button class="manor-character-option {{activeCharacter === 'boy' ? 'manor-character-selected' : ''}}"
+        data-character="boy" bindtap="selectCharacter">男孩</button>
+      <button class="manor-character-option {{activeCharacter === 'girl' ? 'manor-character-selected' : ''}}"
+        data-character="girl" bindtap="selectCharacter">女孩</button>
+    </view>
+  </view>
+</view>

@@ -1,4 +1,5 @@
 const { callFunction, showError, ensureLogin } = require('../../utils/cloud')
+const { getActiveEnvId, hasManorAssets } = require('../../envList')
 
 Page({
   data: {
@@ -9,8 +10,13 @@ Page({
     selectedPet: null,
     userCommunity: null,
     hasCommunity: false,
+    showManor3d: false,
     showCommunityModal: false,
     savingCommunity: false
+  },
+
+  onLoad() {
+    this.setData({ showManor3d: hasManorAssets(getActiveEnvId()) })
   },
 
   onShow() {
@@ -94,6 +100,21 @@ Page({
       return
     }
     wx.navigateTo({ url: '/packagePlayground/pages/world' })
+  },
+
+  openManor3d() {
+    if (!this.data.showManor3d || this.data.loading || this.data.savingCommunity || this._openingManor3d || this._visible === false) return
+    const generation = this._pageGeneration
+    this._openingManor3d = true
+    wx.navigateTo({
+      url: '/packageManor3d/pages/index',
+      fail: () => {
+        if (this._visible !== false && generation === this._pageGeneration) {
+          wx.showToast({ title: '暂时无法打开 3D 庄园', icon: 'none' })
+        }
+      },
+      complete: () => { this._openingManor3d = false }
+    })
   },
 
   openChooseCommunity() {

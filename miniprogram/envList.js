@@ -13,6 +13,13 @@ const ENV_MAP = {
   release: 'production-d2g5jx277f41a81a6' // 微信审核发布的正式生产版
 }
 
+// Cloud environments with the 3D manor asset set deployed.
+const MANOR_ASSET_ENV_IDS = ['cloud1-5gnhqn4t0554c1d9']
+
+function hasManorAssets(envId) {
+  return MANOR_ASSET_ENV_IDS.includes(envId)
+}
+
 // 强制指定环境 ID（空字符串表示根据小程序版本自动路由；若需临时在工具中调试特定环境可填入环境ID）
 let FORCE_ENV_ID = ''
 
@@ -67,6 +74,7 @@ module.exports = {
   FORCE_ENV_ID,
   setForceEnvId,
   getActiveEnvId,
+  hasManorAssets,
   envList,
   isMac
 }
