@@ -277,7 +277,7 @@ test('portrait pose defaults for old requests, restores sleeping, and is locked 
   delete page.data.portrait.pose; page.openPortrait(); assert.equal(page.data.portraitPose, 'sitting')
 })
 
-test('demolition warns about permanent loss and only confirmed owner requests clear the page', async () => {
+test('demolition uses a visible name-entry confirmation and only the matching pet name removes the memorial', async () => {
   let confirm = false
   const prompts = []
   const f = fixture(true, { wx: { showModal: o => { prompts.push(o); o.success({ confirm, content: '小白' }) } } })
@@ -288,9 +288,26 @@ test('demolition warns about permanent loss and only confirmed owner requests cl
   assert.match(prompts[0].content, /7 天/)
   confirm = true
   await f.page.manageMemorial(event)
+  assert.equal(prompts.length, 2)
+  assert.equal(f.page.data.demolitionConfirmVisible, true)
+  assert.equal(f.page.data.demolitionExpectedName, '小白')
+  const wxml = fs.readFileSync(require.resolve('../../miniprogram/packageMemorial/pages/memory').replace(/\.js$/, '.wxml'), 'utf8')
+  assert.match(wxml, /class="demolition-name-input"/)
+  assert.match(wxml, /class="demolition-name">\{\{demolitionExpectedName\}\}/)
+  assert.equal(prompts.some(prompt => prompt.editable), false)
+
+  f.page.inputDemolitionName({ detail: { value: '小' } })
+  await f.page.confirmDemolition()
+  assert.match(f.page.data.demolitionConfirmError, /名字不匹配/)
+  assert.equal(f.page.data.demolitionConfirmVisible, true)
+  assert.equal(f.calls.filter(c => c.action === 'demolish').length, 0)
+
+  f.page.inputDemolitionName({ detail: { value: '小白' } })
+  await f.page.confirmDemolition()
   const request = f.calls.find(c => c.action === 'demolish')
-  assert.equal(prompts.length, 3); assert.equal(prompts[2].editable, true); assert.equal(request.data.confirmName, '小白');
+  assert.equal(request.data.confirmName, '小白')
   assert.equal(request.data.confirm, true); assert.equal(request.data.locationRevision, 0)
+  assert.equal(f.page.data.demolitionConfirmVisible, false)
   assert.equal(f.page.data.detail, null); assert.equal(f.page.data.demolished, true)
   const visitor = fixture(false); await visitor.page.load(); await visitor.page.manageMemorial(event)
   assert.equal(visitor.calls.length, 1)
@@ -309,31 +326,42 @@ test('owner migration opens the garden chooser and refreshes current location on
   assert.equal(f.calls.filter(c => c.action === 'detail').length, 2)
 })
 
-test('second demolition confirmation cancellation or incorrect name never sends a deletion', async () => {
-  for (const second of [{ confirm: false }, { confirm: true, content: '小' }, { confirm: true, content: '' }]) {
-    let dialogs = 0
-    const f = fixture(true, { wx: { showModal: o => { dialogs++; o.success(dialogs === 1 ? { confirm: true } : second) } } })
-    await f.page.load()
-    await f.page.manageMemorial({ currentTarget: { dataset: { operation: 'demolish' } } })
-    assert.equal(dialogs, 2)
-    assert.equal(f.calls.some(c => c.action === 'demolish'), false)
-    assert.ok(f.page.data.detail)
-    assert.equal(f.page.data.managing, false)
-  }
+test('canceling the custom name prompt or submitting an empty name never demolishes', async () => {
+  const f = fixture(true, { wx: { showModal: o => o.success({ confirm: true }) } })
+  await f.page.load()
+  await f.page.manageMemorial({ currentTarget: { dataset: { operation: 'demolish' } } })
+  f.page.cancelDemolition()
+  assert.equal(f.page.data.demolitionConfirmVisible, false)
+  assert.equal(f.calls.some(c => c.action === 'demolish'), false)
+
+  await f.page.manageMemorial({ currentTarget: { dataset: { operation: 'demolish' } } })
+  await f.page.confirmDemolition()
+  assert.match(f.page.data.demolitionConfirmError, /请输入宠物名字/)
+  assert.equal(f.page.data.demolitionConfirmVisible, true)
+  assert.equal(f.calls.some(c => c.action === 'demolish'), false)
+  assert.ok(f.page.data.detail)
+  assert.equal(f.page.data.managing, false)
 })
 
 test('a fresh location revision gets a fresh demolition request after a failed stale request', async () => {
   let failed = true
-  const f = fixture(true, { wx: { showModal: o => o.success({ confirm: true, content: '小白' }) }, api: async action => {
+  const f = fixture(true, { wx: { showModal: o => o.success({ confirm: true }) }, api: async action => {
     if (action === 'demolish' && failed) throw new Error('位置已更新')
     return { recoverUntil: Date.now() + 86400000 }
   } })
   await f.page.load()
   const event = { currentTarget: { dataset: { operation: 'demolish' } } }
   await f.page.manageMemorial(event)
+  f.page.inputDemolitionName({ detail: { value: '小白' } })
+  await f.page.confirmDemolition()
+  assert.match(f.page.data.demolitionConfirmError, /位置已更新/)
+  assert.equal(f.page.data.demolitionConfirmName, '小白')
+  assert.equal(f.page.data.demolitionConfirmVisible, true)
   const old = f.calls.find(c => c.action === 'demolish').data.requestId
   f.detail.locationRevision = 2; failed = false
   await f.page.load(); await f.page.manageMemorial(event)
+  f.page.inputDemolitionName({ detail: { value: '小白' } })
+  await f.page.confirmDemolition()
   const requests = f.calls.filter(c => c.action === 'demolish')
   assert.notEqual(requests[1].data.requestId, old)
   assert.equal(requests[1].data.locationRevision, 2)
@@ -346,4 +374,15 @@ test('hiding memory during demolition confirmation prevents removal', async () =
   f.page.onHide(); confirm({ confirm: true }); await pending
   assert.equal(f.calls.some(c => c.action === 'demolish'), false)
   assert.equal(f.page.data.managing, false)
+})
+
+test('hiding the page after the name prompt opens closes it and blocks confirmation', async () => {
+  const f = fixture(true, { wx: { showModal: o => o.success({ confirm: true }) } })
+  await f.page.load()
+  await f.page.manageMemorial({ currentTarget: { dataset: { operation: 'demolish' } } })
+  f.page.inputDemolitionName({ detail: { value: '小白' } })
+  f.page.onHide()
+  await f.page.confirmDemolition()
+  assert.equal(f.page.data.demolitionConfirmVisible, false)
+  assert.equal(f.calls.some(c => c.action === 'demolish'), false)
 })

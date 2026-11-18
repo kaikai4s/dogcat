@@ -27,15 +27,15 @@ const changeContent = (value, change) => !value ? value : { ...value, [change.ki
   : (value[change.kind] || []).map(m => m.uploadId === change.uploadId ? { ...m, entrance: change.enabled } : m) }
 Page({
   data: { loading: true, saving: false, uploading: false, error: '', detail: null, editing: false, previewing: false,
-    managing: false, managementError: '', mediaSaving: false, mediaSavingId: '', mediaSaveError: '', hasUnsavedChanges: false,
+    managing: false, managementError: '', demolitionConfirmVisible: false, demolitionConfirmName: '', demolitionExpectedName: '', demolitionConfirmError: '', mediaSaving: false, mediaSavingId: '', mediaSaveError: '', hasUnsavedChanges: false,
     yearOptions: MEMORY_YEAR_OPTIONS, birthYearIndex: 0, passingYearIndex: 0, editBirthYear: 'unknown', editPassingYear: 'unknown', editLifeSpanPreview: '',
     yearSaving: false, yearError: '', hasYearChanges: false,
     textCount: 0, portrait: null, portraitForm: false, portraitPhotos: {}, portraitNote: '', portraitPose: 'sitting',
     draft: { mode: 'plain', text: '', prologue: null, chapters: [], images: [], videos: [], music: null }, hasPrologue: false, isPublic: false, playing: false, uploadTip: '',
     readerChapterIndex: 0, readerPageIndex: 0, readerPageCount: 1, readerChapterTitle: '', readerSectionLabel: '', readerSectionCount: 0, readerIsPrologue: false, readerPageText: '', readerCanPrev: false, readerCanNext: false },
   onLoad(options = {}) { this._alive = true; this.id = options.id || ''; this.load() },
-  onHide() { this._confirmVersion = (this._confirmVersion || 0) + 1; this.stopMusic() },
-  onUnload() { this._alive = false; if (this._uploadTask && this._uploadTask.abort) this._uploadTask.abort(); this.stopMusic(); if (this.audio) this.audio.destroy() },
+  onHide() { this._confirmVersion = (this._confirmVersion || 0) + 1; this._demolitionConfirmVersion = null; this._demolitionTarget = null; this.setData({ demolitionConfirmVisible: false, demolitionConfirmName: '', demolitionExpectedName: '', demolitionConfirmError: '' }); this.stopMusic() },
+  onUnload() { this._alive = false; this._demolitionConfirmVersion = null; this._demolitionTarget = null; if (this._uploadTask && this._uploadTask.abort) this._uploadTask.abort(); this.stopMusic(); if (this.audio) this.audio.destroy() },
   api(action, data) { return callFunction('memorial', action, { id: this.id, ...data }) },
   async load() {
     this.setData({ loading: true, error: '' })
@@ -49,7 +49,9 @@ Page({
       const hasYearChanges = editBirthYear !== (detail.birthYear || 'unknown') || editPassingYear !== (detail.passingYear || 'unknown')
       this._prologueBackup = null
       this._novelBackup = null
-      this.setData({ detail, demolished: false, plotNumber: plotNumber(detail.plotId), draft: copyContent(detail.draft), isPublic: detail.isPublic,
+      this._demolitionConfirmVersion = null
+      this._demolitionTarget = null
+      this.setData({ detail, demolished: false, demolitionConfirmVisible: false, demolitionConfirmName: '', demolitionExpectedName: '', demolitionConfirmError: '', plotNumber: plotNumber(detail.plotId), draft: copyContent(detail.draft), isPublic: detail.isPublic,
         yearOptions, editBirthYear, editPassingYear,
         birthYearIndex: yearOptionIndex(yearOptions, editBirthYear),
         passingYearIndex: yearOptionIndex(yearOptions, editPassingYear),
@@ -123,7 +125,7 @@ Page({
   },
   async manageMemorial(e) {
     const detail = this.data.detail, operation = e.currentTarget.dataset.operation
-    if (!detail || !detail.owner || this.data.managing || this.data.saving || this.data.uploading || this.data.mediaSaving) return
+    if (!detail || !detail.owner || this.data.managing || this.data.saving || this.data.uploading || this.data.mediaSaving || this.data.demolitionConfirmVisible) return
     if (!['relocate', 'demolish'].includes(operation)) return
     const version = this._confirmVersion || 0
     const active = () => this._alive && version === (this._confirmVersion || 0)
@@ -141,22 +143,47 @@ Page({
       const answer = await native('showModal', { title: '确认拆除时光小筑？', content: '拆除后小筑将从园区移除，原位置立即释放。全部内容保留 7 天，可在回收站恢复；超过期限将永久清除。', confirmText: '继续拆除', confirmColor: '#ad514a' })
       if (!answer.confirm || !active()) return
       if (!this._alive) return
-      const typed = await native('showModal', { title: '再次确认拆除', content: '请输入宠物名字“' + detail.petName + '”确认。拆除 7 天后，回忆、照片、视频、音乐、画像、鲜花和零食记录将永久丢失。', editable: true, placeholderText: '输入完整宠物名字', confirmText: '确认拆除', confirmColor: '#ad514a' })
-      if (!typed.confirm || !active()) return
-      const confirmName = String(typed.content || '').normalize('NFKC').trim()
-      if (confirmName !== detail.petName) { this.setData({ managementError: '名字不匹配，请重新点击拆除并输入完整宠物名字。' }); return }
-      const demolitionKey = this.id + ':' + (detail.locationRevision || 0)
-      if (this._demolitionKey !== demolitionKey) { this._demolitionKey = demolitionKey; this._demolitionRequest = '' }
-      this._demolitionRequest = this._demolitionRequest || 'remove_' + Date.now() + '_' + Math.random().toString(36).slice(2)
-      const removed = await this.api('demolish', { locationRevision: detail.locationRevision || 0, requestId: this._demolitionRequest, confirm: true, confirmName })
-      if (!this._alive) return
-      this.setData({ recoverUntilText: require('../scene/recovery-time').deadline(removed.recoverUntil) })
-      this.stopMusic()
-      this.setData({ detail: null, story: null, draft: { text: '', images: [], videos: [], music: null }, portrait: null, demolished: true })
-      wx.showToast({ title: '小筑已拆除', icon: 'none' })
+      this._demolitionConfirmVersion = version
+      this._demolitionTarget = { id: this.id, petName: detail.petName, locationRevision: detail.locationRevision || 0 }
+      this.setData({ demolitionConfirmVisible: true, demolitionConfirmName: '', demolitionExpectedName: detail.petName, demolitionConfirmError: '' })
     } catch (error) { if (this._alive) this.setData({ managementError: error.message || '操作失败，请重试' }) }
     finally { if (this._alive) this.setData({ managing: false }) }
   },
+  inputDemolitionName(e) {
+    if (!this.data.demolitionConfirmVisible || this.data.managing) return
+    this.setData({ demolitionConfirmName: e.detail.value, demolitionConfirmError: '' })
+  },
+  cancelDemolition() {
+    if (this.data.managing) return
+    this._demolitionConfirmVersion = null
+    this._demolitionTarget = null
+    this.setData({ demolitionConfirmVisible: false, demolitionConfirmName: '', demolitionExpectedName: '', demolitionConfirmError: '' })
+  },
+  async confirmDemolition() {
+    const target = this._demolitionTarget
+    const version = this._demolitionConfirmVersion
+    if (!this._alive || !this.data.demolitionConfirmVisible || !target || target.id !== this.id || !this.data.detail || !this.data.detail.owner || this.data.managing || this.data.saving || this.data.uploading || this.data.mediaSaving || version !== (this._confirmVersion || 0)) return
+    const confirmName = String(this.data.demolitionConfirmName || '').normalize('NFKC').trim()
+    if (!confirmName) { this.setData({ demolitionConfirmError: '请输入宠物名字后再确认拆除。' }); return }
+    if (confirmName !== target.petName) { this.setData({ demolitionConfirmError: '名字不匹配，请核对后重试。' }); return }
+    this.setData({ managing: true, demolitionConfirmError: '' })
+    try {
+      const demolitionKey = target.id + ':' + target.locationRevision
+      if (this._demolitionKey !== demolitionKey) { this._demolitionKey = demolitionKey; this._demolitionRequest = '' }
+      this._demolitionRequest = this._demolitionRequest || 'remove_' + Date.now() + '_' + Math.random().toString(36).slice(2)
+      const removed = await this.api('demolish', { locationRevision: target.locationRevision, requestId: this._demolitionRequest, confirm: true, confirmName })
+      if (!this._alive || version !== (this._confirmVersion || 0)) return
+      this._demolitionConfirmVersion = null
+      this._demolitionTarget = null
+      this.setData({ recoverUntilText: require('../scene/recovery-time').deadline(removed.recoverUntil), demolitionConfirmVisible: false, demolitionConfirmName: '', demolitionExpectedName: '', demolitionConfirmError: '' })
+      this.stopMusic()
+      this.setData({ detail: null, story: null, draft: { text: '', images: [], videos: [], music: null }, portrait: null, demolished: true })
+      wx.showToast({ title: '小筑已拆除', icon: 'none' })
+    } catch (error) {
+      if (this._alive && version === (this._confirmVersion || 0)) this.setData({ demolitionConfirmError: error.message || '操作失败，请重试' })
+    } finally { if (this._alive) this.setData({ managing: false }) }
+  },
+  noop() {},
   onShow() { if (this._refreshOnReturn) { this._refreshOnReturn = false; this.load() } },
   openRecycle() { wx.redirectTo({ url: '/packageMemorial/pages/recycle' }) },
   chooseGarden() { wx.redirectTo({ url: '/packageMemorial/pages/entrance' }) },

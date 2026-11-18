@@ -43,3 +43,16 @@ page{background:#f3f3eb;color:#34483b}.memory-page{padding:28rpx 28rpx calc(56rp
 .prologue-toggle{display:flex;align-items:center;justify-content:space-between;gap:20rpx;padding:20rpx 22rpx;margin:12rpx 0 18rpx;border:1rpx solid #dfe7d8;border-radius:16rpx;background:#f3f6ec}.prologue-toggle-title{font-size:26rpx;color:#526b4b;font-weight:600}.prologue-toggle .tip{margin:4rpx 0 0;font-size:22rpx}.prologue-badge{font-size:21rpx;color:#7b8a72;background:#e8efe0;border-radius:20rpx;padding:6rpx 12rpx}.prologue-editor{border-color:#bdcfb4;background:#f5f8ef}
 .editing-mode-button{box-shadow:inset 0 0 0 2rpx #d7e4ca,0 6rpx 16rpx #314b2712}
 .editing-status{font-size:22rpx;line-height:1.6;color:#6b8062;margin-top:-12rpx}
+.demolition-modal-mask{position:fixed;top:0;right:0;bottom:0;left:0;z-index:10000;display:flex;align-items:center;justify-content:center;box-sizing:border-box;padding:28rpx;background:rgba(28,36,28,.58)}
+.demolition-modal{box-sizing:border-box;width:100%;max-width:680rpx;max-height:calc(100vh - 56rpx);overflow-y:auto;padding:34rpx 30rpx calc(28rpx + env(safe-area-inset-bottom));border:1rpx solid #e5ded1;border-radius:24rpx;background:#fffef9;box-shadow:0 22rpx 72rpx rgba(31,42,29,.24)}
+.demolition-modal-kicker{font-size:19rpx;line-height:1.5;letter-spacing:2rpx;color:#a27661}
+.demolition-modal-title{margin-top:8rpx;font-size:34rpx;line-height:1.4;font-weight:650;color:#34483b}
+.demolition-modal-copy{margin-top:14rpx;font-size:25rpx;line-height:1.75;color:#737c6f;overflow-wrap:anywhere}
+.demolition-name-prompt{margin-top:26rpx;font-size:25rpx;line-height:1.6;color:#52634d}
+.demolition-name{display:inline-block;margin-left:6rpx;padding:2rpx 12rpx;border-radius:8rpx;background:#f2eee5;color:#724d3b;font-weight:600;overflow-wrap:anywhere}
+.memory-page .demolition-name-input{box-sizing:border-box;width:100%;height:52px;margin-top:12rpx;padding:0 18rpx;border:1rpx solid #cdd8c4;border-radius:12rpx;background:#f8f9f3;color:#34483b;font-size:27rpx;line-height:52px}
+.demolition-modal-error{margin-top:12rpx;font-size:23rpx;line-height:1.6;color:#a4483e;overflow-wrap:anywhere}
+.demolition-modal-actions{display:flex;gap:14rpx;margin-top:26rpx}
+.memory-page .demolition-modal-actions .memory-button{flex:1;min-width:0;margin:0;min-height:48px}
+.memory-page .demolition-confirm-button{background:#a64e43;color:#fffdf8;border-color:#a64e43}
+.memory-page .demolition-confirm-button[disabled]{background:#e5e9de;color:#929c89;border-color:#e5e9de}
