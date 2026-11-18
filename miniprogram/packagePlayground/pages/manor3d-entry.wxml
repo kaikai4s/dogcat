@@ -1,0 +1,39 @@
+<view class="manor-entry-page">
+  <view class="manor-entry-nav">
+    <button class="manor-entry-back" bindtap="goBack" aria-label="返回">
+      <text class="remix-icon ri-arrow-left-line"></text>
+    </button>
+    <text class="manor-entry-nav-title">进入3D庄园</text>
+    <view class="manor-entry-nav-spacer"></view>
+  </view>
+
+  <view class="manor-entry-content">
+    <view class="manor-entry-kicker">DOVELIN · 3D MANOR</view>
+    <view class="manor-entry-title">晴溪庄园</view>
+    <view class="manor-entry-description">选择本次要进入的小区庄园。你的常住小区设置不会因此改变。</view>
+
+    <view class="manor-entry-section-title">小区庄园</view>
+    <view class="manor-entry-section-copy">与同一小区的邻居进入同一个场景。</view>
+    <button class="manor-entry-primary" bindtap="chooseCommunity" loading="{{opening}}" disabled="{{opening}}">
+      <text class="remix-icon ri-community-line"></text>
+      <text>选择小区并进入</text>
+      <text class="remix-icon ri-arrow-right-s-line"></text>
+    </button>
+
+    <view class="manor-entry-divider"><view></view><text>或</text><view></view></view>
+
+    <view class="manor-entry-solo-row">
+      <view class="manor-entry-solo-copy">
+        <view class="manor-entry-solo-title">单人庄园</view>
+        <view class="manor-entry-solo-description">独立场景，不关联小区邻里。</view>
+      </view>
+      <button class="manor-entry-solo-button" bindtap="enterSolo" disabled="{{opening}}" aria-label="进入单人庄园">
+        <text class="remix-icon ri-arrow-right-line"></text>
+      </button>
+    </view>
+
+    <view wx:if="{{error}}" class="manor-entry-error" role="alert">{{error}}</view>
+  </view>
+
+  <community-chooser id="communityChooser" />
+</view>

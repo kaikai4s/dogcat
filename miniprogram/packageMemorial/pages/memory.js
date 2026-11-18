@@ -364,7 +364,7 @@ Page({
     try {
       const selected = kind === 'music'
         ? await native('chooseMessageFile', { count: 1, type: 'file', extension: ['mp3', 'm4a', 'wav'] })
-        : await native('chooseMedia', { count: Math.min(9, max - this.data.draft[field].length), mediaType: [kind], sourceType: ['album'], maxDuration: 300 })
+        : await native('chooseMedia', { count: Math.min(9, max - this.data.draft[field].length), mediaType: [kind], sourceType: ['album'] })
       for (const [index, file] of (selected.tempFiles || []).entries()) {
         if (!this._alive) return
         this.setData({ uploadTip: '正在上传第 ' + (index + 1) + ' 个文件…' })

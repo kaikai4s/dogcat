@@ -9,8 +9,30 @@ const { publicAppearance } = require('../playground-appearance-record')
 const { publicUserTitle } = require('../userTitles')
 const { settleNeeds, isWasteExpired } = require('./pet-needs')
 const COLLECTION = 'pet_playground_plots'
+const MANOR3D_WIDTH = 1200
+const MANOR3D_DEPTH = 960
+const MANOR3D_MAX_SPEED = 9
+const MANOR3D_MAX_ELAPSED_SECONDS = 3
+const MANOR3D_MOVEMENT_CREDIT = 3
+const MANOR3D_ONLINE_TTL = 15000
+const MANOR3D_MOVING_TTL = 3000
 const presenceId = (openid) => 'presence_' + world.hash(openid)
 const residentId = (openid) => 'resident_' + world.hash(openid)
+function projectManor3dPosition(position, config) {
+  return {
+    x: (position.x / config.width - .5) * MANOR3D_WIDTH,
+    z: (position.z / config.height - .5) * MANOR3D_DEPTH
+  }
+}
+function validManor3dPosition(position) {
+  return !!position && typeof position === 'object' &&
+    Number.isFinite(position.x) && Number.isFinite(position.z) &&
+    Math.abs(position.x) <= MANOR3D_WIDTH / 2 && Math.abs(position.z) <= MANOR3D_DEPTH / 2
+}
+function validManor3dFacing(facing) {
+  return ['nw', 'ne', 'sw', 'se'].includes(facing) ||
+    Number.isFinite(facing) && Math.abs(facing) <= Math.PI * 2
+}
 const { buildingGeometryKey } = require('./plot-buildings')
 const layoutKey = (plots) => world.hash('garage-v2'+JSON.stringify(plots.map((p)=>[p._id,p.gateDirection,p.buildingType,buildingGeometryKey(p)]).sort((a,b)=>String(a[0]).localeCompare(String(b[0])))))
 const inside = (p, plot) => Math.abs(p.x - plot.x) < (plot.size || 48) / 2 && Math.abs(p.z - plot.z) < (plot.size || 48) / 2
@@ -127,13 +149,22 @@ module.exports = function createShared(context) {
         stains,soiled:!!row.soiled && stains.length > 0,
         mirrored:!!row.mirrored,moving:!!row.moving&&now()-row.lastSeen<3000,online:!!row.online&&now()-row.lastSeen<15000,lastSeen:row.lastSeen,speedMultiplier:row.speedMultiplier}
     }
-    return {kind:'presence',id:row._id,ownerId,name:row.name||'邻居',nameColor:row.nameColor||'',userTitle:row.userTitle||null,position:row.position,characterType:row.characterType==='girl'?'girl':'boy',
+    const stamp = now()
+    const manor3dFresh = row.manor3d === true && row.active !== false && row.manor3dOnline !== false &&
+      stamp - Number(row.manor3dLastSeen || 0) < MANOR3D_ONLINE_TTL
+    const manor3dMoving = manor3dFresh && row.manor3dMoving === true &&
+      stamp - Number(row.manor3dLastSeen || 0) < MANOR3D_MOVING_TTL
+    return {kind:'presence',id:row._id,ownerId,name:row.name||'邻居',nameColor:row.nameColor||'',userTitle:row.userTitle||null,position:row.position,
+      position3d:row.position3d||null,manor3d:row.manor3d===true,manor3dOnline:manor3dFresh,
+      manor3dMoving,manor3dRunning:manor3dMoving&&row.manor3dRunning===true,manor3dFacing:row.manor3dFacing??null,
+      characterType:row.characterType==='girl'?'girl':'boy',
       vehicleId:row.vehicleId||'',
       vehicleRole:row.vehicleRole||'',facing:row.facing||'sw',
       appearance:publicAppearance(row.appearance,'character',row._id,row.ownerOpenid),
       mirrored:!!row.mirrored,online:!!row.online&&row.active!==false&&now()-row.lastSeen<15000,lastSeen:row.lastSeen,moving:!!row.moving&&now()-row.lastSeen<3000,running:!!row.running}
   }
-  const version=(row)=>({epoch:row.kind==='presence'?row.sessionStarted||row.lastSeen:row.revision||Date.parse(row.updatedAt||row.createdAt)||0,seq:row.kind==='resident'?row.petSeq||0:row.seq||0})
+  const version=(row)=>({epoch:row.kind==='presence'?row.sessionStarted||row.lastSeen:row.revision||Date.parse(row.updatedAt||row.createdAt)||0,
+    seq:row.kind==='resident'?row.petSeq||0:row.kind==='presence'?(row.seq||0)+(row.manor3dSeq||0):row.seq||0})
   async function ensureRecordNameColor(row) {
     if(row.kind==='plot' || validColor(row.nameColor)) return row
     const home=await service.own(row.ownerOpenid)
@@ -224,6 +255,8 @@ module.exports = function createShared(context) {
         userTitle:publicUserTitle(currentUser,id),
         nameColor:currentHome&&currentHome.nameColor||'',
         appearance:publicAppearance(currentUser.playgroundAppearance,'character',presenceId(openid),openid),
+        position3d:projectManor3dPosition(position,cfg),manor3d:false,manor3dSeq:0,manor3dLastSeen:stamp,
+        manor3dMoving:false,manor3dRunning:false,manor3dFacing:null,manor3dOnline:false,
         position,characterType:old && old.characterType==='girl'?'girl':'boy',mirrored:!!(old&&old.mirrored),facing:old&&old.facing||'sw',
         session,seq:0,active:!!currentHome,homePlotId:currentHome?currentHome.plotId:'',online:true,lastSeen:stamp,sessionStarted:Math.max(actorEpoch,(old&&old.sessionStarted||0)+1)}
       const canKeepPets=!!currentOwn
@@ -259,7 +292,60 @@ module.exports = function createShared(context) {
     return {session,playerId:presenceId(openid),name:state.name,nameColor:state.nameColor,userTitle:state.userTitle,sceneId:id,realtimeCollection:'pet_playground_live',serverTime:now(),social:socialState,allowedPlotIds:state.allowed,position:state.position,characterType:state.characterType,appearance:state.appearance,hasAvatar:state.active,
       vehicleId:state.vehicleId||'',vehicleRole:state.vehicleRole||'',facing:state.facing||'sw',mirrored:!!state.mirrored,vehicleSpeed:Math.max(2,Math.min(5,Number(user.playgroundVehicleSpeed)||2)),
       community:state.entry.community,communityRetired:state.entry.retired,visiting:id!==(world.communityId(user)||'solo_'+world.hash(openid)),hasHomeElsewhere:!!state.home&&!state.own,
-      homeCommunity:user.residentialCommunity||null,plot:state.own?service.publicPlot({...state.own,_id:state.own.plotId},openid):null}
+      homeCommunity:user.residentialCommunity||null,plot:state.own?service.publicPlot({...state.own,_id:state.own.plotId},openid):null,
+      position3d:projectManor3dPosition(state.position,cfg)}
+  }
+  async function syncManor3d(openid,data) {
+    const result=await transaction(db,async(tx)=>{
+      const actor=await check(openid,data,tx)
+      const stamp=now()
+      if(actor.active!==true) throw new Error('请先安置庭院后再同步3D角色')
+      if(!Number.isSafeInteger(data.seq)||data.seq<1) throw new Error('3D角色同步序号无效')
+      if(data.online!==undefined&&typeof data.online!=='boolean') throw new Error('3D角色在线状态无效')
+      const online=data.online!==false
+      if(!validManor3dPosition(actor.position3d)) throw new Error('3D场景位置尚未初始化，请重新进入场景')
+      const current={x:actor.position3d.x,z:actor.position3d.z}
+      if(data.seq<=Number(actor.manor3dSeq||0)) return {
+        accepted:false,ackSeq:Number(actor.manor3dSeq||0),position3d:current,
+        manor3dOnline:actor.manor3d===true&&actor.manor3dOnline!==false&&stamp-Number(actor.manor3dLastSeen||0)<MANOR3D_ONLINE_TTL
+      }
+      let next=current,moving=false,running=false
+      if(online) {
+        if(!validManor3dPosition(data.position3d)) throw new Error('3D角色位置超出庄园范围或格式无效')
+        if(typeof data.moving!=='boolean'||typeof data.running!=='boolean') throw new Error('3D角色移动状态无效')
+        if(!validManor3dFacing(data.facing)) throw new Error('3D角色朝向无效')
+        next={x:data.position3d.x,z:data.position3d.z}
+        const elapsed=Math.max(0,Math.min(MANOR3D_MAX_ELAPSED_SECONDS,(stamp-Number(actor.manor3dLastSeen||actor.lastSeen||stamp))/1000))
+        const credit=Number.isFinite(actor.manor3dMovementCredit)?Math.max(0,actor.manor3dMovementCredit):MANOR3D_MOVEMENT_CREDIT
+        const budget=Math.min(MANOR3D_MAX_SPEED*MANOR3D_MAX_ELAPSED_SECONDS+MANOR3D_MOVEMENT_CREDIT,
+          credit+elapsed*MANOR3D_MAX_SPEED)
+        const distance=Math.hypot(next.x-current.x,next.z-current.z)
+        if(distance>budget+1e-6) throw new Error('3D角色移动过快，请重新进入场景')
+        actor.manor3dMovementCredit=Math.min(budget-distance,MANOR3D_MOVEMENT_CREDIT)
+        moving=data.moving
+        running=data.running&&moving
+        actor.manor3dFacing=data.facing
+        actor.manor3dLastSeen=stamp
+        actor.manor3dOnline=true
+      } else {
+        actor.manor3dLastSeen=stamp
+        actor.manor3dOnline=false
+        actor.manor3dMovementCredit=MANOR3D_MOVEMENT_CREDIT
+      }
+      actor.position3d=next
+      actor.manor3d=true
+      actor.manor3dMoving=moving
+      actor.manor3dRunning=running
+      actor.manor3dSeq=data.seq
+      const {_id,...saved}=actor
+      await tx.collection(COLLECTION).doc(presenceId(openid)).set({data:saved})
+      return {accepted:true,ackSeq:data.seq,position3d:next,manor3dOnline:online}
+    })
+    if(result.accepted) {
+      const actor=await read(db,presenceId(openid))
+      if(actor) await publish(actor)
+    }
+    return {...result,serverTime:now()}
   }
   async function sync(openid,data) {
     const [cfg,plots]=await Promise.all([service.config(),rows(data.sceneId,'plot')])
@@ -508,7 +594,7 @@ module.exports = function createShared(context) {
       for(const [id,kind] of [[plotId,'plot'],[presenceId(openid),'presence'],[residentId(openid),'resident'],[require('./vehicles').vehicleId(openid),'vehicle']]) await live.publish(sceneId,{id,kind,deleted:true})
     } else {const row=await read(db,plotId);if(row){await publish(row);await vehicles.ensure(openid)}}
   }
-  return {enter,sync,snapshot,commandPet,petScale,plotChanged,social,vehicles,companions,farm,rides,publishRecords:(records)=>Promise.all(records.map(publish))}
+  return {enter,sync,syncManor3d,snapshot,commandPet,petScale,plotChanged,social,vehicles,companions,farm,rides,publishRecords:(records)=>Promise.all(records.map(publish))}
 }
 module.exports.navigation=navigation
 module.exports.motion=motion

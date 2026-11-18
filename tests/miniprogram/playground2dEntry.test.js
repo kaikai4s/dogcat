@@ -16,6 +16,8 @@ test('the 2D manor keeps its original entry and canvas when the 3D manor gets a 
   assert.match(wxml, /bindtap="openWorld"/)
   assert.match(wxml, /bindtap="openManor3d"/)
   assert.ok(page.includes("url: '/packagePlayground/pages/world'"))
+  assert.ok(page.includes("url: '/packagePlayground/pages/manor3d-entry'"))
+  assert.ok(app.subpackages.find(pkg => pkg.root === 'packagePlayground')?.pages.includes('pages/manor3d-entry'))
   assert.deepEqual(app.subpackages.find(pkg => pkg.root === 'packageManor3d')?.pages, ['pages/index'])
   assert.match(wxml, /打开庄园/)
   assert.match(wxml, /进入小区宠物庄园/)

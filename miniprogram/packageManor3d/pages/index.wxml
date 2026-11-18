@@ -23,7 +23,7 @@
     </view>
   </view>
   <block wx:elif="{{status === 'ready'}}">
-    <view class="manor-notices">
+    <view class="manor-notices {{minimap && !mapMode ? 'manor-notices-with-map' : ''}}" wx:if="{{characterStatus === 'loading' || characterStatus === 'drawing' || characterStatus === 'error' || villaStatus === 'loading' || villaStatus === 'drawing' || villaStatus === 'error'}}">
       <view wx:if="{{characterStatus === 'loading' || characterStatus === 'drawing' || characterStatus === 'error'}}" class="manor-notice">
         <text wx:if="{{characterStatus === 'drawing'}}" class="manor-notice-text">正在准备角色</text>
         <text wx:elif="{{characterStatus === 'loading'}}" class="manor-notice-text">正在加载角色{{characterProgress >= 0 ? ' ' + characterProgress + '%' : ''}}</text>
@@ -41,11 +41,28 @@
         </block>
       </view>
     </view>
-    <view wx:if="{{activeCharacter}}" class="manor-walk-controls">
-      <button class="manor-run {{running ? 'manor-run-active' : ''}}" bindtap="toggleRun"
-        aria-label="{{running ? '当前为奔跑模式，点击切换行走' : '当前为行走模式，点击切换奔跑'}}">{{running ? '切回行走' : '切换跑步'}}</button>
-      <view class="manor-joystick {{stickActive ? 'manor-joystick-active' : ''}}" id="manor-stick"
-        aria-label="拖动摇杆控制角色移动" catchtouchstart="onStickStart" catchtouchmove="onStickMove"
+    <view wx:if="{{mapMode}}" class="manor-map-bar">
+      <text class="manor-map-hint">单指旋转 · 双指同向滑动平移 · 捏合缩放</text>
+    </view>
+    <block wx:else>
+      <button wx:if="{{minimap}}" class="manor-minimap" style="{{minimapTop ? 'top:' + minimapTop + 'px' : ''}}"
+        bindtap="openMap" aria-label="展开庄园地图">
+        <view class="manor-minimap-land">
+          <view wx:if="{{minimap.river}}" class="manor-minimap-river"
+            style="clip-path:{{minimap.river}};-webkit-clip-path:{{minimap.river}}"></view>
+          <view wx:for="{{minimap.plots}}" wx:key="id" class="manor-minimap-mark manor-minimap-plot"
+            style="left:{{item.x}}%;top:{{item.y}}%;width:{{item.width}}%;height:{{item.height}}%"></view>
+          <view wx:for="{{minimap.trees}}" wx:key="id" class="manor-minimap-mark manor-minimap-tree"
+            style="left:{{item.x}}%;top:{{item.y}}%;width:{{item.width}}%;height:{{item.height}}%"></view>
+          <view wx:for="{{minimap.crossings}}" wx:key="id" class="manor-minimap-mark manor-minimap-bridge"
+            style="left:{{item.x}}%;top:{{item.y}}%;width:{{item.width}}%;height:{{item.height}}%;transform:translate(-50%,-50%) rotate({{item.angle}}deg)"></view>
+          <view wx:if="{{mapPlayer}}" class="manor-minimap-mark manor-minimap-player"
+            style="left:{{mapPlayer.x}}%;top:{{mapPlayer.y}}%"></view>
+        </view>
+        <text class="manor-minimap-label">地图</text>
+      </button>
+      <view wx:if="{{activeCharacter}}" class="manor-joystick {{stickActive ? 'manor-joystick-active' : ''}}" id="manor-stick"
+        aria-label="轻推摇杆行走，推远奔跑" catchtouchstart="onStickStart" catchtouchmove="onStickMove"
         catchtouchend="onStickEnd" catchtouchcancel="onStickCancel">
         <view class="manor-stick-axis manor-stick-north"></view>
         <view class="manor-stick-axis manor-stick-south"></view>
@@ -53,26 +70,35 @@
         <view class="manor-stick-axis manor-stick-east"></view>
         <view class="manor-stick-knob" style="transform: translate({{stickX}}px, {{stickY}}px);"></view>
       </view>
-    </view>
-    <view class="manor-controls {{activeCharacter ? 'manor-controls-with-player' : ''}}">
-      <text class="manor-control-hint">{{orbitMode ? '拖动旋转' : '拖动平移'}} · 双指缩放</text>
-      <view class="manor-toolbar">
-        <button class="manor-tool {{orbitMode ? 'manor-tool-active' : ''}}" bindtap="toggleOrbit">{{orbitMode ? '切换平移' : '切换旋转'}}</button>
-        <button class="manor-tool" bindtap="resetView">全景</button>
-        <button wx:if="{{villaStatus === 'ready'}}" class="manor-tool" bindtap="focusVilla">看别墅</button>
-        <button wx:if="{{activeCharacter}}" class="manor-tool manor-tool-active" bindtap="focusCharacter">回到角色</button>
+      <view class="manor-controls">
+        <view wx:if="{{menuOpen}}" class="manor-menu" aria-label="庄园设置">
+          <button class="manor-menu-action" bindtap="openMap">查看地图</button>
+          <button wx:if="{{villaStatus === 'ready'}}" class="manor-menu-action" bindtap="focusVilla">看别墅</button>
+          <button wx:if="{{activeCharacter}}" class="manor-menu-action" bindtap="focusCharacter">回到角色</button>
+          <view class="manor-sensitivity">
+            <view class="manor-sensitivity-label"><text>旋转灵敏度</text><text>{{cameraSensitivity}}%</text></view>
+            <slider class="manor-sensitivity-slider" min="25" max="150" step="5" value="{{cameraSensitivity}}"
+              activeColor="#2f6a57" backgroundColor="#d9e4d7" block-color="#2f6a57" block-size="18"
+              bindchanging="onCameraSensitivityChanging" bindchange="onCameraSensitivityChange" />
+          </view>
+          <view class="manor-character-select" aria-label="选择角色">
+            <button class="manor-character-option {{characterType === 'boy' ? 'manor-character-selected' : ''}}"
+              data-character="boy" bindtap="selectCharacter">男孩</button>
+            <button class="manor-character-option {{characterType === 'girl' ? 'manor-character-selected' : ''}}"
+              data-character="girl" bindtap="selectCharacter">女孩</button>
+          </view>
+        </view>
+        <button class="manor-hud-button {{menuOpen ? 'manor-hud-active' : ''}}" bindtap="toggleMenu"
+          aria-label="{{menuOpen ? '收起庄园设置' : '庄园设置'}}">
+          <view class="manor-hud-face"><view class="manor-more-icon"></view></view>
+        </button>
       </view>
-    </view>
+    </block>
   </block>
   <view wx:if="{{status === 'loading' || status === 'ready'}}" class="manor-top-controls">
-    <button class="manor-back" bindtap="goBack" aria-label="返回宠物庄园">
-      <view class="manor-back-arrow"></view><text>返回</text>
+    <button class="manor-hud-button {{mapMode ? 'manor-map-back' : ''}}" bindtap="goBack"
+      aria-label="{{mapMode ? '退出地图预览，回到角色' : '返回宠物庄园'}}">
+      <view class="manor-hud-face"><view class="manor-back-arrow"></view><text wx:if="{{mapMode}}">回到角色</text></view>
     </button>
-    <view wx:if="{{status === 'ready'}}" class="manor-character-select" aria-label="选择角色">
-      <button class="manor-character-option {{activeCharacter === 'boy' ? 'manor-character-selected' : ''}}"
-        data-character="boy" bindtap="selectCharacter">男孩</button>
-      <button class="manor-character-option {{activeCharacter === 'girl' ? 'manor-character-selected' : ''}}"
-        data-character="girl" bindtap="selectCharacter">女孩</button>
-    </view>
   </view>
 </view>

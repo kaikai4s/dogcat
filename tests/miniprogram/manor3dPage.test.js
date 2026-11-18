@@ -6,6 +6,7 @@ const { ENV_MAP, hasManorAssets } = require('../../miniprogram/envList')
 
 const source = fs.readFileSync(require.resolve('../../miniprogram/packageManor3d/pages/index.js'), 'utf8')
 const markup = fs.readFileSync(require.resolve('../../miniprogram/packageManor3d/pages/index.wxml'), 'utf8')
+const styles = fs.readFileSync(require.resolve('../../miniprogram/packageManor3d/pages/index.wxss'), 'utf8')
 const pageConfig = require('../../miniprogram/packageManor3d/pages/index.json')
 const flush = () => new Promise(resolve => setImmediate(resolve))
 const layout = JSON.stringify({ world: { width: 1200, depth: 960 }, plots: [{ id: 'M01', x: 0, z: 0, y: 4.1, width: 40, depth: 30 }] })
@@ -16,9 +17,11 @@ const touchEvent = (points, changed = []) => {
 }
 
 function fixture({ envId = ENV_MAP.trial, read = key => key === 'layout' ? layout : key,
-  decode = key => ({ key }), savedCharacter, canGoBack = true } = {}) {
+  decode = key => ({ key }), savedCharacter, savedSensitivity, canGoBack = true } = {}) {
   let definition, nextFrame = 0, now = 0, lost = false, pixelRatio = 1
+  let sensitivityStorage = savedSensitivity
   let canvasSize = { width: 390, height: 780 }
+  let playerPosition = null
   const events = [], frames = new Map(), updates = [], inputs = [], sizes = [], drawSizes = [], selections = []
   const canvas = {
     requestAnimationFrame(callback) { frames.set(++nextFrame, callback); return nextFrame },
@@ -39,6 +42,7 @@ function fixture({ envId = ENV_MAP.trial, read = key => key === 'layout' ? layou
   }
   const modules = {
     '../../envList': { getActiveEnvId: () => envId },
+    '../utils/manor-minimap': require('../../miniprogram/packageManor3d/utils/manor-minimap'),
     '../utils/cloud-assets': { hasManorAssets, createCloudAssets({ envId: actualId }) {
       assert.equal(actualId, envId)
       return {
@@ -60,11 +64,12 @@ function fixture({ envId = ENV_MAP.trial, read = key => key === 'layout' ? layou
     '../utils/manor-scene': { createManorScene: () => ({
       resize(width, height) { sizes.push({ width, height, pixelRatio }) }, showLandscape(model) { events.push('attach:' + model.key) },
       showVilla(model) { events.push('attach:' + model.key) }, render() { events.push('draw'); drawSizes.push(sizes.at(-1)) },
-      showCharacter(model) { events.push('attach:' + model.key) },
-      setPlayerInput(x, y, running) { inputs.push({ x, y, running }) },
+      showCharacter(model) { playerPosition ??= { x: 0, z: 0 }; events.push('attach:' + model.key) },
+      getMapPlayerPosition() { return playerPosition },
+      setPlayerInput(x, y) { inputs.push({ x, y }) },
       dispose() { events.push('disposeScene') }, pan(x, y) { events.push(['pan', x, y]) },
       orbit(x, y) { events.push(['orbit', x, y]) }, zoom(ratio) { events.push(['zoom', ratio]) },
-      resetView() { events.push('reset') }, focusVilla() { events.push('focus') },
+      enterMapView() { events.push('enterMap') }, exitMapView() { events.push('exitMap') }, focusVilla() { events.push('focus') },
       focusCharacter() { events.push('focusCharacter') }
     }) }
   }
@@ -74,8 +79,12 @@ function fixture({ envId = ENV_MAP.trial, read = key => key === 'layout' ? layou
     setTimeout, clearTimeout, console: { warn() {} },
     wx: {
       createSelectorQuery, getWindowInfo: () => ({ pixelRatio: 3 }),
-      getStorageSync: () => savedCharacter,
-      setStorageSync(key, value) { selections.push(value) },
+      getMenuButtonBoundingClientRect: () => ({ bottom: canvasSize.height > canvasSize.width ? 82 : 36 }),
+      getStorageSync(key) { return key === 'dogcat-manor-3d-character' ? savedCharacter : sensitivityStorage },
+      setStorageSync(key, value) {
+        selections.push(value)
+        if (key === 'manor3d-camera-sensitivity') sensitivityStorage = value
+      },
       navigateBack({ fail }) { events.push('back'); if (!canGoBack) fail() },
       redirectTo({ url }) { events.push('redirect:' + url) }
     }
@@ -84,6 +93,8 @@ function fixture({ envId = ENV_MAP.trial, read = key => key === 'layout' ? layou
     updates.push(data); Object.assign(this.data, data); callback?.()
   } }
   return { page, frames, events, updates, inputs, sizes, drawSizes, selections, loseContext() { lost = true }, restoreContext() { lost = false },
+    getSavedSensitivity() { return sensitivityStorage },
+    setPlayerPosition(x, z) { playerPosition = { x, z } },
     setCanvasSize(width, height) { canvasSize = { width, height } },
     mount() { page.onLoad(); page.onShow(); page.onReady() },
     tick() { now += 34; const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(callback => callback()) } }
@@ -120,6 +131,7 @@ test('the terrain and player are ready before the villa download, and a villa re
   assert.equal(f.events.filter(value => value === 'createRenderer').length, 1)
   f.page.focusVilla()
   assert.equal(f.events.at(-1), 'focus')
+  assert.equal(f.page.data.mapMode, true)
   f.page.onUnload()
   assert.equal(f.frames.size, 0)
   assert.deepEqual(f.events.slice(-2), ['disposeScene', 'disposeRenderer'])
@@ -164,9 +176,11 @@ test('a lost graphics context remounts the canvas and permits a full retry', asy
   const f = fixture()
   f.mount()
   await flush()
+  f.page.openMap()
   f.loseContext()
   f.tick()
   assert.equal(f.page.data.status, 'error')
+  assert.equal(f.page.data.mapMode, false)
   assert.equal(f.page.data.mountCanvas, false)
   assert.equal(f.frames.size, 0)
   f.restoreContext()
@@ -187,22 +201,58 @@ test('unconfigured production cannot start downloads through the direct 3D route
   assert.deepEqual(f.events, [])
 })
 
-test('changing between pinch and single touch establishes a new gesture origin', async () => {
+test('map gestures separate same-direction panning from pinch zoom and avatar mode never pans', async () => {
   const f = fixture()
   f.mount()
   await flush()
-  const first = [0, 40, 60], moved = [0, 42, 58], second = [1, 62, 58]
-  const remaining = [1, 72, 58], orbit = [2, 40, 40]
+  const first = [0, 40, 50], second = [1, 60, 50]
+  f.page.onTouchStart(touchEvent([first, second], [first, second]))
+  f.page.onTouchMove(touchEvent([[0, 45, 60], [1, 65, 60]]))
+  f.page.onTouchMove(touchEvent([[0, 35, 60], [1, 75, 60]]))
+  f.page.openMap()
+  f.page.onTouchMove(touchEvent([[0, 38, 60], [1, 78, 60]]))
   f.page.onTouchStart(touchEvent([first], [first]))
-  f.page.onTouchMove(touchEvent([moved]))
-  f.page.onTouchStart(touchEvent([moved, second], [second]))
-  f.page.onTouchMove(touchEvent([[0, 32, 58], remaining]))
-  f.page.onTouchEnd(touchEvent([remaining], [[0, 32, 58]]))
-  f.page.onTouchMove(touchEvent([[1, 75, 58]]))
-  f.page.toggleOrbit()
-  f.page.onTouchStart(touchEvent([orbit], [orbit]))
-  f.page.onTouchMove(touchEvent([[2, 36, 45]]))
-  assert.deepEqual(f.events.filter(Array.isArray), [['pan', 2, -2], ['zoom', 2], ['pan', 0, 0], ['pan', 3, 0], ['orbit', -4, 5]])
+  f.page.onTouchMove(touchEvent([[0, 40, 48]]))
+  const other = [1, 60, 48]
+  f.page.onTouchStart(touchEvent([[0, 40, 48], other], [other]))
+  f.page.onTouchMove(touchEvent([[1, 67, 54], [0, 47, 54]]))
+  f.page.onTouchEnd(touchEvent([], [[0, 47, 54], [1, 67, 54]]))
+  f.page.onTouchStart(touchEvent([first, second], [first, second]))
+  f.page.onTouchMove(touchEvent([[0, 34, 50], [1, 74, 50]]))
+  f.page.onTouchEnd(touchEvent([[0, 34, 50]], [[1, 74, 50]]))
+  f.page.onTouchMove(touchEvent([[0, 40, 49]]))
+  assert.deepEqual(f.events.filter(Array.isArray), [
+    ['zoom', 2], ['orbit', 0, -1], ['pan', 7, 6], ['zoom', 2], ['orbit', 3, -.5]
+  ])
+  f.page.onUnload()
+})
+
+test('opening the minimap stops the held joystick and returning restores avatar controls', async () => {
+  const f = fixture()
+  f.mount()
+  await flush()
+  assert.equal(f.page.data.minimapTop, 90)
+  assert.equal(f.page.data.minimap.plots[0].id, 'M01')
+  assert.deepEqual(f.page.data.mapPlayer, { x: 50, y: 50 })
+  const stick = { identifier: 1, clientX: 95, clientY: 350 }
+  f.page.onStickStart({ changedTouches: [stick] })
+  assert.deepEqual(f.inputs.at(-1), { x: 1, y: 0 })
+  f.setPlayerPosition(120, -96)
+  f.tick()
+  assert.deepEqual(f.page.data.mapPlayer, { x: 60, y: 40 })
+  f.page.toggleMenu()
+  f.page.openMap()
+  assert.equal(f.page.data.mapMode, true)
+  assert.equal(f.page.data.menuOpen, false)
+  assert.equal(f.page.data.stickActive, false)
+  assert.deepEqual(f.inputs.at(-1), { x: 0, y: 0 })
+  f.page.onStickStart({ changedTouches: [stick] })
+  assert.deepEqual(f.inputs.at(-1), { x: 0, y: 0 })
+  f.page.goBack()
+  assert.equal(f.events.at(-1), 'exitMap')
+  assert.equal(f.page.data.mapMode, false)
+  f.page.onStickStart({ changedTouches: [stick] })
+  assert.deepEqual(f.inputs.at(-1), { x: 1, y: 0 })
   f.page.onUnload()
 })
 
@@ -217,7 +267,7 @@ test('a finger on a toolbar button does not modify a canvas gesture', async () =
   f.page.onTouchMove(touchEvent([button, [0, 32, 58], [1, 72, 58]]))
   f.page.onTouchCancel(touchEvent([button, [1, 72, 58]], [[0, 32, 58]]))
   f.page.onTouchMove(touchEvent([button, [1, 75, 58]]))
-  assert.deepEqual(f.events.filter(Array.isArray), [['pan', 2, -2], ['zoom', 2], ['pan', 0, 0], ['pan', 3, 0]])
+  assert.deepEqual(f.events.filter(Array.isArray), [['orbit', 1, -1], ['zoom', 2], ['orbit', 1.5, 0]])
   f.page.onUnload()
 })
 
@@ -287,33 +337,31 @@ test('rotating to landscape stops a held joystick and the resized scene accepts 
   const camera = { identifier: 2, x: 220, y: 200 }
   f.page.onStickStart({ changedTouches: [stick] })
   f.page.onStickMove({ touches: [camera, moved] })
-  assert.deepEqual(f.inputs.at(-1), { x: 1, y: 0, running: false })
-  f.page.toggleRun()
-  assert.deepEqual(f.inputs.at(-1), { x: 1, y: 0, running: true })
+  assert.deepEqual(f.inputs.at(-1), { x: 1, y: 0 })
   f.page.onTouchStart({ touches: [moved, camera], changedTouches: [camera] })
   f.page.onTouchMove({ touches: [moved, { ...camera, x: 225 }] })
-  assert.deepEqual(f.events.filter(Array.isArray).at(-1), ['pan', 5, 0])
+  assert.deepEqual(f.events.filter(Array.isArray).at(-1), ['orbit', 2.5, 0])
   f.page.onStickEnd({ changedTouches: [camera] })
   assert.equal(f.page.data.stickActive, true)
 
   await f.page.onResize({ size: { windowWidth: 780, windowHeight: 390 } })
   assert.deepEqual(f.sizes.at(-1), { width: 780, height: 390, pixelRatio: 1.5 })
-  assert.deepEqual(f.inputs.at(-1), { x: 0, y: 0, running: false })
+  assert.deepEqual(f.inputs.at(-1), { x: 0, y: 0 })
   assert.equal(f.page.data.stickActive, false)
   assert.equal(f.page.data.stickX, 0)
   const inputsAfterRotation = f.inputs.length
-  const panBeforeNewTouch = f.events.filter(Array.isArray).length
+  const gesturesBeforeNewTouch = f.events.filter(Array.isArray).length
   f.page.onStickMove({ touches: [moved] })
   f.page.onTouchMove({ touches: [camera] })
   assert.equal(f.inputs.length, inputsAfterRotation)
-  assert.equal(f.events.filter(Array.isArray).length, panBeforeNewTouch)
+  assert.equal(f.events.filter(Array.isArray).length, gesturesBeforeNewTouch)
   f.page.onTouchStart({ touches: [camera], changedTouches: [camera] })
   f.page.onTouchMove({ touches: [{ ...camera, y: 211 }] })
-  assert.deepEqual(f.events.filter(Array.isArray).at(-1), ['pan', 0, 11])
+  assert.deepEqual(f.events.filter(Array.isArray).at(-1), ['orbit', 0, 5.5])
   f.page.onStickStart({ changedTouches: [moved] })
-  assert.deepEqual(f.inputs.at(-1), { x: 1, y: 0, running: true })
+  assert.deepEqual(f.inputs.at(-1), { x: 1, y: 0 })
   f.page.onStickCancel()
-  assert.deepEqual(f.inputs.at(-1), { x: 0, y: 0, running: false })
+  assert.deepEqual(f.inputs.at(-1), { x: 0, y: 0 })
   f.page.onUnload()
 })
 
@@ -365,8 +413,45 @@ test('the title-free page follows screen orientation and can leave when opened d
   assert.equal(pageConfig.navigationStyle, 'custom')
   assert.equal(pageConfig.pageOrientation, 'auto')
   assert.ok(!Object.hasOwn(pageConfig, 'navigationBarTitleText'))
+  assert.match(styles, /\.manor-top-controls\s*\{[^}]*left:\s*0;/)
+  assert.match(styles, /\.manor-controls\s*\{[^}]*right:\s*env\(safe-area-inset-right\);[^}]*bottom:\s*env\(safe-area-inset-bottom\);/)
+  assert.match(markup, /<slider class="manor-sensitivity-slider" min="25" max="150" step="5"/)
   assert.match(markup, /id="manor-stick"[^>]*catchtouchstart="onStickStart"[^>]*catchtouchcancel="onStickCancel"/)
   for (const [, handler] of markup.matchAll(/(?:bind|catch)\w+="(\w+)"/g)) assert.equal(typeof f.page[handler], 'function', handler)
   f.page.goBack()
   assert.deepEqual(f.events, ['back', 'redirect:/packagePlayground/pages/index'])
+})
+
+test('camera sensitivity defaults to half speed, applies immediately, and persists within bounds', async () => {
+  const f = fixture()
+  f.mount()
+  await flush()
+  assert.equal(f.page.data.cameraSensitivity, 50)
+  const first = [0, 40, 50]
+  f.page.onTouchStart(touchEvent([first], [first]))
+  f.page.onTouchMove(touchEvent([[0, 48, 60]]))
+  assert.deepEqual(f.events.filter(Array.isArray).at(-1), ['orbit', 4, 5])
+
+  f.page.onCameraSensitivityChanging({ detail: { value: 125 } })
+  const next = [1, 48, 60]
+  f.page.onTouchStart(touchEvent([next], [next]))
+  f.page.onTouchMove(touchEvent([[1, 56, 68]]))
+  assert.deepEqual(f.events.filter(Array.isArray).at(-1), ['orbit', 10, 10])
+
+  f.page.onCameraSensitivityChange({ detail: { value: 152 } })
+  assert.equal(f.page.data.cameraSensitivity, 150)
+  assert.equal(f.selections.at(-1), 150)
+  f.page.onUnload()
+
+  const restored = fixture({ savedSensitivity: f.getSavedSensitivity() })
+  restored.mount()
+  await flush()
+  assert.equal(restored.page.data.cameraSensitivity, 150)
+  restored.page.onUnload()
+
+  const preset = fixture({ savedSensitivity: 80 })
+  preset.mount()
+  await flush()
+  assert.equal(preset.page.data.cameraSensitivity, 80)
+  preset.page.onUnload()
 })

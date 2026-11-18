@@ -61,19 +61,19 @@ test('running advances the avatar and camera faster, and replacing it leaves onl
   const render = time => {
     for (let i = 1; i <= 30; i++) view.render(time + i / 30, 1 / 30)
   }
-  view.setPlayerInput(0, 1, false)
+  view.setPlayerInput(0, .5)
   render(0)
   const walked = anchor.position.clone()
   assert.ok(walked.distanceTo(spawn) > 1)
   assert.ok(Math.abs(boy.body.rotation.x - .3) < 1e-6)
-  assert.ok(frames.at(-1).position.distanceTo(cameraStart) > 1)
+  assert.ok(frames.at(-1).position.distanceTo(cameraStart) > .8 * walked.distanceTo(spawn))
 
-  view.setPlayerInput(0, 1, true)
+  view.setPlayerInput(0, 1)
   render(1)
   const ran = anchor.position.clone()
   assert.ok(ran.distanceTo(walked) > 2 * walked.distanceTo(spawn))
   assert.ok(Math.abs(boy.body.rotation.x - .7) < 1e-6)
-  view.setPlayerInput(0, 0, false)
+  view.setPlayerInput(0, 0)
   render(2)
   assert.ok(ran.equals(anchor.position))
   assert.ok(Math.abs(boy.body.rotation.x - .01) < 1e-6)
@@ -120,13 +120,13 @@ test('villa focus fits the model in portrait and pan/orbit/zoom remain bounded',
     const corner = new THREE.Vector3(x, y, z).project(focus)
     assert.ok(Math.abs(corner.x) < 1 && Math.abs(corner.y) < 1)
   }
-  view.resetView()
+  view.enterMapView()
   view.render(1)
   const initial = frames.at(-1)
   view.zoom(1.2)
   view.render(1)
   assert.ok(frames.at(-1).position.y < initial.position.y)
-  view.orbit(200, -1e6)
+  view.orbit(200, 0)
   view.pan(1e6, -1e6)
   view.zoom(1e-6)
   view.render(1)
@@ -139,10 +139,11 @@ test('villa focus fits the model in portrait and pan/orbit/zoom remain bounded',
   view.dispose()
 })
 
+
 test('the full map stays in view when rotating between portrait and landscape', () => {
   const { view, frames } = createFixture()
   view.showLandscape(new THREE.Group(), layout)
-  view.resetView()
+  view.enterMapView()
 
   const edge = new THREE.Vector3()
   for (const [width, height] of [[390, 844], [852, 393], [320, 740]]) {
@@ -161,7 +162,7 @@ test('the full map stays in view when rotating between portrait and landscape', 
   view.dispose()
 })
 
-test('the avatar remains on screen after panning and zooming, and switching avatars preserves this view', () => {
+test('following the avatar ignores pan, stays framed when zooming and preserves the view across character changes', () => {
   const { view, frames } = createFixture()
   view.showLandscape(new THREE.Group(), layout)
   const boy = makeCharacter(), girl = makeCharacter()
@@ -173,14 +174,14 @@ test('the avatar remains on screen after panning and zooming, and switching avat
 
   view.pan(10000, 0)
   view.render(0)
-  assert.ok(avatarChest.clone().project(frames.at(-1)).x > 0.25, 'panning offsets the avatar')
+  assert.ok(frames.at(-1).position.equals(initialCamera.position))
 
   view.zoom(1e6)
   view.resize(852, 393)
   view.render(0)
   const zoomedCamera = frames.at(-1)
   assert.ok(zoomedCamera.position.distanceTo(avatar) < initialCamera.position.distanceTo(avatar) / 2)
-  assert.ok(avatarChest.clone().project(zoomedCamera).x > 0.02, 'the offset survives zooming and rotation')
+  assert.ok(Math.abs(avatarChest.clone().project(zoomedCamera).x) < 1e-6)
   const feet = avatar.clone().project(zoomedCamera)
   const head = avatar.clone().add(new THREE.Vector3(0, 1.6, 0)).project(zoomedCamera)
   for (const point of [feet, head]) {
@@ -198,32 +199,60 @@ test('the avatar remains on screen after panning and zooming, and switching avat
   view.dispose()
 })
 
-test('the entire avatar stays in frame during close vertical panning and orbiting on a wide screen', () => {
+test('both camera modes can look up without moving the camera underground', () => {
   const { view, frames } = createFixture()
   view.showLandscape(new THREE.Group(), layout)
   const { model } = makeCharacter()
   view.showCharacter(model)
   view.resize(852, 393)
 
-  const corner = new THREE.Vector3()
-  const checkFrame = () => {
+  const direction = new THREE.Vector3()
+  view.zoom(1e6)
+  for (const mapView of [false, true]) {
+    if (mapView) {
+      view.enterMapView()
+      view.zoom(1e6)
+    }
+    view.orbit(0, -320)
     view.render(0)
     const camera = frames.at(-1)
-    const { min, max } = new THREE.Box3().setFromObject(model)
-    for (const x of [min.x, max.x]) for (const y of [min.y, max.y]) for (const z of [min.z, max.z]) {
-      corner.set(x, y, z).project(camera)
-      assert.ok(Math.abs(corner.x) < 1 && Math.abs(corner.y) < 1, 'the avatar is clipped')
+    assert.ok(camera.getWorldDirection(direction).y > 0.4, 'the lens can tilt up toward the sky')
+    assert.ok(camera.position.y > layout.groundLevel, 'camera stays above ground')
+    if (mapView) {
+      view.pan(0, 30)
+      view.render(0)
+      const moved = frames.at(-1)
+      assert.ok(moved.position.distanceTo(camera.position) > 1)
+      assert.ok(moved.getWorldDirection(direction).y > 0.4, 'map panning preserves the tilt')
     }
   }
-  for (const dy of [-10000, 10000]) {
-    view.focusCharacter()
-    view.zoom(1e6)
-    view.pan(0, dy)
-    checkFrame()
-    view.orbit(350, -200)
-    checkFrame()
-    view.orbit(-350, 200)
-  }
+  view.dispose()
+})
+
+test('opening the map stops movement and late character loading does not move its camera', () => {
+  const { view, frames } = createFixture()
+  view.showLandscape(new THREE.Group(), layout)
+  view.enterMapView()
+  view.render(0)
+  const overview = frames.at(-1)
+  const character = makeCharacter()
+  view.showCharacter(character.model)
+  view.render(0)
+  assert.ok(frames.at(-1).position.equals(overview.position))
+
+  view.exitMapView()
+  view.render(0)
+  assert.ok(!frames.at(-1).position.equals(overview.position))
+  view.setPlayerInput(0, 1)
+  view.render(.1, .1)
+  const position = character.model.parent.position.clone()
+  view.enterMapView()
+  view.setPlayerInput(0, 1)
+  view.render(.2, .1)
+  assert.ok(character.model.parent.position.equals(position), 'map preview leaves the character stationary')
+  view.exitMapView()
+  view.render(.3, .1)
+  assert.ok(character.model.parent.position.equals(position), 'a previous joystick drag does not resume movement')
   view.dispose()
 })
 

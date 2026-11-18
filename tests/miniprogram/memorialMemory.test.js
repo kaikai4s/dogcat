@@ -73,16 +73,22 @@ test('visitors cannot enter editor or save; busy uploads block save and media re
 test('extensionless native video paths upload and remain selectable in the editor', async () => {
   const { page, calls, toasts } = fixture(true, {
     wx: {
-      chooseMedia: o => o.success({ tempFiles: [{ tempFilePath: 'wxfile://tmp_native_video', size: 123 }] }),
+      chooseMedia(o) {
+        if (o.maxDuration !== undefined && (o.maxDuration < 3 || o.maxDuration > 60)) {
+          o.fail({ errMsg: 'chooseMedia:fail error maxDuration' })
+          return
+        }
+        o.success({ tempFiles: [{ tempFilePath: 'wxfile://tmp_native_video', size: 123 }] })
+      },
       cloud: { uploadFile: o => { o.success({ fileID: 'cloud://env/video' }); return {} } }
     },
     api: async action => action === 'prepareMedia' ? { cloudPath: 'video.mp4', uploadId: 'new-video', maxBytes: 1024 } : { uploadId: 'new-video', kind: 'video' }
   })
   await page.load(); page.edit()
   await page.addMedia({ currentTarget: { dataset: { kind: 'video' } } })
+  assert.equal(toasts.length, 0, toasts.join('\n'))
   assert.equal(calls.find(c => c.action === 'prepareMedia').data.extension, 'mp4')
   assert.equal(page.data.draft.videos.at(-1).uploadId, 'new-video')
-  assert.equal(toasts.length, 0)
 })
 test('leaving during image compression prevents new upload tickets or files', async () => {
   let release, started = false

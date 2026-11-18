@@ -2,15 +2,24 @@ const { getActiveEnvId } = require('../../envList')
 const { createCloudAssets, hasManorAssets } = require('../utils/cloud-assets')
 const { THREE, createRenderer, loadGlb, disposeModel } = require('../utils/model-runtime')
 const { createManorScene } = require('../utils/manor-scene')
+const { createManorMinimap, projectManorMapPoint } = require('../utils/manor-minimap')
 
 const FRAME_MS = 1000 / 30
 const MAX_DRAW_PIXELS = 900000
 const CHARACTER_KEY = 'dogcat-manor-3d-character'
+const MINIMAP_UPDATE_MS = 125
+const CAMERA_SENSITIVITY_KEY = 'manor3d-camera-sensitivity'
+const DEFAULT_CAMERA_SENSITIVITY = 50
+
+function normalizeCameraSensitivity(value) {
+  return Number.isFinite(value) ? Math.max(25, Math.min(150, Math.round(value / 5) * 5))
+    : DEFAULT_CAMERA_SENSITIVITY
+}
 
 function touchPoint(touch) {
   const x = touch.x ?? touch.clientX ?? touch.pageX
   const y = touch.y ?? touch.clientY ?? touch.pageY
-  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y, id: touch.identifier } : null
 }
 
 function sample(touches) {
@@ -22,10 +31,26 @@ function sample(touches) {
   if (!second) return null
   return {
     count: 2,
+    id: first.id,
+    secondId: second.id,
+    first,
+    second,
     x: (first.x + second.x) / 2,
     y: (first.y + second.y) / 2,
     span: Math.hypot(first.x - second.x, first.y - second.y)
   }
+}
+
+function mapGesture(previous, current) {
+  const firstX = current.first.x - previous.first.x, firstY = current.first.y - previous.first.y
+  const secondX = current.second.x - previous.second.x, secondY = current.second.y - previous.second.y
+  const firstTravel = Math.hypot(firstX, firstY), secondTravel = Math.hypot(secondX, secondY)
+  const spanChange = Math.abs(current.span - previous.span)
+  const centerTravel = Math.hypot(current.x - previous.x, current.y - previous.y)
+  const sameDirection = firstX * secondX + firstY * secondY > .5 * firstTravel * secondTravel
+  if (firstTravel >= 2 && secondTravel >= 2 && sameDirection && centerTravel >= Math.max(4, spanChange)) return 'pan'
+  if (spanChange >= 8) return 'zoom'
+  return null
 }
 
 function readLayout(text) {
@@ -57,14 +82,19 @@ Page({
     characterStatus: 'pending',
     characterProgress: -1,
     characterError: '',
-    orbitMode: false,
-    running: false,
+    mapMode: false,
+    minimap: null,
+    mapPlayer: null,
+    minimapTop: 0,
+    menuOpen: false,
+    cameraSensitivity: DEFAULT_CAMERA_SENSITIVITY,
     stickX: 0,
     stickY: 0,
     stickActive: false
   },
 
   onLoad() {
+    this._positionMinimap()
     this._envId = getActiveEnvId()
     if (!hasManorAssets(this._envId)) {
       this.setData({ status: 'unavailable', mountCanvas: false })
@@ -72,6 +102,7 @@ Page({
     }
     try {
       if (wx.getStorageSync(CHARACTER_KEY) === 'girl') this.setData({ characterType: 'girl' })
+      this.setData({ cameraSensitivity: normalizeCameraSensitivity(wx.getStorageSync(CAMERA_SENSITIVITY_KEY)) })
     } catch (_) {}
   },
 
@@ -93,6 +124,7 @@ Page({
   onHide() {
     this._shown = false
     this._resizeToken = null
+    if (!this._closed) this.closeMenu()
     this._resetCanvasTouches()
     this._stopStick()
     this._stopFrames()
@@ -135,7 +167,10 @@ Page({
       const view = windowWidth > 0 && windowHeight > 0
         ? { width: windowWidth, height: windowHeight } : await this._queryCanvas()
       if (this._shown && scene === this._scene && resizeToken === this._resizeToken &&
-          view?.width > 0 && view.height > 0) this._resize(view)
+          view?.width > 0 && view.height > 0) {
+        this._resize(view)
+        this._positionMinimap()
+      }
     } catch (error) {
       if (this._shown && scene === this._scene && resizeToken === this._resizeToken) this._failRenderer(error)
     }
@@ -153,6 +188,7 @@ Page({
 
   _releaseScene() {
     this._resetCanvasTouches()
+    this._nextMinimapUpdate = 0
     this._scene?.dispose()
     this._renderer?.dispose()
     this._scene = null
@@ -234,7 +270,10 @@ Page({
         this.setData({ stage: '正在下载地形（约 56 MB）' })
         const attached = await this._attach(session, 'manor', 'progress',
           () => this.setData({ stage: '正在绘制草坪、树林和溪流', progress: -1 }),
-          model => this._scene.showLandscape(model, layout))
+          model => {
+            this._scene.showLandscape(model, layout)
+            this.setData({ minimap: createManorMinimap(layout, model), mapPlayer: null })
+          })
         if (!attached || !this._isCurrent(session)) return
         try { this._draw() } catch (error) {
           this._failRenderer(error)
@@ -254,6 +293,7 @@ Page({
       if (attached && this._isCurrent(session)) {
         this._hasVilla = true
         this.setData({ villaStatus: 'ready' })
+        this._updateMinimapPlayer()
       }
     } catch (error) {
       if (!this._isCurrent(session)) return
@@ -283,6 +323,7 @@ Page({
         model => this._scene.showCharacter(model))
       if (attached && this._isCurrent(session)) {
         this.setData({ activeCharacter: type, characterStatus: 'ready' })
+        this._updateMinimapPlayer()
         try { wx.setStorageSync(CHARACTER_KEY, type) } catch (_) {}
       }
     } catch (error) {
@@ -297,6 +338,25 @@ Page({
   _draw(dt = 0) {
     if (this._renderer.getContext().isContextLost?.()) throw new Error('3D 渲染已中断')
     this._scene.render(this._timeSeconds || 0, dt)
+    if (this._stick) {
+      const now = Date.now()
+      if (now >= (this._nextMinimapUpdate || 0)) {
+        this._nextMinimapUpdate = now + MINIMAP_UPDATE_MS
+        this._updateMinimapPlayer()
+      }
+    }
+  },
+
+  _positionMinimap() {
+    const bottom = wx.getMenuButtonBoundingClientRect?.()?.bottom
+    const minimapTop = Number.isFinite(bottom) && bottom > 0 ? Math.ceil(bottom) + 8 : 0
+    if (this.data.minimapTop !== minimapTop) this.setData({ minimapTop })
+  },
+
+  _updateMinimapPlayer() {
+    const position = this._scene?.getMapPlayerPosition()
+    const mapPlayer = position ? projectManorMapPoint(this.data.minimap, position.x, position.z) : null
+    if (mapPlayer?.x !== this.data.mapPlayer?.x || mapPlayer?.y !== this.data.mapPlayer?.y) this.setData({ mapPlayer })
   },
 
   _failRenderer(error) {
@@ -306,7 +366,8 @@ Page({
     this._stopLoad()
     this._stopLoad('_characterSession')
     this._releaseScene()
-    this.setData({ status: 'error', activeCharacter: '', mountCanvas: false, error: '无法显示 3D 庄园，请重试或返回 2D 庄园' })
+    this.setData({ status: 'error', activeCharacter: '', mountCanvas: false, mapMode: false, menuOpen: false,
+      error: '无法显示 3D 庄园，请重试或返回 2D 庄园' })
   },
 
   _startFrames() {
@@ -347,7 +408,7 @@ Page({
     if (this.data.status !== 'error' || !this._shown) return
     this.setData({ status: 'loading', mountCanvas: true, stage: '正在准备 3D 庄园', error: '', progress: -1,
       villaStatus: 'pending', villaProgress: -1, villaError: '', activeCharacter: '', characterStatus: 'pending',
-      characterProgress: -1, characterError: '', orbitMode: false, running: false }, () => this._beginLoad())
+      characterProgress: -1, characterError: '', mapMode: false, menuOpen: false, minimap: null, mapPlayer: null }, () => this._beginLoad())
   },
 
   retryVilla() {
@@ -357,6 +418,7 @@ Page({
   },
 
   selectCharacter(event) {
+    this.closeMenu()
     const type = event.currentTarget.dataset.character
     if (!this._hasLandscape || !this._shown || (type !== 'boy' && type !== 'girl') || type === this.data.characterType) return
     this._stopLoad('_characterSession')
@@ -374,47 +436,67 @@ Page({
   _resetCanvasTouches() {
     this._canvasTouchIds = null
     this._gesture = null
+    this._mapGesture = null
   },
 
   _canvasTouches(event) {
     const ids = this._canvasTouchIds
-    return ids?.size ? event.touches?.filter(touch => ids.has(touch.identifier)) : null
+    return ids?.size ? event.touches?.filter(touch => ids.has(touch.identifier))
+      .sort((a, b) => a.identifier - b.identifier) : null
   },
 
   onTouchStart(event) {
     if (!this._shown || !this._hasLandscape) return
+    this.closeMenu()
     const ids = this._canvasTouchIds ??= new Set()
     for (const touch of event.changedTouches || []) {
       if (touch.identifier != null) ids.add(touch.identifier)
     }
     this._gesture = sample(this._canvasTouches(event))
+    this._mapGesture = null
   },
 
   onTouchMove(event) {
     const previous = this._gesture
-    const current = this._gesture = sample(this._canvasTouches(event))
-    if (!this._hasLandscape || !previous || !current || previous.count !== current.count) return
+    const current = sample(this._canvasTouches(event))
+    if (!this._hasLandscape) return
+    if (!previous || !current || previous.id !== current.id ||
+        previous.count !== current.count || previous.secondId !== current.secondId) {
+      this._gesture = current
+      this._mapGesture = null
+      return
+    }
     const dx = current.x - previous.x, dy = current.y - previous.y
-    if (current.count === 2) {
-      if (current.span > 5 && previous.span > 5) this._scene.zoom(current.span / previous.span)
-      this._scene.pan(dx, dy, true)
-    } else if (this.data.orbitMode) this._scene.orbit(dx, dy)
-    else this._scene.pan(dx, dy)
+    if (current.count === 2 && this.data.mapMode && !this._mapGesture) {
+      this._mapGesture = mapGesture(previous, current)
+      if (!this._mapGesture) return
+    }
+    this._gesture = current
+    if (current.count === 1) {
+      const sensitivity = this.data.cameraSensitivity / 100
+      this._scene.orbit(dx * sensitivity, dy * sensitivity)
+    }
+    else if (this.data.mapMode && this._mapGesture === 'pan') this._scene.pan(dx, dy)
+    else if (current.span > 5 && previous.span > 5 && current.span !== previous.span) {
+      this._scene.zoom(current.span / previous.span)
+    }
   },
 
   onTouchEnd(event) {
     if (!event?.touches?.length) return this._resetCanvasTouches()
     for (const touch of event.changedTouches || []) this._canvasTouchIds?.delete(touch.identifier)
     this._gesture = sample(this._canvasTouches(event))
+    this._mapGesture = null
   },
 
   onTouchCancel(event) { this.onTouchEnd(event) },
 
   onStickStart(event) {
-    if (this._stick || !this._shown || !this.data.activeCharacter) return
+    if (this._stick || !this._shown || !this.data.activeCharacter || this.data.mapMode) return
     const touch = event.changedTouches?.[0] || event.touches?.[0]
     if (!touch) return
-    const stick = this._stick = { id: touch.identifier, touch, x: 0, y: 0 }
+    this.closeMenu()
+    const stick = this._stick = { id: touch.identifier, touch }
     wx.createSelectorQuery().in(this).select('#manor-stick').boundingClientRect().exec(rows => {
       if (this._stick !== stick) return
       const rect = rows?.[0]
@@ -440,11 +522,10 @@ Page({
     if (!Number.isFinite(x) || !Number.isFinite(y)) return
     const radius = Math.min(rect.width, rect.height) * 0.30
     const divisor = Math.max(radius, Math.hypot(x, y))
-    stick.x = x / divisor
-    stick.y = y / divisor
-    this._scene.setPlayerInput(stick.x, stick.y, this.data.running)
-    const stickX = Math.round(stick.x * radius)
-    const stickY = Math.round(stick.y * radius)
+    const inputX = x / divisor, inputY = y / divisor
+    this._scene.setPlayerInput(inputX, inputY)
+    const stickX = Math.round(inputX * radius)
+    const stickY = Math.round(inputY * radius)
     if (!this.data.stickActive || this.data.stickX !== stickX || this.data.stickY !== stickY) {
       this.setData({ stickX, stickY, stickActive: true })
     }
@@ -461,20 +542,56 @@ Page({
   _stopStick() {
     if (!this._stick && !this.data.stickActive) return
     this._stick = null
-    this._scene?.setPlayerInput(0, 0, false)
-    if (!this._closed) this.setData({ stickX: 0, stickY: 0, stickActive: false })
+    this._scene?.setPlayerInput(0, 0)
+    if (!this._closed) {
+      this.setData({ stickX: 0, stickY: 0, stickActive: false })
+      this._updateMinimapPlayer()
+    }
   },
 
-  toggleRun() {
-    if (!this._shown || !this.data.activeCharacter) return
-    const running = !this.data.running
-    this.setData({ running })
-    if (this._stick?.rect) this._scene.setPlayerInput(this._stick.x, this._stick.y, running)
+  toggleMenu() { this.setData({ menuOpen: !this.data.menuOpen }) },
+  closeMenu() { if (this.data.menuOpen) this.setData({ menuOpen: false }) },
+
+  onCameraSensitivityChanging(event) {
+    const cameraSensitivity = normalizeCameraSensitivity(Number(event.detail.value))
+    if (cameraSensitivity !== this.data.cameraSensitivity) this.setData({ cameraSensitivity })
   },
 
-  toggleOrbit() { this._gesture = null; this.setData({ orbitMode: !this.data.orbitMode }) },
-  resetView() { if (this._hasLandscape) { this._stopStick(); this._scene.resetView() } },
-  focusVilla() { if (this._hasVilla) { this._stopStick(); this._scene.focusVilla() } },
-  focusCharacter() { if (this.data.activeCharacter) this._scene.focusCharacter() },
-  goBack() { wx.navigateBack({ fail: () => wx.redirectTo({ url: '/packagePlayground/pages/index' }) }) }
+  onCameraSensitivityChange(event) {
+    const cameraSensitivity = normalizeCameraSensitivity(Number(event.detail.value))
+    this.setData({ cameraSensitivity })
+    try { wx.setStorageSync(CAMERA_SENSITIVITY_KEY, cameraSensitivity) } catch (_) {}
+  },
+
+  openMap() {
+    if (!this._shown || !this._hasLandscape || this.data.mapMode) return
+    this._stopStick()
+    this._resetCanvasTouches()
+    this._scene.enterMapView()
+    this.setData({ mapMode: true, menuOpen: false })
+  },
+
+  closeMap() {
+    if (!this._hasLandscape || !this.data.mapMode) return
+    this._resetCanvasTouches()
+    this._scene.exitMapView()
+    this.setData({ mapMode: false })
+    this._updateMinimapPlayer()
+  },
+
+  focusVilla() {
+    if (!this._shown || !this._hasVilla) return
+    this.openMap()
+    this._scene.focusVilla()
+  },
+
+  focusCharacter() {
+    this.closeMenu()
+    if (this.data.activeCharacter) this._scene.focusCharacter()
+  },
+
+  goBack() {
+    if (this.data.mapMode) return this.closeMap()
+    wx.navigateBack({ fail: () => wx.redirectTo({ url: '/packagePlayground/pages/index' }) })
+  }
 })

@@ -1,0 +1,156 @@
+.manor-entry-page {
+  min-height: 100vh;
+  padding: 0 28rpx calc(40rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  background: linear-gradient(180deg, #fff8ec 0%, #f6f8ed 100%);
+  color: #334b39;
+}
+
+.manor-entry-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 92rpx;
+  padding-top: env(safe-area-inset-top);
+}
+
+.manor-entry-back, .manor-entry-nav-spacer {
+  width: 72rpx;
+  height: 72rpx;
+}
+
+.manor-entry-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border-radius: 50%;
+  background: #fff;
+  color: #476449;
+  box-shadow: 0 4rpx 16rpx rgba(44, 72, 49, .08);
+}
+
+.manor-entry-back::after, .manor-entry-primary::after, .manor-entry-solo-button::after { border: 0; }
+.manor-entry-back .remix-icon { font-size: 34rpx; }
+.manor-entry-nav-title { font-size: 28rpx; font-weight: 700; color: #405940; }
+
+.manor-entry-content {
+  padding: 42rpx 8rpx 0;
+}
+
+.manor-entry-kicker {
+  color: #9a7850;
+  font-size: 19rpx;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.manor-entry-title {
+  margin-top: 12rpx;
+  color: #304b37;
+  font-size: 48rpx;
+  font-weight: 800;
+  line-height: 1.22;
+}
+
+.manor-entry-description {
+  max-width: 620rpx;
+  margin-top: 16rpx;
+  color: #73806d;
+  font-size: 25rpx;
+  line-height: 1.65;
+}
+
+.manor-entry-section-title {
+  margin-top: 78rpx;
+  color: #3e5842;
+  font-size: 30rpx;
+  font-weight: 750;
+}
+
+.manor-entry-section-copy {
+  margin-top: 7rpx;
+  color: #82907a;
+  font-size: 23rpx;
+  line-height: 1.5;
+}
+
+.manor-entry-primary {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 17rpx;
+  margin-top: 24rpx;
+  padding: 0 24rpx;
+  border-radius: 18rpx;
+  background: #4f7653;
+  color: #fffdf3;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.manor-entry-primary .remix-icon:first-child { font-size: 32rpx; }
+.manor-entry-primary .remix-icon:last-child { margin-left: auto; font-size: 30rpx; }
+
+.manor-entry-divider {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin: 39rpx 12rpx 27rpx;
+  color: #9aa292;
+  font-size: 21rpx;
+}
+
+.manor-entry-divider view { flex: 1; height: 1rpx; background: #dfe5d8; }
+
+.manor-entry-solo-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24rpx;
+  padding: 26rpx 22rpx;
+  border: 1rpx solid #e2e7dc;
+  border-radius: 14rpx;
+  background: rgba(255, 255, 255, .76);
+}
+
+.manor-entry-solo-copy { min-width: 0; }
+.manor-entry-solo-title { color: #526451; font-size: 26rpx; font-weight: 700; }
+.manor-entry-solo-description { margin-top: 6rpx; color: #879180; font-size: 21rpx; line-height: 1.45; }
+
+.manor-entry-solo-button {
+  flex: 0 0 68rpx;
+  width: 68rpx;
+  height: 68rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border-radius: 50%;
+  background: #edf2e8;
+  color: #4f7653;
+}
+
+.manor-entry-solo-button .remix-icon { font-size: 31rpx; }
+
+.manor-entry-error {
+  margin-top: 22rpx;
+  padding: 16rpx 18rpx;
+  border-radius: 10rpx;
+  background: #fbede7;
+  color: #9c4936;
+  font-size: 23rpx;
+  line-height: 1.55;
+}
+
+@media (max-width: 350px) {
+  .manor-entry-page { padding-right: 22rpx; padding-left: 22rpx; }
+  .manor-entry-content { padding-right: 2rpx; padding-left: 2rpx; }
+  .manor-entry-title { font-size: 43rpx; }
+  .manor-entry-primary { gap: 11rpx; font-size: 25rpx; }
+}

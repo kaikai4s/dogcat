@@ -1,13 +1,13 @@
 page { width: 100%; height: 100%; overflow: hidden; background: #e1eadb; }
 .manor-screen, .manor-shade { top: 0; right: 0; bottom: 0; left: 0; }
 .manor-screen { position: fixed; isolation: isolate; color: #17352e; }
-.manor-action, .manor-back, .manor-link, .manor-tool, .manor-joystick, .manor-run,
-.manor-character-option, .manor-control-hint, .manor-notice-text {
+.manor-action, .manor-link, .manor-hud-button, .manor-hud-face text,
+.manor-joystick, .manor-map-hint, .manor-minimap text, .manor-notice-text {
   -webkit-user-select: none;
   user-select: none;
 }
 .manor-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-.manor-shade, .manor-notices, .manor-controls, .manor-walk-controls { z-index: 1; }
+.manor-shade, .manor-notices, .manor-controls, .manor-joystick, .manor-map-bar { z-index: 1; }
 .manor-shade {
   position: absolute;
   display: flex;
@@ -34,7 +34,7 @@ page { width: 100%; height: 100%; overflow: hidden; background: #e1eadb; }
 .manor-percent { text-align: right; font-size: 12px; color: #405b51; }
 .manor-panel-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 5px; }
 .manor-panel-actions .manor-action { flex: 1 0 auto; }
-.manor-action, .manor-back, .manor-link, .manor-tool, .manor-run, .manor-character-option {
+.manor-action, .manor-link, .manor-hud-button, .manor-menu-action, .manor-character-option {
   box-sizing: border-box;
   margin: 0;
   display: inline-flex;
@@ -47,48 +47,26 @@ page { width: 100%; height: 100%; overflow: hidden; background: #e1eadb; }
   font-weight: 700;
   white-space: nowrap;
 }
-.manor-action, .manor-tool { color: #244a3e; background: #e9f0e6; border-radius: 9px; }
-.manor-primary, .manor-tool-active { color: #fff; background: #2f6a57; }
+.manor-action { color: #244a3e; background: #e9f0e6; border-radius: 9px; }
+.manor-primary { color: #fff; background: #2f6a57; }
 .manor-link { color: #236451; background: transparent; padding: 0 7px; flex-shrink: 0; }
-.manor-action::after, .manor-back::after, .manor-link::after, .manor-tool::after,
-.manor-run::after, .manor-character-option::after { border: 0; }
-.manor-action.button-hover, .manor-back.button-hover, .manor-link.button-hover,
-.manor-tool.button-hover, .manor-run.button-hover, .manor-character-option.button-hover { opacity: .72; }
+.manor-action::after, .manor-link::after, .manor-hud-button::after,
+.manor-menu-action::after, .manor-character-option::after, .manor-minimap::after { border: 0; }
+.manor-action.button-hover, .manor-link.button-hover, .manor-hud-button.button-hover,
+.manor-menu-action.button-hover, .manor-character-option.button-hover, .manor-minimap.button-hover { opacity: .7; }
 .manor-top-controls {
   position: absolute;
   z-index: 2;
   top: 46px;
   top: max(46px, calc(env(safe-area-inset-top) + 12px));
-  left: 12px;
-  left: calc(12px + env(safe-area-inset-left));
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  left: 0;
 }
-.manor-back, .manor-character-select {
-  border-radius: 22px;
-  background: rgba(250, 252, 245, .95);
-  box-shadow: 0 3px 12px rgba(23, 53, 46, .15);
-}
-.manor-back {
-  gap: 6px;
-  color: #244a3e;
-}
-.manor-character-select { display: flex; padding: 2px; }
-.manor-character-option {
-  min-width: 44px;
-  border-radius: 20px;
-  padding: 0 11px;
-  background: transparent;
-  color: #244a3e;
-}
-.manor-character-selected { background: #2f6a57; color: #fff; }
 .manor-back-arrow {
   width: 7px;
   height: 7px;
   border-bottom: 2px solid currentColor;
   border-left: 2px solid currentColor;
-  transform: rotate(45deg);
+  transform: translateX(2px) rotate(45deg);
 }
 .manor-notices {
   position: absolute;
@@ -103,6 +81,10 @@ page { width: 100%; height: 100%; overflow: hidden; background: #e1eadb; }
   flex-direction: column;
   gap: 5px;
   pointer-events: none;
+}
+.manor-notices-with-map {
+  right: 102px;
+  right: calc(102px + env(safe-area-inset-right));
 }
 .manor-notice {
   box-sizing: border-box;
@@ -120,27 +102,19 @@ page { width: 100%; height: 100%; overflow: hidden; background: #e1eadb; }
 }
 .manor-notice-text { padding: 8px 0; }
 .manor-notice .manor-link { pointer-events: auto; }
-.manor-walk-controls {
-  position: absolute;
-  left: 12px;
-  left: calc(12px + env(safe-area-inset-left));
-  bottom: 12px;
-  bottom: calc(12px + env(safe-area-inset-bottom));
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  pointer-events: none;
-}
 .manor-joystick {
   box-sizing: border-box;
-  position: relative;
-  width: 108px;
-  height: 108px;
-  border: 1px solid rgba(255, 255, 255, .7);
+  position: absolute;
+  left: 28px;
+  left: calc(28px + env(safe-area-inset-left));
+  bottom: 32px;
+  bottom: calc(32px + env(safe-area-inset-bottom));
+  width: 88px;
+  height: 88px;
+  border: 1px solid rgba(255, 255, 255, .62);
   border-radius: 50%;
-  background: rgba(16, 53, 42, .49);
-  box-shadow: 0 3px 14px rgba(21, 50, 41, .24), inset 0 0 0 5px rgba(236, 253, 227, .12);
+  background: rgba(16, 53, 42, .38);
+  box-shadow: 0 2px 8px rgba(21, 50, 41, .18), inset 0 0 0 4px rgba(236, 253, 227, .11);
   touch-action: none;
   pointer-events: auto;
 }
@@ -152,9 +126,9 @@ page { width: 100%; height: 100%; overflow: hidden; background: #e1eadb; }
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 40px;
-  height: 40px;
-  margin: -20px 0 0 -20px;
+  width: 30px;
+  height: 30px;
+  margin: -15px 0 0 -15px;
   border: 2px solid #f8fff6;
   border-radius: 50%;
   background: linear-gradient(140deg, #f3f8ea, #bcd5c4);
@@ -170,53 +144,171 @@ page { width: 100%; height: 100%; overflow: hidden; background: #e1eadb; }
   border-left: 2px solid rgba(246, 255, 243, .8);
   pointer-events: none;
 }
-.manor-stick-north { top: 13px; left: calc(50% - 3px); transform: rotate(45deg); }
-.manor-stick-south { bottom: 13px; left: calc(50% - 3px); transform: rotate(-135deg); }
-.manor-stick-west { top: calc(50% - 3px); left: 13px; transform: rotate(-45deg); }
-.manor-stick-east { top: calc(50% - 3px); right: 13px; transform: rotate(135deg); }
-.manor-run {
-  border-radius: 22px;
-  padding: 0 12px;
-  min-width: 78px;
-  background: rgba(250, 252, 245, .95);
-  box-shadow: 0 3px 12px rgba(23, 53, 46, .15);
-  color: #244a3e;
+.manor-stick-north { top: 11px; left: calc(50% - 3px); transform: rotate(45deg); }
+.manor-stick-south { bottom: 11px; left: calc(50% - 3px); transform: rotate(-135deg); }
+.manor-stick-west { top: calc(50% - 3px); left: 11px; transform: rotate(-45deg); }
+.manor-stick-east { top: calc(50% - 3px); right: 11px; transform: rotate(135deg); }
+.manor-hud-button {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
   pointer-events: auto;
 }
-.manor-run-active { background: #2f6a57; color: #fff; }
-.manor-controls {
+.manor-hud-face {
+  box-sizing: border-box;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(252, 255, 248, .72);
+  border-radius: 50%;
+  background: rgba(248, 251, 242, .91);
+  color: #244a3e;
+  font-size: 11px;
+  box-shadow: 0 2px 8px rgba(23, 53, 46, .18);
+}
+.manor-hud-active .manor-hud-face { background: #28624f; color: #fff; }
+.manor-map-back { width: 100px; border-radius: 22px; }
+.manor-map-back .manor-hud-face { width: 92px; gap: 7px; border-radius: 17px; font-size: 12px; }
+.manor-map-bar {
   position: absolute;
-  right: 12px;
-  right: calc(12px + env(safe-area-inset-right));
+  left: 50%;
   bottom: 12px;
   bottom: calc(12px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  max-width: calc(100% - 24px);
+  pointer-events: none;
+}
+.manor-map-hint {
+  display: block;
+  padding: 7px 10px;
+  border-radius: 14px;
+  background: rgba(21, 52, 43, .78);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.manor-minimap {
   box-sizing: border-box;
+  position: absolute;
+  z-index: 2;
+  top: 92px;
+  top: max(92px, calc(env(safe-area-inset-top) + 48px));
+  right: 12px;
+  right: calc(12px + env(safe-area-inset-right));
+  width: 82px;
+  height: 66px;
+  display: block;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 2px solid rgba(249, 252, 244, .9);
+  border-radius: 12px;
+  background: #d6e7bd;
+  box-shadow: 0 3px 12px rgba(23, 53, 46, .24);
+}
+.manor-minimap-land, .manor-minimap-river, .manor-minimap-label, .manor-minimap-mark { position: absolute; }
+.manor-minimap-land, .manor-minimap-river { top: 0; right: 0; bottom: 0; left: 0; }
+.manor-minimap-river { background: #76b8bd; }
+.manor-minimap-mark { transform: translate(-50%, -50%); }
+.manor-minimap-plot { min-width: 2px; min-height: 2px; background: #a2bd86; }
+.manor-minimap-tree { min-width: 2px; min-height: 2px; border-radius: 50%; background: #789e6b; }
+.manor-minimap-bridge { min-width: 2px; min-height: 2px; background: #f8e7bb; }
+.manor-minimap-player {
+  box-sizing: border-box;
+  width: 7px;
+  height: 7px;
+  border: 1px solid #fff;
+  border-radius: 50%;
+  background: #28624f;
+  box-shadow: 0 0 0 1px rgba(32, 72, 58, .22);
+}
+.manor-minimap-label {
+  right: 3px;
+  bottom: 3px;
+  padding: 2px 4px;
+  border-radius: 5px;
+  background: rgba(35, 74, 58, .87);
+  color: #fff;
+  font-size: 9px;
+  line-height: 1.2;
+}
+.manor-more-icon {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: -5px 0 0 currentColor, 5px 0 0 currentColor;
+}
+.manor-controls {
+  position: absolute;
+  right: 0;
+  right: env(safe-area-inset-right);
+  bottom: 0;
+  bottom: env(safe-area-inset-bottom);
+  display: flex;
+  pointer-events: none;
+}
+.manor-menu {
+  position: absolute;
+  right: 4px;
+  bottom: 49px;
+  box-sizing: border-box;
+  width: 148px;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 5px;
-  padding: 6px;
+  gap: 1px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, .74);
   border-radius: 14px;
-  background: rgba(250, 252, 245, .95);
-  box-shadow: 0 3px 12px rgba(23, 53, 46, .13);
+  background: rgba(250, 252, 245, .97);
+  box-shadow: 0 4px 16px rgba(23, 53, 46, .22);
+  pointer-events: auto;
 }
-.manor-control-hint { color: #405b51; font-size: 11px; line-height: 1.35; padding: 0 5px; }
-.manor-toolbar { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 5px; }
-.manor-tool { padding: 0 10px; }
+.manor-menu-action {
+  justify-content: flex-start;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: #244a3e;
+  background: transparent;
+}
+.manor-menu-action + .manor-menu-action { border-top: 1px solid #e3ebe1; }
+.manor-sensitivity {
+  flex-shrink: 0;
+  padding: 7px 7px 5px;
+  border-top: 1px solid #e3ebe1;
+}
+.manor-sensitivity-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #405b51;
+  font-size: 11px;
+  line-height: 1.3;
+}
+.manor-sensitivity-slider { width: 100%; margin: 8px 0 4px; }
+.manor-character-select { display: flex; border-radius: 9px; background: #e9f0e6; }
+.manor-character-option { flex: 1; padding: 0; border-radius: 9px; background: transparent; color: #244a3e; }
+.manor-character-selected { background: #2f6a57; color: #fff; }
 
 @media (orientation: landscape) {
-  .manor-top-controls { top: 12px; top: calc(12px + env(safe-area-inset-top)); }
-  .manor-notices { top: 70px; top: calc(70px + env(safe-area-inset-top)); flex-direction: row; flex-wrap: wrap; }
-}
-@media (max-width: 480px) and (orientation: portrait) {
-  .manor-controls-with-player { left: 132px; left: calc(132px + env(safe-area-inset-left)); }
-  .manor-controls-with-player .manor-toolbar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+  .manor-top-controls { top: 8px; top: calc(8px + env(safe-area-inset-top)); }
+  .manor-minimap { top: 54px; top: calc(54px + env(safe-area-inset-top)); }
+  .manor-notices { top: 56px; top: calc(56px + env(safe-area-inset-top)); flex-direction: row; flex-wrap: wrap; }
 }
 @media (max-height: 340px), (max-width: 350px) {
-  .manor-joystick { width: 96px; height: 96px; }
+  .manor-joystick { width: 78px; height: 78px; }
   .manor-panel { padding: 16px; gap: 7px; }
 }
-@media (max-width: 350px) and (orientation: portrait) {
-  .manor-controls-with-player { left: 120px; left: calc(120px + env(safe-area-inset-left)); }
-  .manor-tool { padding: 0 6px; }
+@media (max-height: 320px) and (orientation: landscape) {
+  .manor-menu { width: 214px; flex-direction: row; flex-wrap: wrap; }
+  .manor-character-select { width: 100%; }
+  .manor-sensitivity { flex: 1 0 100%; }
+  .manor-sensitivity-slider { margin: 4px 0 2px; }
+  .manor-menu-action { flex: 1 0 43%; border: 0; }
+  .manor-menu-action + .manor-menu-action { border: 0; }
 }

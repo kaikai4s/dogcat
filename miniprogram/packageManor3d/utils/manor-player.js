@@ -1,6 +1,9 @@
 const DEAD_ZONE = 0.14
+const RUN_ENTER = 0.78
+const RUN_EXIT = 0.67
+const WALK_MAX_TILT = (RUN_ENTER + RUN_EXIT) / 2
 const WALK_SPEED = 1.7
-const RUN_SPEED = 4.1
+const RUN_SPEED = 6.4
 const MAX_STEP = 0.24
 const MAX_RISE = 0.33
 const ANIMATIONS = ['idle', 'walk', 'run']
@@ -21,7 +24,7 @@ function createManorPlayer({ THREE, scene, navigation, getVillaBounds, disposeMo
   anchor.add(shadow)
 
   let current = null
-  let inputX = 0, inputY = 0, running = false
+  let inputX = 0, inputY = 0, inputMagnitude = 0, running = false
   let playerHeight = 1.6
   let playerRadius = .4
 
@@ -79,10 +82,21 @@ function createManorPlayer({ THREE, scene, navigation, getVillaBounds, disposeMo
     if (!anchor.parent) scene.add(anchor)
   }
 
-  function setInput(x, y, run) {
+  function setInput(x, y) {
     inputX = Number.isFinite(x) ? x : 0
     inputY = Number.isFinite(y) ? y : 0
-    running = !!run
+    inputMagnitude = Math.hypot(inputX, inputY)
+    running = running ? inputMagnitude > RUN_EXIT : inputMagnitude >= RUN_ENTER
+  }
+
+  function place(x, z, yaw) {
+    if (!current || !Number.isFinite(x) || !Number.isFinite(z)) return false
+    const y = navigation.sample(x, z, getVillaBounds())
+    if (!Number.isFinite(y)) return false
+    anchor.position.set(x, y, z)
+    if (Number.isFinite(yaw)) anchor.rotation.y = yaw
+    setInput(0, 0)
+    return true
   }
 
   function avoidVilla() {
@@ -127,30 +141,33 @@ function createManorPlayer({ THREE, scene, navigation, getVillaBounds, disposeMo
         current.blend.from[i] * (1 - fraction) + (i === index ? fraction : 0)))
       if (fraction === 1) current.blend = null
     }
-    if (index) actions[index].setEffectiveTimeScale(index === 1 ? 0.62 + speed * .38 : 1)
+    if (index === 1) actions[index].setEffectiveTimeScale(.62 + speed * .38)
+    if (index === 2) actions[index].setEffectiveTimeScale(.7 + speed * .6)
     mixer.update(dt)
   }
 
   function update(dt, azimuth) {
     if (!current || !(dt > 0)) return
-    const magnitude = Math.hypot(inputX, inputY)
-    let gait = 0, speed = 0
-    if (magnitude > DEAD_ZONE) {
-      speed = (Math.min(magnitude, 1) - DEAD_ZONE) / (1 - DEAD_ZONE)
-      const sprint = running
-      const amount = (sprint ? RUN_SPEED : WALK_SPEED) * (.32 + speed * .68) * dt / magnitude
+    let gait = 0, animationEffort = 0
+    if (inputMagnitude > DEAD_ZONE) {
+      const tilt = Math.min(inputMagnitude, 1)
+      const walkEffort = Math.min(1, (tilt - DEAD_ZONE) / (WALK_MAX_TILT - DEAD_ZONE))
+      const runEffort = Math.max(0, (tilt - WALK_MAX_TILT) / (1 - WALK_MAX_TILT))
+      const speed = WALK_SPEED * walkEffort + (RUN_SPEED - WALK_SPEED) * runEffort
+      const amount = speed * dt / inputMagnitude
       const sin = Math.sin(azimuth), cos = Math.cos(azimuth)
       const x = anchor.position.x, z = anchor.position.z
       move((inputX * cos + inputY * sin) * amount, (-inputX * sin + inputY * cos) * amount)
       const dx = anchor.position.x - x, dz = anchor.position.z - z
       if (Math.hypot(dx, dz) > .0001) {
-        gait = sprint ? 2 : 1
+        gait = running ? 2 : 1
+        animationEffort = running ? runEffort : walkEffort
         const angle = Math.atan2(dx, dz) - anchor.rotation.y
         const shortestTurn = Math.atan2(Math.sin(angle), Math.cos(angle))
         anchor.rotation.y = (anchor.rotation.y + shortestTurn * (1 - Math.exp(-18 * dt))) % TAU
       }
     }
-    animate(gait, speed, dt)
+    animate(gait, animationEffort, dt)
   }
 
   function dispose() {
@@ -161,10 +178,13 @@ function createManorPlayer({ THREE, scene, navigation, getVillaBounds, disposeMo
   }
 
   return {
-    show, setInput, update, avoidVilla, dispose,
+    show, setInput, update, avoidVilla, place, dispose,
     get position() { return current ? anchor.position : null },
     get height() { return playerHeight },
-    get radius() { return playerRadius }
+    get radius() { return playerRadius },
+    get isMoving() { return inputMagnitude > DEAD_ZONE },
+    get isRunning() { return running },
+    get facing() { return anchor.rotation.y }
   }
 }
 

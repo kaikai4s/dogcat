@@ -171,6 +171,7 @@
       "name": "playground",
       "pages": [
         "pages/index",
+        "pages/manor3d-entry",
         "pages/world",
         "pages/customize"
       ]

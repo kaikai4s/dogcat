@@ -107,7 +107,7 @@ Page({
     const generation = this._pageGeneration
     this._openingManor3d = true
     wx.navigateTo({
-      url: '/packageManor3d/pages/index',
+      url: '/packagePlayground/pages/manor3d-entry',
       fail: () => {
         if (this._visible !== false && generation === this._pageGeneration) {
           wx.showToast({ title: '暂时无法打开 3D 庄园', icon: 'none' })

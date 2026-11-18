@@ -6,11 +6,22 @@ const PLAYER_DISTANCE = 8.5;
 const PLAYER_ZOOM_MIN = 3.5;
 const PLAYER_ZOOM_MAX = 36;
 const PLAYER_TARGET_HEIGHT = 0.68;
-const MIN_ELEVATION = Math.PI / 10;
+const MIN_ELEVATION = -Math.PI / 6;
+const MIN_PAN_ELEVATION = Math.PI / 10;
 const MAX_ELEVATION = Math.PI * 0.44;
+const CAMERA_GROUND_CLEARANCE = 0.4;
+const SHARED_SOURCE_WIDTH = 2240;
+const SHARED_SOURCE_DEPTH = 2240;
+const SHARED_POSITION_WIDTH = 1200;
+const SHARED_POSITION_DEPTH = 960;
 const FULL_TURN = Math.PI * 2;
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const finite = Number.isFinite;
+const isPrivateFloor = building => {
+  const category = String(building?.category || building?.buildingCategory || '');
+  const type = String(building?.type || building?.buildingType || '');
+  return category === 'floor' || /^floor(?:_|$)/.test(type);
+};
 
 function layoutError(message) {
   return Object.assign(new Error(message), { code: 'MANOR_INVALID_LAYOUT' });
@@ -197,7 +208,6 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   const direction = new THREE.Vector3();
   const offset = new THREE.Vector3();
   const followPoint = new THREE.Vector3();
-  const followOffset = new THREE.Vector3();
   const clock = { value: 0 };
   const sun = new THREE.DirectionalLight(0xfff6df, 1.69);
   const rim = new THREE.DirectionalLight(0xdbedff, 0.29);
@@ -225,6 +235,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   let villaBounds;
   let villaPlot;
   let plannedPlot;
+  let navigation;
   let player;
   let grass = [];
   let height = 1;
@@ -232,12 +243,16 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   let elevation = 0.50;
   let distance = 155;
   let view = 'default';
+  let mapView = false;
+  let communityView;
+  let communitySignature = '';
+  let sharedNodes = new Map();
   let dirty = true;
   let disposed = false;
 
   function trackPlayer(force = false, dt = 0) {
     if (!player?.position) return;
-    followPoint.copy(player.position).add(followOffset);
+    followPoint.copy(player.position);
     followPoint.y += player.height * PLAYER_TARGET_HEIGHT;
     if (!force && target.distanceToSquared(followPoint) < 0.000004) return;
     if (force) target.copy(followPoint);
@@ -247,14 +262,14 @@ function createManorScene({ THREE, renderer, disposeModel }) {
 
   function focusCharacter() {
     if (disposed || !player?.position) return false;
+    mapView = false;
     if (view !== 'player') {
       view = 'player';
       azimuth = 0.76;
       elevation = 0.38;
       distance = PLAYER_DISTANCE;
     }
-    followOffset.set(0, 0, 0);
-    constrainFollowOffset();
+    fitAvatar();
     trackPlayer(true);
     return true;
   }
@@ -263,17 +278,255 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     if (disposed || !player || model === landscape || model === villa) throw new Error('请先加载庄园地形');
     const first = !player.position;
     player.show(model, azimuth);
-    if (first) focusCharacter();
+    if (first && !mapView) focusCharacter();
     else if (view === 'player') {
-      constrainFollowOffset();
+      fitAvatar();
       trackPlayer(true);
     }
   }
 
-  function setPlayerInput(x, y, run) {
-    if (disposed || !player?.position) return;
-    if (Math.hypot(x, y) > 0.14 && view !== 'player') focusCharacter();
-    player.setInput(x, y, run);
+  function setPlayerInput(x, y) {
+    if (disposed || view !== 'player' || !player?.position) return;
+    player.setInput(x, y);
+  }
+
+  function getMapPlayerPosition() {
+    const position = player?.position;
+    return position ? { x: position.x, z: position.z } : null;
+  }
+
+  function placeCharacterAt(position, facing) {
+    if (disposed || !player || !position) return false;
+    return player.place(position.x, position.z, facing);
+  }
+
+  function getPlayerSyncState() {
+    const position = player?.position;
+    if (!position) return null;
+    return {
+      position3d: { x: position.x, z: position.z },
+      moving: player.isMoving,
+      running: player.isRunning,
+      facing: player.facing
+    };
+  }
+
+  function clearCommunityView() {
+    if (!communityView) return;
+    scene.remove(communityView);
+    for (const node of sharedNodes.values()) disposeSharedNode(node);
+    sharedNodes = new Map();
+    communityView = null;
+    communitySignature = '';
+  }
+
+  function disposeSharedNode(node) {
+    const geometries = new Set(), materials = new Set();
+    node.group.traverse(child => {
+      if (child.geometry) geometries.add(child.geometry);
+      if (child.material) (Array.isArray(child.material) ? child.material : [child.material]).forEach(material => materials.add(material));
+    });
+    node.group.removeFromParent();
+    geometries.forEach(geometry => geometry.dispose());
+    materials.forEach(material => material.dispose());
+  }
+
+  function manorPoint(x, z) {
+    return {
+      x: x / SHARED_SOURCE_WIDTH * SHARED_POSITION_WIDTH - config.width / 2,
+      z: z / SHARED_SOURCE_DEPTH * SHARED_POSITION_DEPTH - config.depth / 2
+    };
+  }
+
+  function sharedGround(x, z) {
+    return navigation.sample(x, z) ?? config.ground;
+  }
+
+  function addSharedBuilding(root, building, plot) {
+    if (!building || !Number.isFinite(building.x) || !Number.isFinite(building.z)) return;
+    const point = manorPoint(building.x, building.z);
+    const width = Math.max(1.4, Math.min(30, (Number(building.width) || 7) * SHARED_POSITION_WIDTH / SHARED_SOURCE_WIDTH));
+    const depth = Math.max(1.4, Math.min(30, (Number(building.depth) || 7) * SHARED_POSITION_DEPTH / SHARED_SOURCE_DEPTH));
+    const type = String(building.type || building.buildingType || '');
+    const category = String(building.category || building.buildingCategory || '');
+    const group = new THREE.Group();
+    group.name = 'Shared building ' + (building.instanceId || building.id || type);
+    group.userData = { ownerId: plot.ownerId || '', type, category, name: building.name || '' };
+    group.position.set(point.x, sharedGround(point.x, point.z), point.z);
+
+    if (category === 'floor' || type.startsWith('floor_')) {
+      const floor = new THREE.Mesh(new THREE.BoxGeometry(width, .08, depth),
+        new THREE.MeshStandardMaterial({ color: 0x9eaa8f, roughness: 1 }));
+      floor.position.y = .05;
+      group.add(floor);
+    } else if (category === 'tree' || type.startsWith('tree_') || type.startsWith('landscape_')) {
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(.28, .4, 2.6, 7),
+        new THREE.MeshStandardMaterial({ color: 0x826047, roughness: 1 }));
+      trunk.position.y = 1.3;
+      const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(Math.max(.9, Math.min(width, depth) * .4), 1),
+        new THREE.MeshStandardMaterial({ color: 0x66876c, roughness: 1 }));
+      crown.position.y = 3.1;
+      group.add(trunk, crown);
+    } else {
+      const height = category === 'public' ? 6 : 4.3;
+      const color = category === 'public' ? 0x829786 : type.includes('wood') ? 0x9e7959 : 0x9e9b82;
+      const body = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth),
+        new THREE.MeshStandardMaterial({ color, roughness: .94 }));
+      body.position.y = height / 2;
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(width, depth) * .76, height * .43, 4),
+        new THREE.MeshStandardMaterial({ color: category === 'public' ? 0x64776c : 0x755e4c, roughness: .97 }));
+      roof.position.y = height + height * .2;
+      roof.rotation.y = Math.PI / 4;
+      group.add(body, roof);
+    }
+    root.add(group);
+    return { kind: 'building', group };
+  }
+
+  function addSharedCharacter(root, record, ownPlayerId) {
+    if (!record || record.id === ownPlayerId || record.manor3dOnline !== true) return;
+    const position = record.position3d;
+    if (!position || ![position.x, position.z].every(finite) ||
+        Math.abs(position.x) > config.width / 2 + 2 || Math.abs(position.z) > config.depth / 2 + 2) return;
+    const group = new THREE.Group();
+    group.name = 'Shared character ' + record.id;
+    group.userData = { ownerId: record.ownerId || '', name: record.name || '邻居', userTitle: record.userTitle || null };
+    group.position.set(position.x, sharedGround(position.x, position.z), position.z);
+    const color = record.characterType === 'girl' ? 0xc88783 : 0x708b87;
+    const outfit = new THREE.Mesh(new THREE.CapsuleGeometry(.42, .8, 3, 7),
+      new THREE.MeshStandardMaterial({ color, roughness: .88 }));
+    outfit.position.y = .82;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(.34, 10, 8),
+      new THREE.MeshStandardMaterial({ color: 0xe8c8a4, roughness: .96 }));
+    head.position.y = 1.62;
+    group.add(outfit, head);
+    const facing = typeof record.manor3dFacing === 'number' ? record.manor3dFacing
+      : typeof record.facing === 'number' ? record.facing : null;
+    if (facing !== null && finite(facing)) group.rotation.y = facing;
+    root.add(group);
+    return {
+      kind: 'presence',
+      group,
+      target: new THREE.Vector3(position.x, sharedGround(position.x, position.z), position.z),
+      targetYaw: group.rotation.y
+    };
+  }
+
+  function setSharedRecords(records, ownPlayerId) {
+    if (disposed || !config || !Array.isArray(records)) return;
+    if (!communityView) {
+      communityView = new THREE.Group();
+      communityView.name = 'Shared community scene';
+      scene.add(communityView);
+    }
+    const received = new Set();
+    for (const record of records) {
+      if (!record?.id) continue;
+      received.add(record.id);
+      const current = sharedNodes.get(record.id);
+      if (record.deleted) {
+        if (current) {
+          disposeSharedNode(current);
+          sharedNodes.delete(record.id);
+        }
+        continue;
+      }
+      if (record.kind === 'plot') {
+        const buildings = Array.isArray(record.buildings) && record.buildings.length
+          ? record.buildings
+          : record.buildingType && record.buildingType !== 'yard' ? [{
+            instanceId: 'primary',
+            type: record.buildingType,
+            category: record.buildingCategory,
+            name: record.buildingName,
+            width: record.buildingWidth || record.size * .55,
+            depth: record.buildingDepth || record.size * .48,
+            x: record.buildingX ?? record.x,
+            z: record.buildingZ ?? record.z
+          }] : [];
+        const visibleBuildings = record.mine ? buildings : buildings.filter(building => !isPrivateFloor(building));
+        const signature = JSON.stringify([
+          record.ownerId, record.x, record.z, record.size, record.isNewPlot, record.buildingType,
+          visibleBuildings.map(building => [building.instanceId, building.buildingId, building.type,
+            building.category, building.width, building.depth, building.x, building.z])
+        ]);
+        if (current?.kind === 'plot' && current.signature === signature) continue;
+        if (current) disposeSharedNode(current);
+        const group = new THREE.Group();
+        group.name = 'Shared plot ' + record.id;
+        const plotCenter = manorPoint(record.x, record.z);
+        const plotSize = Math.max(4, Math.min(50, Number(record.size) || 48)) *
+          SHARED_POSITION_WIDTH / SHARED_SOURCE_WIDTH;
+        const boundary = new THREE.Group();
+        boundary.name = 'Shared plot boundary';
+        boundary.position.set(plotCenter.x, sharedGround(plotCenter.x, plotCenter.z), plotCenter.z);
+        const boundaryMaterial = new THREE.MeshStandardMaterial({
+          color: record.mine ? 0x879f78 : 0xa7b19a, roughness: 1
+        });
+        const rail = .08, wallHeight = .28;
+        const edges = [
+          [plotSize, wallHeight, rail, 0, wallHeight / 2, -plotSize / 2],
+          [plotSize, wallHeight, rail, 0, wallHeight / 2, plotSize / 2],
+          [rail, wallHeight, plotSize, -plotSize / 2, wallHeight / 2, 0],
+          [rail, wallHeight, plotSize, plotSize / 2, wallHeight / 2, 0]
+        ];
+        for (const [width, height, depth, x, y, z] of edges) {
+          const edge = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), boundaryMaterial);
+          edge.position.set(x, y, z);
+          boundary.add(edge);
+        }
+        group.add(boundary);
+        for (const building of visibleBuildings) addSharedBuilding(group, building, record);
+        communityView.add(group);
+        sharedNodes.set(record.id, { kind: 'plot', signature, group });
+      } else if (record.kind === 'presence') {
+        const hidden = record.id === ownPlayerId || record.online === false && record.manor3dOnline !== true;
+        const position = record.position3d || (record.position && manorPoint(record.position.x, record.position.z));
+        const characterType = record.manor3dCharacterType || record.characterType;
+        const signature = JSON.stringify([characterType, record.appearance?.id || record.appearance?.assetId || '']);
+        if (hidden || !position || ![position.x, position.z].every(finite) ||
+            Math.abs(position.x) > config.width / 2 + 2 || Math.abs(position.z) > config.depth / 2 + 2) {
+          if (current) {
+            disposeSharedNode(current);
+            sharedNodes.delete(record.id);
+          }
+          continue;
+        }
+        if (current?.kind === 'presence' && current.signature === signature) {
+          current.target.set(position.x, sharedGround(position.x, position.z), position.z);
+          const yaw = record.manor3dFacing ?? record.facing;
+          if (finite(yaw)) current.targetYaw = yaw;
+          current.record = record;
+          continue;
+        }
+        if (current) disposeSharedNode(current);
+        const group = new THREE.Group();
+        group.name = 'Shared character ' + record.id;
+        group.userData = { ownerId: record.ownerId || '', name: record.name || '邻居', userTitle: record.userTitle || null };
+        const color = characterType === 'girl' ? 0xc88783 : 0x708b87;
+        const outfit = new THREE.Mesh(new THREE.CapsuleGeometry(.42, .8, 3, 7),
+          new THREE.MeshStandardMaterial({ color, roughness: .88 }));
+        outfit.position.y = .82;
+        const head = new THREE.Mesh(new THREE.SphereGeometry(.34, 10, 8),
+          new THREE.MeshStandardMaterial({ color: 0xe8c8a4, roughness: .96 }));
+        head.position.y = 1.62;
+        group.add(outfit, head);
+        group.position.set(position.x, sharedGround(position.x, position.z), position.z);
+        const targetYaw = record.manor3dFacing ?? record.facing;
+        if (finite(targetYaw)) group.rotation.y = targetYaw;
+        communityView.add(group);
+        sharedNodes.set(record.id, {
+          kind: 'presence', signature, group,
+          target: group.position.clone(), targetYaw: group.rotation.y,
+          record
+        });
+      }
+    }
+    for (const [id, node] of sharedNodes) {
+      if (received.has(id)) continue;
+      disposeSharedNode(node);
+      sharedNodes.delete(id);
+    }
   }
 
   function maxDistance() {
@@ -282,7 +535,9 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   }
 
   function cameraDirection() {
-    return direction.set(Math.sin(azimuth) * Math.cos(elevation), Math.sin(elevation), Math.cos(azimuth) * Math.cos(elevation));
+    const orbitElevation = Math.max(0, elevation);
+    const horizontal = Math.cos(orbitElevation);
+    return direction.set(Math.sin(azimuth) * horizontal, Math.sin(orbitElevation), Math.cos(azimuth) * horizontal);
   }
 
   function fit(points, minimumDistance) {
@@ -318,8 +573,10 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     fit(points, plot ? 100 : 145);
   }
 
-  function resetView() {
+  function enterMapView() {
     if (disposed || !config) return;
+    mapView = true;
+    player?.setInput(0, 0);
     view = 'overview';
     azimuth = 0.41;
     elevation = 0.83;
@@ -331,8 +588,18 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     fit(points, MIN_DISTANCE);
   }
 
+  function exitMapView() {
+    if (disposed || !config || !mapView) return;
+    if (focusCharacter()) return;
+    mapView = false;
+    view = 'default';
+    defaultView();
+  }
+
   function focusVilla() {
     if (disposed || !villaBounds) return false;
+    mapView = true;
+    player?.setInput(0, 0);
     view = 'villa';
     azimuth = 0.54;
     elevation = 0.34;
@@ -354,9 +621,9 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     camera.updateProjectionMatrix();
     if (view === 'default') defaultView();
     else if (view === 'villa') focusVilla();
-    else if (view === 'overview') resetView();
+    else if (view === 'overview') enterMapView();
     else if (view === 'player') {
-      constrainFollowOffset();
+      fitAvatar();
       trackPlayer(true);
     } else distance = clamp(distance, MIN_DISTANCE, maxDistance());
     dirty = true;
@@ -379,10 +646,12 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     if (landscape === group) return config;
     const next = validateLayout(layout);
     const nextGrass = prepareLandscape(THREE, group, clock, next);
-    const navigation = createManorNavigation({ THREE, landscape: group, config: next });
+    const nextNavigation = createManorNavigation({ THREE, landscape: group, config: next });
     player?.dispose();
+    navigation = nextNavigation;
     player = createManorPlayer({ THREE, scene, navigation, getVillaBounds: () => villaBounds, disposeModel });
     removeVilla();
+    clearCommunityView();
     if (landscape) {
       scene.remove(landscape);
       disposeModel(landscape);
@@ -395,6 +664,8 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     sun.target.position.set(next.bridge.x, next.ground, next.bridge.z);
     sun.position.copy(sun.target.position).add(new THREE.Vector3(135, 192, 55));
     flagShadows();
+    mapView = false;
+    communitySignature = '';
     view = 'default';
     defaultView();
     return config;
@@ -420,6 +691,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
       if (mesh.isMesh) mesh.castShadow = mesh.receiveShadow = true;
     });
     removeVilla();
+    clearCommunityView();
     anchor.add(group);
     scene.add(anchor);
     villa = group;
@@ -434,9 +706,9 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     return plot;
   }
 
-  function constrainFollowOffset() {
-    // Fit the rotating avatar's envelope inside the perspective view before allowing pan.
-    const sinEl = Math.sin(elevation), cosEl = Math.cos(elevation);
+  function fitAvatar() {
+    const orbitElevation = Math.max(0, elevation);
+    const sinEl = Math.sin(orbitElevation), cosEl = Math.cos(orbitElevation);
     const tanY = Math.tan(camera.fov * Math.PI / 360) * 0.9;
     const tanX = tanY * camera.aspect;
     const feet = -player.height * PLAYER_TARGET_HEIGHT;
@@ -450,34 +722,15 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     const topSupport = support(0, topPlane, tanY * sinEl + cosEl);
     const bottomSupport = support(0, bottomPlane, tanY * sinEl - cosEl);
     distance = Math.max(distance, horizontalSupport / tanX, topSupport / tanY, bottomSupport / tanY);
-    followOffset.clampLength(0, distance * 0.24 * Math.min(1, camera.aspect));
-    const sinAz = Math.sin(azimuth), cosAz = Math.cos(azimuth);
-    const right = followOffset.x * cosAz - followOffset.z * sinAz;
-    const forward = followOffset.x * sinAz + followOffset.z * cosAz;
-    let fraction = 1;
-    const fitPlane = (available, used) => {
-      if (used > 0) fraction = Math.min(fraction, Math.max(0, available) / used);
-    };
-    fitPlane(distance * tanX - horizontalSupport, Math.abs(right) - forward * tanX * cosEl);
-    fitPlane(distance * tanY - topSupport, -forward * topPlane);
-    fitPlane(distance * tanY - bottomSupport, -forward * bottomPlane);
-    followOffset.multiplyScalar(fraction);
   }
 
   function pan(dx, dy) {
-    if (disposed || !config || !finite(dx) || !finite(dy) || (!dx && !dy)) return;
+    if (disposed || !mapView || !finite(dx) || !finite(dy) || (!dx && !dy)) return;
     const scale = 2 * distance * Math.tan(camera.fov * Math.PI / 360) / height;
     const x = dx * scale;
-    const z = dy * scale / Math.sin(elevation);
+    const z = dy * scale / Math.sin(Math.max(elevation, MIN_PAN_ELEVATION));
     const moveX = -x * Math.cos(azimuth) - z * Math.sin(azimuth);
     const moveZ = x * Math.sin(azimuth) - z * Math.cos(azimuth);
-    if (view === 'player') {
-      followOffset.x += moveX;
-      followOffset.z += moveZ;
-      constrainFollowOffset();
-      trackPlayer(true);
-      return;
-    }
     target.x = clamp(target.x + moveX, -config.width / 2, config.width / 2);
     target.z = clamp(target.z + moveZ, -config.depth / 2, config.depth / 2);
     view = 'free';
@@ -489,10 +742,8 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     const anglePerPixel = 3.5 / Math.max(150, height);
     azimuth = (azimuth - dx * anglePerPixel) % FULL_TURN;
     elevation = clamp(elevation + dy * anglePerPixel, MIN_ELEVATION, MAX_ELEVATION);
-    if (view === 'player') {
-      constrainFollowOffset();
-      trackPlayer(true);
-    } else view = 'free';
+    if (view === 'player') fitAvatar();
+    else view = 'free';
     dirty = true;
   }
 
@@ -500,8 +751,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     if (disposed || !config || !finite(factor) || factor <= 0) return;
     if (view === 'player') {
       distance = clamp(distance / factor, PLAYER_ZOOM_MIN, PLAYER_ZOOM_MAX);
-      constrainFollowOffset();
-      trackPlayer(true);
+      fitAvatar();
     } else {
       distance = clamp(distance / factor, MIN_DISTANCE, maxDistance());
       view = 'free';
@@ -515,9 +765,26 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     const dt = finite(deltaSeconds) ? clamp(deltaSeconds, 0, 0.1) : 0;
     player?.update(dt, azimuth);
     if (view === 'player' && dt > 0) trackPlayer(false, dt);
+    if (communityView && dt > 0) {
+      const fraction = 1 - Math.exp(-10 * dt);
+      for (const node of sharedNodes.values()) {
+        if (node.kind !== 'presence') continue;
+        node.group.position.lerp(node.target, fraction);
+        const difference = Math.atan2(Math.sin(node.targetYaw - node.group.rotation.y),
+          Math.cos(node.targetYaw - node.group.rotation.y));
+        node.group.rotation.y += difference * fraction;
+      }
+    }
     if (dirty) {
       camera.position.copy(target).addScaledVector(cameraDirection(), distance);
+      const floor = navigation.sample(camera.position.x, camera.position.z) ?? config.ground;
+      camera.position.y = Math.max(camera.position.y, floor + CAMERA_GROUND_CLEARANCE);
       camera.lookAt(target);
+      // Keep the orbit above ground while tilting the lens toward the sky.
+      if (elevation < 0) {
+        const floorPitch = Math.atan2(camera.position.y - target.y, distance);
+        camera.rotateX(-elevation + floorPitch * elevation / MIN_ELEVATION);
+      }
       camera.near = clamp(distance / 125, 0.25, 25);
       camera.updateProjectionMatrix();
       const fogOffset = Math.max(0, distance - 970);
@@ -539,14 +806,16 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     player = null;
     removeVilla();
     if (landscape) disposeModel(landscape);
-    landscape = config = plannedPlot = null;
+    landscape = config = plannedPlot = navigation = null;
+    communitySignature = '';
     grass = [];
     scene.clear();
     sun.shadow.dispose();
   }
 
   return { resize, showLandscape, showVilla, showCharacter, setPlayerInput, pan, orbit, zoom,
-    resetView, focusVilla, focusCharacter, render, dispose };
+    enterMapView, exitMapView, getMapPlayerPosition, getPlayerSyncState, placeCharacterAt,
+    setSharedRecords, focusVilla, focusCharacter, render, dispose };
 }
 
 module.exports = { createManorScene };
