@@ -1,6 +1,7 @@
 {
   "private": true,
   "devDependencies": {
+    "rolldown": "1.2.19",
     "three": "0.162.0"
   }
 }

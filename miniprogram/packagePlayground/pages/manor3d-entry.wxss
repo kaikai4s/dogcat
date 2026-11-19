@@ -79,13 +79,13 @@
 .manor-entry-primary {
   box-sizing: border-box;
   width: 100%;
-  height: 100rpx;
+  min-height: 108rpx;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 17rpx;
-  margin-top: 24rpx;
-  padding: 0 24rpx;
+  margin: 24rpx 0 0;
+  padding: 16rpx 24rpx;
   border-radius: 18rpx;
   background: #4f7653;
   color: #fffdf3;
@@ -93,6 +93,8 @@
   font-weight: 700;
 }
 
+.manor-entry-button-label { flex-shrink: 0; white-space: nowrap; line-height: 1.25; }
+.manor-entry-primary .remix-icon, .manor-entry-solo-button .remix-icon { flex-shrink: 0; }
 .manor-entry-primary .remix-icon:first-child { font-size: 32rpx; }
 .manor-entry-primary .remix-icon:last-child { margin-left: auto; font-size: 30rpx; }
 
@@ -123,17 +125,21 @@
 .manor-entry-solo-description { margin-top: 6rpx; color: #879180; font-size: 21rpx; line-height: 1.45; }
 
 .manor-entry-solo-button {
-  flex: 0 0 68rpx;
-  width: 68rpx;
-  height: 68rpx;
+  box-sizing: border-box;
+  flex: 0 0 144rpx;
+  width: 144rpx;
+  min-height: 88rpx;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 8rpx;
   margin: 0;
-  padding: 0;
-  border-radius: 50%;
+  padding: 0 20rpx;
+  border-radius: 16rpx;
   background: #edf2e8;
   color: #4f7653;
+  font-size: 26rpx;
+  font-weight: 700;
 }
 
 .manor-entry-solo-button .remix-icon { font-size: 31rpx; }

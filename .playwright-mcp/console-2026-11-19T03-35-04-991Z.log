@@ -1,0 +1,4 @@
+[     956ms] [WARNING] [.WebGL-0x2d14000b1400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ file:///tmp/villa-interior-web-pi28yC/preview.html:0
+[  158004ms] [WARNING] [.WebGL-0x2d14000b6e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ file:///tmp/villa-interior-web-pi28yC/preview.html:0
+[  158198ms] [WARNING] [.WebGL-0x2d14000b6e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ file:///tmp/villa-interior-web-pi28yC/preview.html:0
+[  158488ms] [WARNING] [.WebGL-0x2d14000b6e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat) @ file:///tmp/villa-interior-web-pi28yC/preview.html:0

@@ -126,6 +126,33 @@ test('the solo entry passes an explicit null community', () => {
   assert.equal(f.navigations[0].url, '/packageManor3d/pages/index?entryKey=' + encodeURIComponent(entryKey))
 })
 
+test('returning from a manor clears the loading state and lets the user enter again', async () => {
+  const f = fixture()
+  const choosing = f.page.chooseCommunity()
+  f.resolveSelection({ name: '青溪花园' })
+  await choosing
+  assert.equal(f.navigations.length, 1)
+  assert.equal(f.page.data.opening, true)
+  f.page.enterSolo()
+  assert.equal(f.navigations.length, 1)
+
+  f.page.onHide()
+  f.page.onShow()
+  assert.equal(f.page.data.opening, false)
+  f.page.enterSolo()
+  assert.equal(f.navigations.length, 2)
+  assert.equal([...f.storage.values()][1].solo, true)
+
+  f.page.onHide()
+  f.page.onShow()
+  assert.equal(f.page.data.opening, false)
+  const choosingAgain = f.page.chooseCommunity()
+  assert.equal(f.chooserCalls(), 2)
+  f.rejectSelection({ errMsg: 'chooseCommunity:fail cancel' })
+  await choosingAgain
+  assert.equal(f.page.data.opening, false)
+})
+
 test('failed storage or navigation never leaves an unusable route ticket', () => {
   const storageFailure = fixture({ storageThrows: true })
   storageFailure.page.enterSolo()

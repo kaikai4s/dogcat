@@ -42,6 +42,7 @@ class ManorCommunitySync {
   }
 
   async snapshot(generation = this.generation) {
+    if (!this.active || this.generation !== generation) return
     const startedAt = this.eventSequence
     const fetched = []
     let cursor = ''
@@ -64,17 +65,18 @@ class ManorCommunitySync {
       if (!nextRecords.has(id) && (old.receivedSequence || 0) > startedAt) nextRecords.set(id, old)
     }
     this.records = nextRecords
+    this.snapshotVerified = true
     this.retryCount = 0
     this.onState('connected')
     this.applyRecords([...this.records.values()])
   }
 
   watch(generation) {
-    if (!wx.cloud?.database) return this.scheduleRetry(generation, new Error('当前微信环境不支持实时场景同步'))
-    const env = getCloudEnv()
-    const database = wx.cloud.database(env ? { env } : {})
+    if (!this.active || this.generation !== generation || this.watchers.length || !wx.cloud?.database) return
     let watcher
     try {
+      const env = getCloudEnv()
+      const database = wx.cloud.database(env ? { env } : {})
       watcher = database.collection(COLLECTION)
         .where({ kind: 'scene', communityId: this.scene.sceneId })
         .limit(16)
@@ -88,9 +90,7 @@ class ManorCommunitySync {
             for (const shard of shards) {
               for (const record of Object.values(shard.records || {})) changed = this.merge(record) || changed
             }
-            this.retryCount = 0
-            this.onState('connected')
-            if (changed) this.applyRecords([...this.records.values()])
+            if (changed && this.snapshotVerified) this.applyRecords([...this.records.values()])
           },
           onError: error => {
             if (!this.active || this.generation !== generation) return
@@ -99,27 +99,36 @@ class ManorCommunitySync {
           }
         })
       this.watchers.push(watcher)
-      this.onState('connected')
     } catch (error) {
       this.scheduleRetry(generation, error)
     }
   }
 
   scheduleRetry(generation, error) {
+    if (!this.active || this.generation !== generation) return
+    // A snapshot or move rejected with an expired session cannot be recovered
+    // by watching again. The page must enter and obtain new credentials.
+    if (error?.message?.includes('场景已切换')) {
+      this.stop({ offline: false })
+      this.onError(error)
+      return
+    }
     this.onState('reconnecting')
     if (error) this.onError(error)
+    if (!this.active || this.generation !== generation) return
     clearTimeout(this.retryTimer)
     const delay = Math.min(30000, 1000 * 2 ** Math.min(this.retryCount++, 5))
     this.retryTimer = setTimeout(() => {
       if (!this.active || this.generation !== generation) return
       this.watch(generation)
-      this.snapshot(generation).catch(snapshotError => this.onError(snapshotError))
+      this.snapshot(generation).catch(snapshotError => this.scheduleRetry(generation, snapshotError))
     }, delay)
   }
 
   async start() {
     if (this.active) return
     this.active = true
+    this.snapshotVerified = false
     const generation = this.generation += 1
     this.onState('connecting')
     this.watch(generation)
@@ -133,13 +142,14 @@ class ManorCommunitySync {
   }
 
   scheduleSnapshot(generation) {
+    if (!this.active || this.generation !== generation) return
     clearTimeout(this.snapshotTimer)
     this.snapshotTimer = setTimeout(async () => {
       if (!this.active || this.generation !== generation) return
       try {
         await this.snapshot(generation)
       } catch (error) {
-        this.onError(error)
+        this.scheduleRetry(generation, error)
       } finally {
         this.scheduleSnapshot(generation)
       }
@@ -152,15 +162,16 @@ class ManorCommunitySync {
     try { Promise.resolve(watcher.close()).catch(() => {}) } catch (_) {}
   }
 
-  stop() {
+  stop({ offline = true } = {}) {
     const wasActive = this.active
     this.active = false
     this.generation += 1
+    this.pendingPositionState = null
     clearTimeout(this.retryTimer)
     clearTimeout(this.snapshotTimer)
     for (const watcher of this.watchers) this.closeWatcher(watcher)
     this.watchers = []
-    if (wasActive) this.markOffline()
+    if (wasActive && offline && this.scene.hasAvatar === true && this.sequence > 0) this.markOffline()
   }
 
   syncPosition(state) {
@@ -178,19 +189,24 @@ class ManorCommunitySync {
   }
 
   async flushPositions() {
+    const generation = this.generation
     while (this.active && this.pendingPositionState) {
       const state = this.pendingPositionState
       this.pendingPositionState = null
       const seq = ++this.sequence
       try {
-        const result = await callFunction('playground', 'syncManor3d', {
+        await callFunction('playground', 'syncManor3d', {
           ...this.credentials(), ...state, seq, online: true
         })
-        if (!this.active) return
+        if (!this.active || this.generation !== generation) return
         this.lastSignature = JSON.stringify([state.position3d, state.moving, state.running, state.facing])
         this.lastSentAt = Date.now()
       } catch (error) {
-        this.onError(error)
+        if (this.active && this.generation === generation) {
+          this.pendingPositionState = null
+          this.scheduleRetry(generation, error)
+        }
+        return
       }
     }
   }
@@ -200,7 +216,7 @@ class ManorCommunitySync {
     const seq = ++this.sequence
     callFunction('playground', 'syncManor3d', {
       ...this.credentials(), seq, online: false
-    }).catch(error => this.onError(error))
+    }).catch(() => {})
   }
 }
 

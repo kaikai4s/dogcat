@@ -23,7 +23,14 @@
     </view>
   </view>
   <block wx:elif="{{status === 'ready'}}">
-    <view class="manor-notices {{minimap && !mapMode ? 'manor-notices-with-map' : ''}}" wx:if="{{characterStatus === 'loading' || characterStatus === 'drawing' || characterStatus === 'error' || villaStatus === 'loading' || villaStatus === 'drawing' || villaStatus === 'error'}}">
+    <view class="manor-notices {{minimap && !mapMode && !insideVilla ? 'manor-notices-with-map' : ''}}" wx:if="{{communityStatus === 'loading' || communityStatus === 'error' || characterStatus === 'loading' || characterStatus === 'drawing' || characterStatus === 'error' || villaStatus === 'loading' || villaStatus === 'drawing' || villaStatus === 'error' || interiorStatus === 'loading' || interiorStatus === 'drawing' || interiorStatus === 'error'}}">
+      <view wx:if="{{communityStatus === 'loading' || communityStatus === 'error'}}" class="manor-notice manor-community-notice">
+        <text wx:if="{{communityStatus === 'loading'}}" class="manor-notice-text">正在连接{{communityName ? ' · ' + communityName : '庄园场景'}}</text>
+        <block wx:else>
+          <text class="manor-notice-text">{{communityError}}</text>
+          <button class="manor-link" bindtap="retryCommunity">重试</button>
+        </block>
+      </view>
       <view wx:if="{{characterStatus === 'loading' || characterStatus === 'drawing' || characterStatus === 'error'}}" class="manor-notice">
         <text wx:if="{{characterStatus === 'drawing'}}" class="manor-notice-text">正在准备角色</text>
         <text wx:elif="{{characterStatus === 'loading'}}" class="manor-notice-text">正在加载角色{{characterProgress >= 0 ? ' ' + characterProgress + '%' : ''}}</text>
@@ -40,12 +47,67 @@
           <button class="manor-link" bindtap="retryVilla">重试</button>
         </block>
       </view>
+      <view wx:if="{{interiorStatus === 'loading' || interiorStatus === 'drawing' || interiorStatus === 'error'}}" class="manor-notice manor-interior-notice">
+        <text wx:if="{{interiorStatus === 'drawing'}}" class="manor-notice-text">正在准备别墅内部</text>
+        <text wx:elif="{{interiorStatus === 'loading'}}" class="manor-notice-text">正在加载别墅内部{{interiorProgress >= 0 ? ' ' + interiorProgress + '%' : ''}}</text>
+        <block wx:else>
+          <text class="manor-notice-text">{{interiorError}}</text>
+          <button class="manor-link" bindtap="retryInterior">重试</button>
+        </block>
+      </view>
     </view>
-    <view wx:if="{{mapMode}}" class="manor-map-bar">
+    <view wx:if="{{doorPrompt && !insideVilla && !buildMode && !mapMode}}" class="manor-door-prompt">
+      <view class="manor-door-copy">
+        <text class="manor-door-title">{{courtyardDoorLabel ? '松影叠院 · ' + courtyardDoorLabel : '已到达别墅门口'}}</text>
+        <text class="manor-door-caption">开门后进入室内</text>
+      </view>
+      <button class="manor-action manor-primary manor-door-button" bindtap="enterVilla">开门进入</button>
+    </view>
+    <view wx:if="{{insideVilla}}" class="manor-interior-bar">
+      <text class="manor-interior-title">{{insideCourtyard ? '松影叠院' : '别墅内部'}}</text>
+      <button wx:if="{{!insideCourtyard || courtyardDoorLabel}}" class="manor-action manor-interior-exit"
+        disabled="{{doorBusy || (elevator && elevator.busy)}}" bindtap="exitVilla">{{insideCourtyard ? '开门离开' : '离开别墅'}}</button>
+    </view>
+    <view wx:if="{{insideVilla && elevator}}" class="manor-door-prompt manor-elevator-prompt">
+      <view class="manor-door-copy">
+        <text class="manor-door-title">{{elevator.title}}</text>
+      </view>
+      <button wx:if="{{!elevator.busy}}" class="manor-action manor-primary manor-door-button manor-elevator-button" bindtap="useElevator">
+        <text class="{{elevator.targetFloor === 2 ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'}}" aria-hidden="true"></text>
+        前往{{elevator.destination}}
+      </button>
+      <text wx:else class="manor-elevator-destination">{{elevator.destination}}</text>
+    </view>
+    <view wx:if="{{buildMode}}" class="manor-build-panel" aria-label="建筑建造">
+      <view class="manor-build-header">
+        <text class="manor-build-title">建造建筑</text>
+        <text class="manor-build-detail">占地 {{buildFootprint}}</text>
+      </view>
+      <view class="manor-build-catalog" aria-label="选择建筑款式">
+        <button wx:for="{{buildCatalog}}" wx:key="id" data-building-id="{{item.id}}" bindtap="chooseBuilding"
+          disabled="{{buildSaving}}" class="manor-action manor-build-option {{buildId === item.id ? 'manor-build-selected' : ''}}">{{item.name}}</button>
+      </view>
+      <view class="manor-build-orientation">
+        <button class="manor-action manor-build-turn" data-delta="-90" bindtap="rotateBuilding" disabled="{{buildSaving}}">左转 90°</button>
+        <text class="manor-build-angle" aria-label="朝向 {{buildRotation}} 度">{{buildRotation}}°</text>
+        <button class="manor-action manor-build-turn" data-delta="90" bindtap="rotateBuilding" disabled="{{buildSaving}}">右转 90°</button>
+      </view>
+      <view class="manor-build-feedback" aria-live="polite">
+        <text class="manor-build-hint">{{buildHint}}</text>
+        <text wx:if="{{buildError}}" class="manor-build-error">{{buildError}}</text>
+        <text wx:if="{{buildId === 'songying_courtyard' && courtyardStatus === 'loading'}}" class="manor-build-detail">正在加载松影叠院{{courtyardProgress >= 0 ? ' ' + courtyardProgress + '%' : ''}}</text>
+        <view wx:if="{{buildId === 'songying_courtyard' && courtyardStatus === 'error'}}" class="manor-build-retry">
+          <text class="manor-build-error">{{courtyardError}}</text><button class="manor-link" bindtap="retryCourtyard">重试</button>
+        </view>
+      </view>
+      <button class="manor-action manor-primary manor-build-submit" bindtap="confirmBuilding"
+        disabled="{{!buildCanConfirm || buildSaving}}" loading="{{buildSaving}}">{{buildSaving ? '正在建造' : '确认建造'}}</button>
+    </view>
+    <view wx:elif="{{mapMode}}" class="manor-map-bar">
       <text class="manor-map-hint">单指旋转 · 双指同向滑动平移 · 捏合缩放</text>
     </view>
     <block wx:else>
-      <button wx:if="{{minimap}}" class="manor-minimap" style="{{minimapTop ? 'top:' + minimapTop + 'px' : ''}}"
+      <button wx:if="{{minimap && !insideVilla}}" class="manor-minimap" style="{{minimapTop ? 'top:' + minimapTop + 'px' : ''}}"
         bindtap="openMap" aria-label="展开庄园地图">
         <view class="manor-minimap-land">
           <view wx:if="{{minimap.river}}" class="manor-minimap-river"
@@ -61,7 +123,7 @@
         </view>
         <text class="manor-minimap-label">地图</text>
       </button>
-      <view wx:if="{{activeCharacter}}" class="manor-joystick {{stickActive ? 'manor-joystick-active' : ''}}" id="manor-stick"
+      <view wx:if="{{activeCharacter}}" class="manor-joystick {{stickActive ? 'manor-joystick-active' : ''}} {{doorBusy || (elevator && elevator.busy) ? 'manor-joystick-locked' : ''}}" id="manor-stick"
         aria-label="轻推摇杆行走，推远奔跑" catchtouchstart="onStickStart" catchtouchmove="onStickMove"
         catchtouchend="onStickEnd" catchtouchcancel="onStickCancel">
         <view class="manor-stick-axis manor-stick-north"></view>
@@ -70,10 +132,18 @@
         <view class="manor-stick-axis manor-stick-east"></view>
         <view class="manor-stick-knob" style="transform: translate({{stickX}}px, {{stickY}}px);"></view>
       </view>
-      <view class="manor-controls">
+    </block>
+  </block>
+  <view wx:if="{{status === 'loading' || status === 'ready'}}" class="manor-top-controls">
+    <block wx:if="{{status === 'ready' && !mapMode && !buildMode}}">
+      <button class="manor-hud-button {{menuOpen ? 'manor-hud-active' : ''}}" bindtap="toggleMenu"
+        aria-label="{{menuOpen ? '收起庄园设置' : '庄园设置'}}">
+        <view class="manor-hud-face"><view class="manor-more-icon"></view></view>
+      </button>
         <view wx:if="{{menuOpen}}" class="manor-menu" aria-label="庄园设置">
-          <button class="manor-menu-action" bindtap="openMap">查看地图</button>
-          <button wx:if="{{villaStatus === 'ready'}}" class="manor-menu-action" bindtap="focusVilla">看别墅</button>
+          <button wx:if="{{canBuildManor3d && !insideVilla}}" class="manor-menu-action" bindtap="openBuild">建造</button>
+          <button wx:if="{{!insideVilla}}" class="manor-menu-action" bindtap="openMap">查看地图</button>
+          <button wx:if="{{!insideVilla && villaStatus === 'ready'}}" class="manor-menu-action" bindtap="focusVilla">看别墅</button>
           <button wx:if="{{activeCharacter}}" class="manor-menu-action" bindtap="focusCharacter">回到角色</button>
           <view class="manor-sensitivity">
             <view class="manor-sensitivity-label"><text>旋转灵敏度</text><text>{{cameraSensitivity}}%</text></view>
@@ -88,17 +158,10 @@
               data-character="girl" bindtap="selectCharacter">女孩</button>
           </view>
         </view>
-        <button class="manor-hud-button {{menuOpen ? 'manor-hud-active' : ''}}" bindtap="toggleMenu"
-          aria-label="{{menuOpen ? '收起庄园设置' : '庄园设置'}}">
-          <view class="manor-hud-face"><view class="manor-more-icon"></view></view>
-        </button>
-      </view>
     </block>
-  </block>
-  <view wx:if="{{status === 'loading' || status === 'ready'}}" class="manor-top-controls">
-    <button class="manor-hud-button {{mapMode ? 'manor-map-back' : ''}}" bindtap="goBack"
-      aria-label="{{mapMode ? '退出地图预览，回到角色' : '返回宠物庄园'}}">
-      <view class="manor-hud-face"><view class="manor-back-arrow"></view><text wx:if="{{mapMode}}">回到角色</text></view>
+    <button class="manor-hud-button {{mapMode || buildMode ? 'manor-map-back' : ''}}" bindtap="goBack" disabled="{{buildSaving}}"
+      aria-label="{{buildMode ? '退出建造' : mapMode ? '退出地图预览，回到角色' : '退出 3D 庄园'}}">
+      <view class="manor-hud-face"><view class="manor-back-arrow"></view><text wx:if="{{mapMode || buildMode}}">{{buildMode ? '退出建造' : '回到角色'}}</text></view>
     </button>
   </view>
 </view>

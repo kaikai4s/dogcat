@@ -24,6 +24,8 @@ function createManorPlayer({ THREE, scene, navigation, getVillaBounds, disposeMo
   anchor.add(shadow)
 
   let current = null
+  let currentNavigation = navigation
+  let currentGetVillaBounds = getVillaBounds
   let inputX = 0, inputY = 0, inputMagnitude = 0, running = false
   let playerHeight = 1.6
   let playerRadius = .4
@@ -39,7 +41,7 @@ function createManorPlayer({ THREE, scene, navigation, getVillaBounds, disposeMo
   }
 
   function spawn(yaw) {
-    const point = navigation.spawn(getVillaBounds())
+    const point = currentNavigation.spawn(currentGetVillaBounds())
     if (!point || ![point.x, point.y, point.z].every(Number.isFinite)) return false
     anchor.position.set(point.x, point.y, point.z)
     if (Number.isFinite(yaw)) anchor.rotation.y = yaw
@@ -89,9 +91,18 @@ function createManorPlayer({ THREE, scene, navigation, getVillaBounds, disposeMo
     running = running ? inputMagnitude > RUN_EXIT : inputMagnitude >= RUN_ENTER
   }
 
-  function place(x, z, yaw) {
+  function setNavigation(nextNavigation, nextGetVillaBounds) {
+    if (!nextNavigation || typeof nextNavigation.sample !== 'function' || typeof nextNavigation.spawn !== 'function') {
+      throw new Error('角色导航不可用')
+    }
+    currentNavigation = nextNavigation
+    if (typeof nextGetVillaBounds === 'function') currentGetVillaBounds = nextGetVillaBounds
+    setInput(0, 0)
+  }
+
+  function place(x, z, yaw, preferredY) {
     if (!current || !Number.isFinite(x) || !Number.isFinite(z)) return false
-    const y = navigation.sample(x, z, getVillaBounds())
+    const y = currentNavigation.sample(x, z, currentGetVillaBounds(), preferredY)
     if (!Number.isFinite(y)) return false
     anchor.position.set(x, y, z)
     if (Number.isFinite(yaw)) anchor.rotation.y = yaw
@@ -100,16 +111,18 @@ function createManorPlayer({ THREE, scene, navigation, getVillaBounds, disposeMo
   }
 
   function avoidVilla() {
-    if (!current || Number.isFinite(navigation.sample(anchor.position.x, anchor.position.z, getVillaBounds()))) return false
+    if (!current || Number.isFinite(currentNavigation.sample(anchor.position.x, anchor.position.z, currentGetVillaBounds(), anchor.position.y))) return false
     return spawn()
   }
 
   function move(dx, dz) {
     const p = anchor.position
-    const bounds = getVillaBounds()
+    const bounds = currentGetVillaBounds()
     const steps = Math.max(1, Math.ceil(Math.hypot(dx, dz) / MAX_STEP))
     const moveTo = (x, z) => {
-      const y = navigation.sample(x, z, bounds)
+      const y = currentNavigation.sampleMove
+        ? currentNavigation.sampleMove(x, z, p)
+        : currentNavigation.sample(x, z, bounds, p.y)
       if (!Number.isFinite(y) || y - p.y > MAX_RISE) return false
       p.set(x, y, z)
       return true
@@ -146,6 +159,19 @@ function createManorPlayer({ THREE, scene, navigation, getVillaBounds, disposeMo
     mixer.update(dt)
   }
 
+  function face(yaw, dt) {
+    const angle = yaw - anchor.rotation.y
+    const shortestTurn = Math.atan2(Math.sin(angle), Math.cos(angle))
+    anchor.rotation.y = (anchor.rotation.y + shortestTurn * (1 - Math.exp(-18 * dt))) % TAU
+  }
+
+  function updateTransport(dt, x, y, z, yaw, walking = false) {
+    if (!current) return
+    anchor.position.set(x, y, z)
+    if (Number.isFinite(yaw)) face(yaw, dt)
+    animate(walking ? 1 : 0, 1, dt)
+  }
+
   function update(dt, azimuth) {
     if (!current || !(dt > 0)) return
     let gait = 0, animationEffort = 0
@@ -162,9 +188,7 @@ function createManorPlayer({ THREE, scene, navigation, getVillaBounds, disposeMo
       if (Math.hypot(dx, dz) > .0001) {
         gait = running ? 2 : 1
         animationEffort = running ? runEffort : walkEffort
-        const angle = Math.atan2(dx, dz) - anchor.rotation.y
-        const shortestTurn = Math.atan2(Math.sin(angle), Math.cos(angle))
-        anchor.rotation.y = (anchor.rotation.y + shortestTurn * (1 - Math.exp(-18 * dt))) % TAU
+        face(Math.atan2(dx, dz), dt)
       }
     }
     animate(gait, animationEffort, dt)
@@ -178,7 +202,7 @@ function createManorPlayer({ THREE, scene, navigation, getVillaBounds, disposeMo
   }
 
   return {
-    show, setInput, update, avoidVilla, place, dispose,
+    show, setInput, setNavigation, update, updateTransport, avoidVilla, place, dispose,
     get position() { return current ? anchor.position : null },
     get height() { return playerHeight },
     get radius() { return playerRadius },

@@ -2,13 +2,19 @@ const { hasManorAssets } = require('../../envList')
 const { CLOUD_STORAGE_ROOTS } = require('../../utils/cloud-assets')
 
 const MANOR_ASSET_VERSION = 'manor-v1'
+const INTERIOR_CACHE_VERSION = 'interior-v2'
 const MANOR_ASSET_FILES = Object.freeze({
   layout: 'layout.json',
   manor: 'manor.glb',
   villa: 'manor-villa.glb',
+  courtyardVilla: 'courtyard-villa.glb',
+  interiorModel: 'model.json',
+  interior: 'manor-villa-interior.glb',
   boy: 'boy.glb',
   girl: 'girl.glb'
 })
+
+const isInteriorAsset = key => key === 'interior' || key === 'interiorModel'
 
 function getManorAssetFileId(envId, key) {
   if (!hasManorAssets(envId) || !Object.prototype.hasOwnProperty.call(MANOR_ASSET_FILES, key)) return ''
@@ -20,13 +26,36 @@ function getManorAssetFileId(envId, key) {
 // The current largest GLB is 56.14 MiB, so read it directly as a binary buffer.
 const DOWNLOAD_TIMEOUT = 120000
 const FILE_TIMEOUT = 20000
-const ASSET_BYTES = { layout: 22363, manor: 58869484, villa: 12576788, boy: 5489760, girl: 3233352 }
+const ASSET_BYTES = {
+  layout: 22363,
+  manor: 58869484,
+  villa: 12576788,
+  courtyardVilla: 12353452,
+  interiorModel: 900,
+  interior: 1817160,
+  boy: 5489760,
+  girl: 3233352
+}
 
 function manorError(code, message, cause) {
   const error = new Error(message)
   error.code = code
   if (cause) error.cause = cause
   return error
+}
+
+function validInteriorAnchor(anchor) {
+  return anchor && Array.isArray(anchor.position) && anchor.position.length >= 3 &&
+    anchor.position.slice(0, 3).every(Number.isFinite)
+}
+
+function validInteriorMetadata(metadata) {
+  return metadata && typeof metadata.model === 'string' && metadata.model.length > 0 &&
+    validInteriorAnchor(metadata.anchors?.FrontDoor) && validInteriorAnchor(metadata.anchors?.InteriorSpawn) &&
+    (!metadata.frontDoorOpening?.enterDirection ||
+      Array.isArray(metadata.frontDoorOpening.enterDirection) &&
+      metadata.frontDoorOpening.enterDirection.length >= 3 &&
+      metadata.frontDoorOpening.enterDirection.slice(0, 3).every(Number.isFinite))
 }
 
 function cancelled() {
@@ -78,11 +107,12 @@ function invoke(owner, method, options, operation, settings = {}) {
 }
 
 function validateAsset(key, data) {
-  if (key === 'layout' && typeof data === 'string') {
+  if ((key === 'layout' || key === 'interiorModel') && typeof data === 'string') {
     const text = data.replace(/^﻿/, '')
     try {
       const layout = JSON.parse(text)
-      if (layout && typeof layout === 'object' && !Array.isArray(layout)) return text
+      if (layout && typeof layout === 'object' && !Array.isArray(layout) &&
+          (key === 'layout' || validInteriorMetadata(layout))) return text
     } catch (_) {}
   } else if (key !== 'layout' && Object.prototype.toString.call(data) === '[object ArrayBuffer]' && data.byteLength >= 20) {
     const header = new DataView(data)
@@ -105,7 +135,8 @@ function createCloudAssets({ wx: api, envId } = {}) {
   // The cloud folder is versioned. Persist only validated files from this environment.
   const cachePrefix = fs && userData && typeof fs.saveFile === 'function' && typeof fs.unlinkSync === 'function'
     ? userData + '/dogcat-' + MANOR_ASSET_VERSION + '-' + envId + '-' : ''
-  const cachePath = key => cachePrefix ? cachePrefix + MANOR_ASSET_FILES[key] : ''
+  const cachePath = key => cachePrefix
+    ? cachePrefix + (isInteriorAsset(key) ? INTERIOR_CACHE_VERSION + '-' : '') + MANOR_ASSET_FILES[key] : ''
 
   function remove(path) {
     if (fs && path && typeof fs.unlinkSync === 'function') {
@@ -119,8 +150,14 @@ function createCloudAssets({ wx: api, envId } = {}) {
   }
 
   async function readPath(key, filePath, operation) {
-    const result = await invoke(fs, 'readFile', key === 'layout' ? { filePath, encoding: 'utf8' } : { filePath }, operation)
+    const text = key === 'layout' || key === 'interiorModel'
+    const result = await invoke(fs, 'readFile', text ? { filePath, encoding: 'utf8' } : { filePath }, operation)
     return validateAsset(key, result && result.data)
+  }
+
+  function dataSize(key, data) {
+    if (key === 'layout' || key === 'interiorModel') return typeof data === 'string' ? data.length : 0
+    return data?.byteLength || 0
   }
 
   async function download(fileID, key, operation, report) {
@@ -159,7 +196,7 @@ function createCloudAssets({ wx: api, envId } = {}) {
     if (target) {
       try {
         const data = await readPath(key, target, operation)
-        report({ progress: 100, totalBytesWritten: key === 'layout' ? ASSET_BYTES.layout : data.byteLength })
+        report({ progress: 100, totalBytesWritten: dataSize(key, data) || ASSET_BYTES[key] })
         return data
       } catch (error) {
         if (operation.cancelled) throw cancelled()
@@ -174,7 +211,7 @@ function createCloudAssets({ wx: api, envId } = {}) {
         try { await invoke(fs, 'saveFile', { tempFilePath: filePath, filePath: target }, operation) } catch (_) {}
       }
       if (operation.cancelled) throw cancelled()
-      const size = key === 'layout' ? ASSET_BYTES.layout : data.byteLength
+      const size = dataSize(key, data) || ASSET_BYTES[key]
       report({ progress: 100, totalBytesWritten: size, totalBytesExpectedToWrite: size })
       return data
     } catch (error) {

@@ -28,6 +28,7 @@ module.exports = function createHandler(context) {
     if (action === 'getPublicPetCare') return require('../services/playground-care')(context).publicCare(openid, data)
     if (action === 'syncScene') return shared.sync(openid, data)
     if (action === 'syncManor3d') return shared.syncManor3d(openid, data)
+    if (action === 'placeManor3dBuilding') return shared.placeManor3dBuilding(openid, user, data)
     if (action === 'getScene') return shared.snapshot(openid, data)
     if (action === 'vehicleAction') return shared.vehicles.action(openid,user,data)
     if (action === 'setVehicleSpeed') return shared.vehicles.speed(openid,user,data)

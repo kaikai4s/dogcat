@@ -8,6 +8,7 @@ const { sampleMotion } = require('./shared-motion')
 const { publicAppearance } = require('../playground-appearance-record')
 const { publicUserTitle } = require('../userTitles')
 const { settleNeeds, isWasteExpired } = require('./pet-needs')
+const manor3dBuildings = require('./manor3d-buildings')
 const COLLECTION = 'pet_playground_plots'
 const MANOR3D_WIDTH = 1200
 const MANOR3D_DEPTH = 960
@@ -127,6 +128,7 @@ module.exports = function createShared(context) {
   const now=()=>context.nowMs ? context.nowMs() : Date.now()
   const read=async(database,id)=>{const row=await world.read(database,id);return row?{...row}:null}
   function publicRecord(row) {
+    if(row.kind===manor3dBuildings.KIND) return manor3dBuildings.publicBuilding(row)
     const ownerId=presenceId(row.ownerOpenid)
     if(row.kind==='plot') {const {mine,...plot}=service.publicPlot(row,'');return {kind:'plot',...plot,ownerId}}
     if(row.kind==='resident') {
@@ -166,7 +168,7 @@ module.exports = function createShared(context) {
   const version=(row)=>({epoch:row.kind==='presence'?row.sessionStarted||row.lastSeen:row.revision||Date.parse(row.updatedAt||row.createdAt)||0,
     seq:row.kind==='resident'?row.petSeq||0:row.kind==='presence'?(row.seq||0)+(row.manor3dSeq||0):row.seq||0})
   async function ensureRecordNameColor(row) {
-    if(row.kind==='plot' || validColor(row.nameColor)) return row
+    if(row.kind==='plot' || row.kind===manor3dBuildings.KIND || validColor(row.nameColor)) return row
     const home=await service.own(row.ownerOpenid)
     if(!home) return row
     return transaction(db,async(tx)=>{
@@ -217,6 +219,7 @@ module.exports = function createShared(context) {
   const hooks={read,check,publish,rows,safePoint,publicNavigation,navigation,motion,
     publicRecord:(row)=>({...publicRecord(row),version:version(row)}),
     config:()=>service.config(),access:(...args)=>social.access(...args),social}
+  const placeManor3dBuilding=manor3dBuildings.create(context,{check,publish,project:hooks.publicRecord})
   const companions=require('./companions')(context,hooks)
   const farm=require('./farm')(context,hooks)
   const rides=require('./rides')(context,{...hooks,companions})
@@ -226,7 +229,7 @@ module.exports = function createShared(context) {
     response:({actor,car,records=[]})=>({actor:{...publicRecord(actor),version:version(actor)},vehicle:{...publicRecord(car),version:version(car)},records:records.filter(Boolean).map((r)=>({...publicRecord(r),version:version(r)})),serverTime:now()})})
   async function enter(openid,user,data,pets) {
     const communities=require('../playground-communities')(context)
-    const choice=data.community || user.residentialCommunity || null
+    const choice=data.solo === true ? null : data.community || user.residentialCommunity || null
     const {community}=await communities.entry(choice,user)
     const id=world.communityId({residentialCommunity:community}) || 'solo_'+world.hash(openid)
     await rides.prepareEntry(openid,id)
@@ -239,7 +242,9 @@ module.exports = function createShared(context) {
     const residentEpoch=await live.nextEpoch(id,residentId(openid),stamp)
     const state=await transaction(db,async(tx)=>{
       const currentUser=(await tx.collection('users').doc(user._id).get()).data||user
-      const currentEntry=await communities.entry(data.community || currentUser.residentialCommunity || null,currentUser,tx)
+      const currentEntry=data.solo === true
+        ? { community: null, retired: false }
+        : await communities.entry(data.community || currentUser.residentialCommunity || null,currentUser,tx)
       if((world.communityId({residentialCommunity:currentEntry.community})||'solo_'+world.hash(openid))!==id) throw new Error('小区资料已更新，请重新进入')
       const old=await read(tx,presenceId(openid))
       const resident=await read(tx,residentId(openid))
@@ -282,7 +287,8 @@ module.exports = function createShared(context) {
       await tx.collection(COLLECTION).doc(presenceId(openid)).set({data:actor})
       if(savedResident) await tx.collection(COLLECTION).doc(residentId(openid)).set({data:savedResident})
       else if(!currentHome && resident) await tx.collection(COLLECTION).doc(residentId(openid)).remove()
-      return {...actor,home:currentHome,own:currentOwn,resident:savedResident,old,allowed,vehicle,entry:currentEntry}
+      return {...actor,home:currentHome,own:currentOwn,resident:savedResident,old,allowed,vehicle,entry:currentEntry,
+        canBuildManor3d:manor3dBuildings.canBuild(openid,currentUser,id,currentEntry.retired)}
     })
     if(state.old && state.old.communityId!==id) await live.publish(state.old.communityId,{id:presenceId(openid),kind:'presence',deleted:true})
     await publish({...state,_id:presenceId(openid)})
@@ -293,7 +299,7 @@ module.exports = function createShared(context) {
       vehicleId:state.vehicleId||'',vehicleRole:state.vehicleRole||'',facing:state.facing||'sw',mirrored:!!state.mirrored,vehicleSpeed:Math.max(2,Math.min(5,Number(user.playgroundVehicleSpeed)||2)),
       community:state.entry.community,communityRetired:state.entry.retired,visiting:id!==(world.communityId(user)||'solo_'+world.hash(openid)),hasHomeElsewhere:!!state.home&&!state.own,
       homeCommunity:user.residentialCommunity||null,plot:state.own?service.publicPlot({...state.own,_id:state.own.plotId},openid):null,
-      position3d:projectManor3dPosition(state.position,cfg)}
+      position3d:projectManor3dPosition(state.position,cfg),canBuildManor3d:state.canBuildManor3d}
   }
   async function syncManor3d(openid,data) {
     const result=await transaction(db,async(tx)=>{
@@ -457,7 +463,7 @@ module.exports = function createShared(context) {
         })
       }
     }
-    const where={communityId:data.sceneId,kind:db.command.in(['plot','presence','resident','vehicle'])}
+    const where={communityId:data.sceneId,kind:db.command.in(['plot','presence','resident','vehicle',manor3dBuildings.KIND])}
     if(cursor) where._id=db.command.gt(cursor)
     const page=(await db.collection(COLLECTION).where(where).orderBy('_id','asc').limit(100).get()).data||[]
     for (const row of page) if (row.kind==='plot') {
@@ -594,7 +600,7 @@ module.exports = function createShared(context) {
       for(const [id,kind] of [[plotId,'plot'],[presenceId(openid),'presence'],[residentId(openid),'resident'],[require('./vehicles').vehicleId(openid),'vehicle']]) await live.publish(sceneId,{id,kind,deleted:true})
     } else {const row=await read(db,plotId);if(row){await publish(row);await vehicles.ensure(openid)}}
   }
-  return {enter,sync,syncManor3d,snapshot,commandPet,petScale,plotChanged,social,vehicles,companions,farm,rides,publishRecords:(records)=>Promise.all(records.map(publish))}
+  return {enter,sync,syncManor3d,placeManor3dBuilding,snapshot,commandPet,petScale,plotChanged,social,vehicles,companions,farm,rides,publishRecords:(records)=>Promise.all(records.map(publish))}
 }
 module.exports.navigation=navigation
 module.exports.motion=motion

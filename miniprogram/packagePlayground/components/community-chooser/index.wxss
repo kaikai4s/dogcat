@@ -12,8 +12,20 @@ button[disabled] { opacity: .55; }
 .search-row { display: flex; align-items: center; gap: 10rpx; margin: 28rpx 0 22rpx; flex-shrink: 0; }
 .search-row input { box-sizing: border-box; height: 76rpx; padding: 14rpx 16rpx; background: #fff; border: 1rpx solid #dce5d7; border-radius: 16rpx; font-size: 24rpx; }
 .city-input { width: 190rpx; flex-shrink: 0; }
-.keyword-input { flex: 1; min-width: 0; }
-.search-row button { background: #e7efdf; color: #426239; flex-shrink: 0; }
+.keyword-input { flex: 1 1 0%; width: 0; min-width: 0; }
+.search-row button {
+  flex: 0 0 108rpx;
+  width: 108rpx;
+  min-width: 0;
+  height: 76rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10rpx;
+  white-space: nowrap;
+  background: #e7efdf;
+  color: #426239;
+}
 .list-label { display: flex; justify-content: space-between; gap: 14rpx; margin-bottom: 8rpx; color: #53654d; font-size: 24rpx; flex-shrink: 0; }
 .list-label text { font-size: 21rpx; color: #7c8976; }
 .community-list, .application-form { flex: 1; min-height: 0; height: 0; }

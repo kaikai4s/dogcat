@@ -53,16 +53,36 @@ test('only the confirmed cloud environment can use the uploaded 3D asset files',
   assert.equal(getManorAssetFileId(TRIAL, 'layout'), ROOT + 'layout.json')
   assert.equal(getManorAssetFileId(TRIAL, 'manor'), ROOT + 'manor.glb')
   assert.equal(getManorAssetFileId(TRIAL, 'villa'), ROOT + 'manor-villa.glb')
+  assert.equal(getManorAssetFileId(TRIAL, 'courtyardVilla'), ROOT + 'courtyard-villa.glb')
+  assert.equal(getManorAssetFileId(TRIAL, 'interiorModel'), ROOT + 'model.json')
+  assert.equal(getManorAssetFileId(TRIAL, 'interior'), ROOT + 'manor-villa-interior.glb')
   assert.equal(getManorAssetFileId(TRIAL, 'boy'), ROOT + 'boy.glb')
   assert.equal(getManorAssetFileId(TRIAL, 'girl'), ROOT + 'girl.glb')
   assert.equal(getManorAssetFileId(PRODUCTION, 'boy'), '')
   assert.equal(getManorAssetFileId(PRODUCTION, 'girl'), '')
+  assert.equal(getManorAssetFileId(PRODUCTION, 'courtyardVilla'), '')
   assert.equal(getManorAssetFileId(TRIAL, '../layout.json'), '')
   assert.equal(hasManorAssets(PRODUCTION), false)
   assert.equal(hasManorAssets('constructor'), false)
   const f = fixture()
   await assert.rejects(createCloudAssets({ wx: f.wx, envId: PRODUCTION }).read('manor'), { code: 'MANOR_ASSETS_UNAVAILABLE' })
   assert.equal(f.calls.length, 0)
+})
+
+test('the courtyard villa downloads and caches separately from the existing demo villa', async () => {
+  const f = fixture(), assets = f.create(), demo = glb(), courtyard = glb()
+  const demoPath = 'wxfile://store/dogcat-manor-v1-' + TRIAL + '-manor-villa.glb'
+  f.files.set(demoPath, demo)
+  const pending = assets.read('courtyardVilla')
+  await flush()
+  assert.equal(f.calls.length, 1)
+  assert.equal(f.calls[0].options.fileID, ROOT + 'courtyard-villa.glb')
+  f.finish(0, courtyard)
+  assert.equal(await pending, courtyard)
+  assert.equal(await f.create().read('courtyardVilla'), courtyard)
+  assets.invalidate('courtyardVilla')
+  assert.equal(await assets.read('villa'), demo)
+  assert.equal(f.calls.length, 1)
 })
 
 test('GLB reads share a download with progress and persist only validated files across page instances', async () => {
@@ -111,6 +131,46 @@ test('fallback resolves the same cloud file, downloads it, and still works if lo
   assert.equal(await f.create().read('layout', { onProgress: event => progress.push(event.progress) }), payload)
   assert.deepEqual(progress, [0, 100])
   assert.equal(f.files.size, 0)
+})
+
+test('interior metadata is read as UTF-8 text and cached only after anchor validation', async () => {
+  const f = fixture(), metadata = JSON.stringify({
+    model: 'manor-villa-interior.glb',
+    anchors: { FrontDoor: { position: [2.7, .4, 3.1] }, InteriorSpawn: { position: [2.7, .41, 1.97] } }
+  })
+  const readOptions = []
+  const originalRead = f.fs.readFile
+  f.fs.readFile = options => {
+    if (options.filePath.includes('model.json')) readOptions.push(options)
+    return originalRead(options)
+  }
+  const promise = f.create().read('interiorModel')
+  await flush()
+  assert.equal(f.calls[0].options.fileID, ROOT + 'model.json')
+  const path = 'wxfile://metadata'
+  f.files.set(path, metadata)
+  f.calls[0].options.success({ statusCode: 200, tempFilePath: path })
+  assert.equal(await promise, metadata)
+  assert.equal(readOptions[0].encoding, 'utf8')
+  const bad = fixture(), invalid = bad.create().read('interiorModel')
+  await flush()
+  bad.files.set('wxfile://invalid', '{}')
+  bad.calls[0].options.success({ statusCode: 200, tempFilePath: 'wxfile://invalid' })
+  await assert.rejects(invalid, { code: 'MANOR_ASSET_INVALID' })
+})
+
+test('the elevator interior bypasses the old staircase cache', async () => {
+  const f = fixture()
+  const old = glb()
+  f.files.set('wxfile://store/dogcat-manor-v1-' + TRIAL + '-manor-villa-interior.glb', old)
+  const load = f.create().read('interior')
+  await flush()
+  assert.equal(f.calls[0].options.fileID, ROOT + 'manor-villa-interior.glb')
+  const elevator = glb()
+  f.finish(0, elevator)
+  assert.equal(await load, elevator)
+  assert.equal(await f.create().read('interior'), elevator)
+  assert.equal(f.calls.length, 1)
 })
 
 test('a truncated cloud model is rejected and removed instead of persisting', async () => {

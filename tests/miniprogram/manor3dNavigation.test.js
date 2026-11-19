@@ -72,6 +72,15 @@ test('spawn stays outside a villa and its footprint is on walkable terrain', () 
   assert.ok(spawn.z < 0)
 })
 
+test('community placement can snap to nearby walkable ground without crossing the movement bound', () => {
+  const navigation = fixture()
+  const nearest = navigation.nearestWalkable(12, 0, null, 24)
+  assert.ok(nearest)
+  assert.ok(Math.hypot(nearest.x - 12, nearest.z) <= 24)
+  assert.ok(Number.isFinite(navigation.sample(nearest.x, nearest.z)))
+  assert.equal(navigation.nearestWalkable(12, 0, null, 1), null)
+})
+
 test('a yawed and translated bridge is sampled in its local coordinates', () => {
   const bridge = new THREE.Group()
   bridge.name = '04 | Stone footbridge test'

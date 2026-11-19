@@ -106,6 +106,41 @@ test('villa uses the closest fitting plot and only suppresses grass on that plot
   view.dispose()
 })
 
+test('shared 2D plots keep trees without rendering lot lines, paving or substitute houses', () => {
+  const { view } = createFixture()
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(18, 12).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial())
+  water.name = 'Winding clear stream'
+  const landscape = new THREE.Group().add(water)
+  view.showLandscape(landscape, layout)
+  const villa = makeVilla()
+  view.showVilla(villa)
+  const x = 1260, z = 1320
+  view.setSharedRecords([
+    { kind: 'plot', id: 'empty', x, z, size: 48, buildingType: 'residential', buildings: [] },
+    { kind: 'plot', id: 'legacy', x: 1350, z, size: 48, buildingType: 'residential' },
+    { kind: 'plot', id: 'furnished', x: 1440, z, size: 48, buildings: [
+      { instanceId: 'cabin', type: 'wood_cabin', x: 1440, z },
+      { instanceId: 'tree', category: 'tree', x: 1449, z },
+      { instanceId: 'private', type: 'floor_stone_tile', x: 1431, z }
+    ] },
+    { kind: 'plot', id: 'mine', x: 1530, z, size: 48, mine: true, buildings: [
+      { instanceId: 'paved', category: 'floor', x: 1530, z }
+    ] },
+    { kind: 'plot', id: 'over-stream', x: 1120, z: 1120, size: 48, buildings: [
+      { instanceId: 'stream-tree', category: 'tree', x: 1120, z: 1120 }
+    ] }
+  ], 'viewer')
+  const scene = landscape.parent
+  assert.equal(scene.getObjectByName('Shared plot empty'), undefined)
+  assert.equal(scene.getObjectByName('Shared plot legacy'), undefined)
+  assert.equal(scene.getObjectByName('Shared plot mine'), undefined)
+  assert.deepEqual(scene.getObjectByName('Shared plot furnished').children.map(node => node.name),
+    ['Shared plot detail tree'])
+  assert.equal(scene.getObjectByName('Shared plot over-stream'), undefined)
+  assert.equal(villa.parent.parent, scene)
+  view.dispose()
+})
+
 test('villa focus fits the model in portrait and pan/orbit/zoom remain bounded', () => {
   const { view, frames } = createFixture()
   view.showLandscape(new THREE.Group(), layout)

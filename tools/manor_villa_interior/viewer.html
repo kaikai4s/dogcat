@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="zh-CN" data-scene-status="loading">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#dce4da">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%233c5046'/%3E%3Cpath d='M7 15l9-7 9 7v9H7zM13 24v-7h6v7' fill='none' stroke='%23f8f6ed' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <title>晴溪庄园 · 别墅室内</title>
+  <style>
+    :root { color-scheme: light; --ink: #283b34; --muted: #53685d; --accent: #36584a; --surface: #fcfcf7; }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    body { background: #dce4da; color: var(--ink); font: 14px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; }
+    [hidden], .quiet .chrome { display: none !important; }
+    button { font: inherit; cursor: pointer; }
+    button:disabled { opacity: .45; cursor: wait; }
+    :focus-visible { outline: 2px solid #267158; outline-offset: 2px; }
+    #scene { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+    #scene:active { cursor: grabbing; }
+    #scene:focus-visible { outline-offset: -3px; }
+    .chrome { position: fixed; z-index: 1; }
+    .surface { background: var(--surface); border: 1px solid #fff; border-radius: 8px; box-shadow: 0 4px 18px #223c2d18; }
+    .titlebar { top: max(16px, env(safe-area-inset-top)); left: max(18px, env(safe-area-inset-left)); right: max(18px, env(safe-area-inset-right)); display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; pointer-events: none; }
+    .identity { display: flex; align-items: center; gap: 10px; padding: 7px 12px 7px 7px; }
+    .identity p { color: var(--muted); font-size: 11px; margin: 0 0 2px; }
+    .identity h1 { font-size: 18px; line-height: 1.2; margin: 0; white-space: nowrap; }
+    .emblem { display: grid; place-items: center; flex: none; width: 38px; height: 38px; border-radius: 5px; background: var(--accent); color: #fff; }
+    .glyph { display: block; flex: none; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    #download { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 0 12px; color: var(--ink); text-decoration: none; font-weight: 650; white-space: nowrap; pointer-events: auto; }
+    #download:hover { background: #fff; }
+    .bottom { --dock-bottom: max(16px, env(safe-area-inset-bottom)); left: 50%; bottom: var(--dock-bottom); transform: translateX(-50%); display: grid; justify-items: center; gap: 6px; width: min(465px, calc(100% - 16px)); }
+    .view-bar { display: grid; grid-template-columns: minmax(0, 1fr) 1px 84px; align-items: center; gap: 4px; width: 100%; padding: 4px; }
+    .views { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; }
+    .zooms { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .divider { height: 24px; background: #c8d1c6; }
+    .toolbar-button { display: grid; place-items: center; min-width: 0; height: 44px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--ink); white-space: nowrap; font-weight: 630; }
+    .toolbar-button:hover:not(:disabled) { background: #e7ece0; }
+    .toolbar-button[aria-pressed="true"], .toolbar-button[aria-pressed="true"]:hover:not(:disabled) { background: var(--accent); color: #fff; }
+    .elevator-panel { display: grid; grid-template-columns: minmax(104px, 1fr) 48px 48px; align-items: center; gap: 4px; padding: 4px; }
+    .elevator-status { padding: 0 8px; color: var(--muted); font-size: 13px; font-weight: 630; white-space: nowrap; }
+    .floor-button { background: #e9ede5; }
+    .floor-button[aria-current="location"] { background: var(--accent); color: #fff; }
+    .floor-button[aria-current="location"]:disabled { opacity: 1; cursor: default; }
+    .status { position: fixed; z-index: 2; top: 50%; left: 50%; transform: translate(-50%, -50%); width: max-content; max-width: calc(100% - 24px); padding: 14px 17px; text-align: center; }
+    @media (max-width: 560px), (max-height: 430px) {
+      .titlebar { top: max(9px, env(safe-area-inset-top)); left: max(10px, env(safe-area-inset-left)); right: max(10px, env(safe-area-inset-right)); }
+      .identity { gap: 7px; padding: 5px 8px 5px 5px; }
+      .identity h1 { font-size: 16px; }
+      .emblem { width: 34px; height: 34px; }
+      #download { min-width: 44px; padding: 0 10px; }
+      #download span { display: none; }
+      .bottom { --dock-bottom: max(9px, env(safe-area-inset-bottom)); max-width: calc(100% - env(safe-area-inset-left) - env(safe-area-inset-right) - 16px); }
+    }
+    @media (max-width: 375px) { .view-bar { grid-template-columns: minmax(0, 1fr) 1px 68px; } }
+    @media (min-width: 640px) and (max-height: 430px) and (orientation: landscape) {
+      [data-scene-view="elevator"] .bottom { width: min(690px, calc(100% - 16px)); grid-template-columns: max-content minmax(0, 1fr); align-items: center; }
+    }
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" aria-hidden="true" style="position:absolute">
+    <symbol id="house" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 21v-6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v6"/></symbol>
+    <symbol id="save" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
+    <symbol id="zoom-out" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35M8 11h6"/></symbol>
+    <symbol id="zoom-in" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35M8 11h6m-3-3v6"/></symbol>
+  </svg>
+  <canvas id="scene" tabindex="0" aria-label="别墅室内三维模型。拖动旋转，滚轮或双指缩放。方向键也可旋转。"></canvas>
+  <header class="chrome titlebar">
+    <div class="surface identity">
+      <span class="emblem" aria-hidden="true"><svg class="glyph"><use href="#house"/></svg></span>
+      <div><p>晴溪庄园</p><h1>红瓦别墅室内</h1></div>
+    </div>
+    <a id="download" class="surface" download="manor-villa-interior.glb" aria-label="下载室内 GLB" title="下载室内 GLB" hidden><svg class="glyph" aria-hidden="true"><use href="#save"/></svg><span>下载 GLB</span></a>
+  </header>
+  <nav class="chrome bottom" aria-label="模型视角">
+    <div class="surface elevator-panel" id="elevator-panel" role="group" aria-label="电梯控制" hidden>
+      <span class="elevator-status" id="elevator-status" role="status"></span>
+      <button class="toolbar-button floor-button" type="button" data-floor="1" aria-label="电梯到一楼">1F</button>
+      <button class="toolbar-button floor-button" type="button" data-floor="2" aria-label="电梯到二楼">2F</button>
+    </div>
+    <div class="surface view-bar">
+      <div class="views" role="group" aria-label="预设视角">
+        <button class="toolbar-button" type="button" data-view="ground" aria-pressed="true" disabled>一楼</button>
+        <button class="toolbar-button" type="button" data-view="upper" aria-pressed="false" disabled>二楼</button>
+        <button class="toolbar-button" type="button" data-view="study" aria-pressed="false" disabled>书房</button>
+        <button class="toolbar-button" type="button" data-view="elevator" aria-pressed="false" disabled hidden>电梯</button>
+        <button class="toolbar-button" type="button" data-view="underside" aria-pressed="false" disabled>楼底</button>
+        <button class="toolbar-button" type="button" data-view="walls" aria-pressed="false" disabled>外墙</button>
+      </div>
+      <span class="divider" aria-hidden="true"></span>
+      <div class="zooms" role="group" aria-label="模型缩放">
+        <button class="toolbar-button" id="minus" type="button" aria-label="缩小" title="缩小" disabled><svg class="glyph" aria-hidden="true"><use href="#zoom-out"/></svg></button>
+        <button class="toolbar-button" id="plus" type="button" aria-label="放大" title="放大" disabled><svg class="glyph" aria-hidden="true"><use href="#zoom-in"/></svg></button>
+      </div>
+    </div>
+  </nav>
+  <div id="status" class="surface status" role="status">正在载入别墅室内…</div>
+  <!-- THREE LICENSE -->
+  <script>/* INLINE RUNTIME */</script>
+  <script id="model-data" type="application/octet-stream">INLINE_MODEL</script>
+  <script>
+  (() => {
+    'use strict';
+    const root = document.documentElement;
+    const select = id => document.getElementById(id);
+    const canvas = select('scene');
+    const status = select('status');
+    const elevatorPanel = select('elevator-panel');
+    const elevatorStatus = select('elevator-status');
+    const floorButtons = [...document.querySelectorAll('[data-floor]')];
+    const views = [...document.querySelectorAll('[data-view]')];
+    const minus = select('minus');
+    const plus = select('plus');
+    const toolbar = [...views, minus, plus];
+    const params = new URLSearchParams(location.search);
+    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+    if (params.get('ui') === '0') document.body.classList.add('quiet');
+    function fail(message, error) {
+      root.dataset.sceneStatus = 'error';
+      status.hidden = false;
+      status.textContent = message;
+      toolbar.forEach(button => { button.disabled = true; });
+      console.error(error);
+    }
+
+    const THREE = window.THREE;
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    } catch (error) {
+      fail('当前浏览器无法启动三维预览。', error);
+      return;
+    }
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.24;
+    const vector = (x, y, z) => new THREE.Vector3(x, y, z);
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xdce4da);
+    scene.add(new THREE.HemisphereLight(0xf1f5ff, 0xd2bd9f, 1.9));
+    function light(color, intensity, position) {
+      const lamp = new THREE.DirectionalLight(color, intensity);
+      lamp.position.set(...position);
+      scene.add(lamp);
+    }
+    light(0xfff0d6, 2.25, [-11, 18, 11]);
+    light(0xdcecff, .86, [8, 9, -11]);
+    light(0xe0e6e2, .42, [2, -8, 5]);
+
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, .05, 150);
+    camera.position.set(14, 20, 23);
+    const controls = new THREE.OrbitControls(camera, canvas);
+    controls.enableDamping = !reduceMotion.matches;
+    controls.dampingFactor = .15;
+    controls.enablePan = false;
+    controls.rotateSpeed = .75;
+    controls.minPolarAngle = .04;
+    controls.maxPolarAngle = Math.PI - .04;
+    controls.minZoom = .68;
+    controls.maxZoom = 4;
+
+    const angles = {
+      ground: [.28, 1.20, 1], upper: [.24, 1.37, 1], study: [.33, .84, 1], elevator: [.52, .37, 1],
+      underside: [.015, -1, .065], walls: [.20, .135, 1],
+    };
+    const floorNames = { 1: '一楼', 2: '二楼' };
+    const doorTime = 360;
+    const travelTime = 1440;
+    let model, floorGroups, floorSurfaces, studyArea, walls, elevator, activeView, frame, queued = 0;
+
+    function requestDraw() {
+      if (!queued && !document.hidden) queued = requestAnimationFrame(draw);
+    }
+    function updateWalls() {
+      const towardCamera = camera.position.clone().sub(controls.target).normalize();
+      const shownFloor = activeView === 'ground' ? 1 : activeView === 'underside' ? 0 : 2;
+      for (const wall of walls) {
+        const { yaw, floorLevel } = wall.userData;
+        const facing = towardCamera.x * Math.sin(yaw) + towardCamera.z * Math.cos(yaw);
+        wall.visible = activeView === 'walls' || ((floorLevel === shownFloor || activeView === 'elevator') && facing <= .045);
+      }
+    }
+    function draw(now) {
+      queued = 0;
+      if (model) {
+        controls.update();
+        if (elevator?.journey) updateElevator(now);
+        updateWalls();
+        minus.disabled = camera.zoom <= controls.minZoom;
+        plus.disabled = camera.zoom >= controls.maxZoom;
+      }
+      renderer.render(scene, camera);
+    }
+    controls.addEventListener('change', requestDraw);
+    document.addEventListener('visibilitychange', requestDraw);
+
+    function setFrustum() {
+      const width = canvas.clientWidth;
+      const height = canvas.clientHeight;
+      const aspect = Math.max(1, width) / Math.max(1, height);
+      if (!frame) return;
+      const title = document.querySelector('.titlebar').getBoundingClientRect();
+      const toolbar = document.querySelector('.bottom').getBoundingClientRect();
+      const top = title.height ? title.bottom : 0;
+      const bottom = toolbar.height ? height - toolbar.top : 0;
+      const usable = Math.max(height * .52, height - top - bottom - 12);
+      const halfHeight = Math.max(frame.y * height / usable, frame.x / aspect) * 1.10;
+      const shift = (bottom - top) * halfHeight / Math.max(1, height);
+      camera.left = -halfHeight * aspect;
+      camera.right = halfHeight * aspect;
+      camera.top = halfHeight - shift;
+      camera.bottom = -halfHeight - shift;
+      camera.updateProjectionMatrix();
+    }
+
+    function setView(view) {
+      if (view === 'elevator' && !elevator) view = 'ground';
+      activeView = view;
+      root.dataset.sceneView = view;
+      elevatorPanel.hidden = view !== 'elevator';
+      const ground = view === 'ground' || view === 'walls' || view === 'elevator';
+      const upper = view === 'upper' || view === 'walls' || view === 'study' || view === 'elevator';
+      floorGroups[1].visible = true;
+      floorGroups[2].visible = upper;
+      for (const child of floorGroups[1].children) {
+        const metadata = child.userData;
+        if (Number.isInteger(metadata.facadeIndex)) continue;
+        child.visible = ground || (upper && (metadata.staircase || child === elevator?.group))
+          || (view === 'underside' && metadata.floorSurfaceLevel === 1);
+      }
+      if (elevator) {
+        const showLift = view !== 'underside';
+        elevator.shaft.visible = showLift;
+        elevator.car.visible = showLift;
+        for (const { node } of elevator.doors) node.visible = showLift;
+      }
+      const bounds = new THREE.Box3().setFromObject(view === 'study' && studyArea ? studyArea
+        : view === 'elevator' ? elevator.shaft
+        : view === 'underside' ? floorSurfaces.find(node => node.userData.floorSurfaceLevel === 1) ?? floorGroups[1]
+        : view === 'walls' ? model : floorGroups[upper ? 2 : 1]);
+      if (view === 'study') bounds.expandByVector(vector(.70, .48, .70));
+      if (view === 'elevator') bounds.expandByVector(vector(.72, .49, .72));
+      const damping = controls.enableDamping;
+      controls.enableDamping = false;
+      controls.update();
+      controls.target.copy(bounds.getCenter(vector()));
+      camera.position.copy(vector(...angles[view]).normalize().multiplyScalar(38)).add(controls.target);
+      camera.zoom = 1;
+      camera.lookAt(controls.target);
+      camera.updateMatrixWorld();
+      frame = { x: 0, y: 0 };
+      for (const x of [bounds.min.x, bounds.max.x]) for (const y of [bounds.min.y, bounds.max.y]) {
+        for (const z of [bounds.min.z, bounds.max.z]) {
+          const point = vector(x, y, z).applyMatrix4(camera.matrixWorldInverse);
+          frame.x = Math.max(frame.x, Math.abs(point.x));
+          frame.y = Math.max(frame.y, Math.abs(point.y));
+        }
+      }
+      setFrustum();
+      controls.update();
+      controls.enableDamping = damping;
+      views.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.view === view)));
+      requestDraw();
+    }
+
+    const smooth = t => t * t * (3 - 2 * t);
+    function setElevatorPose(progress, openFloor, openBy) {
+      elevator.car.position.y = elevator.baseY + elevator.travel * progress;
+      for (const { node, baseX, floor, slideX } of elevator.doors) {
+        node.position.x = baseX + (floor === undefined || floor === openFloor ? slideX * openBy : 0);
+      }
+    }
+    function setElevatorMotion(state) {
+      if (state === elevator.motion) return;
+      elevator.motion = state;
+      const target = elevator.journey?.to;
+      const label = {
+        idle: floorNames[elevator.floor] + ' · 门已开',
+        closing: '关门中',
+        moving: target === 2 ? '上行至二楼' : '下行至一楼',
+        opening: floorNames[elevator.floor] + ' · 开门中',
+      }[state];
+      elevatorStatus.textContent = label;
+      for (const button of floorButtons) {
+        const current = elevator.floor === Number(button.dataset.floor);
+        if (current) button.setAttribute('aria-current', 'location');
+        else button.removeAttribute('aria-current');
+        button.disabled = current || state !== 'idle';
+      }
+    }
+    function updateElevator(now) {
+      const { start, from, to } = elevator.journey;
+      const elapsed = Math.max(0, now - start);
+      if (elapsed < doorTime) {
+        setElevatorPose(from - 1, from, 1 - smooth(elapsed / doorTime));
+        setElevatorMotion('closing');
+      } else if (elapsed < doorTime + travelTime) {
+        const progress = smooth((elapsed - doorTime) / travelTime);
+        setElevatorPose(from - 1 + (to - from) * progress, 0, 0);
+        setElevatorMotion('moving');
+      } else if (elapsed < doorTime * 2 + travelTime) {
+        elevator.floor = to;
+        setElevatorPose(to - 1, to, smooth((elapsed - doorTime - travelTime) / doorTime));
+        setElevatorMotion('opening');
+      } else {
+        elevator.floor = to;
+        elevator.journey = null;
+        setElevatorPose(to - 1, to, 1);
+        setElevatorMotion('idle');
+      }
+      if (elevator.journey) requestDraw();
+    }
+
+    function collectElevator(model) {
+      let shaft, car;
+      const doors = [];
+      model.traverse(node => {
+        const { elevatorRole, slideX, floor } = node.userData;
+        if (elevatorRole === 'shaft') shaft = node;
+        if (elevatorRole === 'car') car = node;
+        if (elevatorRole === 'door' && Number.isFinite(slideX)) doors.push({ node, baseX: node.position.x, slideX, floor });
+      });
+      if (!shaft || !car || !(car.userData.travel > 0)) return null;
+      const group = shaft.parent === car.parent ? shaft.parent : shaft;
+      return { group, shaft, car, doors, baseY: car.position.y, travel: car.userData.travel, floor: 1, journey: null };
+    }
+
+    function resize() {
+      renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+      renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+      setFrustum();
+      requestDraw();
+    }
+    addEventListener('resize', resize);
+    resize();
+
+    function zoom(factor) {
+      if (!model) return;
+      camera.zoom = THREE.MathUtils.clamp(camera.zoom * factor, controls.minZoom, controls.maxZoom);
+      camera.updateProjectionMatrix();
+      requestDraw();
+    }
+    minus.addEventListener('click', () => zoom(1 / 1.22));
+    plus.addEventListener('click', () => zoom(1.22));
+    views.forEach(button => button.addEventListener('click', () => setView(button.dataset.view)));
+    floorButtons.forEach(button => button.addEventListener('click', () => {
+      const to = Number(button.dataset.floor);
+      if (!elevator || elevator.journey || elevator.floor === to) return;
+      if (reduceMotion.matches) {
+        elevator.floor = to;
+        elevator.motion = null;
+        setElevatorPose(to - 1, to, 1);
+        setElevatorMotion('idle');
+      } else {
+        elevator.journey = { start: performance.now(), from: elevator.floor, to };
+        setElevatorMotion('closing');
+      }
+      requestDraw();
+    }));
+    canvas.addEventListener('keydown', event => {
+      if (!model) return;
+      if (event.key === '+' || event.key === '=') zoom(1.22);
+      else if (event.key === '-') zoom(1 / 1.22);
+      else if (event.key.startsWith('Arrow')) {
+        const offset = camera.position.clone().sub(controls.target);
+        const orbit = new THREE.Spherical().setFromVector3(offset);
+        if (event.key === 'ArrowLeft') orbit.theta -= .12;
+        if (event.key === 'ArrowRight') orbit.theta += .12;
+        if (event.key === 'ArrowUp') orbit.phi -= .12;
+        if (event.key === 'ArrowDown') orbit.phi += .12;
+        orbit.makeSafe();
+        camera.position.copy(offset.setFromSpherical(orbit)).add(controls.target);
+        controls.update();
+      } else return;
+      event.preventDefault();
+    });
+
+    try {
+      const data = select('model-data');
+      const decoded = atob(data.textContent);
+      const bytes = new Uint8Array(decoded.length);
+      for (let i = 0; i < decoded.length; i++) bytes[i] = decoded.charCodeAt(i);
+      const buffer = bytes.buffer;
+      data.remove();
+      const download = select('download');
+      download.href = URL.createObjectURL(new Blob([buffer], { type: 'model/gltf-binary' }));
+      download.hidden = false;
+      const loader = new THREE.GLTFLoader();
+      loader.parseAsync(buffer, '').then(gltf => {
+        model = gltf.scene;
+        floorGroups = {};
+        floorSurfaces = [];
+        walls = [];
+        model.traverse(node => {
+          const metadata = node.userData;
+          if (metadata.floorLevel && !node.parent?.userData.floorLevel) floorGroups[metadata.floorLevel] = node;
+          if (metadata.floorSurfaceLevel && !node.parent?.userData.floorSurfaceLevel) floorSurfaces.push(node);
+          if (Number.isInteger(metadata.facadeIndex)) walls.push(node);
+          if (metadata.room === 'study') studyArea = node;
+        });
+        if (!floorGroups[1] || !floorGroups[2]) throw new Error('Incomplete floor metadata');
+        scene.add(model);
+        elevator = collectElevator(model);
+        if (elevator) {
+          views.find(button => button.dataset.view === 'elevator').hidden = false;
+          setElevatorPose(0, 1, 1);
+          setElevatorMotion('idle');
+        }
+        toolbar.forEach(button => { button.disabled = false; });
+        const view = params.get('view');
+        setView(Object.hasOwn(angles, view) ? view : 'ground');
+        status.hidden = true;
+        root.dataset.sceneStatus = 'ready';
+      }).catch(error => fail('室内 GLB 无法载入。', error));
+    } catch (error) {
+      fail('室内 GLB 无法载入。', error);
+    }
+  })();
+  </script>
+</body>
+</html>

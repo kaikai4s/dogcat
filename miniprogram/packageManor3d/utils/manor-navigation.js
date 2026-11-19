@@ -151,8 +151,9 @@ function createManorNavigation({ THREE, landscape, config }) {
   function sample(x, z, villaBounds) {
     if (![x, z].every(Number.isFinite) || Math.abs(x) > config.width / 2 - PLAYER_RADIUS ||
         Math.abs(z) > config.depth / 2 - PLAYER_RADIUS) return null
-    if (villaBounds && x >= villaBounds.min.x - PLAYER_RADIUS && x <= villaBounds.max.x + PLAYER_RADIUS &&
-        z >= villaBounds.min.z - PLAYER_RADIUS && z <= villaBounds.max.z + PLAYER_RADIUS) return null
+    const blocked = bounds => x >= bounds.min.x - PLAYER_RADIUS && x <= bounds.max.x + PLAYER_RADIUS &&
+      z >= bounds.min.z - PLAYER_RADIUS && z <= bounds.max.z + PLAYER_RADIUS
+    if (Array.isArray(villaBounds) ? villaBounds.some(blocked) : villaBounds && blocked(villaBounds)) return null
     for (const tree of config.landmarkTrees || []) {
       const radius = Math.max(.38, tree.r * .11) + PLAYER_RADIUS
       if (Math.hypot(x - tree.x, z - tree.z) < radius) return null
@@ -206,7 +207,24 @@ function createManorNavigation({ THREE, landscape, config }) {
     return null
   }
 
-  return { sample, spawn }
+  function nearestWalkable(x, z, villaBounds, maxDistance = 24) {
+    if (![x, z, maxDistance].every(Number.isFinite) || maxDistance < 0) return null
+    const current = sample(x, z, villaBounds)
+    if (current !== null) return { x, y: current, z }
+    const step = 0.75
+    for (let radius = step; radius <= maxDistance + EPSILON; radius += step) {
+      const count = Math.max(16, Math.ceil(2 * Math.PI * radius / step))
+      for (let i = 0; i < count; i++) {
+        const angle = i * Math.PI * 2 / count
+        const point = { x: x + Math.cos(angle) * radius, z: z + Math.sin(angle) * radius }
+        const y = sample(point.x, point.z, villaBounds)
+        if (y !== null) return { ...point, y }
+      }
+    }
+    return null
+  }
+
+  return { sample, spawn, nearestWalkable }
 }
 
 module.exports = { createManorNavigation }

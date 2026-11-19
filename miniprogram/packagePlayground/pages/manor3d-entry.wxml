@@ -16,7 +16,7 @@
     <view class="manor-entry-section-copy">与同一小区的邻居进入同一个场景。</view>
     <button class="manor-entry-primary" bindtap="chooseCommunity" loading="{{opening}}" disabled="{{opening}}">
       <text class="remix-icon ri-community-line"></text>
-      <text>选择小区并进入</text>
+      <text class="manor-entry-button-label">选择小区并进入</text>
       <text class="remix-icon ri-arrow-right-s-line"></text>
     </button>
 
@@ -28,6 +28,7 @@
         <view class="manor-entry-solo-description">独立场景，不关联小区邻里。</view>
       </view>
       <button class="manor-entry-solo-button" bindtap="enterSolo" disabled="{{opening}}" aria-label="进入单人庄园">
+        <text class="manor-entry-button-label">进入</text>
         <text class="remix-icon ri-arrow-right-line"></text>
       </button>
     </view>

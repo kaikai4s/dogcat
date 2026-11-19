@@ -1,0 +1,4 @@
+[    1682ms] [WARNING] [.WebGL-0x1ac02176400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ file:///home/ebrook-dev/project/dogcat/output/modern-courtyard-villa/preview.html:0
+[    2865ms] [WARNING] [.WebGL-0x1ac02176400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ file:///home/ebrook-dev/project/dogcat/output/modern-courtyard-villa/preview.html:0
+[    3718ms] [WARNING] [.WebGL-0x1ac02176400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ file:///home/ebrook-dev/project/dogcat/output/modern-courtyard-villa/preview.html:0
+[    4573ms] [WARNING] [.WebGL-0x1ac02176400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat) @ file:///home/ebrook-dev/project/dogcat/output/modern-courtyard-villa/preview.html:0

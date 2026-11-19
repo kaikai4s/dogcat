@@ -308,6 +308,14 @@ test('handler exposes scene lifecycle, rejects teleports and fences credentials'
   assert.ok(response.records.some((r)=>r.kind==='resident'&&r.mine))
 })
 
+test('3D solo entry does not fall back to the user residential community', async () => {
+  const f = fixture(), handler = require('../../cloudfunctions/api/handlers/playground')(f.context)
+  const overview = await handler('a', 'enterScene', { solo: true, community: null })
+  assert.equal(overview.scene.sceneId, 'solo_' + world.hash('a'))
+  assert.equal(overview.scene.visiting, true)
+  assert.equal(overview.userCommunity, null)
+})
+
 test('3D manor presence shares centered coordinates in its community without changing 2D movement',async()=>{
   const f=fixture(),handler=require('../../cloudfunctions/api/handlers/playground')(f.context)
   await f.plots.claim('a',f.users[0],{x:280,z:280})

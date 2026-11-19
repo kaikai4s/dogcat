@@ -106,7 +106,7 @@ test('the experience version offers 3D without a community and preserves the 2D 
   page.openManor3d()
   page.openManor3d()
   assert.equal(navigation.length, 1)
-  assert.equal(navigation[0].url, '/packageManor3d/pages/index')
+  assert.equal(navigation[0].url, '/packagePlayground/pages/manor3d-entry')
   navigation[0].fail()
   navigation[0].complete()
   assert.equal(toasts[0].title, '暂时无法打开 3D 庄园')

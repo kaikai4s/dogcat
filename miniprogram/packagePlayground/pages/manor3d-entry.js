@@ -17,6 +17,12 @@ Page({
 
   onLoad() { this._alive = true },
 
+  onShow() {
+    if (!this._navigating) return
+    this._navigating = false
+    this.setData({ opening: false })
+  },
+
   onHide() {
     if (this._navigating) return
     this._openingGeneration = (this._openingGeneration || 0) + 1
@@ -59,7 +65,7 @@ Page({
     const entryKey = createEntryKey()
     const storageKey = STORAGE_PREFIX + entryKey
     try {
-      wx.setStorageSync(storageKey, { community, createdAt: Date.now() })
+      wx.setStorageSync(storageKey, { community, solo: community === null, createdAt: Date.now() })
     } catch (error) {
       if (this._alive) this.setData({ opening: false, error: '暂时无法准备庄园入口，请重试' })
       return
