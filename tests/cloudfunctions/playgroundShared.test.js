@@ -333,7 +333,7 @@ test('3D manor presence shares centered coordinates in its community without cha
   const peer=(await handler('b','enterScene',{})).scene
   const first=await handler('a','syncManor3d',{
     ...f.auth(scene.scene),seq:1,position3d:{x:initial.x+2,z:initial.z},
-    moving:true,running:true,facing:Math.PI/2
+    moving:true,running:true,facing:Math.PI/2,pose:'lie'
   })
   assert.deepEqual(first,{accepted:true,ackSeq:1,position3d:{x:initial.x+2,z:initial.z},manor3dOnline:true,serverTime:f.now()})
   const saved=f.db.state.pet_playground_plots.find(row=>row._id===scene.scene.playerId)
@@ -348,6 +348,7 @@ test('3D manor presence shares centered coordinates in its community without cha
   assert.equal(actor.manor3dMoving,true)
   assert.equal(actor.manor3dRunning,true)
   assert.equal(actor.manor3dFacing,Math.PI/2)
+  assert.equal(actor.manor3dPose,'lie')
 
   const duplicate=await handler('a','syncManor3d',{
     ...f.auth(scene.scene),seq:1,position3d:{x:initial.x+2,z:initial.z},moving:true,running:true,facing:Math.PI/2
@@ -360,7 +361,7 @@ test('3D manor presence shares centered coordinates in its community without cha
   assert.equal(f.db.state.pet_playground_plots.find(row=>row._id===scene.scene.playerId).manor3dMoving,false)
 })
 
-test('3D manor presence rejects stale sessions, malformed input, world bounds and excessive speed',async()=>{
+test('3D manor presence rejects stale sessions, malformed input and world bounds',async()=>{
   const f=fixture(),handler=require('../../cloudfunctions/api/handlers/playground')(f.context)
   await f.plots.claim('a',f.users[0],{x:280,z:280})
   const scene=await handler('a','enterScene',{})
@@ -368,9 +369,46 @@ test('3D manor presence rejects stale sessions, malformed input, world bounds an
   await assert.rejects(()=>handler('b','syncManor3d',{...auth,seq:1,position3d:start,moving:false,running:false,facing:0}),/场景已切换/)
   await assert.rejects(()=>handler('a','syncManor3d',{...auth,seq:1,position3d:{x:Infinity,z:0},moving:false,running:false,facing:0}),/位置超出庄园范围/)
   await assert.rejects(()=>handler('a','syncManor3d',{...auth,seq:1,position3d:{x:600.01,z:0},moving:false,running:false,facing:0}),/位置超出庄园范围/)
-  await assert.rejects(()=>handler('a','syncManor3d',{...auth,seq:1,position3d:{x:start.x+40,z:start.z},moving:true,running:true,facing:0}),/移动过快/)
   await assert.rejects(()=>handler('a','syncManor3d',{...auth,seq:1,position3d:start,moving:true,running:false,facing:'invalid'}),/朝向无效/)
+  await assert.rejects(()=>handler('a','syncManor3d',{...auth,seq:1,position3d:{...start,y:Infinity},moving:true,running:false,facing:0}),/位置超出庄园范围/)
+  await assert.rejects(()=>handler('a','syncManor3d',{...auth,seq:1,position3d:start,interior:{kind:'courtyard',plotId:'unknown'},moving:true,running:false,facing:0}),/室内区域无效/)
+  await assert.rejects(()=>handler('a','syncManor3d',{...auth,seq:1,position3d:start,moving:false,running:false,facing:0,pose:'sleep'}),/姿势无效/)
   assert.equal(f.db.state.pet_playground_plots.find(row=>row._id===scene.scene.playerId).manor3dSeq,0)
+})
+
+test('3D manor accepts coalesced movement, publishes the latest state and restores the final checkpoint',async()=>{
+  const f=fixture(),handler=require('../../cloudfunctions/api/handlers/playground')(f.context)
+  await f.plots.claim('a',f.users[0],{x:280,z:280})
+  const a=(await handler('a','enterScene',{})).scene
+  const b=(await handler('b','enterScene',{})).scene
+  const auth=f.auth(a)
+  const send=(seq,position3d,extra={})=>handler('a','syncManor3d',{
+    ...auth,seq,position3d,moving:true,running:false,facing:.7,characterType:'girl',...extra
+  })
+  f.advance(10000)
+  const jump={x:a.position3d.x+120,z:a.position3d.z+84}
+  assert.equal((await send(2,jump)).accepted,true)
+  assert.equal((await send(1,a.position3d)).accepted,false)
+  const inside={x:43,y:6.25,z:14},interior={kind:'courtyard',plotId:'M042'}
+  await send(3,inside,{interior})
+  const visible=(await handler('b','getScene',{...f.auth(b),manor3d:true})).records
+  assert.ok(visible.every(item=>item.kind!=='resident'&&item.kind!=='vehicle'))
+  const peer=visible.find(item=>item.id===a.playerId)
+  assert.deepEqual(peer.position3d,inside)
+  assert.deepEqual(peer.manor3dInterior,interior)
+  assert.equal(peer.manor3dLastSeen,f.now())
+  assert.equal(peer.manor3dCharacterType,'girl')
+  const final={...inside,z:15}
+  assert.equal((await send(4,final,{online:false,interior})).manor3dOnline,false)
+  assert.equal((await send(3,inside)).accepted,false)
+  const live=f.db.state.pet_playground_live.find(row=>row.records?.[a.playerId]).records[a.playerId]
+  assert.deepEqual(live.position3d,final)
+  assert.equal(live.manor3dOnline,false)
+  const resumed=(await handler('a','enterScene',{})).scene
+  assert.deepEqual(resumed.position3d,final)
+  assert.deepEqual(resumed.manor3dInterior,interior)
+  assert.equal(resumed.manor3dFacing,.7)
+  await assert.rejects(()=>send(99,inside),/场景已切换/)
 })
 
 test('shared snapshots paginate all neighbors without leaking records from another community',async()=>{
@@ -444,4 +482,48 @@ test('unplaced users can browse without publishing entities, including legacy ph
   assert.deepEqual(await f.snapshot('b',b),[])
   await f.shared.sync('a',{...f.auth(a),seq:1,online:true})
   assert.deepEqual(await f.snapshot('b',b),[])
+})
+
+test('courtyardless 3D visitors in one community see each other without appearing in the 2D scene',async()=>{
+  const f=fixture(),handler=require('../../cloudfunctions/api/handlers/playground')(f.context)
+  const enter=async(id,community)=>(await handler(id,'enterScene',{manor3d:true,community})).scene
+  const a=await enter('a'),b=await enter('b'),foreign=await enter('c')
+  assert.equal(a.sceneId,b.sceneId)
+  assert.notEqual(a.sceneId,foreign.sceneId)
+  assert.equal(a.hasAvatar,false)
+  assert.equal(a.manor3dCanPublish,true)
+  assert.equal(a.position3d,null)
+
+  const snapshot=async(id,scene)=>(await handler(id,'getScene',{...f.auth(scene),manor3d:true})).records
+  const position3d={x:21,y:4,z:39}
+  const send=(id,scene,seq,extra={})=>handler(id,'syncManor3d',{
+    ...f.auth(scene),seq,position3d,moving:false,running:false,facing:.75,...extra
+  })
+  assert.ok(!(await snapshot('b',b)).some(record=>record.id===a.playerId))
+  await send('a',a,1,{characterType:'girl'})
+  await send('b',b,1,{position3d:{...position3d,x:23}})
+  const peer=(await snapshot('b',b)).find(record=>record.id===a.playerId)
+  assert.equal(peer.kind,'presence')
+  assert.equal(peer.manor3dOnline,true)
+  assert.equal(peer.online,false)
+  assert.deepEqual(peer.position3d,position3d)
+  assert.equal(peer.manor3dCharacterType,'girl')
+  assert.ok((await snapshot('a',a)).some(record=>record.id===b.playerId))
+  assert.ok(!(await snapshot('c',foreign)).some(record=>record.id===a.playerId))
+  assert.ok(!(await f.snapshot('b',b)).some(record=>record.id===a.playerId))
+  const guestRecord=()=>f.db.state.pet_playground_live.find(shard=>shard.records?.[a.playerId]).records[a.playerId]
+  assert.equal(guestRecord().kind,'manor3dPresence')
+  assert.equal(guestRecord().manor3dOnline,true)
+
+  const legacy=(await handler('a','enterScene',{})).scene
+  assert.equal(legacy.manor3dCanPublish,false)
+  assert.equal(guestRecord().manor3dOnline,false)
+  assert.ok(!(await snapshot('b',b)).some(record=>record.id===a.playerId))
+  await assert.rejects(()=>send('a',a,2),/场景已切换/)
+  await assert.rejects(()=>send('a',legacy,1),/场景已切换/)
+  const resumed=await enter('a')
+  assert.deepEqual(resumed.position3d,position3d)
+  await send('a',resumed,1)
+  f.advance(15001)
+  assert.ok(!(await snapshot('b',b)).some(record=>record.id===a.playerId))
 })

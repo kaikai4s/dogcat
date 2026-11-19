@@ -2,7 +2,9 @@ const { createManorNavigation } = require('./manor-navigation');
 const { createManorInteriorNavigation } = require('./manor-interior-navigation');
 const { createManorInteriorElevator } = require('./manor-interior-elevator');
 const { createCourtyardInterior } = require('./manor-courtyard-interior');
-const { createManorPlayer } = require('./manor-player');
+const { createManorPlayer, createAvatarAnimator } = require('./manor-player');
+const { cloneAvatarModel, disposeAvatarSkeletons } = require('./manor-avatar-clone');
+const { createManorVehicle } = require('./manor-vehicle');
 const { createManorBuildView, RED_VILLA, COURTYARD, visualSpecs } = require('./manor-build-view');
 
 const MIN_DISTANCE = 23;
@@ -13,6 +15,9 @@ const PLAYER_ZOOM_MAX = 36;
 const PLAYER_TARGET_HEIGHT = 0.68;
 const INTERIOR_TARGET_HEIGHT = 0.58;
 const CAMERA_FOV = 40;
+const FIRST_PERSON_FOV = 68;
+const FIRST_PERSON_EYE_HEIGHT = .92;
+const FIRST_PERSON_PITCH_LIMIT = Math.PI * .46;
 const MAX_INTERIOR_FOV = 108;
 const MIN_ELEVATION = -Math.PI / 6;
 const MIN_PAN_ELEVATION = Math.PI / 10;
@@ -26,6 +31,11 @@ const SHARED_SOURCE_WIDTH = 2240;
 const SHARED_SOURCE_DEPTH = 2240;
 const SHARED_POSITION_WIDTH = 1200;
 const SHARED_POSITION_DEPTH = 960;
+const REMOTE_RENDER_RANGE = 180;
+const REMOTE_MODEL_RANGE = 64;
+const REMOTE_MODEL_LIMIT = 8;
+const REMOTE_CULL_INTERVAL = .25;
+const REMOTE_SNAP_DISTANCE_SQUARED = 32 ** 2;
 const FULL_TURN = Math.PI * 2;
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const finite = Number.isFinite;
@@ -217,6 +227,10 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   const followPoint = new THREE.Vector3();
   const cameraRay = new THREE.Raycaster();
   const cameraHit = new THREE.Vector3();
+  const interiorDirection = new THREE.Vector3();
+  const interiorReverseDirection = new THREE.Vector3();
+  const interiorReverseOrigin = new THREE.Vector3();
+  const interiorViewPoint = new THREE.Vector3();
   const cameraArm = new THREE.Vector3();
   const cameraCandidate = new THREE.Vector3();
   const avatarPoint = new THREE.Vector3();
@@ -262,6 +276,9 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   let plannedPlot;
   let navigation;
   let player;
+  let playerMoved = false;
+  let restInteraction = null;
+  let vehicle;
   let grass = [];
   let width = 1;
   let height = 1;
@@ -270,6 +287,10 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   let distance = 155;
   let view = 'default';
   let mapView = false;
+  let firstPerson = false;
+  let lookYaw = 0;
+  let lookPitch = 0;
+  let lastCockpitYaw;
   let buildOrbit;
   let outdoorBounds;
   const buildRay = new THREE.Raycaster();
@@ -277,8 +298,15 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   const buildHit = new THREE.Vector3();
   const buildPointer = new THREE.Vector2();
   let communityView;
-  let communitySignature = '';
-  let sharedNodes = new Map();
+  let sharedAvatarResources;
+  let remoteCullRemaining = 0;
+  let lastRemoteZone;
+  let lastRemoteView;
+  const sharedNodes = new Map();
+  const remoteCharacterModels = new Map();
+  const remoteAvatars = new Set();
+  const movingAvatars = new Set();
+  const animatedAvatars = new Set();
   let dirty = true;
   let disposed = false;
 
@@ -295,7 +323,26 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     dirty = true;
   }
 
-  function focusCharacter() {
+  const isFirstPersonView = () => firstPerson && view === 'player' && !mapView && !buildOrbit && !!player?.position;
+
+  function centerFirstPerson(yaw = player?.facing) {
+    if (!firstPerson || !finite(yaw)) return;
+    lookYaw = yaw;
+    lookPitch = 0;
+    dirty = true;
+  }
+
+  function setFirstPerson(enabled) {
+    if (disposed || view !== 'player' || mapView || buildOrbit || restInteraction || !player?.position) return false;
+    firstPerson = enabled;
+    lastCockpitYaw = undefined;
+    centerFirstPerson();
+    interiorCameraDistance = undefined;
+    trackPlayer(true);
+    return true;
+  }
+
+  function focusCharacter(recenter = false) {
     if (disposed || buildOrbit || !player?.position) return false;
     mapView = false;
     if (view !== 'player') {
@@ -304,15 +351,23 @@ function createManorScene({ THREE, renderer, disposeModel }) {
       elevation = 0.38;
       distance = PLAYER_DISTANCE;
     }
+    if (recenter) centerFirstPerson(lastCockpitYaw ?? player.facing);
     fitAvatar();
     trackPlayer(true);
     return true;
   }
 
-  function showCharacter(model) {
+  function showCharacter(model, type) {
     if (disposed || !player || model === landscape || model === villa) throw new Error('请先加载庄园地形');
     const first = !player.position;
-    player.show(model, azimuth);
+    const template = isCharacterType(type) && !hasRemoteCharacterModel(type) ? cloneAvatarModel(model) : null;
+    try {
+      player.show(model, azimuth);
+    } catch (error) {
+      if (template) disposeAvatarSkeletons(template);
+      throw error;
+    }
+    if (template) setRemoteCharacterModel(type, model, template);
     if (first && !mapView) focusCharacter();
     else if (view === 'player') {
       fitAvatar();
@@ -321,8 +376,41 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   }
 
   function setPlayerInput(x, y) {
-    if (disposed || view !== 'player' || !player?.position || interiorElevator?.busy || courtyardPassage) return;
-    player.setInput(x, y);
+    if (disposed || view !== 'player' || !player?.position || interiorElevator?.busy || courtyardPassage || restInteraction) return;
+    if (vehicle?.busy()) vehicle.setInput(x, y);
+    else player.setInput(x, y);
+  }
+
+  function showVehicle(model) {
+    if (disposed || !navigation || !player || vehicle || model.parent) return false;
+    const spawn = navigation.spawn(outdoorBounds);
+    if (!spawn) throw new Error('找不到可到达的停车区');
+    const sample = (x, z) => navigation.sample(x, z, outdoorBounds);
+    vehicle = createManorVehicle({ THREE, model, scene, player, spawn, sample, disposeModel, onMove: flagShadows });
+    if (!isInsideBuilding() && !courtyardPassage) player.avoidVilla();
+    flagShadows();
+    return true;
+  }
+
+  function outdoorPlayerNavigation(nextNavigation) {
+    return {
+      ...nextNavigation,
+      sample(x, z, bounds) {
+        return vehicle?.blocks(x, z) ? null : nextNavigation.sample(x, z, bounds);
+      }
+    };
+  }
+
+  function getVehicleState() {
+    return !isInsideBuilding() && !courtyardPassage && view === 'player' ? vehicle?.state() || null : null;
+  }
+
+  function enterVehicle(id) {
+    return Boolean(getVehicleState()?.nearby && vehicle.enter(id));
+  }
+
+  function exitVehicle() {
+    return Boolean(getVehicleState()?.canExit && vehicle.exit());
   }
 
   function getMapPlayerPosition() {
@@ -331,7 +419,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   }
 
   function placeCharacterAt(position, facing) {
-    if (disposed || isInsideBuilding() || courtyardPassage || !player || !position) return false;
+    if (disposed || isInsideBuilding() || courtyardPassage || vehicle?.busy() || !player || !position) return false;
     if (player.place(position.x, position.z, facing, position.y)) return true;
     const nearest = navigation?.nearestWalkable?.(position.x, position.z, outdoorBounds, 24);
     return nearest ? player.place(nearest.x, nearest.z, facing, nearest.y) : false;
@@ -339,11 +427,13 @@ function createManorScene({ THREE, renderer, disposeModel }) {
 
   function getPlayerSyncState() {
     const position = player?.position;
-    if (!position || isInsideBuilding() || courtyardPassage) return null;
+    if (!position) return null;
     return {
-      position3d: { x: position.x, z: position.z },
-      moving: player.isMoving,
-      running: player.isRunning,
+      position3d: { x: position.x, y: position.y, z: position.z },
+      interior: insideVilla ? { kind: 'red' } : activeCourtyard ? { kind: 'courtyard', plotId: activeCourtyard.building.plotId } : null,
+      moving: playerMoved,
+      running: playerMoved && player.isRunning && !vehicle?.busy() && !courtyardPassage,
+      pose: restInteraction?.phase === 'holding' ? restInteraction.spot.kind : null,
       facing: player.facing
     };
   }
@@ -354,9 +444,11 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     if (activeCourtyard || (courtyardPassage && !courtyardPassage.committed)) return getCourtyardCheckpoint();
     const { x, y, z } = position;
     const facing = player.facing;
-    if (!insideVilla) return { x, y, z, facing };
+    if (!insideVilla) return vehicle?.checkpoint() || { x, y, z, facing };
 
     const exterior = doorPoints()?.outside;
+    if (restInteraction) return { ...restInteraction.spot.exit, facing: restInteraction.spot.yaw,
+      interior: { kind: 'red' }, exterior };
     if (interiorNavigation.sample(x, z, null, y) === null) {
       // Mid-ride positions belong to a moving cabin. Use its nearest landing.
       const landing = interiorElevator?.busy && interiorNavigation.elevator?.landings.reduce((nearest, point) =>
@@ -379,11 +471,26 @@ function createManorScene({ THREE, renderer, disposeModel }) {
 
   function clearCommunityView() {
     if (!communityView) return;
+    for (const id of sharedNodes.keys()) removeSharedRecord(id);
     scene.remove(communityView);
-    for (const node of sharedNodes.values()) disposeSharedNode(node);
-    sharedNodes = new Map();
     communityView = null;
-    communitySignature = '';
+    if (sharedAvatarResources) {
+      Object.values(sharedAvatarResources).forEach(resource => resource.dispose());
+      sharedAvatarResources = null;
+    }
+    remoteCullRemaining = 0;
+  }
+
+  function removeSharedRecord(id) {
+    const node = sharedNodes.get(id);
+    if (!node) return;
+    if (node.kind === 'presence') {
+      movingAvatars.delete(node);
+      remoteAvatars.delete(node);
+      removeAvatarSkin(node);
+      node.group.removeFromParent();
+    } else disposeSharedNode(node);
+    sharedNodes.delete(id);
   }
 
   function disposeSharedNode(node) {
@@ -406,6 +513,36 @@ function createManorScene({ THREE, renderer, disposeModel }) {
 
   function sharedGround(x, z) {
     return navigation.sample(x, z) ?? config.ground;
+  }
+
+  function isCharacterType(type) {
+    return type === 'boy' || type === 'girl';
+  }
+
+  function hasRemoteCharacterModel(type) {
+    return remoteCharacterModels.has(type);
+  }
+
+  function setRemoteCharacterModel(type, source, template = source) {
+    if (disposed || !isCharacterType(type) || !source?.isObject3D || hasRemoteCharacterModel(type)) return false;
+    remoteCharacterModels.set(type, { source, template });
+    remoteCullRemaining = 0;
+    return true;
+  }
+
+  function releaseCharacterModel(model) {
+    for (const { source } of remoteCharacterModels.values()) {
+      if (source === model) return;
+    }
+    disposeModel(model);
+  }
+
+  function disposeRemoteCharacterModels() {
+    for (const { source, template } of remoteCharacterModels.values()) {
+      if (source !== template) disposeAvatarSkeletons(template);
+      disposeModel(source);
+    }
+    remoteCharacterModels.clear();
   }
 
   function addSharedPlotDetail(root, building, plot) {
@@ -435,52 +572,208 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     root.add(group);
   }
 
-  function addSharedCharacter(root, record, ownPlayerId) {
-    if (!record || record.id === ownPlayerId || record.manor3dOnline !== true) return;
-    const position = record.position3d;
-    if (!position || ![position.x, position.z].every(finite) ||
-        Math.abs(position.x) > config.width / 2 + 2 || Math.abs(position.z) > config.depth / 2 + 2) return;
+  function createRemoteAvatar(id) {
+    if (!sharedAvatarResources) {
+      sharedAvatarResources = {
+        torso: new THREE.CapsuleGeometry(.42, .8, 3, 7),
+        head: new THREE.SphereGeometry(.34, 10, 8),
+        navy: new THREE.MeshStandardMaterial({ color: 0x708b87, roughness: .88 }),
+        dress: new THREE.MeshStandardMaterial({ color: 0xc88783, roughness: .88 }),
+        skin: new THREE.MeshStandardMaterial({ color: 0xe8c8a4, roughness: .96 })
+      };
+    }
     const group = new THREE.Group();
-    group.name = 'Shared character ' + record.id;
-    group.userData = { ownerId: record.ownerId || '', name: record.name || '邻居', userTitle: record.userTitle || null };
-    group.position.set(position.x, sharedGround(position.x, position.z), position.z);
-    const color = record.characterType === 'girl' ? 0xc88783 : 0x708b87;
-    const outfit = new THREE.Mesh(new THREE.CapsuleGeometry(.42, .8, 3, 7),
-      new THREE.MeshStandardMaterial({ color, roughness: .88 }));
+    group.name = 'Shared character ' + id;
+    const outfit = new THREE.Mesh(sharedAvatarResources.torso, sharedAvatarResources.navy);
     outfit.position.y = .82;
-    const head = new THREE.Mesh(new THREE.SphereGeometry(.34, 10, 8),
-      new THREE.MeshStandardMaterial({ color: 0xe8c8a4, roughness: .96 }));
+    const head = new THREE.Mesh(sharedAvatarResources.head, sharedAvatarResources.skin);
     head.position.y = 1.62;
     group.add(outfit, head);
-    const facing = typeof record.manor3dFacing === 'number' ? record.manor3dFacing
-      : typeof record.facing === 'number' ? record.facing : null;
-    if (facing !== null && finite(facing)) group.rotation.y = facing;
-    root.add(group);
-    return {
-      kind: 'presence',
-      group,
-      target: new THREE.Vector3(position.x, sharedGround(position.x, position.z), position.z),
-      targetYaw: group.rotation.y
-    };
+    const avatar = { id, kind: 'presence', group, outfit, head, target: new THREE.Vector3(), targetYaw: 0, zone: '',
+      gait: 'idle', speed: 0 };
+    remoteAvatars.add(avatar);
+    sharedNodes.set(id, avatar);
+    return avatar;
   }
 
-  function setSharedRecords(records, ownPlayerId) {
+  function interiorZone(interior) {
+    if (interior?.kind === 'red') return 'red';
+    return interior?.kind === 'courtyard' && interior.plotId ? 'courtyard:' + interior.plotId : '';
+  }
+
+  function viewerZone() {
+    return insideVilla ? 'red' : activeCourtyard ? 'courtyard:' + activeCourtyard.building.plotId : '';
+  }
+
+  function applyAvatarTransform(avatar, amount = 1) {
+    const { group, target, targetYaw } = avatar;
+    if (amount === 1) {
+      group.position.copy(target);
+      group.rotation.y = targetYaw;
+      movingAvatars.delete(avatar);
+    } else {
+      group.position.lerp(target, amount);
+      const angle = targetYaw - group.rotation.y;
+      group.rotation.y += Math.atan2(Math.sin(angle), Math.cos(angle)) * amount;
+    }
+  }
+
+  function removeAvatarSkin(avatar) {
+    if (!avatar.model) return;
+    animatedAvatars.delete(avatar);
+    avatar.animator.dispose();
+    avatar.model.removeFromParent();
+    disposeAvatarSkeletons(avatar.model);
+    avatar.model = avatar.animator = null;
+    avatar.outfit.visible = avatar.head.visible = true;
+  }
+
+  function attachAvatarSkin(avatar, modelSource) {
+    if (avatar.model) return;
+    const model = cloneAvatarModel(modelSource.template);
+    let animator;
+    try {
+      animator = createAvatarAnimator(THREE, model);
+    } catch (_) {
+      disposeAvatarSkeletons(model);
+      return;
+    }
+    avatar.outfit.visible = avatar.head.visible = false;
+    avatar.model = model;
+    avatar.modelType = avatar.characterType;
+    avatar.animator = animator;
+    avatar.group.add(model);
+    animatedAvatars.add(avatar);
+  }
+
+  function updateAvatarSkins() {
+    const candidates = [];
+    if (view === 'player') for (const avatar of remoteAvatars) {
+      const template = remoteCharacterModels.get(avatar.characterType);
+      const range = REMOTE_MODEL_RANGE + (avatar.model ? 8 : 0);
+      const distance = camera.position.distanceToSquared(avatar.target);
+      if (template && avatar.group.parent && distance <= range ** 2) candidates.push({ avatar, template, distance });
+    }
+    candidates.sort((a, b) => a.distance - b.distance);
+    const selected = candidates.slice(0, REMOTE_MODEL_LIMIT);
+    const selectedAvatars = new Set(selected.map(item => item.avatar));
+    for (const avatar of animatedAvatars) {
+      if (!selectedAvatars.has(avatar) || avatar.modelType !== avatar.characterType) removeAvatarSkin(avatar);
+    }
+    selected.forEach(({ avatar, template }) => attachAvatarSkin(avatar, template));
+  }
+
+  function updateAvatarVisibility(avatar, zone) {
+    const range = REMOTE_RENDER_RANGE + (avatar.group.parent ? 12 : 0);
+    const visible = zone === avatar.zone && (view !== 'player' || camera.position.distanceToSquared(avatar.target) <= range ** 2);
+    if (visible && !avatar.group.parent) communityView.add(avatar.group);
+    else if (!visible && avatar.group.parent) {
+      avatar.group.removeFromParent();
+      applyAvatarTransform(avatar);
+    }
+  }
+
+  function applySharedPresence(record, ownPlayerId, current) {
+    const live3d = record.manor3dOnline === true ||
+      (record.manor3d === true && record.manor3dOnline == null && record.online !== false);
+    const position = (live3d || record.manor3d !== true ? record.position3d : null) ||
+      (record.position && manorPoint(record.position.x, record.position.z));
+    if (record.id === ownPlayerId || record.ownerId === ownPlayerId && !!ownPlayerId ||
+        (!live3d && record.online === false) || !position ||
+        ![position.x, position.z].every(finite) || Math.abs(position.x) > config.width / 2 + 2 ||
+        Math.abs(position.z) > config.depth / 2 + 2) {
+      removeSharedRecord(record.id);
+      return;
+    }
+    const reuse = current?.kind === 'presence';
+    if (current && !reuse) removeSharedRecord(record.id);
+    const avatar = reuse ? current : createRemoteAvatar(record.id);
+    avatar.interior = live3d ? record.manor3dInterior || null : null;
+    const zone = interiorZone(avatar.interior);
+    const changedZone = avatar.zone !== zone;
+    avatar.zone = zone;
+    const { target, group } = avatar;
+    const rawY = live3d && finite(position.y) ? position.y : null;
+    const changedPosition = !reuse || changedZone || position.x !== target.x || position.z !== target.z || rawY !== avatar.rawY;
+    if (changedPosition) {
+      const y = rawY ?? sharedGround(position.x, position.z);
+      target.set(position.x, y, position.z);
+      avatar.rawY = rawY;
+    }
+    const yaw = record.manor3dFacing ?? record.facing;
+    const changedYaw = finite(yaw) && yaw !== avatar.targetYaw;
+    if (changedYaw) avatar.targetYaw = yaw;
+    const characterType = (record.manor3dCharacterType || record.characterType) === 'girl' ? 'girl' : 'boy';
+    const changedCharacter = characterType !== avatar.characterType;
+    avatar.characterType = characterType;
+    if (changedCharacter) remoteCullRemaining = 0;
+    avatar.outfit.material = characterType === 'girl' ? sharedAvatarResources.dress : sharedAvatarResources.navy;
+    avatar.pose = live3d && (record.manor3dPose === 'sit' || record.manor3dPose === 'lie') ? record.manor3dPose : null;
+    const moving = live3d ? record.manor3dMoving : record.moving;
+    const running = live3d ? record.manor3dRunning : record.running;
+    avatar.gait = avatar.pose ? 'idle' : moving ? (running ? 'run' : 'walk') : 'idle';
+    const timestamp = live3d ? record.manor3dLastSeen : record.lastSeen;
+    if (finite(timestamp) && finite(avatar.timestamp) && timestamp > avatar.timestamp && avatar.lastTarget && !changedZone) {
+      const seconds = (timestamp - avatar.timestamp) / 1000;
+      if (seconds <= 1) avatar.speed = Math.min(8, Math.hypot(target.x - avatar.lastTarget.x, target.z - avatar.lastTarget.z) / seconds);
+    }
+    if (finite(timestamp)) avatar.timestamp = timestamp;
+    if (!avatar.lastTarget) avatar.lastTarget = new THREE.Vector3();
+    avatar.lastTarget.copy(target);
+    group.userData.ownerId = record.ownerId || '';
+    group.userData.name = record.name || '邻居';
+    group.userData.userTitle = record.userTitle || null;
+    if (!reuse || changedZone || !group.parent || target.distanceToSquared(group.position) > REMOTE_SNAP_DISTANCE_SQUARED) {
+      applyAvatarTransform(avatar);
+    } else if (changedPosition || changedYaw) movingAvatars.add(avatar);
+    if (!reuse || changedPosition || changedCharacter) updateAvatarVisibility(avatar, viewerZone());
+  }
+
+  function updateRemoteAvatars(dt) {
+    if (!remoteAvatars.size) return;
+    const zone = viewerZone();
+    remoteCullRemaining -= dt;
+    if (remoteCullRemaining <= 0 || zone !== lastRemoteZone || view !== lastRemoteView) {
+      for (const avatar of remoteAvatars) updateAvatarVisibility(avatar, zone);
+      updateAvatarSkins();
+      remoteCullRemaining = REMOTE_CULL_INTERVAL;
+      lastRemoteZone = zone;
+      lastRemoteView = view;
+    }
+    if (dt <= 0) return;
+    const amount = 1 - Math.exp(-14 * dt);
+    for (const avatar of movingAvatars) {
+      const angle = avatar.targetYaw - avatar.group.rotation.y;
+      const settled = avatar.group.position.distanceToSquared(avatar.target) < .000025 && Math.abs(Math.sin(angle / 2)) < .001;
+      applyAvatarTransform(avatar, settled ? 1 : amount);
+    }
+    for (const avatar of animatedAvatars) {
+      const speed = avatar.speed || (avatar.gait === 'run' ? 4.8 : 1.7);
+      if (avatar.pose) avatar.animator.updatePose(dt, avatar.pose);
+      else avatar.animator.updateGait(dt, avatar.gait, speed);
+    }
+  }
+
+  function getCommunityPlayers() {
+    return Array.from(remoteAvatars, ({ id, group, target, interior, characterType }) => ({
+      id, name: group.userData.name, x: target.x, z: target.z, interior, characterType, visible: !!group.parent
+    }));
+  }
+
+  function setSharedRecords(records, ownPlayerId, { replace = true } = {}) {
     if (disposed || !config || !Array.isArray(records)) return;
     if (!communityView) {
       communityView = new THREE.Group();
       communityView.name = 'Shared community scene';
       scene.add(communityView);
     }
-    const received = new Set();
+    const received = replace ? new Set() : null;
     for (const record of records) {
       if (!record?.id) continue;
-      received.add(record.id);
+      received?.add(record.id);
       const current = sharedNodes.get(record.id);
       if (record.deleted) {
-        if (current) {
-          disposeSharedNode(current);
-          sharedNodes.delete(record.id);
-        }
+        removeSharedRecord(record.id);
         continue;
       }
       if (record.kind === 'plot') {
@@ -493,63 +786,19 @@ function createManorScene({ THREE, renderer, disposeModel }) {
             building.category || building.buildingCategory, building.name, building.width, building.depth, building.x, building.z])
         ]);
         if (current?.kind === 'plot' && current.signature === signature) continue;
-        if (current) disposeSharedNode(current);
+        removeSharedRecord(record.id);
         const group = new THREE.Group();
         group.name = 'Shared plot ' + record.id;
         for (const building of buildings) addSharedPlotDetail(group, building, record);
-        if (!group.children.length) {
-          sharedNodes.delete(record.id);
-          continue;
-        }
+        if (!group.children.length) continue;
         communityView.add(group);
         sharedNodes.set(record.id, { kind: 'plot', signature, group });
       } else if (record.kind === 'presence') {
-        const hidden = record.id === ownPlayerId || record.online === false && record.manor3dOnline !== true;
-        const position = record.position3d || (record.position && manorPoint(record.position.x, record.position.z));
-        const characterType = record.manor3dCharacterType || record.characterType;
-        const signature = JSON.stringify([characterType, record.appearance?.id || record.appearance?.assetId || '']);
-        if (hidden || !position || ![position.x, position.z].every(finite) ||
-            Math.abs(position.x) > config.width / 2 + 2 || Math.abs(position.z) > config.depth / 2 + 2) {
-          if (current) {
-            disposeSharedNode(current);
-            sharedNodes.delete(record.id);
-          }
-          continue;
-        }
-        if (current?.kind === 'presence' && current.signature === signature) {
-          current.target.set(position.x, sharedGround(position.x, position.z), position.z);
-          const yaw = record.manor3dFacing ?? record.facing;
-          if (finite(yaw)) current.targetYaw = yaw;
-          current.record = record;
-          continue;
-        }
-        if (current) disposeSharedNode(current);
-        const group = new THREE.Group();
-        group.name = 'Shared character ' + record.id;
-        group.userData = { ownerId: record.ownerId || '', name: record.name || '邻居', userTitle: record.userTitle || null };
-        const color = characterType === 'girl' ? 0xc88783 : 0x708b87;
-        const outfit = new THREE.Mesh(new THREE.CapsuleGeometry(.42, .8, 3, 7),
-          new THREE.MeshStandardMaterial({ color, roughness: .88 }));
-        outfit.position.y = .82;
-        const head = new THREE.Mesh(new THREE.SphereGeometry(.34, 10, 8),
-          new THREE.MeshStandardMaterial({ color: 0xe8c8a4, roughness: .96 }));
-        head.position.y = 1.62;
-        group.add(outfit, head);
-        group.position.set(position.x, sharedGround(position.x, position.z), position.z);
-        const targetYaw = record.manor3dFacing ?? record.facing;
-        if (finite(targetYaw)) group.rotation.y = targetYaw;
-        communityView.add(group);
-        sharedNodes.set(record.id, {
-          kind: 'presence', signature, group,
-          target: group.position.clone(), targetYaw: group.rotation.y,
-          record
-        });
+        applySharedPresence(record, ownPlayerId, current);
       }
     }
-    for (const [id, node] of sharedNodes) {
-      if (received.has(id)) continue;
-      disposeSharedNode(node);
-      sharedNodes.delete(id);
+    if (received) for (const id of sharedNodes.keys()) {
+      if (!received.has(id)) removeSharedRecord(id);
     }
   }
 
@@ -568,7 +817,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     const dir = cameraDirection();
     const right = new THREE.Vector3(0, 1, 0).cross(dir).normalize();
     const up = new THREE.Vector3().crossVectors(dir, right);
-    const vertical = Math.tan(camera.fov * Math.PI / 360);
+    const vertical = Math.tan(CAMERA_FOV * Math.PI / 360);
     distance = minimumDistance;
     for (const point of points) {
       offset.set(point[0], point[1], point[2]).sub(target);
@@ -666,7 +915,8 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   function refreshOutdoorBounds(relocate = false) {
     outdoorBounds = villaBounds ? [villaBounds, ...buildings.collision] : buildings.collision;
     const position = player?.position;
-    if (relocate && !isInsideBuilding() && !courtyardPassage && position && navigation.sample(position.x, position.z, outdoorBounds) === null) {
+    if (relocate && !isInsideBuilding() && !courtyardPassage && !vehicle?.busy() && position &&
+        navigation.sample(position.x, position.z, outdoorBounds) === null) {
       const point = navigation.nearestWalkable(position.x, position.z, outdoorBounds, 24);
       if (point ? player.place(point.x, point.z, player.facing, point.y) : player.avoidVilla()) {
         if (view === 'player') trackPlayer(true);
@@ -764,17 +1014,17 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     if (outdoorOrbit) ({ distance, elevation, azimuth } = outdoorOrbit);
     outdoorOrbit = null;
     interiorCameraDistance = undefined;
-    camera.fov = CAMERA_FOV;
   }
 
   function removeVilla() {
     if (!villa && !interior) return;
     if (insideVilla && player && navigation) {
       player.setInput(0, 0);
-      player.setNavigation(navigation, () => outdoorBounds);
+      player.setNavigation(outdoorPlayerNavigation(navigation), () => outdoorBounds);
       player.avoidVilla();
     }
     if (insideVilla) {
+      restInteraction = null;
       insideVilla = false;
       restoreOutdoorOrbit();
       if (view === 'player') trackPlayer(true);
@@ -800,9 +1050,12 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     const nextGrass = prepareLandscape(THREE, group, clock, next);
     const nextNavigation = createManorNavigation({ THREE, landscape: group, config: next });
     releaseCourtyards();
+    vehicle?.dispose();
+    vehicle = null;
     player?.dispose();
     navigation = nextNavigation;
-    player = createManorPlayer({ THREE, scene, navigation, getVillaBounds: () => outdoorBounds, disposeModel });
+    player = createManorPlayer({ THREE, scene, navigation: outdoorPlayerNavigation(navigation),
+      getVillaBounds: () => outdoorBounds, disposeModel: releaseCharacterModel });
     removeVilla();
     clearCommunityView();
     if (landscape) {
@@ -822,7 +1075,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     sun.position.copy(sun.target.position).add(new THREE.Vector3(135, 192, 55));
     flagShadows();
     mapView = false;
-    communitySignature = '';
+    playerMoved = false;
     view = 'default';
     defaultView();
     return config;
@@ -848,7 +1101,6 @@ function createManorScene({ THREE, renderer, disposeModel }) {
       if (mesh.isMesh) mesh.castShadow = mesh.receiveShadow = true;
     });
     removeVilla();
-    clearCommunityView();
     buildings.setModel(RED_VILLA, group, bounds);
     anchor.add(group);
     scene.add(anchor);
@@ -891,6 +1143,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   }
 
   function prepareInteriorCamera(model, courtyard = false) {
+    restoreInteriorCutaway();
     interiorOccluders = [];
     model.updateWorldMatrix(true, true);
     model.traverse(mesh => {
@@ -900,29 +1153,82 @@ function createManorScene({ THREE, renderer, disposeModel }) {
           part.userData.facadeIndex !== undefined || part.userData.floorSurfaceLevel === 2) {
           if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
           const bounds = mesh.geometry.boundingBox.clone().applyMatrix4(mesh.matrixWorld);
-          interiorOccluders.push({ mesh, bounds });
+          interiorOccluders.push({ mesh, bounds, cutawayNode: part, cutawayVisible: part.visible });
           break;
         }
       }
     });
   }
 
-  function traceInterior(from, to, extra = 0) {
-    const direction = cameraRay.ray.direction.subVectors(to, from);
-    const length = direction.length();
-    if (length < .05) return length + extra;
-    direction.divideScalar(length);
-    cameraRay.ray.origin.copy(from);
-    cameraRay.near = 0.01;
-    cameraRay.far = length + extra;
-    for (const { mesh, bounds } of interiorOccluders) {
-      if (!bounds.containsPoint(from) && (!cameraRay.ray.intersectBox(bounds, cameraHit) ||
-        cameraHit.distanceToSquared(from) > cameraRay.far ** 2)) continue;
-      cameraIntersections.length = 0;
-      cameraRay.intersectObject(mesh, false, cameraIntersections);
-      if (cameraIntersections.length) cameraRay.far = cameraIntersections[0].distance;
+  function restoreInteriorCutaway() {
+    for (const occluder of interiorOccluders) {
+      if (occluder.cutawayHidden) {
+        occluder.cutawayNode.visible = occluder.cutawayVisible;
+        occluder.cutawayHidden = false;
+      }
     }
-    return cameraRay.far;
+  }
+
+  function traceInteriorHit(from, to, extra = 0) {
+    interiorDirection.subVectors(to, from);
+    const length = interiorDirection.length();
+    const maxDistance = length + extra;
+    if (length < .05) return { distance: maxDistance, occluder: null };
+    interiorDirection.divideScalar(length);
+    interiorReverseDirection.copy(interiorDirection).negate();
+    interiorReverseOrigin.copy(to).addScaledVector(interiorDirection, extra);
+    let closest = { distance: maxDistance, occluder: null };
+
+    // Reverse casts catch single-sided wall faces viewed from their back side.
+    function traceDirection(origin, rayDirection, reverse) {
+      cameraRay.ray.origin.copy(origin);
+      cameraRay.ray.direction.copy(rayDirection);
+      cameraRay.near = 0.01;
+      cameraRay.far = maxDistance;
+      for (const occluder of interiorOccluders) {
+        if (!occluder.bounds.containsPoint(origin) && (!cameraRay.ray.intersectBox(occluder.bounds, cameraHit) ||
+          cameraHit.distanceToSquared(origin) > maxDistance ** 2)) continue;
+        cameraIntersections.length = 0;
+        cameraRay.intersectObject(occluder.mesh, false, cameraIntersections);
+        for (const intersection of cameraIntersections) {
+          const distance = reverse ? maxDistance - intersection.distance : intersection.distance;
+          if (distance < closest.distance) closest = { distance, occluder };
+        }
+      }
+    }
+
+    traceDirection(from, interiorDirection, false);
+    traceDirection(interiorReverseOrigin, interiorReverseDirection, true);
+    return closest;
+  }
+
+  function traceInterior(from, to, extra = 0) {
+    return traceInteriorHit(from, to, extra).distance;
+  }
+
+  function hideInteriorOccluder(hit) {
+    const occluder = hit?.occluder;
+    if (!occluder || !occluder.cutawayVisible) return;
+    occluder.cutawayNode.visible = false;
+    occluder.cutawayHidden = true;
+  }
+
+  function updateInteriorCutaway(eyeView) {
+    restoreInteriorCutaway();
+    if (!isInsideBuilding() || !interiorOccluders.length || !player?.position) return;
+    if (eyeView) {
+      camera.updateMatrixWorld();
+      camera.getWorldDirection(interiorDirection);
+      interiorViewPoint.copy(camera.position).addScaledVector(interiorDirection, .55);
+      const hit = traceInteriorHit(camera.position, interiorViewPoint);
+      if (hit.distance < .5) hideInteriorOccluder(hit);
+      return;
+    }
+    for (const height of [.08, player.height * .94]) {
+      avatarPoint.copy(player.position).y += height;
+      const hit = traceInteriorHit(camera.position, avatarPoint);
+      if (hit.distance < camera.position.distanceTo(avatarPoint) - .01) hideInteriorOccluder(hit);
+    }
   }
 
   function keepCameraInside(dt) {
@@ -994,7 +1300,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   function getVillaEntryState() {
     const points = doorPoints();
     const position = player?.position;
-    const nearDoor = !isInsideBuilding() && !courtyardPassage && !!points && !!position &&
+    const nearDoor = !isInsideBuilding() && !courtyardPassage && !vehicle?.busy() && !!points && !!position &&
       Math.hypot(position.x - points.outside.x, position.z - points.outside.z) <= 3.2;
     return { nearDoor, inside: insideVilla, available: !!villa && !!interiorNavigation, entry: points?.entry || null };
   }
@@ -1049,7 +1355,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
 
   function reachableCourtyardDoor() {
     const position = player?.position;
-    if (!position || disposed || view !== 'player' || insideVilla || courtyardPassage) return null;
+    if (!position || disposed || view !== 'player' || insideVilla || courtyardPassage || vehicle?.busy()) return null;
     const inside = Boolean(activeCourtyard);
     let nearest = null;
     for (const building of inside ? [activeCourtyard.building] : courtyards.values()) {
@@ -1080,7 +1386,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     const nav = building.interior.navigation;
     player.setNavigation(nav, () => null);
     if (!player.place(position.x, position.z, facing, position.y)) {
-      player.setNavigation(navigation, () => outdoorBounds);
+      player.setNavigation(outdoorPlayerNavigation(navigation), () => outdoorBounds);
       return false;
     }
     activeCourtyard = { building, exterior };
@@ -1105,7 +1411,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
       interiorOccluders = [];
     }
     if (!navigation || !player?.position) return false;
-    player.setNavigation(navigation, () => outdoorBounds);
+    player.setNavigation(outdoorPlayerNavigation(navigation), () => outdoorBounds);
     const point = (position && navigation.nearestWalkable(position.x, position.z, outdoorBounds, 24)) || navigation.spawn(outdoorBounds);
     const placed = !!point && player.place(point.x, point.z, facing, point.y);
     if (view === 'player') trackPlayer(true);
@@ -1131,6 +1437,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     }
     courtyardPassage = { building, door, outside, start, startFacing: player.facing, entering: !inside,
       elapsed: 0, duration: length / COURTYARD_DOOR_WALK_SPEED, segments, committed: false };
+    centerFirstPerson(door.yaw + (inside ? Math.PI : 0));
     player.setInput(0, 0);
     flagShadows();
     return true;
@@ -1202,7 +1509,9 @@ function createManorScene({ THREE, renderer, disposeModel }) {
         !model?.isObject3D || model === landscape || model === villa) {
       throw new Error('无法进入别墅室内');
     }
-    if (!player?.position || (!saved && !getVillaEntryState().nearDoor)) throw new Error('请先到达别墅门口再进入');
+    if (!player?.position || vehicle?.busy() || (!saved && !getVillaEntryState().nearDoor)) {
+      throw new Error('请先到达别墅门口再进入');
+    }
     if (model.parent && model.parent !== villaAnchor) throw new Error('别墅室内模型不可重复挂载');
     if (interior && interior !== model) throw new Error('已有别墅室内模型正在使用');
     if (metadata !== undefined) setVillaInteriorMetadata(metadata);
@@ -1212,7 +1521,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     if (!spawn) throw new Error('别墅内部没有可用的角色出生点');
     player.setNavigation(nextNavigation, () => null);
     if (!player.place(spawn.x, spawn.z, spawn.yaw, spawn.y)) {
-      player.setNavigation(navigation, () => outdoorBounds);
+      player.setNavigation(outdoorPlayerNavigation(navigation), () => outdoorBounds);
       if (saved) return false;
       throw new Error('别墅内部出生点不可到达');
     }
@@ -1243,6 +1552,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
       distance = INTERIOR_PLAYER_DISTANCE;
       elevation = .38;
       azimuth = Number.isFinite(spawn?.yaw) ? spawn.yaw + (interiorOccluders.length ? -1.24 : Math.PI) : .76;
+      centerFirstPerson();
       fitAvatar();
       trackPlayer(true);
     }
@@ -1251,13 +1561,13 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   }
 
   function exitInterior() {
-    if (disposed || !insideVilla || interiorElevator?.busy) return false;
+    if (disposed || !insideVilla || interiorElevator?.busy || restInteraction) return false;
     const points = doorPoints();
     const ground = points && navigation?.sample(points.outside.x, points.outside.z, outdoorBounds);
     if (player?.position && (!points || !Number.isFinite(ground))) return false;
     player?.setInput(0, 0);
     if (player?.position) {
-      player.setNavigation(navigation, () => outdoorBounds);
+      player.setNavigation(outdoorPlayerNavigation(navigation), () => outdoorBounds);
       const outwardYaw = Math.atan2(points.outside.x - points.entry.x, points.outside.z - points.entry.z);
       if (!player.place(points.outside.x, points.outside.z, outwardYaw, ground)) {
         player.setNavigation(interiorNavigation, () => null);
@@ -1266,6 +1576,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     }
     insideVilla = false;
     restoreOutdoorOrbit();
+    centerFirstPerson();
     if (interior) interior.visible = false;
     if (villa) villa.visible = true;
     flagShadows();
@@ -1279,7 +1590,86 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   }
 
   function useElevator() {
-    return insideVilla && Boolean(interiorElevator?.start(player));
+    return insideVilla && !restInteraction && Boolean(interiorElevator?.start(player));
+  }
+
+  function getRestState() {
+    if (!insideVilla || !interiorNavigation?.restSpots?.length || !player?.position || view !== 'player' || mapView) return null;
+    if (restInteraction) {
+      const { spot, phase } = restInteraction;
+      const resting = phase === 'holding';
+      return { nearby: true, busy: !resting, resting, spotId: spot.id, kind: spot.kind, name: spot.name,
+        label: resting ? '起身' : phase === 'leaving' ? '正在起身' : phase === 'approach' ? '正在靠近' : '正在休息' };
+    }
+    let nearest = null;
+    for (const spot of interiorNavigation.restSpots) {
+      if (Math.abs(player.position.y - spot.entry.y) > .72 ||
+          !finite(interiorNavigation.sample(spot.entry.x, spot.entry.z, null, player.position.y))) continue;
+      const distanceToEntry = Math.hypot(player.position.x - spot.entry.x, player.position.z - spot.entry.z);
+      if (distanceToEntry <= 1.35 && (!nearest || distanceToEntry < nearest.distance)) nearest = { spot, distance: distanceToEntry };
+    }
+    return nearest ? { nearby: true, busy: false, resting: false, spotId: nearest.spot.id, kind: nearest.spot.kind,
+      name: nearest.spot.name, label: nearest.spot.kind === 'lie' ? '躺下' : '坐下' } : null;
+  }
+
+  function interactRest() {
+    if (!insideVilla || !player?.position || interiorElevator?.busy || courtyardPassage) return false;
+    if (restInteraction) {
+      if (restInteraction.phase !== 'holding') return false;
+      restInteraction.phase = 'leaving';
+      restInteraction.elapsed = 0;
+      restInteraction.startYaw = player.facing;
+      dirty = true;
+      return true;
+    }
+    const available = getRestState();
+    if (!available?.nearby || available.busy) return false;
+    const spot = interiorNavigation.restSpots.find(item => item.id === available.spotId);
+    if (!spot) return false;
+    if (firstPerson) setFirstPerson(false);
+    player.setInput(0, 0);
+    restInteraction = { spot, phase: 'approach', elapsed: 0, start: player.position.clone(),
+      startYaw: player.facing, duration: Math.max(.25, Math.min(.75, player.position.distanceTo(spot.position) / 2.4)) };
+    dirty = true;
+    return true;
+  }
+
+  function updateRestInteraction(dt) {
+    const interaction = restInteraction;
+    if (!interaction) return false;
+    const { spot } = interaction;
+    interaction.elapsed += dt;
+    const duration = interaction.phase === 'approach' ? interaction.duration
+      : interaction.phase === 'lowering' ? (spot.kind === 'lie' ? 1.15 : .88)
+        : interaction.phase === 'leaving' ? (spot.kind === 'lie' ? 1 : .88) : Infinity;
+    const fraction = clamp(interaction.elapsed / duration, 0, 1);
+    const eased = fraction * fraction * (3 - 2 * fraction);
+    const from = interaction.phase === 'leaving' ? spot.position : interaction.start;
+    const to = interaction.phase === 'leaving' ? spot.exit : spot.position;
+    if (interaction.phase === 'approach' || interaction.phase === 'leaving') {
+      const angle = Math.atan2(Math.sin(spot.yaw - interaction.startYaw), Math.cos(spot.yaw - interaction.startYaw));
+      const yaw = interaction.startYaw + angle * eased;
+      player.poseAt(from.x + (to.x - from.x) * eased, from.y + (to.y - from.y) * eased,
+        from.z + (to.z - from.z) * eased, interaction.phase === 'leaving' ? spot.yaw : yaw);
+      player.animatePose(interaction.phase === 'leaving' ? (spot.kind === 'lie' ? 'wake_up' : 'stand_up') : 'walk', fraction, dt);
+    } else {
+      player.poseAt(spot.position.x, spot.position.y, spot.position.z, spot.yaw);
+      const action = interaction.phase === 'holding' ? (spot.kind === 'lie' ? 'lie_idle' : 'sit_idle')
+        : spot.kind === 'lie' ? 'lie_down' : 'sit_down';
+      player.animatePose(action, interaction.phase === 'holding' ? undefined : fraction, dt);
+    }
+    if (fraction === 1 && interaction.phase !== 'holding') {
+      interaction.elapsed = 0;
+      if (interaction.phase === 'approach') interaction.phase = 'lowering';
+      else if (interaction.phase === 'lowering') interaction.phase = 'holding';
+      else if (interaction.phase === 'leaving') {
+        player.poseAt(spot.exit.x, spot.exit.y, spot.exit.z, spot.yaw);
+        restInteraction = null;
+      }
+    }
+    if (view === 'player') trackPlayer(false, dt);
+    dirty = interaction.phase !== 'holding';
+    return true;
   }
 
   function fitAvatar() {
@@ -1302,7 +1692,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
 
   function pan(dx, dy) {
     if (disposed || !mapView || !finite(dx) || !finite(dy) || (!dx && !dy)) return;
-    const scale = 2 * distance * Math.tan(camera.fov * Math.PI / 360) / height;
+    const scale = 2 * distance * Math.tan(CAMERA_FOV * Math.PI / 360) / height;
     const x = dx * scale;
     const z = dy * scale / Math.sin(Math.max(elevation, MIN_PAN_ELEVATION));
     const moveX = -x * Math.cos(azimuth) - z * Math.sin(azimuth);
@@ -1317,6 +1707,12 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     if (disposed || !config || !finite(dx) || !finite(dy)) return;
     if (buildOrbit) return pan(dx, dy);
     const anglePerPixel = 3.5 / Math.max(150, height);
+    if (isFirstPersonView()) {
+      lookYaw = (lookYaw - dx * anglePerPixel) % FULL_TURN;
+      lookPitch = clamp(lookPitch - dy * anglePerPixel, -FIRST_PERSON_PITCH_LIMIT, FIRST_PERSON_PITCH_LIMIT);
+      dirty = true;
+      return;
+    }
     azimuth = (azimuth - dx * anglePerPixel) % FULL_TURN;
     elevation = clamp(elevation + dy * anglePerPixel, MIN_ELEVATION, MAX_ELEVATION);
     if (view === 'player') fitAvatar();
@@ -1325,7 +1721,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   }
 
   function zoom(factor) {
-    if (disposed || !config || !finite(factor) || factor <= 0) return;
+    if (disposed || !config || !finite(factor) || factor <= 0 || isFirstPersonView()) return;
     if (view === 'player') {
       distance = clamp(distance / factor, PLAYER_ZOOM_MIN, PLAYER_ZOOM_MAX);
       fitAvatar();
@@ -1340,75 +1736,109 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     if (disposed || !landscape) return;
     if (finite(timeSeconds)) clock.value = timeSeconds;
     const dt = finite(deltaSeconds) ? clamp(deltaSeconds, 0, 0.1) : 0;
-    if (!updateCourtyardPassage(dt) && (!insideVilla || !interiorElevator?.update(dt))) player?.update(dt, azimuth);
-    if (view === 'player' && dt > 0) trackPlayer(false, dt);
-    if (communityView && dt > 0) {
-      const fraction = 1 - Math.exp(-10 * dt);
-      for (const node of sharedNodes.values()) {
-        if (node.kind !== 'presence') continue;
-        node.group.position.lerp(node.target, fraction);
-        const difference = Math.atan2(Math.sin(node.targetYaw - node.group.rotation.y),
-          Math.cos(node.targetYaw - node.group.rotation.y));
-        node.group.rotation.y += difference * fraction;
-      }
+    const eyeView = isFirstPersonView();
+    const position = player?.position;
+    const x = position?.x, y = position?.y, z = position?.z;
+    const vehicleUpdated = Boolean(vehicle?.update(dt));
+    const passageUpdated = !vehicleUpdated && updateCourtyardPassage(dt);
+    const elevatorUpdated = !vehicleUpdated && !passageUpdated && insideVilla && Boolean(interiorElevator?.update(dt));
+    if (!vehicleUpdated && !passageUpdated && !elevatorUpdated) {
+      if (restInteraction) updateRestInteraction(dt);
+      else player?.update(dt, eyeView ? lookYaw + Math.PI : azimuth);
     }
-    if (dirty) updateCamera(dt);
+    if (dt > 0) playerMoved = !!position && (x !== position.x || y !== position.y || z !== position.z);
+    if (view === 'player' && dt > 0) trackPlayer(false, dt);
+    if (dirty || eyeView) updateCamera(dt);
+    updateRemoteAvatars(dt);
     renderer.render(scene, camera);
   }
 
   function updateCamera(dt) {
+    const eyeView = isFirstPersonView();
+    const eyeHeight = eyeView ? player.height * FIRST_PERSON_EYE_HEIGHT : 0;
+    const cockpit = eyeView ? vehicle?.viewpoint(eyeHeight) : null;
+    let releasingCamera = false;
+    let near, fov;
+    player?.setVisible(!eyeView);
+    if (cockpit) {
+      if (lastCockpitYaw === undefined) centerFirstPerson(cockpit.yaw);
+      else lookYaw = (lookYaw + cockpit.yaw - lastCockpitYaw) % FULL_TURN;
+    }
+    lastCockpitYaw = cockpit?.yaw;
+    if (eyeView) {
+      if (cockpit) camera.position.set(cockpit.x, cockpit.y, cockpit.z);
+      else {
+        camera.position.copy(player.position);
+        camera.position.y += eyeHeight;
+      }
+      camera.rotation.set(lookPitch, lookYaw + Math.PI, 0, 'YXZ');
+      near = .045;
+      fov = FIRST_PERSON_FOV;
+    } else {
       camera.position.copy(target).addScaledVector(cameraDirection(), distance);
       const buildingNavigation = activeCourtyard?.building.interior.navigation || (insideVilla && interiorNavigation);
       const floor = buildingNavigation
         ? (buildingNavigation.sample(camera.position.x, camera.position.z, null, player?.position?.y) ?? player?.position?.y ?? config.ground)
         : (navigation.sample(camera.position.x, camera.position.z, outdoorBounds) ?? config.ground);
       camera.position.y = Math.max(camera.position.y, floor + CAMERA_GROUND_CLEARANCE);
-      const releasingCamera = isInsideBuilding() && view === 'player' && interiorOccluders.length ? keepCameraInside(dt) : false;
+      releasingCamera = isInsideBuilding() && view === 'player' && interiorOccluders.length ? keepCameraInside(dt) : false;
       camera.lookAt(target);
       // Keep the orbit above ground while tilting the lens toward the sky.
       if (elevation < 0) {
         const floorPitch = Math.atan2(camera.position.y - target.y, distance);
         camera.rotateX(-elevation + floorPitch * elevation / MIN_ELEVATION);
       }
-      camera.near = isInsideBuilding() ? 0.045 : clamp(distance / 125, 0.25, 25);
-      camera.fov = isInsideBuilding() ? interiorCameraFov() : CAMERA_FOV;
+      near = isInsideBuilding() ? 0.045 : clamp(distance / 125, 0.25, 25);
+      fov = isInsideBuilding() ? interiorCameraFov() : CAMERA_FOV;
+    }
+    updateInteriorCutaway(eyeView);
+    if (camera.near !== near || camera.fov !== fov) {
+      camera.near = near;
+      camera.fov = fov;
       camera.updateProjectionMatrix();
-      const fogOffset = Math.max(0, distance - 970);
-      scene.fog.near = 1400 + fogOffset;
-      scene.fog.far = 3700 + fogOffset;
-      for (const tile of grass) {
-        tile.mesh.visible = tile.sourceVisible && (!villaPlot || tile.plot !== villaPlot.id) && !buildings.occupied.has(tile.plot) &&
-          camera.position.distanceToSquared(tile.center) <= tile.range2;
-      }
-      dirty = releasingCamera;
+    }
+    const fogOffset = eyeView ? 0 : Math.max(0, distance - 970);
+    scene.fog.near = 1400 + fogOffset;
+    scene.fog.far = 3700 + fogOffset;
+    for (const tile of grass) {
+      tile.mesh.visible = tile.sourceVisible && (!villaPlot || tile.plot !== villaPlot.id) && !buildings.occupied.has(tile.plot) &&
+        camera.position.distanceToSquared(tile.center) <= tile.range2;
+    }
+    dirty = releasingCamera;
   }
 
   function dispose() {
     if (disposed) return;
     disposed = true;
     releaseCourtyards();
+    vehicle?.dispose();
+    vehicle = null;
     player?.dispose();
     player = null;
     buildings.dispose();
     removeVilla();
     clearCommunityView();
+    disposeRemoteCharacterModels();
     if (landscape) disposeModel(landscape);
     landscape = config = plannedPlot = navigation = null;
     interior = interiorNavigation = interiorElevator = interiorMetadata = null;
     insideVilla = false;
-    communitySignature = '';
     grass = [];
     scene.clear();
     sun.shadow.dispose();
   }
 
   return { resize, showLandscape, showCharacter, showVilla, setVillaInteriorMetadata, getVillaEntryState,
-    enterInterior, exitInterior, getElevatorState, useElevator, setPlayerInput, pan, orbit, zoom,
+    enterInterior, exitInterior, getElevatorState, useElevator, getRestState, interactRest, setPlayerInput, pan, orbit, zoom,
     enterMapView, exitMapView, getMapPlayerPosition, getPlayerSyncState, placeCharacterAt,
     getPlayerCheckpoint, restorePlayerPosition,
-    setSharedRecords, focusVilla, focusCharacter, render, dispose,
+    setSharedRecords, getCommunityPlayers, setRemoteCharacterModel, hasRemoteCharacterModel,
+    focusVilla, focusCharacter, setFirstPerson, render, dispose,
     getBuildPlots, setBuildModel, hasBuildModel: buildings.hasModel, setBuildPreview, pickBuildGround, setPlacedBuildings,
     getCourtyardDoor, interactCourtyardDoor,
+    showVehicle, getVehicleState, enterVehicle, exitVehicle,
+    brakeVehicle: () => vehicle?.brake() || false,
+    clearVehicleInput: () => vehicle?.clearInput(),
     get isInsideCourtyard() { return Boolean(activeCourtyard) },
     get isCourtyardDoorBusy() { return Boolean(courtyardPassage) },
     get isInsideVilla() { return isInsideBuilding() } };

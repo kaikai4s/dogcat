@@ -11,7 +11,8 @@ const MANOR_ASSET_FILES = Object.freeze({
   interiorModel: 'model.json',
   interior: 'manor-villa-interior.glb',
   boy: 'boy.glb',
-  girl: 'girl.glb'
+  girl: 'girl.glb',
+  car: 'copper-gt.glb'
 })
 
 const isInteriorAsset = key => key === 'interior' || key === 'interiorModel'
@@ -33,8 +34,7 @@ const ASSET_BYTES = {
   courtyardVilla: 12353452,
   interiorModel: 900,
   interior: 1817160,
-  boy: 5489760,
-  girl: 3233352
+  car: 1790576
 }
 
 function manorError(code, message, cause) {

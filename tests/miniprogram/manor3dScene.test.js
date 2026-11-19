@@ -2,6 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { THREE } = require('../../miniprogram/packageManor3d/vendor/three-runtime')
 const { createManorScene } = require('../../miniprogram/packageManor3d/utils/manor-scene')
+const { createAnimatedCharacter } = require('../fixtures/manor3dCharacter')
 
 const layout = {
   world: { width: 1200, depth: 960 },
@@ -141,6 +142,119 @@ test('shared 2D plots keep trees without rendering lot lines, paving or substitu
   view.dispose()
 })
 
+test('live presence deltas interpolate existing avatars and preserve unchanged scene nodes', () => {
+  const { view } = createFixture()
+  const landscape = new THREE.Group()
+  view.showLandscape(landscape, layout)
+  view.showCharacter(makeCharacter().model)
+  view.render(0)
+  const scene = landscape.parent
+  const { x, y, z } = view.getPlayerSyncState().position3d
+  const nearby = { id: 'near', kind: 'presence', manor3dOnline: true, position3d: { x: x + 2, y, z }, manor3dFacing: 3 }
+  const other = { ...nearby, id: 'other', position3d: { x: x + 1, y, z: z + 2 } }
+  const distant = { ...nearby, id: 'far', position3d: { x: x + 350, y, z } }
+  const plot = { id: 'garden', kind: 'plot', buildings: [{ instanceId: 'tree', category: 'tree', x: 1120, z: 1120 }] }
+  view.setSharedRecords([nearby, other, distant, plot], 'own')
+  const character = scene.getObjectByName('Shared character near')
+  const unchanged = scene.getObjectByName('Shared character other')
+  const decoration = scene.getObjectByName('Shared plot garden')
+  assert.ok(character && unchanged && decoration)
+  assert.equal(character.children[0].geometry, unchanged.children[0].geometry)
+  assert.equal(scene.getObjectByName('Shared character far'), undefined)
+
+  const delta = { replace: false }
+  const destination = { x: x + 5, y: y + 2, z }
+  view.setSharedRecords([{ ...nearby, position3d: destination, manor3dFacing: -3 }], 'own', delta)
+  assert.equal(character.position.x, x + 2)
+  view.render(.05, .05)
+  assert.ok(character.position.x > x + 2 && character.position.x < x + 5)
+  assert.ok(character.position.y > y && character.position.y < y + 2)
+  assert.ok(character.rotation.y > 3)
+  for (let step = 2; step <= 30; step++) view.render(step * .05, .05)
+  assert.deepEqual(character.position.toArray(), [destination.x, destination.y, destination.z])
+  assert.equal(scene.getObjectByName('Shared character near'), character)
+  assert.equal(scene.getObjectByName('Shared character other'), unchanged)
+  assert.equal(scene.getObjectByName('Shared plot garden'), decoration)
+
+  view.setSharedRecords([{ id: 'near', deleted: true }], 'own', delta)
+  assert.equal(character.parent, null)
+  assert.equal(scene.getObjectByName('Shared character other'), unchanged)
+  assert.ok(view.placeCharacterAt(distant.position3d))
+  view.focusCharacter()
+  for (let step = 31; step <= 37; step++) view.render(step * .05, .05)
+  const farCharacter = scene.getObjectByName('Shared character far')
+  assert.equal(farCharacter.position.x, distant.position3d.x)
+  assert.equal(unchanged.parent, null)
+  view.setSharedRecords([distant], 'own')
+  assert.equal(decoration.parent, null)
+  assert.equal(scene.getObjectByName('Shared character far'), farCharacter)
+  view.dispose()
+})
+
+test('loading the villa preserves online neighbors from the initial snapshot', () => {
+  const { view } = createFixture()
+  const landscape = new THREE.Group()
+  view.showLandscape(landscape, layout)
+  view.showCharacter(makeCharacter().model)
+  view.render(0)
+  const { x, y, z } = view.getPlayerSyncState().position3d
+  view.setSharedRecords([
+    { id: 'near', kind: 'presence', manor3d: true, position3d: { x: x + 2, y, z }, name: '邻居甲' },
+    { id: 'far', kind: 'presence', manor3dOnline: true, position3d: { x: x + 210, y, z } }
+  ], 'own')
+  const near = landscape.parent.getObjectByName('Shared character near')
+  assert.ok(near)
+  view.showVilla(makeVilla())
+  view.render(.05, .05)
+  assert.equal(landscape.parent.getObjectByName('Shared character near'), near)
+  assert.deepEqual(view.getCommunityPlayers().map(player => [player.id, player.visible]), [['near', true], ['far', false]])
+  view.dispose()
+})
+
+test('nearby avatars use the selected player model, share geometry and animate independently', () => {
+  const { view, disposed } = createFixture()
+  const landscape = new THREE.Group()
+  view.showLandscape(landscape, layout)
+  const boy = makeCharacter(), girl = makeCharacter()
+  view.showCharacter(boy.model, 'boy')
+  assert.ok(view.hasRemoteCharacterModel('boy'))
+  assert.ok(view.setRemoteCharacterModel('girl', girl.model))
+  const { x, y, z } = view.getPlayerSyncState().position3d
+  view.setSharedRecords([
+    { id: 'runner', kind: 'presence', manor3dOnline: true, position3d: { x: x + 2, y, z },
+      manor3dMoving: true, manor3dRunning: true, manor3dCharacterType: 'boy' },
+    { id: 'idle', kind: 'presence', manor3dOnline: true, position3d: { x: x - 2, y, z }, manor3dCharacterType: 'girl' }
+  ], 'own')
+  for (let step = 1; step < 8; step++) view.render(step * .04, .04)
+  const scene = landscape.parent
+  const runner = scene.getObjectByName('Shared character runner').getObjectByName('Body')
+  const idle = scene.getObjectByName('Shared character idle').getObjectByName('Body')
+  assert.equal(runner.geometry, boy.body.geometry)
+  assert.equal(idle.geometry, girl.body.geometry)
+  assert.ok(Math.abs(runner.rotation.x - .7) < 1e-6)
+  assert.ok(Math.abs(idle.rotation.x - .01) < 1e-6)
+  assert.ok(Math.abs(boy.body.rotation.x - .01) < 1e-6)
+  view.showCharacter(makeCharacter().model, 'girl')
+  assert.ok(!disposed.includes(boy.model))
+  view.dispose()
+  assert.equal(disposed.filter(model => model === boy.model).length, 1)
+  assert.equal(disposed.filter(model => model === girl.model).length, 1)
+})
+
+test('remote players show the synchronized lying posture', () => {
+  const { view } = createFixture()
+  const landscape = new THREE.Group()
+  view.showLandscape(landscape, layout)
+  view.showCharacter(createAnimatedCharacter(THREE).model, 'boy')
+  const { x, y, z } = view.getPlayerSyncState().position3d
+  view.setSharedRecords([{ id: 'resting', kind: 'presence', manor3dOnline: true,
+    manor3dPose: 'lie', position3d: { x: x + 2, y, z }, manor3dCharacterType: 'boy' }], 'own')
+  for (let step = 1; step <= 24; step++) view.render(step * .04, .04)
+  const hips = landscape.parent.getObjectByName('Shared character resting').getObjectByName('Hips')
+  assert.ok(Math.abs(hips.quaternion.x + Math.SQRT1_2) < .02)
+  view.dispose()
+})
+
 test('villa focus fits the model in portrait and pan/orbit/zoom remain bounded', () => {
   const { view, frames } = createFixture()
   view.showLandscape(new THREE.Group(), layout)
@@ -261,6 +375,94 @@ test('both camera modes can look up without moving the camera underground', () =
       assert.ok(moved.getWorldDirection(direction).y > 0.4, 'map panning preserves the tilt')
     }
   }
+  view.dispose()
+})
+
+test('first person follows the eye line, steers walking with the view, and resumes after the map', () => {
+  const { view, frames } = createFixture()
+  view.showLandscape(new THREE.Group(), layout)
+  const { model } = makeCharacter()
+  view.showCharacter(model)
+  assert.equal(view.placeCharacterAt({ x: 5, z: 75 }, 0), true)
+  const actor = model.parent
+  const feet = actor.position.clone()
+  assert.equal(view.setFirstPerson(true), true)
+  view.render(0)
+  const eye = frames.at(-1)
+  assert.equal(actor.visible, false)
+  assert.ok(eye.position.distanceTo(feet.clone().add(new THREE.Vector3(0, 1.6 * .92, 0))) < 1e-6)
+  assert.ok(eye.getWorldDirection(new THREE.Vector3()).z > .99)
+
+  view.orbit(100 * Math.PI, -70)
+  view.render(0)
+  const looked = frames.at(-1).getWorldDirection(new THREE.Vector3())
+  assert.ok(looked.x < -.9 && looked.y > .3)
+  view.setPlayerInput(0, -1)
+  view.render(.1, .1)
+  view.setPlayerInput(0, 0)
+  assert.ok(actor.position.x < feet.x - .6)
+  assert.ok(Math.abs(actor.position.z - feet.z) < 1e-6)
+
+  view.enterMapView()
+  view.render(.1)
+  assert.equal(actor.visible, true)
+  assert.equal(view.setFirstPerson(false), false)
+  view.exitMapView()
+  view.render(.1)
+  assert.equal(actor.visible, false)
+  assert.ok(frames.at(-1).getWorldDirection(new THREE.Vector3()).distanceTo(looked) < 1e-6)
+  assert.equal(view.setFirstPerson(false), true)
+  view.render(.1)
+  assert.equal(actor.visible, true)
+  assert.ok(frames.at(-1).position.distanceTo(actor.position) > 3)
+  view.dispose()
+})
+
+test('first person descends into the vehicle, turns with steering, and returns to standing height', () => {
+  const { view, frames } = createFixture()
+  view.showLandscape(new THREE.Group(), layout)
+  const { model } = makeCharacter()
+  view.showCharacter(model)
+  const vehicle = new THREE.Group()
+  for (const name of ['Door_L', 'Door_R', 'Steering_Wheel', 'Steer_FL', 'Steer_FR', 'Spin_FL', 'Spin_FR', 'Spin_RL', 'Spin_RR']) {
+    const part = new THREE.Group()
+    part.name = name
+    vehicle.add(part)
+  }
+  assert.equal(view.showVehicle(vehicle), true)
+  assert.equal(view.setFirstPerson(true), true)
+  assert.equal(view.enterVehicle('driver'), true)
+  let elapsed = 0
+  const tick = () => view.render(elapsed += .05, .05)
+  const actor = model.parent
+  const eyeHeight = () => frames.at(-1).position.y - actor.position.y
+  const heights = []
+  while (view.getVehicleState().mode === 'entering' && elapsed < 8) {
+    tick()
+    heights.push(eyeHeight())
+  }
+  assert.equal(view.getVehicleState().mode, 'driver')
+  assert.ok(heights.some(height => height > 1.15 && height < 1.4), 'boarding lowers the eye line over several frames')
+  assert.ok(eyeHeight() < 1.15)
+
+  view.orbit(60, -10)
+  tick()
+  const car = vehicle.parent
+  const look = new THREE.Vector3()
+  const localLook = () => frames.at(-1).getWorldDirection(look).applyAxisAngle(new THREE.Vector3(0, 1, 0), -car.rotation.y).clone()
+  const initialLook = localLook()
+  const startingYaw = car.rotation.y
+  view.setPlayerInput(1, -1)
+  for (let i = 0; i < 20; i++) tick()
+  assert.ok(Math.abs(car.rotation.y - startingYaw) > .2)
+  assert.ok(localLook().distanceTo(initialLook) < 1e-6)
+  view.brakeVehicle()
+  for (let i = 0; i < 20; i++) tick()
+  assert.equal(view.exitVehicle(), true)
+  const exitEnd = elapsed + 4
+  while (view.getVehicleState().mode === 'exiting' && elapsed < exitEnd) tick()
+  assert.equal(view.getVehicleState().mode, 'walking')
+  assert.ok(Math.abs(eyeHeight() - 1.6 * .92) < 1e-6)
   view.dispose()
 })
 

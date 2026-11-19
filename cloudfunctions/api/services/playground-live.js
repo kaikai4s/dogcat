@@ -11,8 +11,9 @@ module.exports=function createLive({db,nowMs}) {
     }
     return id
   }
-  async function publish(sceneId,record,version) {
-    const shard=hash(record.id).slice(0,1),id=await ensure(sceneId,shard)
+  async function publish(sceneId,record,version,{knownShard=false}={}) {
+    const shard=hash(record.id).slice(0,1),id='scene_'+sceneId+'_'+shard
+    if(!knownShard || record.deleted) await ensure(sceneId,shard)
     if(record.deleted) {
       const previous=await readDocument(db,COLLECTION,id,'读取实时场景')
       const old=previous.records&&previous.records[record.id]
@@ -24,11 +25,16 @@ module.exports=function createLive({db,nowMs}) {
     // Plain objects are expanded into dotted leaf updates by the SDK, which
     // cannot replace appearance:null and leaves obsolete fields (e.g. deleted).
     // Replace this entity only; keep the shard's other entities and version guard.
-    await db.collection(COLLECTION).where(command.and([{_id:id},command.or([
+    const write=()=>db.collection(COLLECTION).where(command.and([{_id:id},command.or([
       {[key]:command.exists(false)},
       {[key+'.epoch']:command.lt(version.epoch)},
       {[key+'.epoch']:version.epoch,[key+'.seq']:command.lt(version.seq)}
     ])])).update({data:{['records.'+record.id]:command.set({...record,version})}})
+    const result=await write()
+    if(knownShard && result.stats?.updated===0 && !await readDocument(db,COLLECTION,id,'读取实时场景',true)) {
+      await ensure(sceneId,shard)
+      await write()
+    }
   }
   async function nextEpoch(sceneId,recordId,proposed=now()) {
     const id='scene_'+sceneId+'_'+hash(recordId).slice(0,1)

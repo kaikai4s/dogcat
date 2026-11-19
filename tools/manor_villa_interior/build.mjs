@@ -70,12 +70,13 @@ assert(studyEdge.intersectObject(floorMeshes[1], true).length, 'Missing vertical
 const root = new THREE.Group();
 root.name = 'VillaInterior';
 root.userData = { units: 'meters', up: '+Y', front: '+Z', origin: 'existing villa exterior floor center' };
-const { floors: walkableFloors, ramps, obstacles } = VILLA_LAYOUT;
+const { floors: walkableFloors, ramps, obstacles, restSpots } = VILLA_LAYOUT;
 root.userData.navigation = {
   offset: { x: toExteriorOrigin.x, y: toExteriorOrigin.y, z: toExteriorOrigin.z },
   floors: walkableFloors,
   ramps,
   obstacles,
+  restSpots,
   elevator: interiorScene.elevator,
 };
 root.add(interior);

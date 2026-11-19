@@ -13,7 +13,8 @@ const MAX_DRAW_PIXELS = 900000
 const CHARACTER_KEY = 'dogcat-manor-3d-character'
 const POSITION_PREFIX = 'dogcat-manor-3d-position:'
 const POSITION_VERSION = 1
-const POSITION_SAVE_MS = 1000
+const POSITION_SAVE_MS = 650
+const positionWrites = new Map()
 const MINIMAP_UPDATE_MS = 125
 const CAMERA_SENSITIVITY_KEY = 'manor3d-camera-sensitivity'
 const DEFAULT_CAMERA_SENSITIVITY = 50
@@ -27,6 +28,38 @@ const BUILDINGS = [
 ]
 const BUILD_MARGIN = 1
 const BUILD_TAP_RADIUS = 7
+
+function writePosition(key, checkpoint, onFailure) {
+  if (typeof wx.setStorage !== 'function') {
+    try { wx.setStorageSync(key, checkpoint) } catch (_) { onFailure() }
+    return
+  }
+  const next = { checkpoint, onFailure }
+  const active = positionWrites.get(key)
+  if (active) {
+    active.next = next
+    return
+  }
+  const slot = { current: next, next: null }
+  positionWrites.set(key, slot)
+  function write() {
+    const current = slot.current
+    const finish = () => {
+      if (slot.current !== current) return
+      slot.current = slot.next
+      slot.next = null
+      if (slot.current) write()
+      else positionWrites.delete(key)
+    }
+    const fail = () => {
+      if (slot.current !== current) return
+      current.onFailure()
+      finish()
+    }
+    try { wx.setStorage({ key, data: current.checkpoint, success: finish, fail }) } catch (_) { fail() }
+  }
+  write()
+}
 
 function buildFootprint(building, rotation) {
   return rotation % 180 === 0 ? [building.width, building.depth] : [building.depth, building.width]
@@ -131,15 +164,27 @@ Page({
     insideCourtyard: false,
     courtyardDoorLabel: '',
     doorBusy: false,
+    restPrompt: null,
+    restLocked: false,
     elevator: null,
     characterType: 'boy',
     activeCharacter: '',
+    vehicleLoadError: '',
+    vehicleNearby: false,
+    vehiclePanelOpen: false,
+    vehicleSeats: [],
+    vehicleState: 'walking',
+    vehicleStatus: '',
+    vehicleSeatLabel: '',
+    vehicleSpeed: 0,
+    vehicleCanExit: false,
     characterStatus: 'pending',
     characterProgress: -1,
     characterError: '',
     mapMode: false,
     minimap: null,
     mapPlayer: null,
+    mapNeighbors: [],
     minimapTop: 0,
     menuOpen: false,
     communityStatus: 'idle',
@@ -159,6 +204,7 @@ Page({
     courtyardProgress: -1,
     courtyardError: '',
     cameraSensitivity: DEFAULT_CAMERA_SENSITIVITY,
+    firstPerson: false,
     stickX: 0,
     stickY: 0,
     stickActive: false
@@ -194,6 +240,7 @@ Page({
       this.onResize()
       this._startFrames()
       this._loadCharacter()
+      this._loadVehicle()
       this._restorePlayerPosition()
     }
     this._beginLoad()
@@ -207,11 +254,15 @@ Page({
     this._endBuild()
     this._resetCanvasTouches()
     this._stopStick()
+    this._scene?.clearVehicleInput?.()
+    if (!this._closed) this.closeVehiclePanel()
     this._stopFrames()
     this._stopLoad()
     this._stopLoad('_characterSession')
     this._stopLoad('_interiorSession')
     this._stopLoad('_buildModelSession')
+    this._stopLoad('_vehicleSession')
+    this._stopLoad('_remoteCharacterSession')
     if (!this._closed && this.data.courtyardStatus === 'loading') this.setData({ courtyardStatus: 'idle' })
     this._disconnectCommunity()
     if (!this._scene?.isInsideVilla) {
@@ -265,13 +316,14 @@ Page({
 
   _isCurrent(session) {
     return this._shown && !this._closed && (this._session === session || this._characterSession === session ||
-      this._interiorSession === session || this._buildModelSession === session)
+      this._interiorSession === session || this._buildModelSession === session || this._vehicleSession === session ||
+      this._remoteCharacterSession === session)
   },
 
   _stopLoad(field = '_session') {
     const session = this[field]
     this[field] = null
-    session?.assets.cancel()
+    session?.assets?.cancel?.()
   },
 
   _releaseScene() {
@@ -281,6 +333,12 @@ Page({
     this._positionScene = null
     this._endBuild()
     this._stopLoad('_buildModelSession')
+    this._stopLoad('_vehicleSession')
+    this._stopLoad('_remoteCharacterSession')
+    this._remoteModelRetryAt = 0
+    this._nextCommunityMapUpdate = 0
+    this._hasVehicle = false
+    this._vehicleStateSignature = ''
     this._placedBuildings = null
     this._resetCanvasTouches()
     this._nextMinimapUpdate = 0
@@ -303,7 +361,9 @@ Page({
     this._interiorFailureKind = ''
     if (!this._closed) this.setData({ doorPrompt: false, insideVilla: false, insideCourtyard: false,
       courtyardDoorLabel: '', doorBusy: false, elevator: null, interiorStatus: 'idle',
-      interiorProgress: -1, interiorError: '', courtyardStatus: 'idle', courtyardProgress: -1, courtyardError: '' })
+      interiorProgress: -1, interiorError: '', courtyardStatus: 'idle', courtyardProgress: -1, courtyardError: '',
+      vehicleLoadError: '', vehicleNearby: false, vehiclePanelOpen: false, vehicleSeats: [], vehicleState: 'walking',
+      vehicleStatus: '', vehicleSeatLabel: '', vehicleSpeed: 0, vehicleCanExit: false })
   },
 
   _readEntryTicket(options = {}) {
@@ -334,7 +394,8 @@ Page({
     this._lastPositionSignature = ''
     this._nextPositionSave = 0
     try {
-      const saved = wx.getStorageSync(key)
+      const writing = positionWrites.get(key)
+      const saved = writing?.next?.checkpoint || writing?.current?.checkpoint || wx.getStorageSync(key)
       const validInterior = !saved?.interior || saved.interior.kind === 'red' ||
         (saved.interior.kind === 'courtyard' && typeof saved.interior.plotId === 'string')
       if (saved?.version === POSITION_VERSION && validInterior && [saved.x, saved.y, saved.z, saved.facing].every(Number.isFinite)) {
@@ -354,13 +415,14 @@ Page({
     this._positionScene = this._scene
     const checkpoint = { version: POSITION_VERSION, ...position }
     const signature = JSON.stringify(checkpoint)
+    this._lastPlayerCheckpoint = checkpoint
     if (signature === this._lastPositionSignature) return true
-    try {
-      wx.setStorageSync(this._positionKey, checkpoint)
-      this._lastPositionSignature = signature
-      this._lastPlayerCheckpoint = checkpoint
-      return true
-    } catch (_) { return false }
+    const key = this._positionKey
+    this._lastPositionSignature = signature
+    writePosition(key, checkpoint, () => {
+      if (this._positionKey === key && this._lastPositionSignature === signature) this._lastPositionSignature = ''
+    })
+    return true
   },
 
   _finishPlayerRestore(placed, saved = this._pendingPlayerPosition) {
@@ -413,6 +475,7 @@ Page({
         while (isCurrent() && communityEnterRequest) await communityEnterRequest.catch(() => {})
         if (!isCurrent()) return
         const request = communityEnterRequest = callFunction('playground', 'enterScene', {
+          manor3d: true,
           ...(this._entrySolo ? { solo: true, community: null } : { community: this._entryCommunity })
         })
         let overview
@@ -429,17 +492,26 @@ Page({
         this._communityScene = scene
         this._openPositionSlot(scene.sceneId, scene.playerId)
         const stayingHere = this._positionScene && this._positionScene === this._scene && !this._pendingPlayerPosition
+        const position = scene.position3d
+        const interior = scene.manor3dInterior
+        if (!stayingHere && !this._pendingPlayerPosition && [position?.x, position?.y, position?.z].every(Number.isFinite) &&
+            (interior?.kind === 'red' || (interior?.kind === 'courtyard' && typeof interior.plotId === 'string'))) {
+          this._pendingPlayerPosition = { version: POSITION_VERSION, ...position, interior,
+            facing: Number.isFinite(scene.manor3dFacing) ? scene.manor3dFacing : 0 }
+        }
         this._communityConnected = false
-        this._communityPositionReady = Boolean(stayingHere || scene.hasAvatar !== true)
-        this._communityPositionPlaced = Boolean(stayingHere || (scene.hasAvatar !== true && !scene.position3d))
+        const startsAtSpawn = !position && !this._pendingPlayerPosition &&
+          (scene.manor3dCanPublish === true || scene.hasAvatar !== true)
+        this._communityPositionReady = this._communityPositionPlaced = Boolean(stayingHere || startsAtSpawn)
         this._pendingCommunityPosition = stayingHere || this._pendingPlayerPosition ? null : scene.position3d || null
         this.setData({ communityName: scene?.community?.name || '' })
         const sync = this._communitySync = new (require('../utils/manor-community-sync').ManorCommunitySync)(
           scene,
-          records => {
+          (records, options) => {
             if (!isCurrent()) return
-            if (this._scene && this._hasLandscape) this._applySharedRecords(records, scene.playerId)
-            else this._pendingSharedRecords = { records, ownPlayerId: scene.playerId }
+            if (this._scene && this._hasLandscape) this._applySharedRecords(records, scene.playerId, options)
+            else this._pendingSharedRecords = { records: options?.replace === false ? [...sync.records.values()] : records,
+              ownPlayerId: scene.playerId }
           },
           error => {
             if (!isCurrent()) return
@@ -451,6 +523,9 @@ Page({
             if (!isCurrent()) return
             this._communityConnected = state === 'connected'
             this._setCommunityReady()
+            if (this._communityConnected && !this._communityPositionReady && !this._pendingCommunityPosition) {
+              this._placeCommunityCharacter()
+            }
           }
         )
         this._restorePlayerPosition()
@@ -476,6 +551,7 @@ Page({
     this._communityEntryGeneration = (this._communityEntryGeneration || 0) + 1
     this._communityEntryPromise = null
     const sync = this._communitySync
+    const position = this._getCommunityPositionState()
     this._communitySync = null
     this._communityScene = null
     this._communityConnected = false
@@ -484,7 +560,7 @@ Page({
     this._pendingCommunityPosition = null
     this._pendingSharedRecords = null
     if (!this._closed && this.data.canBuildManor3d) this.setData({ canBuildManor3d: false })
-    sync?.stop()
+    sync?.stop({ position })
   },
 
   _setCommunityReady() {
@@ -511,7 +587,8 @@ Page({
     // The community position is an outdoor coordinate. Keep it pending while
     // the player is inside the villa; indoor navigation must not consume it.
     if (this._scene.isInsideVilla) return false
-    const placed = this._scene.placeCharacterAt(position)
+    const facing = this._communityScene?.manor3dFacing
+    const placed = this._scene.placeCharacterAt(position, facing)
     if (!placed) {
       this.setData({ communityStatus: 'error', communityError: '当前位置无法落在可行走地面，请重试连接' })
       return false
@@ -526,12 +603,20 @@ Page({
   },
 
   _syncCommunityPosition() {
-    if (!this._communitySync || !this._communityConnected || !this._communityScene?.hasAvatar || this._communityPositionReady === false ||
-        this._pendingCommunityPosition || this._pendingPlayerPosition || this._scene?.isInsideVilla) return false
-    const state = this._scene?.getPlayerSyncState?.()
+    const state = this._getCommunityPositionState()
     if (!state) return false
     this._communitySync.syncPosition(state)
     return true
+  },
+
+  _getCommunityPositionState() {
+    const community = this._communityScene
+    if (!this._communitySync || !this._communityConnected || !(community?.manor3dCanPublish === true || community?.hasAvatar === true) ||
+        !this.data.activeCharacter || this._communityPositionReady === false ||
+        this.data.communityStatus === 'error' || this._pendingCommunityPosition || this._pendingPlayerPosition) return null
+    const state = this._scene?.getPlayerSyncState?.()
+    if (!state || (this._scene?.isInsideVilla && !state.interior)) return null
+    return { ...state, characterType: this.data.activeCharacter }
   },
 
   _applyPendingSharedRecords() {
@@ -541,9 +626,25 @@ Page({
     this._pendingSharedRecords = null
   },
 
-  _applySharedRecords(records, ownPlayerId) {
-    this._scene.setSharedRecords?.(records, ownPlayerId)
-    this._placedBuildings = records.filter(record => record.kind === 'manor3dBuilding' && !record.deleted)
+  _applySharedRecords(records, ownPlayerId, { replace = true } = {}) {
+    this._scene.setSharedRecords?.(records, ownPlayerId, { replace })
+    if (replace || records.some(record => record.kind === 'presence')) this._refreshCommunityPlayers()
+    const previous = this._placedBuildings
+    let buildings
+    if (replace) {
+      buildings = records.filter(record => record.kind === 'manor3dBuilding' && !record.deleted)
+    } else {
+      const changes = records.filter(record => record.kind === 'manor3dBuilding')
+      if (!changes.length) return
+      const byId = new Map((previous || []).map(record => [record.id, record]))
+      for (const record of changes) {
+        if (record.deleted) byId.delete(record.id)
+        else byId.set(record.id, record)
+      }
+      buildings = [...byId.values()]
+    }
+    if (previous && buildings.length === previous.length && buildings.every(record => previous.includes(record))) return
+    this._placedBuildings = buildings
     this._scene.setPlacedBuildings?.(this._placedBuildings)
     this._refreshBuild()
     if (this.data.courtyardStatus === 'idle' && this._placedBuildings.some(record => record.buildingId === COURTYARD_ID)) {
@@ -553,6 +654,7 @@ Page({
   },
 
   _progress(session, field) {
+    if (!field) return undefined
     let last = -1
     return event => {
       const written = event.totalBytesExpectedToWrite > 0
@@ -631,7 +733,7 @@ Page({
           () => this.setData({ stage: '正在绘制草坪、树林和溪流', progress: -1 }),
           model => {
             this._scene.showLandscape(model, layout)
-            this.setData({ minimap: createManorMinimap(layout, model), mapPlayer: null })
+            this.setData({ minimap: createManorMinimap(layout, model), mapPlayer: null, mapNeighbors: [] })
           })
         if (!attached || !this._isCurrent(session)) return
         try { this._draw() } catch (error) {
@@ -645,6 +747,7 @@ Page({
         this._applyPendingCommunityPosition()
         // Give the player priority over the optional villa on first entry.
         await this._loadCharacter()
+        this._loadVehicle()
       }
       if (!this._isCurrent(session) || this.data.villaStatus === 'error') return
       if (this._hasVilla) {
@@ -690,7 +793,7 @@ Page({
       this.setData({ characterStatus: 'loading', characterProgress: -1, characterError: '' })
       const attached = await this._attach(session, type, 'characterProgress',
         () => this.setData({ characterStatus: 'drawing', characterProgress: -1 }),
-        model => this._scene.showCharacter(model))
+        model => this._scene.showCharacter(model, type))
       if (attached && this._isCurrent(session)) {
         this.setData({ activeCharacter: type, characterStatus: 'ready' })
         this._restorePlayerPosition()
@@ -707,12 +810,129 @@ Page({
     }
   },
 
+  _refreshCommunityPlayers() {
+    if (!this._shown || !this._scene?.getCommunityPlayers) return
+    const now = Date.now()
+    if (now < (this._nextCommunityMapUpdate || 0)) return
+    this._nextCommunityMapUpdate = now + 200
+    const players = this._scene.getCommunityPlayers()
+    const mapNeighbors = this.data.minimap ? players.filter(player => !player.interior).map(player => ({
+      id: player.id, ...projectManorMapPoint(this.data.minimap, player.x, player.z)
+    })) : []
+    const previous = this.data.mapNeighbors
+    if (mapNeighbors.length !== previous.length || mapNeighbors.some((player, index) => {
+      const old = previous[index]
+      return old.id !== player.id || old.x !== player.x || old.y !== player.y
+    })) this.setData({ mapNeighbors })
+    if (!this.data.activeCharacter || this._characterSession || this._remoteCharacterSession ||
+        now < (this._remoteModelRetryAt || 0) || !this._scene.hasRemoteCharacterModel) return
+    const type = players.find(player => player.visible && !this._scene.hasRemoteCharacterModel(player.characterType))?.characterType
+    if (type === 'boy' || type === 'girl') this._loadRemoteCharacter(type)
+  },
+
+  async _loadRemoteCharacter(type) {
+    if (!this._shown || !this._scene || this._scene.hasRemoteCharacterModel?.(type) || this._remoteCharacterSession) return
+    const session = { assets: createCloudAssets({ wx, envId: this._envId }) }
+    this._remoteCharacterSession = session
+    try {
+      await this._attach(session, type, null, () => {},
+        model => this._scene.setRemoteCharacterModel(type, model))
+    } catch (error) {
+      if (!this._isCurrent(session)) return
+      this._remoteModelRetryAt = Date.now() + 15000
+      console.warn('[manor3d] 邻居角色加载失败', error?.message)
+    } finally {
+      if (this._remoteCharacterSession === session) this._stopLoad('_remoteCharacterSession')
+    }
+  },
+
+  async _loadVehicle() {
+    if (!this._shown || this._closed || !this._hasLandscape || this._hasVehicle || this._vehicleSession ||
+        this.data.vehicleLoadError || !this._scene?.showVehicle) return
+    const session = { assets: createCloudAssets({ wx, envId: this._envId }) }
+    this._vehicleSession = session
+    try {
+      const attached = await this._attach(session, 'car', null, () => {}, model => this._scene.showVehicle(model))
+      if (attached && this._isCurrent(session)) {
+        this._hasVehicle = true
+        this._updateVehicleState()
+      }
+    } catch (error) {
+      if (!this._isCurrent(session)) return
+      console.warn('[manor3d] 车辆加载失败', error?.message)
+      this.setData({ vehicleLoadError: 'Copper GT 加载失败' })
+    } finally {
+      if (this._vehicleSession === session) this._stopLoad('_vehicleSession')
+    }
+  },
+
+  retryVehicle() {
+    if (!this._shown || !this.data.vehicleLoadError) return
+    this.setData({ vehicleLoadError: '' })
+    this._loadVehicle()
+  },
+
+  _updateVehicleState() {
+    const state = this._hasVehicle && this._scene?.getVehicleState()
+    if (!state && !this._vehicleStateSignature) return
+    const visible = !this.data.mapMode && !this.data.buildMode && !this._pendingPlayerPosition && !this._interiorSession
+    const nearby = Boolean(visible && state?.nearby)
+    const mode = state?.mode || 'walking'
+    const signature = JSON.stringify([nearby, mode, state?.status, state?.speed, state?.canExit, state?.seatLabel,
+      state?.seats.map(item => item.occupied)])
+    if (!nearby) this.closeVehiclePanel()
+    if (signature === this._vehicleStateSignature) return
+    this._vehicleStateSignature = signature
+    this.setData({ vehicleNearby: nearby, vehicleState: mode, vehicleStatus: state?.status || '',
+      vehicleSeatLabel: state?.seatLabel || '', vehicleSpeed: state?.speed || 0,
+      vehicleCanExit: Boolean(state?.canExit), vehicleSeats: state?.seats || [] })
+    this._updateMinimapPlayer()
+  },
+
+  openVehiclePanel() {
+    if (!this._shown || !this.data.vehicleNearby || !this._scene?.getVehicleState()?.nearby) return
+    this._stopStick()
+    this._resetCanvasTouches()
+    this.setData({ vehiclePanelOpen: true, menuOpen: false })
+  },
+
+  closeVehiclePanel() {
+    if (this.data.vehiclePanelOpen) this.setData({ vehiclePanelOpen: false })
+  },
+
+  selectVehicleSeat(event) {
+    const id = event.currentTarget?.dataset?.seat
+    if (!this._shown || !this.data.vehiclePanelOpen || !this.data.vehicleSeats.some(seat => seat.id === id && !seat.occupied)) return
+    if (!this._scene?.enterVehicle(id)) {
+      wx.showToast?.({ title: '请走到车旁再上车', icon: 'none' })
+      return
+    }
+    this.closeVehiclePanel()
+    this._updateVehicleState()
+  },
+
+  brakeVehicle() {
+    if (!this._shown || this.data.vehicleState !== 'driver') return
+    this._stopStick()
+    this._scene?.brakeVehicle()
+  },
+
+  exitVehicle() {
+    if (!this._shown || !this.data.vehicleCanExit) return
+    this._stopStick()
+    if (this._scene?.exitVehicle()) this._updateVehicleState()
+    else wx.showToast?.({ title: '车门旁空间不足，请换个位置停车', icon: 'none' })
+  },
+
   _draw(dt = 0) {
     if (this._renderer.getContext().isContextLost?.()) throw new Error('3D 渲染已中断')
     this._scene.render(this._timeSeconds || 0, dt)
+    this._updateVehicleState()
     this._updateDoorState()
+    this._updateRestState()
     this._savePlayerPosition()
     this._syncCommunityPosition()
+    if (this._communitySync) this._refreshCommunityPlayers()
     this._updateElevatorState()
     if (this._stick) {
       const now = Date.now()
@@ -752,6 +972,28 @@ Page({
     } : null })
   },
 
+  _updateRestState() {
+    const state = this._scene?.getRestState?.()
+    const restPrompt = state ? { name: state.name, label: state.label, busy: state.busy } : null
+    const restLocked = Boolean(state?.busy || state?.resting)
+    const signature = JSON.stringify([restPrompt, restLocked])
+    if (signature === this._restStateSignature) return
+    this._restStateSignature = signature
+    this.setData({ restPrompt, restLocked })
+  },
+
+  interactRest() {
+    if (!this._shown || !this.data.restPrompt || this.data.restPrompt.busy || !this._scene?.interactRest?.()) return
+    this._stopStick()
+    this._resetCanvasTouches()
+    if (this.data.firstPerson) {
+      this._scene.setFirstPerson(false)
+      this.setData({ firstPerson: false })
+    }
+    this.closeMenu()
+    this._updateRestState()
+  },
+
   _positionMinimap() {
     const bottom = wx.getMenuButtonBoundingClientRect?.()?.bottom
     const minimapTop = Number.isFinite(bottom) && bottom > 0 ? Math.ceil(bottom) + 8 : 0
@@ -772,7 +1014,7 @@ Page({
     this._stopLoad('_characterSession')
     this._stopLoad('_interiorSession')
     this._releaseScene()
-    this.setData({ status: 'error', activeCharacter: '', mountCanvas: false, mapMode: false, menuOpen: false,
+    this.setData({ status: 'error', activeCharacter: '', mountCanvas: false, mapMode: false, menuOpen: false, firstPerson: false,
       error: '无法显示 3D 庄园，请重试或返回 2D 庄园' })
   },
 
@@ -944,7 +1186,7 @@ Page({
   },
 
   exitVilla() {
-    if (!this._shown || !this.data.insideVilla || this.data.elevator?.busy || !this._scene) return
+    if (!this._shown || !this.data.insideVilla || this.data.restLocked || this.data.elevator?.busy || !this._scene) return
     if (this._scene.isInsideCourtyard) {
       const door = this._scene.getCourtyardDoor?.()
       if (door?.inside) this._useCourtyardDoor(door)
@@ -965,7 +1207,7 @@ Page({
   },
 
   useElevator() {
-    if (!this._shown || !this.data.insideVilla || this.data.elevator?.busy || !this._scene?.useElevator?.()) return
+    if (!this._shown || !this.data.insideVilla || this.data.restLocked || this.data.elevator?.busy || !this._scene?.useElevator?.()) return
     this._stopStick()
     this.closeMenu()
     this._updateElevatorState()
@@ -995,7 +1237,8 @@ Page({
   selectCharacter(event) {
     this.closeMenu()
     const type = event.currentTarget.dataset.character
-    if (!this._hasLandscape || !this._shown || (type !== 'boy' && type !== 'girl') || type === this.data.characterType) return
+    if (!this._hasLandscape || !this._shown || this.data.vehicleState !== 'walking' || this.data.vehiclePanelOpen ||
+        (type !== 'boy' && type !== 'girl') || type === this.data.characterType) return
     this._stopLoad('_characterSession')
     this.setData({ characterType: type, characterProgress: -1, characterError: '',
       characterStatus: type === this.data.activeCharacter ? 'ready' : 'pending' })
@@ -1011,6 +1254,7 @@ Page({
   openBuild() {
     if (!this._shown || !this._hasLandscape || !this._communityConnected || !this.data.canBuildManor3d ||
         this.data.mapMode || this.data.insideVilla || this._build || this._pendingPlayerPosition ||
+        this.data.vehicleState !== 'walking' || this.data.vehiclePanelOpen ||
         this._scene?.isCourtyardDoorBusy || this._interiorSession) return
     this._stopStick()
     this._resetCanvasTouches()
@@ -1121,7 +1365,7 @@ Page({
       if (!current()) return
       if (!result?.record?.id) throw new Error('建筑保存结果暂不可用，请重试')
       sync.merge(result.record)
-      sync.applyRecords([...sync.records.values()])
+      sync.applyRecords([result.record], { replace: false })
       this._endBuild()
       wx.showToast?.({ title: '建造成功', icon: 'success' })
     } catch (error) {
@@ -1220,7 +1464,8 @@ Page({
 
   onStickStart(event) {
     if (this._stick || !this._shown || !this.data.activeCharacter || this.data.mapMode || this.data.buildMode ||
-        this._pendingPlayerPosition || this._scene?.isCourtyardDoorBusy || this.data.interiorStatus === 'loading' ||
+        this.data.vehiclePanelOpen || !['walking', 'driver'].includes(this.data.vehicleState) ||
+        this.data.restLocked || this._pendingPlayerPosition || this._scene?.isCourtyardDoorBusy || this.data.interiorStatus === 'loading' ||
         this.data.interiorStatus === 'drawing' || this.data.elevator?.busy) return
     const touch = event.changedTouches?.[0] || event.touches?.[0]
     if (!touch) return
@@ -1275,11 +1520,20 @@ Page({
     if (!this._closed) {
       this.setData({ stickX: 0, stickY: 0, stickActive: false })
       this._updateMinimapPlayer()
+      if (this._shown) this._savePlayerPosition(true)
     }
   },
 
   toggleMenu() { this.setData({ menuOpen: !this.data.menuOpen }) },
   closeMenu() { if (this.data.menuOpen) this.setData({ menuOpen: false }) },
+
+  toggleFirstPerson() {
+    if (!this._shown || !this.data.activeCharacter || this.data.mapMode || this.data.buildMode || this.data.restLocked) return
+    const firstPerson = !this.data.firstPerson
+    if (!this._scene?.setFirstPerson(firstPerson)) return
+    this._resetCanvasTouches()
+    this.setData({ firstPerson, menuOpen: false })
+  },
 
   onCameraSensitivityChanging(event) {
     const cameraSensitivity = normalizeCameraSensitivity(Number(event.detail.value))
@@ -1294,6 +1548,7 @@ Page({
 
   openMap() {
     if (!this._shown || !this._hasLandscape || this.data.mapMode || this.data.buildMode || this.data.insideVilla ||
+        this.data.vehicleState !== 'walking' || this.data.vehiclePanelOpen ||
         this._pendingPlayerPosition || this._scene?.isCourtyardDoorBusy || this._interiorSession) return
     this._stopStick()
     this._resetCanvasTouches()
@@ -1312,12 +1567,12 @@ Page({
   focusVilla() {
     if (!this._shown || !this._hasVilla || this.data.insideVilla) return
     this.openMap()
-    this._scene.focusVilla()
+    if (this.data.mapMode) this._scene.focusVilla()
   },
 
   focusCharacter() {
     this.closeMenu()
-    if (this.data.activeCharacter) this._scene.focusCharacter()
+    if (this.data.activeCharacter) this._scene.focusCharacter(true)
   },
 
   goBack() {

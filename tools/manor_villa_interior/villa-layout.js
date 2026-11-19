@@ -90,11 +90,28 @@ const furniture = [
 const obstacles = furniture.map(({ minX, maxX, minZ, maxZ, level }) =>
   ({ minX, maxX, minZ, maxZ, level }))
 
+let chairIndex = 0
+const restSpots = furniture.filter(item => item.kind === 'bed' || item.kind === 'chair').map(item => {
+  const x = (item.minX + item.maxX) / 2
+  const z = (item.minZ + item.maxZ) / 2
+  const y = item.room === 'study' ? WEST_STUDY_FLOOR.y : item.level === 2 ? UPPER_Y : GROUND_Y
+  const yaw = item.kind === 'bed' ? 0 : item.reversed ? Math.PI : 0
+  const position = item.kind === 'bed' ? { x, y, z: z + .25 } : { x, y, z }
+  const exit = item.kind === 'bed'
+    ? { x, y, z: item.maxZ + .74 }
+    : { x: x - Math.sin(yaw) * ((item.maxZ - item.minZ) / 2 + .40),
+      y, z: z - Math.cos(yaw) * ((item.maxZ - item.minZ) / 2 + .40) }
+  const id = item.kind === 'bed' ? 'bed-main' : `chair-${chairIndex++}`
+  return Object.freeze({ id, kind: item.kind === 'bed' ? 'lie' : 'sit', name: item.kind === 'bed' ? '卧室床' : '椅子',
+    position: Object.freeze(position), entry: Object.freeze(exit), exit: Object.freeze(exit), yaw })
+})
+
 const VILLA_LAYOUT = Object.freeze({
   floors: Object.freeze(floors),
   ramps: Object.freeze([studySteps]),
   furniture: Object.freeze(furniture),
   obstacles: Object.freeze(obstacles),
+  restSpots: Object.freeze(restSpots),
   entrance: Object.freeze({ x: 1.28, z: 5.24, y: .385, yaw: Math.PI }),
   insideEntrance: Object.freeze({ x: 1.28, z: 2.42, y: GROUND_Y, yaw: Math.PI })
 })

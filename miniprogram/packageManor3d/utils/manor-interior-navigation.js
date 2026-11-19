@@ -34,6 +34,22 @@ const OBSTACLES = Object.freeze([
   [-6.16, -5.73, -2.82, .93, 2], [-9.74, -8.12, 1.53, 2.77, 2]
 ].map(([minX, maxX, minZ, maxZ, level]) => ({ minX, maxX, minZ, maxZ, level })))
 
+const REST_SPOTS = Object.freeze([
+  { id: 'bed-main', kind: 'lie', name: '卧室床', position: { x: 5.235, y: 3.43, z: -1.84 },
+    entry: { x: 5.235, y: 3.43, z: -.31 }, exit: { x: 5.235, y: 3.43, z: -.31 }, yaw: 0 },
+  { id: 'chair-0', kind: 'sit', name: '椅子', position: { x: -8.755, y: 2.69, z: 2.105 },
+    entry: { x: -8.755, y: 2.69, z: 1.045 }, exit: { x: -8.755, y: 2.69, z: 1.045 }, yaw: 0 },
+  { id: 'chair-1', kind: 'sit', name: '椅子', position: { x: 3.95, y: .405, z: .055 },
+    entry: { x: 3.95, y: .405, z: -.66 }, exit: { x: 3.95, y: .405, z: -.66 }, yaw: 0 },
+  { id: 'chair-2', kind: 'sit', name: '椅子', position: { x: 3.95, y: .405, z: 2.175 },
+    entry: { x: 3.95, y: .405, z: 2.89 }, exit: { x: 3.95, y: .405, z: 2.89 }, yaw: Math.PI },
+  { id: 'chair-3', kind: 'sit', name: '椅子', position: { x: 5.21, y: .405, z: .055 },
+    entry: { x: 5.21, y: .405, z: -.66 }, exit: { x: 5.21, y: .405, z: -.66 }, yaw: 0 },
+  { id: 'chair-4', kind: 'sit', name: '椅子', position: { x: 5.21, y: .405, z: 2.175 },
+    entry: { x: 5.21, y: .405, z: 2.89 }, exit: { x: 5.21, y: .405, z: 2.89 }, yaw: Math.PI }
+].map(spot => Object.freeze({ ...spot, position: Object.freeze(spot.position),
+  entry: Object.freeze(spot.entry), exit: Object.freeze(spot.exit) })))
+
 const number = value => Number.isFinite(value) ? value : null
 const inside = (item, x, z, margin = 0) =>
   x >= item.minX + margin - EPSILON && x <= item.maxX - margin + EPSILON &&
@@ -42,6 +58,12 @@ const inside = (item, x, z, margin = 0) =>
 function validBounds(item) {
   return item && [item.minX, item.maxX, item.minZ, item.maxZ, item.level].every(Number.isFinite) &&
     item.minX < item.maxX && item.minZ < item.maxZ
+}
+
+function validRestSpot(spot) {
+  const point = value => value && [value.x, value.y, value.z].every(Number.isFinite)
+  return spot && typeof spot.id === 'string' && (spot.kind === 'sit' || spot.kind === 'lie') &&
+    point(spot.position) && point(spot.entry) && point(spot.exit) && Number.isFinite(spot.yaw)
 }
 
 function modelLayout(data) {
@@ -53,8 +75,11 @@ function modelLayout(data) {
     Array.isArray(data.ramps) && data.ramps.every(item => validBounds(item) &&
       [item.fromY, item.toY].every(Number.isFinite) && item.fromY !== item.toY &&
       (item.axis === undefined || item.axis === 'x' || item.axis === 'z')) &&
-    Array.isArray(data.obstacles) && data.obstacles.every(validBounds)) return data
-  return { offset: EXPORT_OFFSET, floors: FLOORS, ramps: RAMPS, obstacles: OBSTACLES }
+    Array.isArray(data.obstacles) && data.obstacles.every(validBounds)) {
+    const restSpots = Array.isArray(data.restSpots) && data.restSpots.every(validRestSpot) ? data.restSpots : REST_SPOTS
+    return { ...data, restSpots }
+  }
+  return { offset: EXPORT_OFFSET, floors: FLOORS, ramps: RAMPS, obstacles: OBSTACLES, restSpots: REST_SPOTS }
 }
 
 const cross = (x1, z1, x2, z2) => x1 * z2 - z1 * x2
@@ -231,7 +256,7 @@ function localAnchor(metadata, name, fallback) {
 
 function createManorInteriorNavigation({ metadata, layout, origin = { x: 0, y: 0, z: 0 } } = {}) {
   const originX = number(origin.x) ?? 0, originY = number(origin.y) ?? 0, originZ = number(origin.z) ?? 0
-  const { offset, floors, ramps, obstacles, elevator: rawElevator } = modelLayout(layout)
+  const { offset, floors, ramps, obstacles, restSpots: localRestSpots, elevator: rawElevator } = modelLayout(layout)
   const elevator = elevatorLayout(rawElevator, floors)
   const groundY = Math.min(...floors.map(item => item.y))
   const elevation = originY + offset.y
@@ -324,7 +349,9 @@ function createManorInteriorNavigation({ metadata, layout, origin = { x: 0, y: 0
     landings: elevator.landings.map(landing => ({ ...layoutPoint(landing), floor: landing.floor })),
     cabinZ: originZ + offset.z + (elevator.bounds.minZ + elevator.bounds.maxZ) / 2
   }
-  return { sample, sampleMove, spawn, entry, outsideEntry, floors, ramps, obstacles, elevator: lift }
+  const restSpots = localRestSpots.map(spot => ({ ...spot, position: layoutPoint(spot.position),
+    entry: layoutPoint(spot.entry), exit: layoutPoint(spot.exit) }))
+  return { sample, sampleMove, spawn, entry, outsideEntry, floors, ramps, obstacles, restSpots, elevator: lift }
 }
 
 module.exports = { createManorInteriorNavigation, FLOORS, RAMPS, OBSTACLES }

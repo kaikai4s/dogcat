@@ -263,6 +263,14 @@ page { width: 100%; height: 100%; overflow: hidden; background: #e1eadb; }
   box-shadow: 0 2px 8px rgba(23, 53, 46, .18);
 }
 .manor-hud-active .manor-hud-face { background: #28624f; color: #fff; }
+.manor-view-toggle { width: 94px; border-radius: 22px; }
+.manor-view-toggle .manor-hud-face { width: 88px; gap: 5px; border-radius: 17px; font-size: 12px; }
+.manor-view-toggle .ri-eye-line { font-size: 15px; }
+.manor-joystick-left {
+  left: 20px;
+  left: calc(20px + env(safe-area-inset-left));
+  transform: none;
+}
 .manor-map-back { width: 100px; border-radius: 22px; }
 .manor-map-back .manor-hud-face { width: 92px; gap: 7px; border-radius: 17px; font-size: 12px; }
 .manor-map-bar {
@@ -310,6 +318,15 @@ page { width: 100%; height: 100%; overflow: hidden; background: #e1eadb; }
 .manor-minimap-plot { min-width: 2px; min-height: 2px; background: #a2bd86; }
 .manor-minimap-tree { min-width: 2px; min-height: 2px; border-radius: 50%; background: #789e6b; }
 .manor-minimap-bridge { min-width: 2px; min-height: 2px; background: #f8e7bb; }
+.manor-minimap-neighbor {
+  box-sizing: border-box;
+  width: 7px;
+  height: 7px;
+  border: 1px solid #fff6dc;
+  border-radius: 50%;
+  background: #ae4d24;
+  box-shadow: 0 0 0 1px rgba(109, 48, 23, .24);
+}
 .manor-minimap-player {
   box-sizing: border-box;
   width: 7px;
@@ -378,6 +395,137 @@ page { width: 100%; height: 100%; overflow: hidden; background: #e1eadb; }
 .manor-character-option { flex: 1; padding: 0; border-radius: 9px; background: transparent; color: #244a3e; }
 .manor-character-selected { background: #2f6a57; color: #fff; }
 
+.manor-vehicle-panel, .manor-vehicle-progress, .manor-vehicle-console, .manor-vehicle-open {
+  box-sizing: border-box;
+  position: absolute;
+  z-index: 3;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.manor-vehicle-panel, .manor-vehicle-progress {
+  left: 50%;
+  bottom: 30px;
+  bottom: calc(30px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+}
+.manor-vehicle-console, .manor-vehicle-open {
+  right: 14px;
+  right: calc(14px + env(safe-area-inset-right));
+  bottom: 32px;
+  bottom: calc(32px + env(safe-area-inset-bottom));
+}
+.manor-vehicle-panel {
+  width: 248px;
+  max-width: calc(100% - 28px);
+  padding: 11px;
+  border: 1px solid rgba(255, 255, 255, .84);
+  border-radius: 18px;
+  background: #f7faf2;
+  box-shadow: 0 10px 26px rgba(23, 53, 46, .26);
+  color: #244a3e;
+}
+.manor-vehicle-header, .manor-vehicle-console-readout, .manor-vehicle-console-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.manor-vehicle-heading { display: flex; flex-direction: column; gap: 2px; padding-left: 3px; }
+.manor-vehicle-name { font-size: 19px; font-weight: 800; line-height: 1.2; }
+.manor-vehicle-caption { color: #536b5f; font-size: 12px; line-height: 1.25; }
+.manor-vehicle-panel .manor-vehicle-close {
+  width: 44px;
+  min-width: 44px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 19px;
+}
+.manor-vehicle-front {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 8px 2px 6px;
+  color: #765335;
+  font-size: 10px;
+  line-height: 1.3;
+}
+.manor-vehicle-front::before, .manor-vehicle-front::after {
+  content: '';
+  height: 1px;
+  flex: 1;
+  background: #d8cbb4;
+}
+.manor-vehicle-seats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.manor-vehicle-panel .manor-vehicle-seat {
+  min-width: 0;
+  min-height: 50px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 5px 9px;
+  border: 1px solid #cfe1d2;
+  color: #244a3e;
+  background: #e7f1e5;
+}
+.manor-vehicle-panel .manor-vehicle-seat[disabled] { border-color: #e0e4db; background: #edf0e8; color: #596a61; }
+.manor-vehicle-seat-name { font-size: 13px; }
+.manor-vehicle-seat-status { color: #2e674f; font-size: 11px; font-weight: 500; }
+.manor-vehicle-seat[disabled] .manor-vehicle-seat-status { color: #596a61; }
+.manor-vehicle-console, .manor-vehicle-progress {
+  border: 1px solid rgba(237, 246, 227, .5);
+  border-radius: 15px;
+  background: rgba(19, 52, 43, .94);
+  box-shadow: 0 5px 16px rgba(23, 53, 46, .25);
+  color: #f7fbf3;
+}
+.manor-vehicle-console { width: 182px; max-width: calc(100% - 118px); padding: 9px; }
+.manor-vehicle-console-readout { min-height: 28px; padding: 0 2px 7px; }
+.manor-vehicle-seat-label { font-size: 12px; font-weight: 700; }
+.manor-vehicle-speed {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
+  font-size: 23px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.manor-vehicle-speed-unit { color: #d2e5d4; font-size: 10px; font-weight: 600; }
+.manor-vehicle-console .manor-action { flex: 1; min-width: 0; padding: 0 8px; }
+.manor-vehicle-console .manor-vehicle-brake { background: #f0dec5; color: #5d412c; }
+.manor-vehicle-console .manor-vehicle-exit[disabled] { background: #3f5c50; color: #d5e1d6; }
+.manor-vehicle-console-hint { display: block; padding: 6px 2px 0; color: #deead9; font-size: 10px; line-height: 1.3; }
+.manor-vehicle-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  max-width: calc(100% - 28px);
+  padding: 8px 13px;
+  font-size: 13px;
+  line-height: 1.35;
+  pointer-events: none;
+}
+.manor-vehicle-spinner {
+  flex: 0 0 11px;
+  height: 11px;
+  border: 2px solid rgba(240, 222, 197, .4);
+  border-top-color: #f0dec5;
+  border-radius: 50%;
+  animation: manor-vehicle-turn .85s linear infinite;
+}
+@keyframes manor-vehicle-turn { to { transform: rotate(360deg); } }
+.manor-vehicle-open {
+  gap: 3px;
+  padding: 0 9px;
+  border: 1px solid #f4e9d8;
+  border-radius: 22px;
+  background: #3d5542;
+  color: #fff8ed;
+  box-shadow: 0 4px 14px rgba(23, 53, 46, .25);
+}
+.manor-vehicle-open .ri-arrow-up-s-line { color: #f0dec5; font-size: 15px; }
+
 @media (orientation: landscape) {
   .manor-top-controls { top: 8px; top: calc(8px + env(safe-area-inset-top)); }
   .manor-joystick { left: 28px; left: calc(28px + env(safe-area-inset-left)); transform: none; }
@@ -385,6 +533,14 @@ page { width: 100%; height: 100%; overflow: hidden; background: #e1eadb; }
   .manor-notices { top: 56px; top: calc(56px + env(safe-area-inset-top)); flex-direction: row; flex-wrap: wrap; }
   .manor-interior-bar { top: 56px; top: calc(56px + env(safe-area-inset-top)); }
   .manor-door-prompt { bottom: 22px; bottom: calc(22px + env(safe-area-inset-bottom)); }
+  .manor-vehicle-panel, .manor-vehicle-progress {
+    left: auto;
+    right: 14px;
+    right: calc(14px + env(safe-area-inset-right));
+    bottom: 20px;
+    bottom: calc(20px + env(safe-area-inset-bottom));
+    transform: none;
+  }
 }
 @media (max-height: 340px), (max-width: 350px) {
   .manor-joystick { width: 78px; height: 78px; }
@@ -392,6 +548,10 @@ page { width: 100%; height: 100%; overflow: hidden; background: #e1eadb; }
   .manor-door-prompt { padding: 8px 9px 8px 11px; }
   .manor-door-caption { display: none; }
   .manor-elevator-prompt { max-width: 214px; }
+  .manor-vehicle-console { width: 168px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .manor-vehicle-spinner { animation: none; }
 }
 @media (max-height: 380px) and (orientation: landscape) {
   .manor-menu { width: 214px; flex-direction: row; flex-wrap: wrap; }

@@ -2,6 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { THREE } = require('../../miniprogram/packageManor3d/vendor/three-runtime')
 const { createManorScene } = require('../../miniprogram/packageManor3d/utils/manor-scene')
+const { createAnimatedCharacter } = require('../fixtures/manor3dCharacter')
 
 const layout = {
   world: { width: 1200, depth: 960 },
@@ -54,17 +55,44 @@ function fixture() {
   return { view, disposed, player: () => drawnScene?.getObjectByName('Manor player'), camera: () => drawnCamera }
 }
 
-function mountInside(view, interior, data = metadata) {
+function mountInside(view, interior, data = metadata, avatar = character()) {
   view.showLandscape(new THREE.Group(), layout)
   const exterior = villa()
   view.showVilla(exterior)
-  view.showCharacter(character())
+  view.showCharacter(avatar)
   view.setVillaInteriorMetadata(data)
   const { entry } = view.getVillaEntryState()
   assert.equal(view.placeCharacterAt({ x: entry.x, z: entry.z + 3.1 }, 0), true)
   assert.equal(view.enterInterior(interior, data), true)
   view.render(0)
   return exterior.parent.position
+}
+
+function restInterior() {
+  const interior = new THREE.Group()
+  const root = new THREE.Group()
+  root.name = 'VillaInterior'
+  root.userData.navigation = {
+    offset: { x: 0, y: 0, z: 0 },
+    floors: [{ minX: -2, maxX: 8, minZ: -3, maxZ: 8, y: .405, level: 1 }],
+    ramps: [],
+    obstacles: [
+      { minX: 1.5, maxX: 2.1, minZ: 1.4, maxZ: 2.1, level: 1 },
+      { minX: 4, maxX: 5.5, minZ: 1.1, maxZ: 2.4, level: 1 }
+    ],
+    restSpots: [
+      { id: 'chair-test', kind: 'sit', name: '椅子', position: { x: 1.8, y: .405, z: 1.75 },
+        entry: { x: 2.7, y: .405, z: 1.75 }, exit: { x: 2.7, y: .405, z: 1.75 }, yaw: 0 },
+      { id: 'bed-test', kind: 'lie', name: '卧室床', position: { x: 4.7, y: .405, z: 1.75 },
+        entry: { x: 3.1, y: .405, z: 1.75 }, exit: { x: 3.1, y: .405, z: 1.75 }, yaw: 0 }
+    ]
+  }
+  interior.add(root)
+  return interior
+}
+
+function renderFrames(view, start, count, dt = 1 / 30) {
+  for (let frame = 1; frame <= count; frame++) view.render(start + frame * dt, dt)
 }
 
 test('entering and leaving the villa toggles the exterior and interior models and disposes both', () => {
@@ -107,6 +135,32 @@ test('entering and leaving the villa toggles the exterior and interior models an
   assert.ok(disposed.includes(interior))
 })
 
+test('the eye camera stays active through villa entry and exit', () => {
+  const { view, player, camera } = fixture()
+  view.showLandscape(new THREE.Group(), layout)
+  view.showVilla(villa())
+  view.showCharacter(character())
+  view.setVillaInteriorMetadata(metadata)
+  const { entry } = view.getVillaEntryState()
+  assert.equal(view.placeCharacterAt({ x: entry.x, z: entry.z + 3.1 }, 0), true)
+  assert.equal(view.setFirstPerson(true), true)
+  assert.equal(view.enterInterior(new THREE.Group(), metadata), true)
+  view.render(0)
+  const direction = new THREE.Vector3()
+  const assertAtEye = () => {
+    assert.equal(player().visible, false)
+    const eyes = player().position.clone().add(new THREE.Vector3(0, 1.6 * .92, 0))
+    assert.ok(camera().position.distanceTo(eyes) < 1e-6)
+  }
+  assertAtEye()
+  assert.ok(camera().getWorldDirection(direction).z < -.99)
+  assert.equal(view.exitInterior(), true)
+  view.render(0)
+  assertAtEye()
+  assert.ok(camera().getWorldDirection(direction).z > .99)
+  view.dispose()
+})
+
 test('replacing the villa while its interior is attached releases the interior model once', () => {
   const { view, disposed } = fixture()
   view.showLandscape(new THREE.Group(), layout)
@@ -145,9 +199,27 @@ test('the door trigger is reachable outside the villa and exit restores a walkab
     new THREE.BoxGeometry(8, 4, 8), new THREE.MeshBasicMaterial()))
   view.enterInterior(interior, metadata)
   assert.equal(view.isInsideVilla, true)
+  const { position3d, interior: localInterior } = view.getPlayerSyncState()
+  assert.deepEqual(localInterior, { kind: 'red' })
+  assert.ok(Number.isFinite(position3d.y))
+  const peer = { id: 'inside', kind: 'presence', manor3dOnline: true, position3d, manor3dInterior: localInterior }
+  view.setSharedRecords([
+    peer,
+    { ...peer, id: 'outside', manor3dInterior: null },
+    { ...peer, id: 'courtyard', manor3dInterior: { kind: 'courtyard', plotId: 'house' } }
+  ], 'own')
+  const scene = interior.parent.parent
+  assert.ok(scene.getObjectByName('Shared character inside'))
+  assert.equal(scene.getObjectByName('Shared character outside'), undefined)
+  assert.equal(scene.getObjectByName('Shared character courtyard'), undefined)
   assert.equal(view.exitInterior(), true)
   assert.equal(view.isInsideVilla, false)
   assert.ok(view.getPlayerSyncState().position3d.z > entry.entry.z)
+  assert.equal(view.getPlayerSyncState().interior, null)
+  view.render(.05, .05)
+  assert.ok(scene.getObjectByName('Shared character outside'))
+  assert.equal(scene.getObjectByName('Shared character inside'), undefined)
+  assert.equal(scene.getObjectByName('Shared character courtyard'), undefined)
   view.dispose()
 })
 
@@ -321,5 +393,82 @@ test('the interior follow camera stays in front of walls and below the next floo
   view.render(.1, .1)
   assert.ok(camera().position.y < origin.y + floor.position.y - .15)
   assert.ok(camera().position.y > player().position.y + 1.9)
+  view.dispose()
+})
+
+test('the interior follow camera detects a single-sided wall from its back face', () => {
+  const asset = new THREE.Group(), wall = new THREE.Group()
+  wall.userData.facadeIndex = 1
+  const [spawnX, , spawnZ] = metadata.anchors.InteriorSpawn.position
+  wall.position.set(spawnX + 1.12, 1.7, spawnZ)
+  const panel = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 5), new THREE.MeshBasicMaterial())
+  panel.rotation.y = Math.PI / 2
+  wall.add(panel)
+  asset.add(wall)
+
+  const { view, camera } = fixture()
+  const origin = mountInside(view, asset)
+  assert.ok(camera().position.x < origin.x + wall.position.x)
+  assert.equal(wall.visible, true)
+  view.dispose()
+})
+
+test('the interior camera cuts away a wall only when it clips into it', () => {
+  const asset = new THREE.Group(), wall = new THREE.Group()
+  wall.userData.facadeIndex = 1
+  const [spawnX, , spawnZ] = metadata.anchors.InteriorSpawn.position
+  wall.position.set(spawnX + .02, 1.7, spawnZ)
+  const panel = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 5), new THREE.MeshBasicMaterial())
+  panel.rotation.y = Math.PI / 2
+  wall.add(panel)
+  asset.add(wall)
+
+  const { view } = fixture()
+  mountInside(view, asset)
+  assert.equal(wall.visible, false)
+
+  view.orbit(700, 0)
+  view.render(.1, .1)
+  assert.equal(wall.visible, true)
+  view.dispose()
+})
+
+test('the player can sit on a chair and lie on the bed, then stand at a walkable exit', () => {
+  const { view, player } = fixture()
+  const origin = mountInside(view, restInterior(), metadata, createAnimatedCharacter(THREE).model)
+
+  assert.equal(view.getRestState().label, '坐下')
+  assert.equal(view.interactRest(), true)
+  renderFrames(view, 0, 45)
+  assert.equal(view.getRestState().label, '起身')
+  assert.equal(view.getPlayerSyncState().pose, 'sit')
+  assert.ok(player().position.distanceTo(new THREE.Vector3(origin.x + 1.8, origin.y + .405, origin.z + 1.75)) < 1e-6)
+  const chairCheckpoint = view.getPlayerCheckpoint()
+  assert.ok(Math.abs(chairCheckpoint.x - (origin.x + 2.7)) < 1e-6)
+
+  const seated = player().position.clone()
+  view.setPlayerInput(1, 0)
+  view.render(1.6, .1)
+  assert.ok(player().position.distanceTo(seated) < 1e-8)
+  assert.equal(view.interactRest(), true)
+  renderFrames(view, 1.7, 32)
+
+  player().position.set(origin.x + 3.1, origin.y + .405, origin.z + 1.75)
+  view.render(2.8)
+  assert.equal(view.getRestState().label, '躺下')
+  assert.equal(view.interactRest(), true)
+  renderFrames(view, 2.8, 75)
+  assert.equal(view.getRestState().label, '起身')
+  assert.equal(view.getPlayerSyncState().pose, 'lie')
+  const hips = player().getObjectByName('Hips')
+  const lyingRotation = new THREE.Euler().setFromQuaternion(hips.quaternion)
+  assert.ok(Math.abs(lyingRotation.x + Math.PI / 2) < .03, JSON.stringify({ angle: lyingRotation.x, rest: view.getRestState() }))
+  const bedCheckpoint = view.getPlayerCheckpoint()
+  assert.ok(Math.abs(bedCheckpoint.x - (origin.x + 3.1)) < 1e-6)
+
+  assert.equal(view.interactRest(), true)
+  renderFrames(view, 4.8, 35)
+  assert.equal(view.getPlayerSyncState().pose, null)
+  assert.ok(player().position.distanceTo(new THREE.Vector3(origin.x + 3.1, origin.y + .405, origin.z + 1.75)) < 1e-6)
   view.dispose()
 })

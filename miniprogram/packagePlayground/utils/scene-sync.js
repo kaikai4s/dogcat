@@ -39,6 +39,10 @@ class SceneSync {
   merge(record) {
     const old=this.records.get(record.id)
     if(old && !newer(record.version,old.version))return false
+    if(record.kind==='manor3dPresence') {
+      if(old?.kind!=='presence')return false
+      record={...record,kind:'presence',deleted:true}
+    }
     this.eventSeq=(this.eventSeq||0)+1
     const next={...record,receivedSeq:this.eventSeq,mine:record.ownerId===this.scene.playerId}
     this.records.set(record.id,next)

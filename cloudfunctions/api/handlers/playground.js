@@ -15,6 +15,8 @@ module.exports = function createHandler(context) {
   } = require('../services/playground')(context)
 
   return async function playground(openid, action, data = {}) {
+    if (action === 'syncManor3d') return shared.syncManor3d(openid, data)
+    if (action === 'getScene' && data.manor3d === true) return shared.snapshot(openid, data)
     const user = await getUser(openid)
     if (action === 'listUserTitles') return context.getUserTitleState(user)
     if (action === 'equipUserTitle') {
@@ -27,7 +29,6 @@ module.exports = function createHandler(context) {
     if (action === 'listCommunityGroupBuys') return require('../services/playground-group-buy')(context).list(openid)
     if (action === 'getPublicPetCare') return require('../services/playground-care')(context).publicCare(openid, data)
     if (action === 'syncScene') return shared.sync(openid, data)
-    if (action === 'syncManor3d') return shared.syncManor3d(openid, data)
     if (action === 'placeManor3dBuilding') return shared.placeManor3dBuilding(openid, user, data)
     if (action === 'getScene') return shared.snapshot(openid, data)
     if (action === 'vehicleAction') return shared.vehicles.action(openid,user,data)

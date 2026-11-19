@@ -19,7 +19,7 @@ const touchEvent = (points, changed = []) => {
 function fixture({ envId = ENV_MAP.trial, read = key => key === 'layout' ? layout : key,
   decode = key => ({ key }), savedCharacter, savedSensitivity, canGoBack = true, entryTicket, communityScene,
   placeResult = true, syncStart = null, buildPlots = [], buildGround, saveBuilding,
-  checkpointStorage = new Map() } = {}) {
+  checkpointStorage = new Map(), asyncPositionWrites } = {}) {
   let definition, nextFrame = 0, now = 0, lost = false, pixelRatio = 1
   let sensitivityStorage = savedSensitivity
   let canvasSize = { width: 390, height: 780 }
@@ -70,7 +70,7 @@ function fixture({ envId = ENV_MAP.trial, read = key => key === 'layout' ? layou
     '../utils/manor-scene': { createManorScene: () => ({
       resize(width, height) { sizes.push({ width, height, pixelRatio }) }, showLandscape(model) { events.push('attach:' + model.key) },
       showVilla(model) { events.push('attach:' + model.key) }, render() { events.push('draw'); drawSizes.push(sizes.at(-1)) },
-      showCharacter(model) { playerPosition ??= { x: 0, z: 0 }; events.push('attach:' + model.key) },
+      showCharacter(model, type) { playerPosition ??= { x: 0, z: 0 }; events.push('attach:' + model.key + (type ? ':' + type : '')) },
       isInsideVilla: false,
       placeCharacterAt(position) { placements.push(position); if (placeResult) playerPosition = position; return placeResult },
       getPlayerCheckpoint() { return playerCheckpoint },
@@ -152,6 +152,12 @@ function fixture({ envId = ENV_MAP.trial, read = key => key === 'layout' ? layou
         return structuredClone(checkpointStorage.get(key))
       },
       removeStorageSync(key) { removedTickets.push(key); checkpointStorage.delete(key) },
+      ...(asyncPositionWrites && { setStorage(options) {
+        asyncPositionWrites.push({ ...options, success: () => {
+          checkpointStorage.set(options.key, structuredClone(options.data))
+          options.success()
+        } })
+      } }),
       setStorageSync(key, value) {
         if (key === 'dogcat-manor-3d-character' || key === 'manor3d-camera-sensitivity') selections.push(value)
         if (key === 'manor3d-camera-sensitivity') sensitivityStorage = value
@@ -196,7 +202,7 @@ test('the terrain and player are ready before the villa download, and a villa re
   assert.equal(f.page.data.activeCharacter, 'boy')
   assert.ok(f.updates.some(data => data.progress === 40))
   assert.ok(f.events.indexOf('draw') < f.events.indexOf('read:boy'))
-  assert.ok(f.events.indexOf('attach:boy') < f.events.indexOf('read:villa'))
+  assert.ok(f.events.indexOf('attach:boy:boy') < f.events.indexOf('read:villa'))
   rejectVilla(new Error('connection lost'))
   await flush()
   assert.equal(f.page.data.villaStatus, 'error')
@@ -353,41 +359,48 @@ test('a finger on a toolbar button does not modify a canvas gesture', async () =
   f.page.onUnload()
 })
 
-test('switching avatars keeps the active character on screen until the new model is ready', async () => {
-  let resolvePrevious, previousOptions, attempts = 0
-  const f = fixture({ savedCharacter: 'girl', decode(key, options) {
-    if (key === 'boy' && ++attempts === 1) {
-      previousOptions = options
-      return new Promise(resolve => { resolvePrevious = resolve })
-    }
-    return { key }
-  } })
+test('switching avatars downloads and attaches the selected cloud model', async () => {
+  const f = fixture({ savedCharacter: 'girl' })
   f.mount()
   await flush()
   assert.equal(f.page.data.activeCharacter, 'girl')
-  assert.ok(!f.events.includes('read:boy'))
   f.page.selectCharacter(choose('boy'))
   await flush()
-  assert.equal(f.page.data.characterStatus, 'drawing')
-  assert.equal(f.page.data.activeCharacter, 'girl')
+  assert.equal(f.page.data.characterStatus, 'ready')
+  assert.equal(f.page.data.activeCharacter, 'boy')
   f.page.selectCharacter(choose('girl'))
-  assert.equal(previousOptions.isCancelled(), true)
-  resolvePrevious({ key: 'stale-boy' })
   await flush()
-  assert.ok(f.events.includes('dispose:stale-boy'))
-  assert.ok(!f.events.includes('attach:stale-boy'))
-  assert.deepEqual(f.selections, ['girl'])
+  assert.equal(f.page.data.activeCharacter, 'girl')
+  assert.deepEqual(f.events.filter(value => value === 'read:boy' || value === 'read:girl'),
+    ['read:girl', 'read:boy', 'read:girl'])
+  assert.deepEqual(f.events.filter(value => value.startsWith('attach:') && /:(boy|girl)$/.test(value)),
+    ['attach:girl:girl', 'attach:boy:boy', 'attach:girl:girl'])
+  assert.deepEqual(f.selections, ['girl', 'boy', 'girl'])
   f.page.selectCharacter(choose('boy'))
   await flush()
   assert.equal(f.page.data.activeCharacter, 'boy')
-  assert.deepEqual(f.events.filter(event => event === 'attach:girl' || event === 'attach:boy'), ['attach:girl', 'attach:boy'])
-  assert.deepEqual(f.selections, ['girl', 'boy'])
+  assert.deepEqual(f.selections, ['girl', 'boy', 'girl', 'boy'])
   f.page.focusCharacter()
   assert.equal(f.events.at(-1), 'focusCharacter')
   f.page.onUnload()
 })
 
-test('a character decode failure keeps the current character and only retries the failed model', async () => {
+test('remote community characters load their matching cloud model', async () => {
+  const f = fixture()
+  f.mount()
+  await flush()
+  f.page._scene.setRemoteCharacterModel = (type, model) => {
+    f.events.push('remote:' + type + ':' + model.key)
+    return true
+  }
+  f.page._loadRemoteCharacter('girl')
+  await flush()
+  assert.ok(f.events.includes('read:girl'))
+  assert.ok(f.events.includes('remote:girl:girl'))
+  f.page.onUnload()
+})
+
+test('a cloud character parse failure keeps the current character and retries the requested model', async () => {
   let attempts = 0
   const f = fixture({ decode(key) {
     if (key === 'girl' && ++attempts === 1) throw new Error('invalid model')
@@ -400,12 +413,12 @@ test('a character decode failure keeps the current character and only retries th
   assert.equal(f.page.data.characterStatus, 'error')
   assert.match(f.page.data.characterError, /女孩.*重试/)
   assert.equal(f.page.data.activeCharacter, 'boy')
-  assert.ok(f.events.includes('invalidate:girl'))
   f.page.retryCharacter()
   await flush()
   assert.equal(f.page.data.characterStatus, 'ready')
   assert.equal(f.page.data.activeCharacter, 'girl')
-  for (const key of ['manor', 'villa', 'boy']) assert.equal(f.events.filter(event => event === 'read:' + key).length, 1)
+  assert.equal(f.events.filter(event => event === 'read:boy').length, 1)
+  assert.equal(f.events.filter(event => event === 'read:girl').length, 2)
   assert.deepEqual(f.selections, ['boy', 'girl'])
   f.page.onUnload()
 })
@@ -461,30 +474,20 @@ test('an older canvas measurement cannot restore portrait dimensions after rotat
   f.page.onUnload()
 })
 
-test('resuming during a character decode starts a fresh load and disposes the cancelled model', async () => {
-  let resolveOld, oldOptions, attempts = 0
-  const f = fixture({ decode(key, options) {
-    if (key === 'boy' && ++attempts === 1) {
-      oldOptions = options
-      return new Promise(resolve => { resolveOld = resolve })
-    }
-    return { key }
-  } })
+test('resuming the manor keeps the local character and avoids downloading it again', async () => {
+  const f = fixture()
   f.mount()
   await flush()
-  assert.equal(f.page.data.characterStatus, 'drawing')
+  assert.equal(f.page.data.activeCharacter, 'boy')
   f.page.onHide()
-  assert.equal(oldOptions.isCancelled(), true)
   assert.equal(f.frames.size, 0)
   f.page.onShow()
   await flush()
   assert.equal(f.page.data.activeCharacter, 'boy')
   assert.equal(f.page.data.villaStatus, 'ready')
-  resolveOld({ key: 'cancelled-boy' })
-  await flush()
-  assert.ok(f.events.includes('dispose:cancelled-boy'))
-  assert.ok(!f.events.includes('attach:cancelled-boy'))
-  assert.equal(f.events.filter(value => value === 'attach:boy').length, 1)
+  assert.equal(f.events.filter(value => value === 'read:boy').length, 1)
+  assert.equal(f.events.filter(value => value === 'read:boy').length, 1)
+  assert.equal(f.events.filter(value => value === 'attach:boy:boy').length, 1)
   assert.equal(f.events.filter(value => value === 'read:manor').length, 1)
   assert.equal(f.frames.size, 1)
   f.page.onUnload()
@@ -569,7 +572,7 @@ test('the selected community route ticket enters that cloud scene and starts sha
 
   assert.equal(JSON.stringify(f.communityRequests), JSON.stringify([
     { type: 'login' },
-    { name: 'playground', action: 'enterScene', data: { community } }
+    { name: 'playground', action: 'enterScene', data: { manor3d: true, community } }
   ]))
   assert.equal(JSON.stringify(f.removedTickets), JSON.stringify(['manor3d:entry:abc123']))
   assert.equal(JSON.stringify(f.placements), JSON.stringify([scene.position3d]))
@@ -643,13 +646,31 @@ test('showing the page again waits for the previous enter to finish before fetch
   f.page.onUnload()
 })
 
+test('a 3D visitor without a 2D courtyard publishes from the actual 3D spawn', async () => {
+  const community = { name: '青溪花园' }
+  const f = fixture({ entryTicket: { community, createdAt: 0 }, communityScene: {
+    session: 'guest-session', sceneId: 'guest-community', playerId: 'guest', hasAvatar: false,
+    manor3dCanPublish: true, position3d: null, community
+  } })
+  f.mount({ entryKey: 'guest' })
+  await flush()
+  f.setPlayerPosition(8, -5)
+  f.tick()
+  assert.equal(f.page.data.communityStatus, 'ready')
+  assert.deepEqual(f.placements, [])
+  const sent = f.syncEvents.filter(event => Array.isArray(event) && event[0] === 'position').at(-1)[1]
+  assert.equal(sent.characterType, 'boy')
+  assert.equal(sent.position3d.x, 8)
+  f.page.onUnload()
+})
+
 test('the solo entry route explicitly bypasses the saved residential community', async () => {
   const f = fixture({ entryTicket: { community: null, solo: true, createdAt: 0 } })
   f.mount({ entryKey: 'solo987' })
   await flush()
   await flush()
   assert.equal(JSON.stringify(f.communityRequests[1]), JSON.stringify({
-    name: 'playground', action: 'enterScene', data: { solo: true, community: null }
+    name: 'playground', action: 'enterScene', data: { manor3d: true, solo: true, community: null }
   }))
   f.page.onUnload()
 })
@@ -682,6 +703,27 @@ test('hiding saves the character checkpoint and resuming the same page does not 
   assert.deepEqual(f.restoredPositions, [])
   assert.deepEqual(f.page._scene.getMapPlayerPosition(), { x, z })
   f.page.onUnload()
+})
+
+test('slow local storage keeps rendering and writes only the newest queued checkpoint after unload', async () => {
+  const checkpointStorage = new Map(), asyncPositionWrites = []
+  const f = fixture({ checkpointStorage, asyncPositionWrites })
+  f.mount()
+  await flush()
+  for (const x of [10, 24, 57]) {
+    f.setPlayerCheckpoint({ x, y: 4, z: 5, facing: 0 })
+    f.page._savePlayerPosition(true)
+    f.tick()
+  }
+  assert.equal(asyncPositionWrites.length, 1)
+  assert.equal(f.page._lastPlayerCheckpoint.x, 57)
+  assert.ok(f.events.filter(event => event === 'draw').length >= 3)
+  f.setPlayerCheckpoint({ x: 72, y: 4, z: 5, facing: 0 })
+  f.page.onUnload()
+  asyncPositionWrites[0].success()
+  assert.deepEqual(asyncPositionWrites.map(write => write.data.x), [10, 72])
+  asyncPositionWrites[1].success()
+  assert.equal([...checkpointStorage.values()][0].x, 72)
 })
 
 test('unloading saves the latest position for its own community only', async () => {
@@ -777,24 +819,13 @@ test('an unwalkable community position stays pending and blocks default-spawn sy
 
 test('a slow community snapshot cannot sync the default spawn before server-position placement', async () => {
   let finishSnapshot
-  let finishCharacter
   const snapshotGate = new Promise(resolve => { finishSnapshot = resolve })
-  const characterGate = new Promise(resolve => { finishCharacter = resolve })
   const community = { name: '青溪花园' }
   const scene = { session: 'session', sceneId: 'community-id', playerId: 'presence-id', hasAvatar: true,
     position3d: { x: 12, z: 18 }, community }
-  const f = fixture({ entryTicket: { community, solo: false, createdAt: 0 }, communityScene: scene, syncStart: snapshotGate,
-    decode: key => key === 'boy' ? characterGate : ({ key }) })
+  const f = fixture({ entryTicket: { community, solo: false, createdAt: 0 }, communityScene: scene,
+    syncStart: async sync => { await snapshotGate; sync.onState('connected') } })
   f.mount({ entryKey: 'slowstart' })
-  await flush()
-  await flush()
-  assert.equal(f.page.data.activeCharacter, '')
-  assert.deepEqual(f.page._pendingCommunityPosition, scene.position3d)
-  assert.equal(f.page._communityPositionReady, false)
-  f.tick()
-  assert.equal(f.syncEvents.filter(event => Array.isArray(event) && event[0] === 'position').length, 0)
-
-  finishCharacter({ key: 'boy' })
   await flush()
   await flush()
   assert.equal(f.page.data.activeCharacter, 'boy')
@@ -802,13 +833,18 @@ test('a slow community snapshot cannot sync the default spawn before server-posi
   assert.equal(f.page._communityPositionReady, true)
   assert.equal(f.placements.length, 1)
   f.tick()
-  const syncs = f.syncEvents.filter(event => Array.isArray(event) && event[0] === 'position')
-  assert.equal(syncs.length, 1)
-  assert.deepEqual(JSON.parse(JSON.stringify(syncs[0][1].position3d)), scene.position3d)
+  assert.equal(f.syncEvents.filter(event => Array.isArray(event) && event[0] === 'position').length, 0)
 
   finishSnapshot()
   await flush()
   await flush()
+  assert.equal(f.page._pendingCommunityPosition, null)
+  assert.equal(f.page._communityPositionReady, true)
+  assert.equal(f.placements.length, 1)
+  f.tick()
+  const syncs = f.syncEvents.filter(event => Array.isArray(event) && event[0] === 'position')
+  assert.equal(syncs.length, 1)
+  assert.deepEqual(JSON.parse(JSON.stringify(syncs[0][1].position3d)), scene.position3d)
   f.page.onUnload()
 })
 
@@ -911,7 +947,7 @@ test('the elevator prompt locks movement during a trip, then offers the other di
   assert.equal(exited, 1)
 })
 
-test('community sync pauses indoors and sends the outdoor position immediately after exit', async () => {
+test('community sync reports room and height indoors and clears the room on exit', async () => {
   const community = { name: '青溪花园' }
   const sceneData = { session: 'session', sceneId: 'community-id', playerId: 'presence-id', hasAvatar: true,
     position3d: { x: 12, z: 18 }, community }
@@ -923,16 +959,23 @@ test('community sync pauses indoors and sends the outdoor position immediately a
   assert.ok(scene)
 
   scene.isInsideVilla = true
+  const outdoorState = scene.getPlayerSyncState
+  scene.getPlayerSyncState = () => scene.isInsideVilla ? {
+    position3d: { x: 4, y: 8, z: 5 }, interior: { kind: 'red' }, facing: .5
+  } : outdoorState()
   f.page.data.insideVilla = true
   f.setPlayerPosition(4, 5)
   const beforeIndoorFrame = f.syncEvents.filter(event => Array.isArray(event) && event[0] === 'position').length
   f.tick()
-  assert.equal(f.syncEvents.filter(event => Array.isArray(event) && event[0] === 'position').length, beforeIndoorFrame)
+  const positions = () => f.syncEvents.filter(event => Array.isArray(event) && event[0] === 'position')
+  assert.equal(positions().length, beforeIndoorFrame + 1)
+  assert.deepEqual(positions().at(-1)[1].interior, { kind: 'red' })
+  assert.equal(positions().at(-1)[1].position3d.y, 8)
 
   f.setPlayerPosition(12, 18)
   f.page.exitVilla()
   const syncs = f.syncEvents.filter(event => Array.isArray(event) && event[0] === 'position')
-  assert.equal(syncs.length, beforeIndoorFrame + 1)
+  assert.equal(syncs.length, beforeIndoorFrame + 2)
   assert.deepEqual(JSON.parse(JSON.stringify(syncs.at(-1)[1].position3d)), { x: 12, z: 18 })
   f.page.onUnload()
 })

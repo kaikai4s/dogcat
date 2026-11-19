@@ -65,6 +65,21 @@ test('the exported floor and ramp layout exposes both levels and continuous stai
   assert.ok(highY > lowY)
 })
 
+test('rest spots retain their furniture type, floor and clear exit positions', async () => {
+  const navigation = await revisedNavigation()
+  const bed = navigation.restSpots.find(spot => spot.kind === 'lie')
+  const chair = navigation.restSpots.find(spot => spot.id === 'chair-0')
+  assert.ok(bed && chair)
+  const bedCenter = world(5.235, 3.43, -1.84)
+  const chairCenter = world(-8.755, 2.69, 2.105)
+  assert.ok(Math.hypot(bed.position.x - bedCenter.x, bed.position.y - bedCenter.y, bed.position.z - bedCenter.z) < 1e-9)
+  assert.ok(Math.hypot(chair.position.x - chairCenter.x, chair.position.y - chairCenter.y, chair.position.z - chairCenter.z) < 1e-9)
+  assert.ok(Number.isFinite(navigation.sample(bed.entry.x, bed.entry.z, null, bed.entry.y)))
+  assert.ok(Number.isFinite(navigation.sample(chair.entry.x, chair.entry.z, null, chair.entry.y)))
+  assert.equal(navigation.sample(bed.position.x, bed.position.z, null, bed.position.y), null)
+  assert.equal(navigation.sample(chair.position.x, chair.position.z, null, chair.position.y), null)
+})
+
 async function revisedNavigation() {
   const { VILLA_LAYOUT, ELEVATOR } = await import('../../tools/manor_villa_interior/villa-layout.js')
   return createManorInteriorNavigation({
