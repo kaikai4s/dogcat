@@ -1,6 +1,6 @@
 const SEATS = Object.freeze([
-  { id: 'driver', label: '主驾驶', side: 1, door: 'L' },
-  { id: 'passenger', label: '副驾驶', side: -1, door: 'R' }
+  { id: 'driver', label: '主驾驶', side: 1, door: 'L', mount: 'Seat_FL_Anchor' },
+  { id: 'passenger', label: '副驾驶', side: -1, door: 'R', mount: 'Seat_FR_Anchor' }
 ])
 const NEAR = 7
 const WALK_SPEED = 2.45
@@ -85,6 +85,7 @@ function createManorVehicle({ THREE, model, scene, player, sample, spawn, saved,
   model.traverse(node => { if (node.isMesh) node.castShadow = true })
   anchor.add(model)
   scene.add(anchor)
+  const mounts = new Map(SEATS.map(({ id, mount }) => [id, model.getObjectByName(mount)]))
 
   let seat = null, passage = null, speed = 0, steer = 0, spin = 0
   let inputX = 0, inputY = 0, braking = false
@@ -95,7 +96,10 @@ function createManorVehicle({ THREE, model, scene, player, sample, spawn, saved,
     return Number.isFinite(y) && Math.abs(y - anchor.position.y) < .49 ? { ...p, y } : null
   }
   const doorStep = selected => grounded(selected.side * DOOR_STEP, -.78)
-  const seatPoint = selected => ({ ...point(selected.side * .414, -.17), y: anchor.position.y - .04 })
+  // Fitted clips include their seat height. The marker specifies the model root, not the cushion.
+  const seatPoint = selected => mounts.get(selected.id)?.getWorldPosition(new THREE.Vector3()) ||
+    { ...point(selected.side * .414, -.17), y: anchor.position.y - .04 }
+  const seatBlend = (selected, progress) => mounts.get(selected.id) ? progress : 0
   const busy = () => !!(seat || passage)
 
   function blocks(x, z) {
@@ -249,7 +253,8 @@ function createManorVehicle({ THREE, model, scene, player, sample, spawn, saved,
       door.rotation.y = swing ? -selected.side * Math.PI / 3 * swing : 0
       const inside = phase === 'push' || phase === 'closeInside'
       pose(dt, inside ? chair : outside, inside ? yaw : facingDoor, {
-        action: 'reach', seated: inside, side: selected.side, progress: f, handle: handle(selected, inside)
+        action: 'reach', seated: inside, side: selected.side, progress: f, handle: handle(selected, inside),
+        seatBlend: seatBlend(selected, inside ? 1 : 0)
       })
       onMove()
     } else {
@@ -260,7 +265,8 @@ function createManorVehicle({ THREE, model, scene, player, sample, spawn, saved,
         z: outside.z + (chair.z - outside.z) * amount
       }
       pose(dt, p, facingDoor + (yaw - facingDoor) * amount, {
-        action: phase === 'board' ? 'board' : 'exit', side: selected.side, progress: f
+        action: phase === 'board' ? 'board' : 'exit', side: selected.side, progress: f,
+        seatBlend: seatBlend(selected, amount)
       })
     }
     if (f < 1) return
@@ -282,7 +288,9 @@ function createManorVehicle({ THREE, model, scene, player, sample, spawn, saved,
     else {
       const driver = seat.id === 'driver'
       if (driver) updateDriving(dt)
-      pose(dt, seatPoint(seat), anchor.rotation.y, { action: driver ? 'drive' : 'seated', steering: steer, wheel })
+      pose(dt, seatPoint(seat), anchor.rotation.y, {
+        action: driver ? 'drive' : 'seated', steering: steer, wheel, seatBlend: seatBlend(seat, 1)
+      })
     }
     return true
   }

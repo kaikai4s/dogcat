@@ -7,13 +7,20 @@ const RUN_SPEED = 6.4
 const MAX_STEP = 0.24
 const MAX_RISE = 0.33
 const ANIMATIONS = ['idle', 'walk', 'run']
-const VEHICLE_ANIMATIONS = { board: 'sit_down', seated: 'sit_idle', exit: 'stand_up', drive: 'drive_idle' }
+const POSE_NAMES = {
+  jump: ['jump'], sit_down: ['sit_down'], sit_idle: ['sit', 'sit_idle'], stand_up: ['stand_up'],
+  lie_down: ['lie_down'], lie_idle: ['lie', 'lie_idle'], wake_up: ['wake_up'],
+  car_sit: ['car_sit'], car_sit_rear: ['car_sit_rear'], drive_idle: ['drive', 'drive_idle']
+}
+const REVERSE_POSES = { stand_up: 'sit_down', wake_up: 'lie_down' }
+const ONE_SHOTS = new Set(['jump', 'sit_down', 'stand_up', 'lie_down', 'wake_up'])
 const TAU = Math.PI * 2
 
 function createAvatarAnimator(THREE, model) {
+  const clipKey = name => name.toLowerCase().replace(/[^a-z0-9]/g, '')
   const clips = new Map((model.animations || []).filter(clip =>
-    typeof clip?.name === 'string' && clip.duration > 0 && clip.tracks.length
-  ).map(clip => [clip.name.toLowerCase(), clip]))
+    typeof clip?.name === 'string' && Number.isFinite(clip.duration) && clip.duration > 0 && clip.tracks?.length
+  ).map(clip => [clipKey(clip.name), clip]))
   if (ANIMATIONS.some(name => !clips.has(name))) throw new Error('角色缺少待机、行走或奔跑动画')
 
   // Resolve the entire rig first. Computing individual mesh bounds before the
@@ -27,17 +34,21 @@ function createAvatarAnimator(THREE, model) {
   )
   if (!Number.isFinite(height) || height <= 0 || !Number.isFinite(radius)) throw new Error('角色模型尺寸有误')
   const mixer = new THREE.AnimationMixer(model)
-  const names = [...ANIMATIONS, VEHICLE_ANIMATIONS.board, VEHICLE_ANIMATIONS.seated, VEHICLE_ANIMATIONS.exit,
-    'lie_down', 'lie_idle', 'wake_up', VEHICLE_ANIMATIONS.drive]
-    .filter(name => clips.has(name))
-  const actions = names.map((name, index) => mixer.clipAction(clips.get(name)).setEffectiveWeight(index === 0 ? 1 : 0).play())
-  for (const name of [VEHICLE_ANIMATIONS.board, VEHICLE_ANIMATIONS.exit]) {
-    const action = actions[names.indexOf(name)]
-    if (action) {
+  const resolvedClips = new Map(ANIMATIONS.map(name => [name, clips.get(name)]))
+  for (const [pose, aliases] of Object.entries(POSE_NAMES)) {
+    const clip = aliases.map(alias => clips.get(clipKey(alias))).find(Boolean)
+    if (clip) resolvedClips.set(pose, clip)
+  }
+  const names = [...resolvedClips.keys()]
+  const actions = names.map((name, index) => {
+    const action = mixer.clipAction(resolvedClips.get(name)).setEffectiveWeight(index === 0 ? 1 : 0).play()
+    if (ONE_SHOTS.has(name)) {
       action.setLoop(THREE.LoopOnce, 1)
+      action.clampWhenFinished = true
       action.paused = true
     }
-  }
+    return action
+  })
   model.traverse(mesh => {
     // Their skinned bounds describe one pose. Keep limbs from disappearing
     // along the edge of the viewport during a stride.
@@ -54,24 +65,26 @@ function createAvatarAnimator(THREE, model) {
       }
     }
   })
-  model.position.y -= bounds.min.y
+  const authoredY = model.position.y
+  const standingY = authoredY - bounds.min.y
+  model.position.y = standingY
   mixer.update(0)
 
-  let active = 0, blend = null
+  let active = 0, blend = null, seatWeight = 0
 
-  function animate(index, speed, dt, progress) {
+  function animate(index, speed, dt, progress, fade = .18) {
     if (index !== active) {
       const previous = actions[active]
       const next = actions[index]
       if (index > 0 && index <= 2 && active > 0 && active <= 2) {
         next.time = (previous.time / previous.getClip().duration) * next.getClip().duration
       } else if (next.weight < .01) next.time = 0
-      blend = { elapsed: 0, from: actions.map(action => action.weight) }
+      blend = { elapsed: 0, duration: fade, from: actions.map(action => action.weight) }
       active = index
     }
     if (blend) {
       blend.elapsed += dt
-      const fraction = Math.min(1, blend.elapsed / .18)
+      const fraction = fade === 0 ? 1 : Math.min(1, blend.elapsed / blend.duration)
       actions.forEach((action, i) => action.setEffectiveWeight(
         blend.from[i] * (1 - fraction) + (i === index ? fraction : 0)))
       if (fraction === 1) blend = null
@@ -84,8 +97,48 @@ function createAvatarAnimator(THREE, model) {
         ? speed * clip.duration / distancePerCycle : speed / 3.65
       actions[index].setEffectiveTimeScale(THREE.MathUtils.clamp(cadence, .3, 1.85))
     }
-    if (Number.isFinite(progress)) actions[index].time = progress * actions[index].getClip().duration
+    const action = actions[index]
+    if (Number.isFinite(progress)) {
+      // Pause the action clock while advancing the mixer's other actions. This
+      // samples the requested frame exactly, including a clip's last frame.
+      action.paused = true
+      action.time = THREE.MathUtils.clamp(progress, 0, 1) * action.getClip().duration
+    } else if (!ONE_SHOTS.has(names[index])) action.paused = false
     mixer.update(dt)
+  }
+
+  function poseIndex(name) {
+    const index = names.indexOf(name)
+    return index >= 0 ? index : names.indexOf(REVERSE_POSES[name])
+  }
+
+  function hasPose(name) { return poseIndex(name) >= 0 }
+
+  function poseDuration(name) { return actions[poseIndex(name)]?.getClip().duration || 0 }
+
+  function playPose(name, progress, dt, fade) {
+    const index = poseIndex(name)
+    const reverse = index >= 0 && names[index] !== name
+    animate(Math.max(0, index), 0, dt, reverse ? 1 - (progress || 0) : progress, fade)
+  }
+
+  function blendSeat(name, weight, dt) {
+    const index = poseIndex(name)
+    if (index < 0) return animate(0, 0, dt)
+    const action = actions[index]
+    if (active !== index && action.weight < .01) action.time = 0
+    active = index
+    blend = null
+    actions[0].paused = false
+    action.paused = false
+    actions.forEach((item, i) => item.setEffectiveWeight(i === index ? weight : i === 0 ? 1 - weight : 0))
+    mixer.update(dt)
+  }
+
+  function setSeatWeight(weight) {
+    if (weight === seatWeight) return
+    model.position.y = standingY + (authoredY - standingY) * weight
+    seatWeight = weight
   }
 
   function updateGait(dt, gait, speed) {
@@ -94,10 +147,7 @@ function createAvatarAnimator(THREE, model) {
   }
 
   function updatePose(dt, pose) {
-    const name = pose === 'sit' ? 'sit_idle' : pose === 'lie' ? 'lie_idle' : null
-    const index = names.indexOf(name)
-    if (index < 0) return updateGait(dt, 'idle', 0)
-    animate(index, 0, dt)
+    playPose(pose === 'sit' ? 'sit_idle' : pose === 'lie' ? 'lie_idle' : 'idle', undefined, dt)
   }
 
   function dispose() {
@@ -105,7 +155,7 @@ function createAvatarAnimator(THREE, model) {
     mixer.uncacheRoot(model)
   }
 
-  return { height, radius, names, animate, updateGait, updatePose, dispose,
+  return { height, radius, animate, playPose, hasPose, poseDuration, blendSeat, setSeatWeight, updateGait, updatePose, dispose,
     runSpeed: RUN_SPEED,
     get activeWeight() { return actions[active].weight } }
 }
@@ -128,6 +178,7 @@ function createManorPlayer({ THREE, scene, navigation, getVillaBounds, disposeMo
   let currentNavigation = navigation
   let currentGetVillaBounds = getVillaBounds
   let inputX = 0, inputY = 0, inputMagnitude = 0, running = false
+  let jumpElapsed = null, jumpStartY = 0
   let playerHeight = 1.6
   let playerRadius = .4
   const handTarget = new THREE.Vector3()
@@ -135,6 +186,7 @@ function createManorPlayer({ THREE, scene, navigation, getVillaBounds, disposeMo
 
   function removeCharacter() {
     if (!current) return
+    jumpElapsed = null
     const { model, animator } = current
     animator.dispose()
     anchor.remove(model)
@@ -162,7 +214,9 @@ function createManorPlayer({ THREE, scene, navigation, getVillaBounds, disposeMo
     removeCharacter()
     playerHeight = animator.height
     playerRadius = animator.radius
-    current = { model, animator, arms: getVehicleArms(model) }
+    // The girl lifts her pelvis below a stationary rig root. The boy's pelvis follows his moving root.
+    const jumpRoot = ['Hips', 'Root'].map(name => model.getObjectByName(name)).find(node => node?.isBone)
+    current = { model, animator, arms: getVehicleArms(model), jumpRoot }
     anchor.add(model)
     if (!anchor.parent) scene.add(anchor)
   }
@@ -180,6 +234,7 @@ function createManorPlayer({ THREE, scene, navigation, getVillaBounds, disposeMo
     }
     currentNavigation = nextNavigation
     if (typeof nextGetVillaBounds === 'function') currentGetVillaBounds = nextGetVillaBounds
+    cancelJump()
     setInput(0, 0)
   }
 
@@ -187,6 +242,7 @@ function createManorPlayer({ THREE, scene, navigation, getVillaBounds, disposeMo
     if (!current || !Number.isFinite(x) || !Number.isFinite(z)) return false
     const y = currentNavigation.sample(x, z, currentGetVillaBounds(), preferredY)
     if (!Number.isFinite(y)) return false
+    cancelJump()
     anchor.position.set(x, y, z)
     if (Number.isFinite(yaw)) anchor.rotation.y = yaw
     setInput(0, 0)
@@ -195,6 +251,7 @@ function createManorPlayer({ THREE, scene, navigation, getVillaBounds, disposeMo
 
   function avoidVilla() {
     if (!current || Number.isFinite(currentNavigation.sample(anchor.position.x, anchor.position.z, currentGetVillaBounds(), anchor.position.y))) return false
+    cancelJump()
     return spawn()
   }
 
@@ -220,18 +277,43 @@ function createManorPlayer({ THREE, scene, navigation, getVillaBounds, disposeMo
     }
   }
 
-  function animate(index, speed, dt, progress) {
+  function animate(index, speed, dt) {
     current.arms.forEach(arm => arm.restore())
-    current.animator.animate(index, speed, dt, progress)
+    current.animator.animate(index, speed, dt)
   }
 
-  function animatePose(name, progress, dt) {
-    const index = current?.animator.names.indexOf(name) ?? -1
-    animate(index >= 0 ? index : 0, 0, dt, progress)
+  function animatePose(name, progress, dt, fade) {
+    if (!current) return
+    current.arms.forEach(arm => arm.restore())
+    current.animator.playPose(name, progress, dt, fade)
+  }
+
+  function hasPose(name) { return current?.animator.hasPose(name) || false }
+
+  function poseDuration(name) { return current?.animator.poseDuration(name) || 0 }
+
+  const jumpPoint = new THREE.Vector3()
+  function jumpRootY() {
+    return current?.jumpRoot?.getWorldPosition(jumpPoint).y || 0
+  }
+
+  function jump() {
+    if (jumpElapsed !== null || !hasPose('jump')) return false
+    jumpStartY = jumpRootY()
+    jumpElapsed = 0
+    animatePose('jump', 0, 0)
+    return true
+  }
+
+  function cancelJump() {
+    if (jumpElapsed === null) return
+    jumpElapsed = null
+    animatePose('idle', undefined, 0, 0)
   }
 
   function poseAt(x, y, z, yaw) {
     if (!current || ![x, y, z, yaw].every(Number.isFinite)) return false
+    cancelJump()
     anchor.position.set(x, y, z)
     anchor.rotation.y = yaw
     return true
@@ -244,12 +326,14 @@ function createManorPlayer({ THREE, scene, navigation, getVillaBounds, disposeMo
   }
 
   function getVehicleArms(model) {
+    const getBone = (part, side) => model.getObjectByName(part + '_' + side) ||
+      model.getObjectByName(part + side) || model.getObjectByName(part + '.' + side)
     return ['L', 'R'].flatMap((side, index) => {
-      const upper = model.getObjectByName('UpperArm_' + side)
-      const forearm = model.getObjectByName('Forearm_' + side)
-      const hand = model.getObjectByName('Hand_' + side)
+      const upper = getBone('UpperArm', side)
+      const forearm = getBone('Forearm', side)
+      const hand = getBone('Hand', side)
       if (!upper?.isBone || forearm?.parent !== upper || hand?.parent !== forearm) return []
-      const sign = index === 0 ? 1 : -1
+      const sign = Math.sign(model.worldToLocal(upper.getWorldPosition(new THREE.Vector3())).x) || (index === 0 ? 1 : -1)
       const shoulder = new THREE.Vector3()
       const elbow = new THREE.Vector3()
       const wrist = new THREE.Vector3()
@@ -332,28 +416,55 @@ function createManorPlayer({ THREE, scene, navigation, getVillaBounds, disposeMo
 
   function updateTransport(dt, x, y, z, yaw, motion = false) {
     if (!current) return
+    cancelJump()
     const groundSpeed = dt > 0 ? Math.hypot(x - anchor.position.x, z - anchor.position.z) / dt : 0
     anchor.position.set(x, y, z)
-    if (Number.isFinite(yaw)) face(yaw, dt)
     if (!motion || typeof motion !== 'object') {
+      if (Number.isFinite(yaw)) face(yaw, dt)
+      current.animator.setSeatWeight(0)
       shadow.visible = true
       animate(motion ? 1 : 0, groundSpeed, dt)
       return
     }
     const action = motion.action === 'reach' && motion.seated ? 'seated' : motion.action
     const progress = THREE.MathUtils.clamp(motion.progress || 0, 0, 1)
-    const bend = action === 'reach'
-    const index = current.animator.names.indexOf(VEHICLE_ANIMATIONS[bend ? 'board' : action])
-    const transition = action === 'board' || action === 'exit' || bend
+    const carPose = motion.rear && hasPose('car_sit_rear') ? 'car_sit_rear' : 'car_sit'
+    const hasCarPose = hasPose(carPose)
+    const seated = action === 'seated' || action === 'drive'
+    const seatWeight = hasCarPose && Number.isFinite(motion.seatBlend) ? THREE.MathUtils.clamp(motion.seatBlend, 0, 1) : 0
+    current.animator.setSeatWeight(seatWeight)
+    if (Number.isFinite(yaw)) {
+      if (seated && seatWeight === 1) anchor.rotation.y = yaw
+      else face(yaw, dt)
+    }
     shadow.visible = (action === 'reach' || action === 'walk' || action === 'idle') && !motion.seated
-    animate(index >= 0 ? index : action === 'walk' ? 1 : 0, groundSpeed, dt,
-      transition && index >= 0 ? (bend ? .40 * Math.sin(progress * Math.PI) : progress) : undefined)
+    if (hasCarPose && (action === 'board' || action === 'exit')) {
+      current.arms.forEach(arm => arm.restore())
+      const blend = THREE.MathUtils.smoothstep(progress, 0, 1)
+      current.animator.blendSeat(carPose, action === 'board' ? blend : 1 - blend, dt)
+    } else if (seated) {
+      const pose = action === 'drive' && hasPose('drive_idle') ? 'drive_idle' : hasCarPose ? carPose : 'sit_idle'
+      animatePose(pose, undefined, dt)
+    } else if (action === 'board' || action === 'exit' || action === 'reach') {
+      animatePose(action === 'exit' ? 'stand_up' : 'sit_down',
+        action === 'reach' ? .40 * Math.sin(progress * Math.PI) : progress, dt)
+    } else animate(action === 'walk' ? 1 : 0, groundSpeed, dt)
     updateVehicleHands(motion, progress)
   }
 
   function update(dt, azimuth) {
     if (!current || !(dt > 0)) return
+    current.animator.setSeatWeight(0)
     shadow.visible = true
+    if (jumpElapsed !== null) {
+      // The model's bones carry the height and landing motion. Keep the
+      // navigation position on the floor and avoid moving through geometry.
+      const duration = poseDuration('jump')
+      jumpElapsed = Math.min(duration, jumpElapsed + dt)
+      animatePose('jump', jumpElapsed / duration, dt)
+      if (jumpElapsed >= duration) jumpElapsed = null
+      return
+    }
     let gait = 0, groundSpeed = 0
     if (inputMagnitude > DEAD_ZONE) {
       const tilt = Math.min(inputMagnitude, 1)
@@ -387,6 +498,10 @@ function createManorPlayer({ THREE, scene, navigation, getVillaBounds, disposeMo
 
   return {
     show, setInput, setNavigation, update, updateTransport, animatePose, poseAt, avoidVilla, place, setVisible, dispose,
+    jump, cancelJump, hasPose, poseDuration,
+    get canJump() { return jumpElapsed === null && hasPose('jump') },
+    get isJumping() { return jumpElapsed !== null },
+    get jumpHeight() { return jumpElapsed === null ? 0 : Math.max(0, (jumpRootY()) - jumpStartY) },
     get position() { return current ? anchor.position : null },
     get height() { return playerHeight },
     get radius() { return playerRadius },

@@ -2,6 +2,7 @@ const { createManorNavigation } = require('./manor-navigation');
 const { createManorInteriorNavigation } = require('./manor-interior-navigation');
 const { createManorInteriorElevator } = require('./manor-interior-elevator');
 const { createCourtyardInterior } = require('./manor-courtyard-interior');
+const { createCourtyardElevator } = require('./manor-courtyard-elevator');
 const { createManorPlayer, createAvatarAnimator } = require('./manor-player');
 const { cloneAvatarModel, disposeAvatarSkeletons } = require('./manor-avatar-clone');
 const { createManorVehicle } = require('./manor-vehicle');
@@ -24,6 +25,7 @@ const MIN_PAN_ELEVATION = Math.PI / 10;
 const MAX_ELEVATION = Math.PI * 0.44;
 const CAMERA_GROUND_CLEARANCE = 0.4;
 const INTERIOR_CAMERA_CLEARANCE = 0.18;
+const INTERIOR_SHELL = /(?:^|[^a-z])(?:exterior|walls?|partitions?|structure|structural|roofs?|ceilings?|slabs?|facades?)(?:$|[^a-z])/i;
 const COURTYARD_DOOR_REACH = 2.1;
 const COURTYARD_DOOR_SWING_TIME = .32;
 const COURTYARD_DOOR_WALK_SPEED = 2.9;
@@ -226,6 +228,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   const offset = new THREE.Vector3();
   const followPoint = new THREE.Vector3();
   const cameraRay = new THREE.Raycaster();
+  const cutawayHits = new Set();
   const cameraHit = new THREE.Vector3();
   const interiorDirection = new THREE.Vector3();
   const interiorReverseDirection = new THREE.Vector3();
@@ -323,7 +326,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     if (force) target.copy(followPoint);
     else {
       target.lerp(followPoint, 1 - Math.exp(-13 * dt));
-      if (insideVilla && interiorElevator?.carrying) target.y = followPoint.y;
+      if (activeElevator()?.carrying) target.y = followPoint.y;
     }
     dirty = true;
   }
@@ -382,7 +385,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   }
 
   function setPlayerInput(x, y) {
-    if (disposed || view !== 'player' || !player?.position || interiorElevator?.busy || courtyardPassage || restInteraction) return;
+    if (disposed || view !== 'player' || !player?.position || activeElevator()?.busy || courtyardPassage || restInteraction) return;
     if (vehicle?.busy()) vehicle.setInput(x, y);
     else player.setInput(x, y);
   }
@@ -445,7 +448,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   }
 
   function getVehicleState() {
-    return !isInsideBuilding() && !courtyardPassage && view === 'player' ? vehicle?.state() || null : null;
+    return !isInsideBuilding() && !courtyardPassage && !player?.isJumping && view === 'player' ? vehicle?.state() || null : null;
   }
 
   function enterVehicle(id) {
@@ -490,7 +493,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     if (!insideVilla) return vehicle?.checkpoint() || { x, y, z, facing };
 
     const exterior = doorPoints()?.outside;
-    if (restInteraction) return { ...restInteraction.spot.exit, facing: restInteraction.spot.yaw,
+    if (restInteraction && restInteraction.phase !== 'approach') return { ...restInteraction.spot.exit, facing: restInteraction.spot.yaw,
       interior: { kind: 'red' }, exterior };
     if (interiorNavigation.sample(x, z, null, y) === null) {
       // Mid-ride positions belong to a moving cabin. Use its nearest landing.
@@ -1248,22 +1251,37 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     });
   }
 
-  function prepareInteriorCamera(model, courtyard = false) {
+  function prepareInteriorCamera(model) {
     restoreInteriorCutaway();
     interiorOccluders = [];
     model.updateWorldMatrix(true, true);
-    model.traverse(mesh => {
-      if (!mesh.isMesh || (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).every(material => material.transparent)) return;
+    model.traverseVisible(mesh => {
+      if (!mesh.isMesh || !mesh.geometry?.attributes.position ||
+          (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).every(material => material.transparent)) return;
+      let cover = null, moving = false;
       for (let part = mesh; part && part !== model; part = part.parent) {
-        if (courtyard ? ['Exterior', 'Walls', 'Structure', 'Roof'].includes(part.name) :
-          part.userData.facadeIndex !== undefined || part.userData.floorSurfaceLevel === 2) {
-          if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
-          const bounds = mesh.geometry.boundingBox.clone().applyMatrix4(mesh.matrixWorld);
-          interiorOccluders.push({ mesh, bounds, cutawayNode: part, cutawayVisible: part.visible });
-          break;
-        }
+        const data = part.userData;
+        const name = part.name.replace(/([a-z])([A-Z])/g, '$1 $2');
+        if (data.doorMotion || data.doorLeaf || data.operableDoor || data.elevatorRole === 'car' ||
+            data.elevatorRole === 'door' || part.name === 'LiftCar' || part.name.startsWith('Courtyard door ')) moving = true;
+        if (!cover && (data.kind === 'wall' || data.cameraOccluder === true || data.facadeIndex !== undefined ||
+            data.floorSurfaceLevel !== undefined || data.operableDoor || INTERIOR_SHELL.test(name))) cover = part;
       }
+      if (!cover) return;
+      if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+      const bounds = mesh.geometry.boundingBox.clone().applyMatrix4(mesh.matrixWorld);
+      // Hide the smallest drawable part, so a partition doesn't remove an entire floor's walls.
+      const cutawayNode = cover.children.length === 1 && cover.children[0] === mesh ? cover : mesh;
+      interiorOccluders.push({ mesh, bounds, moving, cutawayNode, cutawayVisible: cutawayNode.visible });
     });
+  }
+
+  function refreshMovingOccluders() {
+    for (const { mesh, bounds, moving } of interiorOccluders) {
+      if (!moving) continue;
+      mesh.updateWorldMatrix(true, false);
+      bounds.copy(mesh.geometry.boundingBox).applyMatrix4(mesh.matrixWorld);
+    }
   }
 
   function restoreInteriorCutaway() {
@@ -1275,7 +1293,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     }
   }
 
-  function traceInteriorHit(from, to, extra = 0) {
+  function traceInteriorHit(from, to, extra = 0, blockers) {
     interiorDirection.subVectors(to, from);
     const length = interiorDirection.length();
     const maxDistance = length + extra;
@@ -1297,6 +1315,8 @@ function createManorScene({ THREE, renderer, disposeModel }) {
         cameraIntersections.length = 0;
         cameraRay.intersectObject(occluder.mesh, false, cameraIntersections);
         for (const intersection of cameraIntersections) {
+          if (Array.isArray(occluder.mesh.material) && occluder.mesh.material[intersection.face?.materialIndex]?.transparent) continue;
+          if (blockers && intersection.distance < maxDistance - .01) blockers.add(occluder);
           const distance = reverse ? maxDistance - intersection.distance : intersection.distance;
           if (distance < closest.distance) closest = { distance, occluder };
         }
@@ -1312,8 +1332,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     return traceInteriorHit(from, to, extra).distance;
   }
 
-  function hideInteriorOccluder(hit) {
-    const occluder = hit?.occluder;
+  function hideInteriorOccluder(occluder) {
     if (!occluder || !occluder.cutawayVisible) return;
     occluder.cutawayNode.visible = false;
     occluder.cutawayHidden = true;
@@ -1327,14 +1346,24 @@ function createManorScene({ THREE, renderer, disposeModel }) {
       camera.getWorldDirection(interiorDirection);
       interiorViewPoint.copy(camera.position).addScaledVector(interiorDirection, .55);
       const hit = traceInteriorHit(camera.position, interiorViewPoint);
-      if (hit.distance < .5) hideInteriorOccluder(hit);
+      if (hit.distance < .5) hideInteriorOccluder(hit.occluder);
       return;
     }
-    for (const height of [.08, player.height * .94]) {
-      avatarPoint.copy(player.position).y += height;
-      const hit = traceInteriorHit(camera.position, avatarPoint);
-      if (hit.distance < camera.position.distanceTo(avatarPoint) - .01) hideInteriorOccluder(hit);
+    if (view !== 'player') return;
+    const { x, y, z } = player.position;
+    const dx = camera.position.x - x, dz = camera.position.z - z;
+    const radius = player.radius * .86 / (Math.hypot(dx, dz) || 1);
+    const base = y + player.jumpHeight;
+    cutawayHits.clear();
+    for (const height of [.08, player.height * .52, player.height * .94]) {
+      avatarPoint.set(x, base + height, z);
+      traceInteriorHit(camera.position, avatarPoint, 0, cutawayHits);
     }
+    for (const sign of [-1, 1]) {
+      avatarPoint.set(x + dz * radius * sign, base + player.height * .68, z - dx * radius * sign);
+      traceInteriorHit(camera.position, avatarPoint, 0, cutawayHits);
+    }
+    for (const occluder of cutawayHits) hideInteriorOccluder(occluder);
   }
 
   function keepCameraInside(dt) {
@@ -1342,7 +1371,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     if (desired < .05) return false;
     cameraArm.divideScalar(desired);
     let allowed = Math.max(.04, traceInterior(target, camera.position, INTERIOR_CAMERA_CLEARANCE) - INTERIOR_CAMERA_CLEARANCE);
-    if (interiorElevator?.carrying && player?.position) {
+    if (activeElevator()?.carrying && player?.position) {
       // A floor can obscure the avatar's head or feet even with a clear ray to its center.
       function canSeeRider(length) {
         cameraCandidate.copy(target).addScaledVector(cameraArm, length);
@@ -1362,6 +1391,11 @@ function createManorScene({ THREE, renderer, disposeModel }) {
         }
         allowed = Math.max(.04, near - .04);
       }
+    }
+    // In a tight corner, preserve room to see the avatar and cut away the actual blockers.
+    if (allowed < .55 && !activeElevator()?.carrying) {
+      allowed = Math.min(desired, INTERIOR_PLAYER_DISTANCE);
+      interiorCameraDistance = allowed;
     }
     const last = interiorCameraDistance ?? allowed;
     const next = dt > 0 && last < allowed - .01 ? last + (allowed - last) * (1 - Math.exp(-14 * dt)) : allowed;
@@ -1406,18 +1440,23 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   function getVillaEntryState() {
     const points = doorPoints();
     const position = player?.position;
-    const nearDoor = !isInsideBuilding() && !courtyardPassage && !vehicle?.busy() && !!points && !!position &&
+    const nearDoor = !isInsideBuilding() && !courtyardPassage && !vehicle?.busy() && !player?.isJumping && !!points && !!position &&
       Math.hypot(position.x - points.outside.x, position.z - points.outside.z) <= 3.2;
     return { nearDoor, inside: insideVilla, available: !!villa && !!interiorNavigation, entry: points?.entry || null };
   }
 
   function releaseCourtyards() {
     if (activeCourtyard) {
+      restInteraction = null;
+      restoreInteriorCutaway();
       restoreOutdoorOrbit();
       interiorOccluders = [];
     }
     activeCourtyard = courtyardPassage = null;
-    for (const building of courtyards.values()) building.interior.dispose();
+    for (const building of courtyards.values()) {
+      building.elevator?.dispose();
+      building.interior.dispose();
+    }
     courtyards.clear();
   }
 
@@ -1431,13 +1470,17 @@ function createManorScene({ THREE, renderer, disposeModel }) {
         if (entering && !committed) leaveCourtyardAt(start, startFacing);
       }
       if (activeCourtyard?.building === building) leaveCourtyardAt(activeCourtyard.exterior, player?.facing);
+      building.elevator?.dispose();
       building.interior.dispose();
       courtyards.delete(plotId);
     }
     for (const [plotId, model] of placements) {
       if (courtyards.has(plotId)) continue;
       const interior = createCourtyardInterior({ THREE, model });
-      if (interior) courtyards.set(plotId, { plotId, model, interior, doors: interior.getEntrances() });
+      if (!interior) continue;
+      const landings = interior.getLiftLandings?.() || [];
+      const elevator = landings.length > 1 ? createCourtyardElevator({ THREE, model, navigation: interior.navigation, landings }) : null;
+      courtyards.set(plotId, { plotId, model, interior, elevator, doors: interior.getEntrances() });
     }
   }
 
@@ -1461,7 +1504,8 @@ function createManorScene({ THREE, renderer, disposeModel }) {
 
   function reachableCourtyardDoor() {
     const position = player?.position;
-    if (!position || disposed || view !== 'player' || insideVilla || courtyardPassage || vehicle?.busy()) return null;
+    if (!position || disposed || view !== 'player' || insideVilla || courtyardPassage ||
+        vehicle?.busy() || activeElevator()?.busy || player.isJumping || restInteraction) return null;
     const inside = Boolean(activeCourtyard);
     let nearest = null;
     for (const building of inside ? [activeCourtyard.building] : courtyards.values()) {
@@ -1503,7 +1547,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     elevation = .38;
     azimuth = finite(facing) ? facing + Math.PI : .76;
     interiorCameraDistance = undefined;
-    prepareInteriorCamera(building.model, true);
+    prepareInteriorCamera(building.model);
     fitAvatar();
     trackPlayer(true);
     return true;
@@ -1512,7 +1556,9 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   function leaveCourtyardAt(position, facing) {
     const wasInside = Boolean(activeCourtyard);
     activeCourtyard = null;
+    restInteraction = null;
     if (wasInside) {
+      restoreInteriorCutaway();
       restoreOutdoorOrbit();
       interiorOccluders = [];
     }
@@ -1528,7 +1574,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     const candidate = reachableCourtyardDoor();
     if (!candidate || candidate.building.plotId !== plotId || candidate.door.id !== doorId) return false;
     const { building, door, outside, inside } = candidate;
-    // Split the shared facade geometry on demand. Only the placed clone is edited.
+    // Animate only this placed building, including when using the older facade asset.
     if (!building.interior.setDoorProgress(door.id, .001)) return false;
     const start = player.position.clone();
     const points = inside ? [start, door.inside, door.threshold, outside] : [start, outside, door.threshold, door.inside];
@@ -1555,10 +1601,11 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     if (!dt) return true;
     const { building, door, outside, start, startFacing, entering, duration, segments } = passage;
     const yaw = door.yaw + (entering ? 0 : Math.PI);
-    const travel = (passage.elapsed += dt) - COURTYARD_DOOR_SWING_TIME;
+    const swingTime = finite(door.seconds) && door.seconds > 0 ? door.seconds : COURTYARD_DOOR_SWING_TIME;
+    const travel = (passage.elapsed += dt) - swingTime;
     const closing = travel - duration;
-    const progress = clamp(travel < 0 ? passage.elapsed / COURTYARD_DOOR_SWING_TIME :
-      1 - Math.max(0, closing) / COURTYARD_DOOR_SWING_TIME, 0, 1);
+    const progress = clamp(travel < 0 ? passage.elapsed / swingTime :
+      1 - Math.max(0, closing) / swingTime, 0, 1);
     building.interior.setDoorProgress(door.id, progress * progress * (3 - 2 * progress));
     flagShadows();
     if (travel < 0) {
@@ -1579,9 +1626,9 @@ function createManorScene({ THREE, renderer, disposeModel }) {
       const { x, y, z } = player.position;
       player.updateTransport(dt, x, y, z, yaw);
     }
-    if (closing >= COURTYARD_DOOR_SWING_TIME) {
+    if (closing >= swingTime) {
       courtyardPassage = null;
-      if (activeCourtyard) prepareInteriorCamera(activeCourtyard.building.model, true);
+      if (activeCourtyard) prepareInteriorCamera(activeCourtyard.building.model);
     }
     return true;
   }
@@ -1589,10 +1636,12 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   function getCourtyardCheckpoint() {
     const passage = courtyardPassage && !courtyardPassage.committed && courtyardPassage;
     if (!activeCourtyard && !courtyardPassage) return null;
-    const point = passage ? passage.start : player?.position;
+    const restSpot = restInteraction?.phase !== 'approach' ? restInteraction?.spot : null;
+    const point = restSpot?.exit || activeCourtyard?.building.elevator?.checkpoint(player?.position) ||
+      (passage ? passage.start : player?.position);
     if (!point) return null;
     const { x, y, z } = point;
-    const facing = passage ? passage.startFacing : player.facing;
+    const facing = restSpot?.yaw ?? (passage ? passage.startFacing : player.facing);
     if (!activeCourtyard) return { x, y, z, facing };
     const { building: { plotId }, exterior } = activeCourtyard;
     return { x, y, z, facing, interior: { kind: 'courtyard', plotId },
@@ -1667,7 +1716,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   }
 
   function exitInterior() {
-    if (disposed || !insideVilla || interiorElevator?.busy || restInteraction) return false;
+    if (disposed || !insideVilla || interiorElevator?.busy || player?.isJumping || restInteraction) return false;
     const points = doorPoints();
     const ground = points && navigation?.sample(points.outside.x, points.outside.z, outdoorBounds);
     if (player?.position && (!points || !Number.isFinite(ground))) return false;
@@ -1681,6 +1730,8 @@ function createManorScene({ THREE, renderer, disposeModel }) {
       }
     }
     insideVilla = false;
+    restoreInteriorCutaway();
+    interiorOccluders = [];
     restoreOutdoorOrbit();
     centerFirstPerson();
     if (interior) interior.visible = false;
@@ -1691,91 +1742,123 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     return true;
   }
 
+  function activeElevator() {
+    return insideVilla ? interiorElevator : activeCourtyard?.building.elevator;
+  }
+
   function getElevatorState() {
-    return insideVilla ? interiorElevator?.state(player?.position) || null : null;
+    if (disposed || view !== 'player' || courtyardPassage || restInteraction || player?.isJumping) return null;
+    return activeElevator()?.state(player?.position) || null;
   }
 
-  function useElevator() {
-    return insideVilla && !restInteraction && Boolean(interiorElevator?.start(player));
+  function useElevator(targetFloor) {
+    return canUseGroundAction() && !restInteraction && !player.isJumping && Boolean(activeElevator()?.start(player, targetFloor));
   }
 
-  function getRestState() {
-    if (!insideVilla || !interiorNavigation?.restSpots?.length || !player?.position || view !== 'player' || mapView) return null;
+  function getRoomDoor() {
+    if (!canUseGroundAction() || restInteraction || player.isJumping) return null;
+    return activeCourtyard?.building.interior.getRoomDoor?.(player.position) || null;
+  }
+
+  function interactRoomDoor(id) {
+    if (typeof id !== 'string' || getRoomDoor()?.id !== id) return false;
+    const started = activeCourtyard?.building.interior.interactRoomDoor?.(id, player.position);
+    if (started) dirty = true;
+    return Boolean(started);
+  }
+
+  function canUseGroundAction() {
+    return !disposed && view === 'player' && !mapView && !buildOrbit && !!player?.position &&
+      !vehicle?.busy() && !activeElevator()?.busy && !courtyardPassage;
+  }
+
+  function canJumpPlayer() {
+    return canUseGroundAction() && !restInteraction && player.canJump;
+  }
+
+  function jumpPlayer() {
+    return canJumpPlayer() && player.jump();
+  }
+
+  const restPoses = {
+    sit: { lower: 'sit_down', hold: 'sit_idle', rise: 'stand_up' },
+    lie: { lower: 'lie_down', hold: 'lie_idle', rise: 'wake_up' }
+  };
+
+  function nearbyRestSpot(kind) {
+    const nav = insideVilla ? interiorNavigation : activeCourtyard?.building.interior.navigation;
+    if (!nav?.restSpots?.length) return null;
+    const start = player.position;
+    let nearest = null, limit = 1.35;
+    for (const spot of nav.restSpots) {
+      if ((kind && spot.kind !== kind) || Math.abs(start.y - spot.entry.y) > .72 ||
+          !player.hasPose(restPoses[spot.kind].hold)) continue;
+      const distance = Math.hypot(start.x - spot.entry.x, start.z - spot.entry.z);
+      if (distance > limit || (nearest && distance === limit)) continue;
+      const entryY = nav.sampleMove(spot.entry.x, spot.entry.z, start);
+      if (!finite(entryY) || Math.abs(entryY - spot.entry.y) >= .26) continue;
+      const exitY = nav.sample(spot.exit.x, spot.exit.z, null, spot.exit.y);
+      if (!finite(exitY) || Math.abs(exitY - spot.exit.y) >= .26) continue;
+      nearest = spot;
+      limit = distance;
+    }
+    return nearest;
+  }
+
+  function getRestState(kind) {
+    if (!canUseGroundAction() || player.isJumping) return null;
     if (restInteraction) {
       const { spot, phase } = restInteraction;
+      if (kind && spot.kind !== kind) return null;
       const resting = phase === 'holding';
       return { nearby: true, busy: !resting, resting, spotId: spot.id, kind: spot.kind, name: spot.name,
         label: resting ? '起身' : phase === 'leaving' ? '正在起身' : phase === 'approach' ? '正在靠近' : '正在休息' };
     }
-    let nearest = null;
-    for (const spot of interiorNavigation.restSpots) {
-      if (Math.abs(player.position.y - spot.entry.y) > .72 ||
-          !finite(interiorNavigation.sample(spot.entry.x, spot.entry.z, null, player.position.y))) continue;
-      const distanceToEntry = Math.hypot(player.position.x - spot.entry.x, player.position.z - spot.entry.z);
-      if (distanceToEntry <= 1.35 && (!nearest || distanceToEntry < nearest.distance)) nearest = { spot, distance: distanceToEntry };
-    }
-    return nearest ? { nearby: true, busy: false, resting: false, spotId: nearest.spot.id, kind: nearest.spot.kind,
-      name: nearest.spot.name, label: nearest.spot.kind === 'lie' ? '躺下' : '坐下' } : null;
+    const spot = nearbyRestSpot(kind);
+    return spot ? { nearby: true, busy: false, resting: false, spotId: spot.id, kind: spot.kind,
+      name: spot.name, label: spot.kind === 'lie' ? '躺下' : '坐下' } : null;
   }
 
-  function interactRest() {
-    if (!insideVilla || !player?.position || interiorElevator?.busy || courtyardPassage) return false;
+  function interactRest(kind) {
+    if (!canUseGroundAction() || player.isJumping) return false;
     if (restInteraction) {
-      if (restInteraction.phase !== 'holding') return false;
+      if (restInteraction.phase !== 'holding' || (kind && restInteraction.spot.kind !== kind)) return false;
       restInteraction.phase = 'leaving';
       restInteraction.elapsed = 0;
-      restInteraction.startYaw = player.facing;
-      dirty = true;
       return true;
     }
-    const available = getRestState();
-    if (!available?.nearby || available.busy) return false;
-    const spot = interiorNavigation.restSpots.find(item => item.id === available.spotId);
+    const spot = nearbyRestSpot(kind);
     if (!spot) return false;
     if (firstPerson) setFirstPerson(false);
     player.setInput(0, 0);
     restInteraction = { spot, phase: 'approach', elapsed: 0, start: player.position.clone(),
-      startYaw: player.facing, duration: Math.max(.25, Math.min(.75, player.position.distanceTo(spot.position) / 2.4)) };
-    dirty = true;
+      startYaw: player.facing, duration: Math.max(.25, Math.min(.75, player.position.distanceTo(spot.entry) / 2.4)) };
     return true;
   }
 
   function updateRestInteraction(dt) {
     const interaction = restInteraction;
-    if (!interaction) return false;
-    const { spot } = interaction;
-    interaction.elapsed += dt;
-    const duration = interaction.phase === 'approach' ? interaction.duration
-      : interaction.phase === 'lowering' ? (spot.kind === 'lie' ? 1.15 : .88)
-        : interaction.phase === 'leaving' ? (spot.kind === 'lie' ? 1 : .88) : Infinity;
-    const fraction = clamp(interaction.elapsed / duration, 0, 1);
+    const { spot, phase, startYaw } = interaction;
+    const pose = restPoses[spot.kind];
+    const action = phase === 'approach' ? 'walk' : phase === 'lowering' ? pose.lower
+      : phase === 'leaving' ? pose.rise : pose.hold;
+    const duration = phase === 'approach' ? interaction.duration
+      : phase === 'holding' ? Infinity : player.poseDuration(action) || .9;
+    const fraction = clamp((interaction.elapsed += dt) / duration, 0, 1);
     const eased = fraction * fraction * (3 - 2 * fraction);
-    const from = interaction.phase === 'leaving' ? spot.position : interaction.start;
-    const to = interaction.phase === 'leaving' ? spot.exit : spot.position;
-    if (interaction.phase === 'approach' || interaction.phase === 'leaving') {
-      const angle = Math.atan2(Math.sin(spot.yaw - interaction.startYaw), Math.cos(spot.yaw - interaction.startYaw));
-      const yaw = interaction.startYaw + angle * eased;
-      player.poseAt(from.x + (to.x - from.x) * eased, from.y + (to.y - from.y) * eased,
-        from.z + (to.z - from.z) * eased, interaction.phase === 'leaving' ? spot.yaw : yaw);
-      player.animatePose(interaction.phase === 'leaving' ? (spot.kind === 'lie' ? 'wake_up' : 'stand_up') : 'walk', fraction, dt);
-    } else {
-      player.poseAt(spot.position.x, spot.position.y, spot.position.z, spot.yaw);
-      const action = interaction.phase === 'holding' ? (spot.kind === 'lie' ? 'lie_idle' : 'sit_idle')
-        : spot.kind === 'lie' ? 'lie_down' : 'sit_down';
-      player.animatePose(action, interaction.phase === 'holding' ? undefined : fraction, dt);
-    }
-    if (fraction === 1 && interaction.phase !== 'holding') {
+    const from = phase === 'approach' ? interaction.start : phase === 'lowering' ? spot.entry : spot.position;
+    const to = phase === 'approach' ? spot.entry : phase === 'leaving' ? spot.exit : spot.position;
+    const turn = Math.atan2(Math.sin(spot.yaw - startYaw), Math.cos(spot.yaw - startYaw));
+    const yaw = phase === 'approach' ? startYaw + turn * eased : spot.yaw;
+    player.poseAt(from.x + (to.x - from.x) * eased, from.y + (to.y - from.y) * eased,
+      from.z + (to.z - from.z) * eased, yaw);
+    player.animatePose(action, phase === 'approach' || phase === 'holding' ? undefined : fraction, dt);
+    if (fraction === 1) {
       interaction.elapsed = 0;
-      if (interaction.phase === 'approach') interaction.phase = 'lowering';
-      else if (interaction.phase === 'lowering') interaction.phase = 'holding';
-      else if (interaction.phase === 'leaving') {
-        player.poseAt(spot.exit.x, spot.exit.y, spot.exit.z, spot.yaw);
-        restInteraction = null;
-      }
+      if (phase === 'approach') interaction.phase = 'lowering';
+      else if (phase === 'lowering') interaction.phase = 'holding';
+      else if (phase === 'leaving') restInteraction = null;
     }
-    if (view === 'player') trackPlayer(false, dt);
-    dirty = interaction.phase !== 'holding';
-    return true;
   }
 
   function fitAvatar() {
@@ -1847,7 +1930,9 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     const x = position?.x, y = position?.y, z = position?.z;
     const vehicleUpdated = Boolean(vehicle?.update(dt));
     const passageUpdated = !vehicleUpdated && updateCourtyardPassage(dt);
-    const elevatorUpdated = !vehicleUpdated && !passageUpdated && insideVilla && Boolean(interiorElevator?.update(dt));
+    const elevatorUpdated = !vehicleUpdated && !passageUpdated && Boolean(activeElevator()?.update(dt));
+    const doorsUpdated = activeCourtyard?.building.interior.update?.(dt, player?.position);
+    if (elevatorUpdated || doorsUpdated) dirty = true;
     if (!vehicleUpdated && !passageUpdated && !elevatorUpdated) {
       if (restInteraction) updateRestInteraction(dt);
       else player?.update(dt, eyeView ? lookYaw + Math.PI : azimuth);
@@ -1861,8 +1946,9 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   }
 
   function updateCamera(dt) {
+    if (isInsideBuilding()) refreshMovingOccluders();
     const eyeView = isFirstPersonView();
-    const eyeHeight = eyeView ? player.height * FIRST_PERSON_EYE_HEIGHT : 0;
+    const eyeHeight = eyeView ? player.height * FIRST_PERSON_EYE_HEIGHT + player.jumpHeight : 0;
     const cockpit = eyeView ? vehicle?.viewpoint(eyeHeight) : null;
     let releasingCamera = false;
     let near, fov;
@@ -1938,7 +2024,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   }
 
   return { resize, showLandscape, showCharacter, showVilla, setVillaInteriorMetadata, getVillaEntryState,
-    enterInterior, exitInterior, getElevatorState, useElevator, getRestState, interactRest, setPlayerInput, pan, orbit, zoom,
+    enterInterior, exitInterior, getElevatorState, useElevator, getRoomDoor, interactRoomDoor, getRestState, interactRest, canJumpPlayer, jumpPlayer, setPlayerInput, pan, orbit, zoom,
     enterMapView, exitMapView, getMapPlayerPosition, getPlayerSyncState, placeCharacterAt,
     getPlayerCheckpoint, restorePlayerPosition,
     setSharedRecords, getCommunityPlayers, setRemoteCharacterModel, hasRemoteCharacterModel,

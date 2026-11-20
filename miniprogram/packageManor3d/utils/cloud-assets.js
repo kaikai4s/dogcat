@@ -10,9 +10,9 @@ const MANOR_ASSET_FILES = Object.freeze({
   courtyardVilla: 'courtyard-villa.glb',
   interiorModel: 'model.json',
   interior: 'manor-villa-interior.glb',
-  boy: 'boy.glb',
-  girl: 'girl.glb',
-  car: 'copper-gt.glb'
+  boy: 'boy-animated.glb',
+  girl: 'girl-animated.glb',
+  car: 'copper-gt-fitted.glb'
 })
 
 const isInteriorAsset = key => key === 'interior' || key === 'interiorModel'
@@ -31,10 +31,12 @@ const ASSET_BYTES = {
   layout: 22363,
   manor: 58869484,
   villa: 12576788,
-  courtyardVilla: 12353452,
+  courtyardVilla: 11513240,
   interiorModel: 900,
   interior: 1817160,
-  car: 1790576
+  boy: 5665896,
+  girl: 3902180,
+  car: 2127176
 }
 
 function manorError(code, message, cause) {
@@ -136,7 +138,7 @@ function createCloudAssets({ wx: api, envId } = {}) {
   const cachePrefix = fs && userData && typeof fs.saveFile === 'function' && typeof fs.unlinkSync === 'function'
     ? userData + '/dogcat-' + MANOR_ASSET_VERSION + '-' + envId + '-' : ''
   const cachePath = key => cachePrefix
-    ? cachePrefix + (isInteriorAsset(key) ? INTERIOR_CACHE_VERSION + '-' : '') + MANOR_ASSET_FILES[key] : ''
+    ? cachePrefix + (isInteriorAsset(key) ? INTERIOR_CACHE_VERSION + '-' : key === 'courtyardVilla' ? 'courtyard-v2-' : '') + MANOR_ASSET_FILES[key] : ''
 
   function remove(path) {
     if (fs && path && typeof fs.unlinkSync === 'function') {

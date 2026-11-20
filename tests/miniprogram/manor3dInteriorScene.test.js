@@ -472,3 +472,83 @@ test('the player can sit on a chair and lie on the bed, then stand at a walkable
   assert.ok(player().position.distanceTo(new THREE.Vector3(origin.x + 3.1, origin.y + .405, origin.z + 1.75)) < 1e-6)
   view.dispose()
 })
+
+test('rest controls check each furniture type and reject paths through walls or from another floor', () => {
+  const { view, player } = fixture()
+  const interior = restInterior()
+  const nav = interior.getObjectByName('VillaInterior').userData.navigation
+  nav.floors.push({ ...nav.floors[0], y: 3.405, level: 2 })
+  nav.obstacles.push({ minX: 2.2, maxX: 3.5, minZ: .94, maxZ: 1.02, level: 1 })
+  const origin = mountInside(view, interior, metadata, createAnimatedCharacter(THREE).model)
+  const place = (x, y, z) => player().position.set(origin.x + x, origin.y + y, origin.z + z)
+
+  place(2.7, .405, 1.75)
+  assert.equal(view.getRestState('sit')?.spotId, 'chair-test')
+  assert.equal(view.getRestState('lie')?.spotId, 'bed-test')
+  assert.equal(view.interactRest('lie'), true)
+  assert.equal(view.interactRest('sit'), false)
+  renderFrames(view, 0, 45)
+  assert.equal(view.getRestState('lie')?.label, '起身')
+  assert.equal(view.interactRest('sit'), false)
+  assert.equal(view.interactRest('lie'), true)
+  renderFrames(view, 1.5, 45)
+
+  place(2.7, .405, .44)
+  assert.equal(view.getRestState('sit'), null)
+  assert.equal(view.interactRest('sit'), false)
+  place(2.7, 3.405, 1.75)
+  assert.equal(view.getRestState(), null)
+  assert.equal(view.interactRest('lie'), false)
+  view.dispose()
+})
+
+test('a jump keeps a ground checkpoint and locks furniture actions until the character lands', () => {
+  const { view, player } = fixture()
+  const { model } = createAnimatedCharacter(THREE)
+  model.animations.push(new THREE.AnimationClip('Jump', 1, [
+    new THREE.VectorKeyframeTrack('Hips.position', [0, .5, 1], [0, .8, 0, 0, 1.12, 0, 0, .8, 0])
+  ]))
+  const origin = mountInside(view, restInterior(), metadata, model)
+  player().position.set(origin.x + 2.7, origin.y + .405, origin.z + 1.75)
+  const checkpoint = view.getPlayerCheckpoint()
+  assert.equal(view.canJumpPlayer(), true)
+  assert.equal(view.jumpPlayer(), true)
+  renderFrames(view, 0, 15)
+  assert.deepEqual(view.getPlayerCheckpoint(), checkpoint)
+  assert.equal(view.jumpPlayer(), false)
+  assert.equal(view.getRestState('sit'), null)
+  assert.equal(view.interactRest('sit'), false)
+  renderFrames(view, .5, 16)
+  assert.equal(view.canJumpPlayer(), true)
+  assert.equal(view.getRestState('sit')?.label, '坐下')
+  view.dispose()
+})
+
+
+test('third-person cutaway clears overlapping partitions and an upper slab without hiding adjacent walls', () => {
+  const [x, , z] = metadata.anchors.InteriorSpawn.position
+  const asset = new THREE.Group(), walls = new THREE.Group()
+  walls.name = 'F1_Partitions'
+  const wallAt = (offset, depth, width) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(.06, 3.2, width), new THREE.MeshBasicMaterial())
+    mesh.position.set(x + offset, 1.8, z + depth)
+    walls.add(mesh)
+    return mesh
+  }
+  const first = wallAt(.22, 0, 4), second = wallAt(.48, 0, 4), adjacent = wallAt(.48, 5, 1)
+  const slab = new THREE.Mesh(new THREE.BoxGeometry(12, .12, 12), new THREE.MeshBasicMaterial())
+  slab.name = 'F2_Floor_slab_and_finish'
+  slab.position.set(x, 2.48, z)
+  asset.add(walls, slab)
+  const { view, camera, player } = fixture()
+  try {
+    mountInside(view, asset)
+    assert.ok(camera().position.distanceTo(player().position) > 1, 'the camera should leave room to see the character')
+    for (const blocker of [first, second, slab]) assert.equal(blocker.visible, false)
+    assert.equal(adjacent.visible, true)
+    assert.equal(view.exitInterior(), true)
+    for (const blocker of [first, second, slab]) assert.equal(blocker.visible, true)
+  } finally {
+    view.dispose()
+  }
+})

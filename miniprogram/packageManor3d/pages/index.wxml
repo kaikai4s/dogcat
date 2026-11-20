@@ -72,20 +72,27 @@
       <button wx:if="{{!insideCourtyard || courtyardDoorLabel}}" class="manor-action manor-interior-exit"
         disabled="{{doorBusy || restLocked || (elevator && elevator.busy)}}" bindtap="exitVilla">{{insideCourtyard ? '开门离开' : '离开别墅'}}</button>
     </view>
-    <view wx:if="{{insideVilla && restPrompt}}" class="manor-door-prompt manor-rest-prompt">
+    <view wx:if="{{insideVilla && restPrompt && playerActions && !menuOpen && !roomDoor && !elevator}}" class="manor-door-prompt manor-rest-prompt">
       <view class="manor-door-copy"><text class="manor-door-title">{{restPrompt.name}}</text></view>
-      <button class="manor-action manor-primary manor-door-button" bindtap="interactRest"
+      <button class="manor-action manor-primary manor-door-button" data-rest-kind="{{restPrompt.kind}}" bindtap="interactRest"
         disabled="{{restPrompt.busy}}">{{restPrompt.label}}</button>
+    </view>
+    <view wx:if="{{insideCourtyard && roomDoor && !menuOpen}}" class="manor-door-prompt manor-room-door-prompt">
+      <view class="manor-door-copy"><text class="manor-door-title">{{roomDoor.label}}</text></view>
+      <button class="manor-action manor-primary manor-door-button" data-door-id="{{roomDoor.id}}" bindtap="useRoomDoor"
+        disabled="{{roomDoor.busy}}">{{roomDoor.busy ? '正在开关门' : roomDoor.open ? '关门' : '开门'}}</button>
     </view>
     <view wx:if="{{insideVilla && elevator}}" class="manor-door-prompt manor-elevator-prompt">
       <view class="manor-door-copy">
         <text class="manor-door-title">{{elevator.title}}</text>
       </view>
-      <button wx:if="{{!elevator.busy}}" class="manor-action manor-primary manor-door-button manor-elevator-button" bindtap="useElevator"
-        disabled="{{restLocked}}">
-        <text class="{{elevator.targetFloor === 2 ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'}}" aria-hidden="true"></text>
-        前往{{elevator.destination}}
-      </button>
+      <view wx:if="{{!elevator.busy}}" class="manor-elevator-targets">
+        <button wx:for="{{elevator.buttons}}" wx:key="floor" class="manor-action manor-primary manor-door-button manor-elevator-button"
+          data-floor="{{item.floor}}" bindtap="useElevator" disabled="{{restLocked || doorBusy}}">
+          <text class="{{item.up ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'}}" aria-hidden="true"></text>
+          前往{{item.label}}
+        </button>
+      </view>
       <text wx:else class="manor-elevator-destination">{{elevator.destination}}</text>
     </view>
     <view wx:if="{{buildMode}}" class="manor-build-panel" aria-label="建筑建造">
@@ -145,6 +152,21 @@
         <view class="manor-stick-axis manor-stick-east"></view>
         <view class="manor-stick-knob" style="transform: translate({{stickX}}px, {{stickY}}px);"></view>
       </view>
+      <view wx:if="{{playerActions && !menuOpen && !vehiclePanelOpen && vehicleState === 'walking' && !doorBusy && !(elevator && elevator.busy)}}"
+        class="manor-player-actions" aria-label="角色动作">
+        <button wx:if="{{vehicleNearby && !insideVilla}}" class="manor-action manor-vehicle-open" bindtap="openVehiclePanel" aria-label="为 Copper GT 选座上车">
+          <text>选座上车</text><text class="ri-arrow-up-s-line" aria-hidden="true"></text>
+        </button>
+        <view class="manor-player-action-row">
+          <button class="manor-action manor-player-action manor-player-rest" data-rest-kind="sit" bindtap="interactRest"
+            disabled="{{!playerActions.sit || playerActions.sit.busy}}"
+            aria-label="{{playerActions.sit ? playerActions.sit.label + '，' + playerActions.sit.name : '坐下，靠近可坐的家具后可用'}}">{{playerActions.sit ? playerActions.sit.label : '坐下'}}</button>
+          <button class="manor-action manor-player-action manor-player-rest" data-rest-kind="lie" bindtap="interactRest"
+            disabled="{{!playerActions.lie || playerActions.lie.busy}}"
+            aria-label="{{playerActions.lie ? playerActions.lie.label + '，' + playerActions.lie.name : '躺下，靠近可躺的家具后可用'}}">{{playerActions.lie ? playerActions.lie.label : '躺下'}}</button>
+          <button class="manor-action manor-player-action manor-player-jump" bindtap="jumpPlayer" disabled="{{!playerActions.jump}}">跳跃</button>
+        </view>
+      </view>
       <block wx:if="{{!insideVilla && activeCharacter}}">
         <view wx:if="{{vehiclePanelOpen}}" class="manor-vehicle-panel" aria-label="选择 Copper GT 的座位">
           <view class="manor-vehicle-header">
@@ -182,9 +204,6 @@
           <text class="manor-vehicle-console-hint" wx:if="{{!vehicleCanExit}}">停车后可下车</text>
           <text class="manor-vehicle-console-hint" wx:elif="{{vehicleState === 'driver'}}">↑ 加速 ↓ 减速／倒车 ↔ 转向</text>
         </view>
-        <button wx:elif="{{vehicleNearby && !doorBusy}}" class="manor-action manor-vehicle-open" bindtap="openVehiclePanel" aria-label="为 Copper GT 选座上车">
-          <text>选座上车</text><text class="ri-arrow-up-s-line" aria-hidden="true"></text>
-        </button>
       </block>
     </block>
   </block>

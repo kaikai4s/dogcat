@@ -28,6 +28,7 @@ const OBSTACLES = Object.freeze([
   [-3.65, -.65, 1.14, 2.62, 1], [-3.26, -1.18, -.34, .84, 1],
   [-6.15, -5.72, -.43, 1.56, 1], [-6.15, -5.77, -2.82, -.78, 1],
   [6.72, 7.36, -3.86, -.56, 1], [3.33, 5.83, .43, 1.81, 1],
+  ...[3.95, 5.21].flatMap(x => [-.26, 1.86].map(z => [x - .29, x + .29, z, z + .63, 1])),
   [-9.74, -8.09, 1.52, 2.76, 1], [-8.19, -6.91, -.90, .30, 1],
   [4.19, 6.28, -3.13, -1.05, 2], [-4.52, -4.08, -.55, .32, 2],
   [-.30, 2.24, 1.23, 2.58, 2], [.02, 1.77, -.46, .63, 2],
@@ -64,6 +65,36 @@ function validRestSpot(spot) {
   const point = value => value && [value.x, value.y, value.z].every(Number.isFinite)
   return spot && typeof spot.id === 'string' && (spot.kind === 'sit' || spot.kind === 'lie') &&
     point(spot.position) && point(spot.entry) && point(spot.exit) && Number.isFinite(spot.yaw)
+}
+
+function fitVillaRestSpot(spot) {
+  // Older exports carry floor-level markers. Retune only the known markers
+  // for this villa, so separately authored furniture keeps its own pose.
+  const samePoint = (a, b) => ['x', 'y', 'z'].every(axis => Math.abs(a[axis] - b[axis]) < EPSILON)
+  const legacy = REST_SPOTS.find(item => item.id === spot.id && item.kind === spot.kind &&
+    Math.abs(item.yaw - spot.yaw) < EPSILON && samePoint(item.position, spot.position))
+  if (!legacy) return spot
+
+  const { position, yaw } = spot
+  if (spot.kind === 'lie') {
+    // The lying clip rests at y=0 and extends back from the root. Leave
+    // space between the head and the headboard, over the quilt.
+    return { ...spot, position: { x: position.x, y: position.y + .66, z: position.z + .09 } }
+  }
+
+  // The chair top is at .514 above the floor. The new clips use a .244
+  // seat with its center .089 behind the root; this chair's center is
+  // .02 behind the mounting point.
+  const forward = .089 - .02
+  const seated = { x: position.x + forward * Math.sin(yaw), y: position.y + .514 - .244,
+    z: position.z + forward * Math.cos(yaw) }
+  // Stand to the side, clear of the chair backs and the adjacent table.
+  const study = spot.id === 'chair-0'
+  const originalEntry = samePoint(legacy.entry, spot.entry) || study && samePoint({ ...legacy.entry, z: 1.36 }, spot.entry)
+  if (!originalEntry || !samePoint(spot.entry, spot.exit)) return { ...spot, position: seated }
+  const side = study ? 1.04 : position.x < 4.5 ? -.71 : .71
+  const approach = { x: position.x + side, y: position.y, z: position.z }
+  return { ...spot, position: seated, entry: approach, exit: approach }
 }
 
 function modelLayout(data) {
@@ -349,8 +380,8 @@ function createManorInteriorNavigation({ metadata, layout, origin = { x: 0, y: 0
     landings: elevator.landings.map(landing => ({ ...layoutPoint(landing), floor: landing.floor })),
     cabinZ: originZ + offset.z + (elevator.bounds.minZ + elevator.bounds.maxZ) / 2
   }
-  const restSpots = localRestSpots.map(spot => ({ ...spot, position: layoutPoint(spot.position),
-    entry: layoutPoint(spot.entry), exit: layoutPoint(spot.exit) }))
+  const restSpots = localRestSpots.map(fitVillaRestSpot).map(spot => ({ ...spot,
+    position: layoutPoint(spot.position), entry: layoutPoint(spot.entry), exit: layoutPoint(spot.exit) }))
   return { sample, sampleMove, spawn, entry, outsideEntry, floors, ramps, obstacles, restSpots, elevator: lift }
 }
 

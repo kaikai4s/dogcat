@@ -67,6 +67,70 @@ test('the indoor route follows the two stair landings up to the third floor and 
 })
 
 const assetPath = path.resolve(__dirname, '../../output/manor-courtyard-cloud-upload/courtyard-villa.glb')
+const revisedAssetPath = process.env.MANOR_COURTYARD_REVISED_GLB
+
+test('the revised GLB uses the authored door passages, terraces and lift landings when placed at any quarter turn', {
+  skip: !revisedAssetPath
+}, async () => {
+  const asset = await loadGlb(fs.readFileSync(revisedAssetPath))
+  try {
+    for (const yaw of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
+      const model = asset.clone(true)
+      model.position.set(34, .62, -17)
+      model.rotation.y = yaw
+      model.scale.setScalar(.82)
+      const interior = createCourtyardInterior({ THREE, model })
+      try {
+        const { navigation } = interior
+        const floor = model.getObjectByName('F1')
+        const world = (x, y, z) => floor.localToWorld(new THREE.Vector3(x, y, z))
+        const moved = (a, b) => navigation.sampleMove(b.x, b.z, a)
+        for (const entrance of interior.getEntrances()) {
+          assert.ok(entrance.seconds > .8)
+          assert.equal(moved(entrance.inside, entrance.threshold), null)
+          assert.equal(interior.setDoorOpen(entrance.id, true), true)
+          assert.ok(Number.isFinite(moved(entrance.inside, entrance.threshold)))
+        }
+        const landings = interior.getLiftLandings()
+        assert.deepEqual(landings.map(l => l.level), [1, 2, 3])
+        for (const landing of landings) {
+          const y = [.22, 3.82, 7.12][landing.level - 1]
+          samePoint(landing.approach, world(8.12, y, 1.525))
+          assert.ok(Number.isFinite(moved(world(7.65, y, 1.525), landing.approach)))
+          assert.equal(navigation.sample(landing.cabin.x, landing.cabin.z, null, landing.cabin.y), null)
+        }
+        for (const [door, x, y, z, axis] of [
+          ['D13', 13.22, .22, 4.30, 'x'], ['D21', 6.74, 3.82, 4.105, 'x'],
+          ['D25', 5.5, 3.82, 13.89, 'z'], ['D31', 6.02, 7.12, 9.89, 'z']
+        ]) {
+          const dx = axis === 'x' ? .56 : 0, dz = axis === 'z' ? .56 : 0
+          const from = world(x - dx, y, z - dz), to = world(x + dx, y, z + dz)
+          assert.equal(moved(from, to), null, door)
+          assert.equal(interior.getRoomDoor(from)?.id, door)
+          assert.equal(interior.interactRoomDoor(door, world(7.7, y, 1.2)), false)
+          assert.equal(interior.interactRoomDoor(door, from), true)
+          assert.equal(interior.getRoomDoor(from)?.busy, true)
+          for (let i = 0; i < 20; i++) interior.update(.06, from)
+          assert.equal(interior.getRoomDoor(from)?.open, true, door)
+          assert.ok(Number.isFinite(moved(from, to)), door)
+          if (door === 'D31') assert.equal(moved(world(7.50, y, z - .56), world(7.50, y, z + .56)), null)
+          assert.equal(interior.interactRoomDoor(door, from), true)
+          for (let i = 0; i < 20; i++) interior.update(.06, world(x, y, z))
+          assert.equal(interior.getRoomDoor(from)?.open, true, door + ' reopens for the player')
+          assert.equal(interior.interactRoomDoor(door, from), true)
+          for (let i = 0; i < 20; i++) interior.update(.06, world(7.7, y, 1.2))
+          assert.equal(moved(from, to), null, door)
+        }
+        for (const spot of navigation.restSpots) assert.ok(Number.isFinite(moved(spot.entry, spot.exit)), spot.id)
+      } finally {
+        interior.dispose()
+      }
+    }
+  } finally {
+    disposeModel(asset)
+  }
+})
+
 test('the existing cloud asset opens both doors without changing neighboring glazing or shared geometry', {
   skip: !fs.existsSync(assetPath)
 }, async () => {

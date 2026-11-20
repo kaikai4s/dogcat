@@ -4,6 +4,8 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { THREE, loadGlb, disposeModel } = require('../../miniprogram/packageManor3d/utils/model-runtime')
 const { createManorScene } = require('../../miniprogram/packageManor3d/utils/manor-scene')
+const { createCourtyardInterior } = require('../../miniprogram/packageManor3d/utils/manor-courtyard-interior')
+const { createAnimatedCharacter } = require('../fixtures/manor3dCharacter')
 
 const courtyard = 'songying_courtyard'
 const assetPath = path.resolve(__dirname, '../../output/manor-courtyard-cloud-upload/courtyard-villa.glb')
@@ -12,17 +14,13 @@ const anotherPlot = { ...plot, id: 'another', x: 42 }
 const layout = { world: { width: 200, depth: 200 }, groundLevel: 4.1,
   plots: [{ ...plot, id: 'red', x: 0, z: 0 }, plot, anotherPlot] }
 
-function mount() {
+function mount(avatar = createAnimatedCharacter(THREE).model) {
   let scene, time = 0
   const view = createManorScene({ THREE, disposeModel, renderer: {
     setSize() {}, render(next) { scene = next; scene.updateMatrixWorld() }
   } })
   view.resize(390, 700)
   view.showLandscape(new THREE.Group(), layout)
-  const avatar = new THREE.Group().add(new THREE.Mesh(new THREE.BoxGeometry(.5, 1.6, .35), new THREE.MeshBasicMaterial()))
-  avatar.children[0].name = 'Body'
-  avatar.animations = ['Idle', 'Walk', 'Run'].map(name => new THREE.AnimationClip(name, 1,
-    [new THREE.NumberKeyframeTrack('Body.rotation[x]', [0, 1], [0, 0])]))
   view.showCharacter(avatar)
   const tick = (frames = 1) => {
     for (let frame = 0; frame < frames; frame++) view.render(time += .05, .05)
@@ -135,6 +133,36 @@ test('a rotated third-floor checkpoint restores the correct building and removal
     assert.equal(view.restorePlayerPosition({ ...saved.exterior, facing }), true)
     samePosition(actor.position, outside)
     assert.equal(view.getPlayerCheckpoint().interior, undefined)
+  } finally {
+    view.dispose()
+  }
+})
+
+test('resting in a rotated courtyard leaves a walkable checkpoint beside the bed', {
+  skip: !fs.existsSync(assetPath)
+}, async () => {
+  const { view, tick, actor, floor } = mount()
+  try {
+    view.setBuildModel(courtyard, await loadGlb(fs.readFileSync(assetPath)))
+    view.setPlacedBuildings([placement(plot, 90)])
+    const { navigation } = createCourtyardInterior({ THREE, model: floor(plot.id) })
+    const bed = navigation.restSpots.find(spot => spot.kind === 'lie')
+    assert.ok(bed, 'the courtyard exposes a bed')
+    const interior = { kind: 'courtyard', plotId: plot.id }
+    assert.equal(view.restorePlayerPosition({ ...bed.entry, facing: 0, interior }), true)
+    assert.equal(view.getRestState('lie')?.spotId, bed.id)
+    assert.equal(view.interactRest('lie'), true)
+    tick(60)
+    assert.equal(view.getRestState('lie')?.label, '起身')
+    assert.equal(view.interactRest('sit'), false)
+    samePosition(actor.position, bed.position)
+    const checkpoint = view.getPlayerCheckpoint()
+    assert.deepEqual(checkpoint.interior, interior)
+    samePosition(checkpoint, bed.exit)
+    assert.equal(view.interactRest('lie'), true)
+    tick(60)
+    samePosition(actor.position, bed.exit)
+    assert.equal(view.getRestState('lie')?.label, '躺下')
   } finally {
     view.dispose()
   }

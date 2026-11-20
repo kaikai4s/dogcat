@@ -170,7 +170,8 @@ page { width: 100%; height: 100%; overflow: hidden; background: #e1eadb; }
 .manor-door-title { color: #244a3e; font-size: 13px; font-weight: 800; line-height: 1.3; }
 .manor-door-caption { color: #60756b; font-size: 11px; line-height: 1.3; }
 .manor-door-button { min-width: 88px; min-height: 38px; padding: 0 11px; flex-shrink: 0; }
-.manor-elevator-prompt { max-width: 240px; min-height: 57px; }
+.manor-elevator-prompt { max-width: 322px; min-height: 57px; }
+.manor-elevator-targets { display: flex; align-items: center; gap: 5px; }
 .manor-elevator-button { min-width: 98px; gap: 3px; }
 .manor-elevator-button text { font-size: 16px; }
 .manor-elevator-destination { color: #405b51; padding: 0 11px; font-size: 12px; font-weight: 700; }
@@ -395,7 +396,7 @@ page { width: 100%; height: 100%; overflow: hidden; background: #e1eadb; }
 .manor-character-option { flex: 1; padding: 0; border-radius: 9px; background: transparent; color: #244a3e; }
 .manor-character-selected { background: #2f6a57; color: #fff; }
 
-.manor-vehicle-panel, .manor-vehicle-progress, .manor-vehicle-console, .manor-vehicle-open {
+.manor-vehicle-panel, .manor-vehicle-progress, .manor-vehicle-console {
   box-sizing: border-box;
   position: absolute;
   z-index: 3;
@@ -408,7 +409,7 @@ page { width: 100%; height: 100%; overflow: hidden; background: #e1eadb; }
   bottom: calc(30px + env(safe-area-inset-bottom));
   transform: translateX(-50%);
 }
-.manor-vehicle-console, .manor-vehicle-open {
+.manor-vehicle-console, .manor-player-actions {
   right: 14px;
   right: calc(14px + env(safe-area-inset-right));
   bottom: 32px;
@@ -526,6 +527,28 @@ page { width: 100%; height: 100%; overflow: hidden; background: #e1eadb; }
 }
 .manor-vehicle-open .ri-arrow-up-s-line { color: #f0dec5; font-size: 15px; }
 
+.manor-player-actions {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.manor-player-action-row { display: flex; gap: 8px; }
+.manor-player-action {
+  min-width: 54px;
+  min-height: 48px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, .86);
+  border-radius: 24px;
+  background: #f6faf3;
+  box-shadow: 0 4px 14px rgba(23, 53, 46, .25);
+}
+.manor-player-jump { color: #fff; background: #2f6a57; }
+.manor-player-action[disabled] { color: #536359; background: #e3eae1; opacity: .78; }
+.manor-player-rest { display: none; }
+
 @media (orientation: landscape) {
   .manor-top-controls { top: 8px; top: calc(8px + env(safe-area-inset-top)); }
   .manor-joystick { left: 28px; left: calc(28px + env(safe-area-inset-left)); transform: none; }
@@ -533,6 +556,8 @@ page { width: 100%; height: 100%; overflow: hidden; background: #e1eadb; }
   .manor-notices { top: 56px; top: calc(56px + env(safe-area-inset-top)); flex-direction: row; flex-wrap: wrap; }
   .manor-interior-bar { top: 56px; top: calc(56px + env(safe-area-inset-top)); }
   .manor-door-prompt { bottom: 22px; bottom: calc(22px + env(safe-area-inset-bottom)); }
+  .manor-rest-prompt { display: none; }
+  .manor-player-rest { display: inline-flex; }
   .manor-vehicle-panel, .manor-vehicle-progress {
     left: auto;
     right: 14px;
@@ -547,7 +572,7 @@ page { width: 100%; height: 100%; overflow: hidden; background: #e1eadb; }
   .manor-panel { padding: 16px; gap: 7px; }
   .manor-door-prompt { padding: 8px 9px 8px 11px; }
   .manor-door-caption { display: none; }
-  .manor-elevator-prompt { max-width: 214px; }
+  .manor-elevator-prompt { max-width: 304px; }
   .manor-vehicle-console { width: 168px; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -560,4 +585,10 @@ page { width: 100%; height: 100%; overflow: hidden; background: #e1eadb; }
   .manor-sensitivity-slider { margin: 4px 0 2px; }
   .manor-menu-action { flex: 1 0 43%; border: 0; }
   .manor-menu-action + .manor-menu-action { border: 0; }
+}
+
+/* Keep the center prompts clear of the two rows of controls on phones. */
+@media (orientation: landscape) and (max-width: 900px) {
+  .manor-door-prompt { bottom: 144px; bottom: calc(144px + env(safe-area-inset-bottom)); }
+  .manor-elevator-prompt, .manor-room-door-prompt { bottom: 96px; bottom: calc(96px + env(safe-area-inset-bottom)); }
 }

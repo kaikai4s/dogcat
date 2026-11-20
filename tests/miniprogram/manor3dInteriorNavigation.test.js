@@ -65,19 +65,38 @@ test('the exported floor and ramp layout exposes both levels and continuous stai
   assert.ok(highY > lowY)
 })
 
-test('rest spots retain their furniture type, floor and clear exit positions', async () => {
-  const navigation = await revisedNavigation()
-  const bed = navigation.restSpots.find(spot => spot.kind === 'lie')
-  const chair = navigation.restSpots.find(spot => spot.id === 'chair-0')
-  assert.ok(bed && chair)
-  const bedCenter = world(5.235, 3.43, -1.84)
-  const chairCenter = world(-8.755, 2.69, 2.105)
-  assert.ok(Math.hypot(bed.position.x - bedCenter.x, bed.position.y - bedCenter.y, bed.position.z - bedCenter.z) < 1e-9)
-  assert.ok(Math.hypot(chair.position.x - chairCenter.x, chair.position.y - chairCenter.y, chair.position.z - chairCenter.z) < 1e-9)
-  assert.ok(Number.isFinite(navigation.sample(bed.entry.x, bed.entry.z, null, bed.entry.y)))
-  assert.ok(Number.isFinite(navigation.sample(chair.entry.x, chair.entry.z, null, chair.entry.y)))
-  assert.equal(navigation.sample(bed.position.x, bed.position.z, null, bed.position.y), null)
-  assert.equal(navigation.sample(chair.position.x, chair.position.z, null, chair.position.y), null)
+test('both villa layouts place the new rest poses at the furniture and keep clear floor approaches', async () => {
+  const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9,
+    actual + ' should equal ' + expected)
+  for (const navigation of [await revisedNavigation(), createManorInteriorNavigation({ metadata, origin })]) {
+    const bed = navigation.restSpots.find(spot => spot.kind === 'lie')
+    const studyChair = navigation.restSpots.find(spot => spot.id === 'chair-0')
+    const diningChairs = navigation.restSpots.filter(spot => spot.kind === 'sit' && spot.id !== 'chair-0')
+    assert.ok(bed && studyChair)
+    assert.equal(diningChairs.length, 4)
+    close(bed.position.y, world(0, 4.09).y)
+    close(studyChair.position.y, world(0, 2.96).y)
+    for (const chair of diningChairs) close(chair.position.y, world(0, .675).y)
+    close(diningChairs[0].position.z, world(0, 0, .124).z)
+    close(diningChairs[1].position.z, world(0, 0, 2.106).z)
+    for (const spot of navigation.restSpots) {
+      const { entry, exit, position } = spot
+      const approach = spot.kind === 'lie' ? { ...entry, z: entry.z + .5 }
+        : { ...entry, x: entry.x + Math.sign(entry.x - position.x) * .34 }
+      close(navigation.sampleMove(entry.x, entry.z, approach), entry.y)
+      close(navigation.sample(exit.x, exit.z, null, exit.y), exit.y)
+      assert.equal(navigation.sample(position.x, position.z, null, position.y), null)
+    }
+  }
+})
+
+test('authored pose markers from an embedded villa layout are preserved', async () => {
+  const { VILLA_LAYOUT } = await import('../../tools/manor_villa_interior/villa-layout.js')
+  const spot = { ...VILLA_LAYOUT.restSpots[0], position: { x: 5, y: 4.2, z: -2 } }
+  const navigation = createManorInteriorNavigation({ origin, layout: {
+    ...VILLA_LAYOUT, offset: EXPORT_OFFSET, restSpots: [spot]
+  } })
+  assert.deepEqual(navigation.restSpots[0].position, world(5, 4.2, -2))
 })
 
 async function revisedNavigation() {

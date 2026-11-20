@@ -3,7 +3,7 @@ const test = require('node:test')
 const { THREE } = require('../../miniprogram/packageManor3d/vendor/three-runtime')
 const { createManorVehicle } = require('../../miniprogram/packageManor3d/utils/manor-vehicle')
 
-function setup(sample = () => 0, saved) {
+function setup(sample = () => 0, saved, seatMounts = {}) {
   const scene = new THREE.Scene()
   const model = new THREE.Group()
   for (const name of ['Door_L', 'Door_R', 'Spin_FL', 'Spin_FR', 'Spin_RL', 'Spin_RR',
@@ -11,6 +11,12 @@ function setup(sample = () => 0, saved) {
     const node = new THREE.Group()
     node.name = name
     model.add(node)
+  }
+  for (const [name, point] of Object.entries(seatMounts)) {
+    const mount = new THREE.Group()
+    mount.name = name
+    mount.position.set(...point)
+    model.add(mount)
   }
   const motions = []
   const player = {
@@ -62,6 +68,23 @@ test('Copper GT reserves the selected seat and uses the matching door through bo
     vehicle.dispose()
     assert.equal(model.parent, null)
     assert.ok(wasDisposed())
+  }
+})
+
+test('the fitted front seats align each avatar root to the markers on a rotated car', () => {
+  for (const [seat, x] of [['driver', .43], ['passenger', -.43]]) {
+    const saved = { position3d: { x: 0, y: 0, z: 5 }, yaw: Math.PI / 2 }
+    const { vehicle, player, tick } = setup(() => 0, saved, {
+      Seat_FL_Anchor: [.43, 0, -.061], Seat_FR_Anchor: [-.43, 0, -.061]
+    })
+    assert.ok(vehicle.enter(seat))
+    tick(180)
+    assert.equal(vehicle.state().mode, seat)
+    assert.ok(player.position.distanceTo(new THREE.Vector3(-.061, 0, 5 - x)) < 1e-8)
+    assert.ok(vehicle.exit())
+    tick(60)
+    assert.equal(vehicle.state().mode, 'walking')
+    assert.ok(!vehicle.blocks(player.position.x, player.position.z))
   }
 })
 

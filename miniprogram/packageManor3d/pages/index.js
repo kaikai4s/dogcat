@@ -166,8 +166,10 @@ Page({
     insideCourtyard: false,
     courtyardDoorLabel: '',
     doorBusy: false,
+    roomDoor: null,
     restPrompt: null,
     restLocked: false,
+    playerActions: null,
     elevator: null,
     characterType: 'boy',
     activeCharacter: '',
@@ -367,7 +369,7 @@ Page({
     this._interiorMetadata = null
     this._interiorFailureKind = ''
     if (!this._closed) this.setData({ doorPrompt: false, insideVilla: false, insideCourtyard: false,
-      courtyardDoorLabel: '', doorBusy: false, elevator: null, interiorStatus: 'idle',
+      courtyardDoorLabel: '', doorBusy: false, roomDoor: null, elevator: null, interiorStatus: 'idle',
       interiorProgress: -1, interiorError: '', courtyardStatus: 'idle', courtyardProgress: -1, courtyardError: '',
       vehicleLoadError: '', vehicleNearby: false, vehiclePanelOpen: false, vehicleSeats: [], vehicleState: 'walking',
       vehicleStatus: '', vehicleSeatLabel: '', vehicleSpeed: 0, vehicleCanExit: false })
@@ -999,12 +1001,13 @@ Page({
     this._scene.render(this._timeSeconds || 0, dt)
     this._updateVehicleState()
     this._updateDoorState()
+    this._updateElevatorState()
+    this._updateRoomDoorState()
     this._updateRestState()
     this._savePlayerPosition()
     this._syncCommunityPosition()
     this._syncManor3dVehicle()
     if (this._communitySync) this._refreshCommunityPlayers()
-    this._updateElevatorState()
     if (this._stick) {
       const now = Date.now()
       if (now >= (this._nextMinimapUpdate || 0)) {
@@ -1037,24 +1040,65 @@ Page({
   _updateElevatorState() {
     const next = this.data.insideVilla ? this._scene?.getElevatorState?.() : null
     const previous = this.data.elevator
-    if (previous?.phase === next?.phase && previous?.targetFloor === next?.targetFloor) return
+    if (previous?.phase === next?.phase && previous?.targetFloor === next?.targetFloor &&
+        previous?.floor === next?.floor && previous?.busy === next?.busy) return
+    const floorName = floor => ['','一楼','二楼','三楼'][floor] || floor + '楼'
     this.setData({ elevator: next ? {
-      ...next, title: ELEVATOR_TITLE[next.phase], destination: next.targetFloor === 2 ? '二楼' : '一楼'
+      ...next, title: ELEVATOR_TITLE[next.phase], destination: floorName(next.targetFloor),
+      buttons: next.busy ? [] : (next.destinations || [next.targetFloor]).map(floor => ({
+        floor, label: floorName(floor), up: next.floor ? floor > next.floor : floor === 2
+      }))
     } : null })
+  },
+
+  _updateRoomDoorState() {
+    const next = this.data.insideCourtyard && !this.data.elevator && this._canUsePlayerActions()
+      ? this._scene?.getRoomDoor?.() || null : null
+    const previous = this.data.roomDoor
+    if (previous?.id === next?.id && previous?.open === next?.open && previous?.busy === next?.busy) return
+    this.setData({ roomDoor: next })
+  },
+
+  useRoomDoor(event) {
+    const id = event?.currentTarget?.dataset?.doorId
+    if (!this.data.insideCourtyard || this.data.elevator || !this._canUsePlayerActions() || typeof id !== 'string') return
+    if (this._scene?.interactRoomDoor?.(id)) this._updateRoomDoorState()
+  },
+
+  _canUsePlayerActions() {
+    const data = this.data
+    return Boolean(this._shown && !this._closed && this._scene && data.status === 'ready' && data.activeCharacter &&
+      !data.menuOpen && !data.mapMode && !data.buildMode && !this._exitPromptOpen && !data.vehiclePanelOpen &&
+      data.vehicleState === 'walking' && !data.doorBusy && !this._scene.isCourtyardDoorBusy && !data.elevator?.busy &&
+      !this._pendingPlayerPosition && data.interiorStatus !== 'loading' && data.interiorStatus !== 'drawing')
   },
 
   _updateRestState() {
     const state = this._scene?.getRestState?.()
-    const restPrompt = state ? { name: state.name, label: state.label, busy: state.busy } : null
+    const toPrompt = rest => rest ? { kind: rest.kind, name: rest.name, label: rest.label, busy: Boolean(rest.busy) } : null
+    const restPrompt = toPrompt(state)
     const restLocked = Boolean(state?.busy || state?.resting)
-    const signature = JSON.stringify([restPrompt, restLocked])
+    const playerActions = this._canUsePlayerActions() ? {
+      jump: Boolean(this._scene.canJumpPlayer?.()),
+      sit: state?.kind === 'sit' ? restPrompt : toPrompt(this._scene.getRestState?.('sit')),
+      lie: state?.kind === 'lie' ? restPrompt : toPrompt(this._scene.getRestState?.('lie'))
+    } : null
+    const signature = JSON.stringify([restPrompt, restLocked, playerActions])
     if (signature === this._restStateSignature) return
     this._restStateSignature = signature
-    this.setData({ restPrompt, restLocked })
+    this.setData({ restPrompt, restLocked, playerActions })
   },
 
-  interactRest() {
-    if (!this._shown || !this.data.restPrompt || this.data.restPrompt.busy || !this._scene?.interactRest?.()) return
+  jumpPlayer() {
+    if (!this._canUsePlayerActions() || !this._scene.canJumpPlayer?.()) return
+    if (this._scene.jumpPlayer?.()) this._updateRestState()
+  },
+
+  interactRest(event) {
+    const kind = event?.currentTarget?.dataset?.restKind
+    if (!this._canUsePlayerActions() || (kind !== undefined && kind !== 'sit' && kind !== 'lie')) return
+    const state = this._scene.getRestState?.(kind)
+    if (!state || state.busy || (kind && state.kind !== kind) || !this._scene.interactRest?.(kind)) return
     this._stopStick()
     this._resetCanvasTouches()
     if (this.data.firstPerson) {
@@ -1277,8 +1321,11 @@ Page({
     }
   },
 
-  useElevator() {
-    if (!this._shown || !this.data.insideVilla || this.data.restLocked || this.data.elevator?.busy || !this._scene?.useElevator?.()) return
+  useElevator(event) {
+    const choice = event?.currentTarget?.dataset?.floor
+    const floor = choice === undefined ? undefined : Number(choice)
+    if ((floor !== undefined && !Number.isInteger(floor)) || !this._shown || !this.data.insideVilla ||
+        this.data.restLocked || this.data.doorBusy || this.data.elevator?.busy || !this._scene?.useElevator?.(floor)) return
     this._stopStick()
     this.closeMenu()
     this._updateElevatorState()
