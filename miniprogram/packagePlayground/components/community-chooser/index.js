@@ -1,14 +1,47 @@
 const { callFunction, chooseSelectedLocation, showError } = require('../../../utils/cloud')
+
+function normalizeOccupiedCommunities(result) {
+  if (!Array.isArray(result?.communities)) return []
+  const unique = new Map()
+  for (const item of result.communities) {
+    if (!item || item.id == null || !item.community || typeof item.community !== 'object') continue
+    const id = String(item.id).trim()
+    if (!id || !String(item.community.name || '').trim() || unique.has(id)) continue
+    unique.set(id, { id, community: item.community, occupied: true })
+  }
+  return [...unique.values()]
+}
+
+function matchesQuery(item, query) {
+  const community = item?.community || {}
+  const keyword = String(query.keyword || '').toLowerCase()
+  const city = String(query.city || '').toLowerCase()
+  return (!keyword || `${community.name || ''} ${community.address || ''}`.toLowerCase().includes(keyword)) &&
+    (!city || String(community.city || '').toLowerCase().includes(city))
+}
+
+function mergeRows(directoryRows, occupiedRows, query) {
+  const directory = new Map(directoryRows.map(row => [String(row.id), row]))
+  const occupied = occupiedRows.filter(row => matchesQuery(row, query)).map(row => {
+    const existing = directory.get(String(row.id)) || {}
+    return { ...existing, ...row, occupied: true, community: { ...(existing.community || {}), ...(row.community || {}) } }
+  })
+  const occupiedIds = new Set(occupied.map(row => String(row.id)))
+  return occupied.concat(directoryRows.filter(row => !occupiedIds.has(String(row.id))))
+}
+
 Component({
-  data: { visible: false, loading: false, list: [], error: '', keyword: '', city: '', page: 1, hasMore: false, candidate: null, locating: false,
+  data: { visible: false, loading: false, list: [], error: '', keyword: '', city: '', page: 1, hasMore: false, candidate: null, locating: false, manor3d: false,
     applying: false, applyForm: null, applicationNotice: '', formError: '' },
   lifetimes: { detached() { this._lifecycle = (this._lifecycle || 0) + 1; this._request = (this._request || 0) + 1; this.rejectSelection() } },
   methods: {
-    open() {
+    open(options = {}) {
       if (this.data.applying || this.data.locating) return Promise.reject({ errMsg: 'chooseCommunity:fail busy' })
       this.rejectSelection()
       this._lifecycle = (this._lifecycle || 0) + 1
-      this.setData({ visible: true, list: [], error: '', keyword: '', city: '', candidate: null, page: 1, hasMore: false, loading: false, locating: false,
+      this._queryGeneration = (this._queryGeneration || 0) + 1
+      this._occupiedCommunities = []
+      this.setData({ visible: true, list: [], error: '', keyword: '', city: '', candidate: null, page: 1, hasMore: false, loading: false, locating: false, manor3d: options.manor3d === true,
         applying: false, applyForm: null, applicationNotice: '', formError: '' })
       const promise = new Promise((resolve, reject) => { this._resolve = resolve; this._reject = reject })
       this.load(false)
@@ -23,15 +56,29 @@ Component({
     more() { if (!this.data.loading && !this.data.applying && !this.data.applyForm && this.data.hasMore) this.load(true) },
     async load(append = false) {
       const version = (this._request || 0) + 1, page = append ? this.data.page + 1 : 1
-      if (!append) this._query = { keyword: this.data.keyword.trim(), city: this.data.city.trim() }
+      if (!append) {
+        this._query = { keyword: this.data.keyword.trim(), city: this.data.city.trim() }
+        this._queryGeneration = (this._queryGeneration || 0) + 1
+        this._occupiedCommunities = []
+      }
       const query = this._query || { keyword: '', city: '' }
+      const queryGeneration = this._queryGeneration || 0
       this._request = version
       this.setData({ loading: true, error: '', ...(append ? {} : { list: [], hasMore: false, page: 1 }) })
+      const occupiedRequest = !append && this.data.manor3d
+        ? callFunction('playground', 'listManor3dHomes', {}).then(normalizeOccupiedCommunities).catch(() => [])
+        : null
+      if (occupiedRequest) occupiedRequest.then(occupied => {
+        if (queryGeneration !== this._queryGeneration || !this.data.visible || !this.data.manor3d) return
+        this._occupiedCommunities = occupied
+        this.setData({ list: mergeRows(this.data.list.filter(row => !row.occupied), occupied, query) })
+      })
       try {
         const result = await callFunction('playground', 'listCommunities', { ...query, page })
         if (version === this._request && this.data.visible) {
-          const rows = append ? this.data.list.concat(result.list || []) : result.list || []
-          this.setData({ list: [...new Map(rows.map(row => [row.id, row])).values()], page, hasMore: !!result.hasMore })
+          const rows = append ? this.data.list.filter(row => !row.occupied).concat(result.list || []) : result.list || []
+          const uniqueRows = [...new Map(rows.map(row => [String(row.id), row])).values()]
+          this.setData({ list: mergeRows(uniqueRows, this._occupiedCommunities, query), page, hasMore: !!result.hasMore })
         }
       } catch (error) {
         if (version === this._request && this.data.visible) this.setData({ error: error.message || '小区列表暂时无法加载' })

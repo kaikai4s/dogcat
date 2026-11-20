@@ -15,6 +15,8 @@ const POSITION_PREFIX = 'dogcat-manor-3d-position:'
 const POSITION_VERSION = 1
 const POSITION_SAVE_MS = 650
 const positionWrites = new Map()
+const VEHICLE_MOVING_SYNC_MS = 900
+const VEHICLE_IDLE_SYNC_MS = 8000
 const MINIMAP_UPDATE_MS = 125
 const CAMERA_SENSITIVITY_KEY = 'manor3d-camera-sensitivity'
 const DEFAULT_CAMERA_SENSITIVITY = 50
@@ -212,6 +214,10 @@ Page({
 
   onLoad(options = {}) {
     this._positionMinimap()
+    this._vehicleSyncSeq = 0
+    this._vehicleSyncSignature = ''
+    this._nextVehicleSync = 0
+    this._firstHomePromptSceneId = ''
     this._envId = getActiveEnvId()
     this._readEntryTicket(options)
     if (!this._entrySelected) {
@@ -248,6 +254,7 @@ Page({
 
   onHide() {
     this._savePlayerPosition(true)
+    this._syncManor3dVehicle(true, false)
     this._shown = false
     this._resizeToken = null
     if (!this._closed) this.closeMenu()
@@ -490,7 +497,11 @@ Page({
           throw new Error('未取得庄园场景凭证，请重试')
         }
         this._communityScene = scene
+        this._vehicleSyncSeq = Number.isSafeInteger(scene.manor3dVehicle?.seq) ? scene.manor3dVehicle.seq : 0
+        this._vehicleSyncSignature = ''
+        this._nextVehicleSync = 0
         this._openPositionSlot(scene.sceneId, scene.playerId)
+        if (scene.manor3dVehicle) this._scene?.setVehicleRecord?.(scene.manor3dVehicle)
         const stayingHere = this._positionScene && this._positionScene === this._scene && !this._pendingPlayerPosition
         const position = scene.position3d
         const interior = scene.manor3dInterior
@@ -505,6 +516,7 @@ Page({
         this._communityPositionReady = this._communityPositionPlaced = Boolean(stayingHere || startsAtSpawn)
         this._pendingCommunityPosition = stayingHere || this._pendingPlayerPosition ? null : scene.position3d || null
         this.setData({ communityName: scene?.community?.name || '' })
+        this._loadVehicle()
         const sync = this._communitySync = new (require('../utils/manor-community-sync').ManorCommunitySync)(
           scene,
           (records, options) => {
@@ -567,6 +579,24 @@ Page({
     if (this._communityConnected && this._communityPositionReady && !this._pendingCommunityPosition &&
         this.data.communityStatus !== 'ready') this.setData({ communityStatus: 'ready', communityError: '',
       canBuildManor3d: this._communityScene?.canBuildManor3d === true })
+    this._maybePromptFirstHome()
+  },
+
+  _maybePromptFirstHome() {
+    const scene = this._communityScene
+    if (!this._entrySelected || !scene || scene.hasAnyManor3dHome !== false || !this._communityConnected ||
+        this.data.communityStatus !== 'ready' || !this.data.canBuildManor3d || !this._hasLandscape ||
+        !this._hasVilla || !this.data.activeCharacter || this._firstHomePromptSceneId === scene.sceneId) return
+    this._firstHomePromptSceneId = scene.sceneId
+    wx.showModal?.({
+      title: '打造你的第一栋房子',
+      content: `你还没有在任何 3D 小区建造房子，要在${scene.community?.name ? `「${scene.community.name}」` : '当前小区'}打造红瓦别墅吗？`,
+      confirmText: '开始打造',
+      cancelText: '稍后再说',
+      success: result => {
+        if (result?.confirm && this._communityScene === scene && this.data.canBuildManor3d) this.openBuild()
+      }
+    })
   },
 
   _placeCommunityCharacter() {
@@ -606,6 +636,41 @@ Page({
     const state = this._getCommunityPositionState()
     if (!state) return false
     this._communitySync.syncPosition(state)
+    return true
+  },
+
+  _syncManor3dVehicle(force = false, online = true) {
+    const community = this._communityScene
+    const state = this._scene?.getVehicleSyncState?.()
+    if (!community || !state || !this._communitySync || !this._communityConnected) return false
+    const moving = online && state.moving === true
+    const payload = { ...state, moving, online }
+    const signature = JSON.stringify(payload)
+    const now = Date.now()
+    const intervalDue = now >= this._nextVehicleSync
+    const changed = signature !== this._vehicleSyncSignature
+    // Frames keep replacing the pending sample, so the next sync sends the latest pose.
+    if (!force && !intervalDue) {
+      if (changed) this._pendingVehicleSync = payload
+      return false
+    }
+    this._pendingVehicleSync = null
+    this._vehicleSyncSignature = signature
+    this._nextVehicleSync = now + (moving ? VEHICLE_MOVING_SYNC_MS : VEHICLE_IDLE_SYNC_MS)
+    const seq = this._vehicleSyncSeq = (this._vehicleSyncSeq || 0) + 1
+    const { callFunction } = require('../../utils/cloud')
+    Promise.resolve(callFunction('playground', 'syncManor3dVehicle', {
+      sceneId: community.sceneId, session: community.session, seq, ...payload
+    })).then(result => {
+      if (this._communityScene !== community || this._vehicleSyncSeq !== seq) return
+      if (result?.vehicle) community.manor3dVehicle = result.vehicle
+      if (Number.isSafeInteger(result?.ackSeq)) this._vehicleSyncSeq = Math.max(this._vehicleSyncSeq, result.ackSeq)
+    }).catch(error => {
+      if (this._communityScene !== community || this._vehicleSyncSeq !== seq) return
+      this._vehicleSyncSignature = ''
+      this._nextVehicleSync = Date.now() + 2000
+      console.warn('[manor3d] 车辆位置同步失败', error?.message)
+    })
     return true
   },
 
@@ -764,6 +829,7 @@ Page({
         this.setData({ villaStatus: 'ready' })
         this._refreshBuild()
         this._updateMinimapPlayer()
+        this._maybePromptFirstHome()
         await this._loadVillaInteriorMetadata(session)
       }
     } catch (error) {
@@ -799,6 +865,7 @@ Page({
         this._restorePlayerPosition()
         this._applyPendingCommunityPosition()
         this._updateMinimapPlayer()
+        this._maybePromptFirstHome()
         try { wx.setStorageSync(CHARACTER_KEY, type) } catch (_) {}
       }
     } catch (error) {
@@ -849,10 +916,13 @@ Page({
   async _loadVehicle() {
     if (!this._shown || this._closed || !this._hasLandscape || this._hasVehicle || this._vehicleSession ||
         this.data.vehicleLoadError || !this._scene?.showVehicle) return
+    const vehicle = this._communityScene?.manor3dVehicle
     const session = { assets: createCloudAssets({ wx, envId: this._envId }) }
     this._vehicleSession = session
     try {
-      const attached = await this._attach(session, 'car', null, () => {}, model => this._scene.showVehicle(model))
+      const attached = await this._attach(session, 'car', null, () => {}, model => this._entrySelected
+        ? this._scene.setVehicleModel(model, this._communityScene?.manor3dVehicle || vehicle)
+        : this._scene.showVehicle(model, vehicle))
       if (attached && this._isCurrent(session)) {
         this._hasVehicle = true
         this._updateVehicleState()
@@ -932,6 +1002,7 @@ Page({
     this._updateRestState()
     this._savePlayerPosition()
     this._syncCommunityPosition()
+    this._syncManor3dVehicle()
     if (this._communitySync) this._refreshCommunityPlayers()
     this._updateElevatorState()
     if (this._stick) {
@@ -1364,9 +1435,17 @@ Page({
       })
       if (!current()) return
       if (!result?.record?.id) throw new Error('建筑保存结果暂不可用，请重试')
+      if (result.vehicle && this._communityScene) {
+        this._communityScene.manor3dVehicle = result.vehicle
+        this._vehicleSyncSeq = Number.isSafeInteger(result.vehicle.seq) ? result.vehicle.seq : 0
+        this._vehicleSyncSignature = ''
+        this._nextVehicleSync = 0
+        this._scene?.setVehicleRecord?.(result.vehicle)
+      }
       sync.merge(result.record)
       sync.applyRecords([result.record], { replace: false })
       this._endBuild()
+      this._loadVehicle()
       wx.showToast?.({ title: '建造成功', icon: 'success' })
     } catch (error) {
       if (!current()) return

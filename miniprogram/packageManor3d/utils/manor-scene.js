@@ -279,6 +279,8 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   let playerMoved = false;
   let restInteraction = null;
   let vehicle;
+  let vehicleModel;
+  let pendingVehicleRecord = null;
   let grass = [];
   let width = 1;
   let height = 1;
@@ -305,8 +307,11 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   const sharedNodes = new Map();
   const remoteCharacterModels = new Map();
   const remoteAvatars = new Set();
+  const sharedVehicleRecords = new Map();
+  const sharedVehicles = new Set();
   const movingAvatars = new Set();
   const animatedAvatars = new Set();
+  let sharedOwnPlayerId = '';
   let dirty = true;
   let disposed = false;
 
@@ -368,6 +373,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
       throw error;
     }
     if (template) setRemoteCharacterModel(type, model, template);
+    if (!vehicle && vehicleModel && pendingVehicleRecord) createLocalVehicle(pendingVehicleRecord);
     if (first && !mapView) focusCharacter();
     else if (view === 'player') {
       fitAvatar();
@@ -381,15 +387,52 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     else player.setInput(x, y);
   }
 
-  function showVehicle(model) {
-    if (disposed || !navigation || !player || vehicle || model.parent) return false;
+  function showVehicle(model, saved) {
+    if (disposed || !landscape || !model || model.parent || !navigation || !player || vehicle) return false;
+    if (vehicleModel) disposeModel(vehicleModel);
+    vehicleModel = model.clone(true);
+    refreshSharedVehicles();
+    return createLocalVehicle(saved, model);
+  }
+
+  function setVehicleModel(model, saved) {
+    if (disposed || !landscape || !model || model.parent) return false;
+    if (vehicleModel && vehicleModel !== model) {
+      for (const id of sharedVehicleRecords.keys()) removeSharedRecord(id);
+      disposeModel(vehicleModel);
+    }
+    vehicleModel = model;
+    if (saved) pendingVehicleRecord = saved;
+    if (!vehicle && pendingVehicleRecord) createLocalVehicle(pendingVehicleRecord);
+    refreshSharedVehicles();
+    flagShadows();
+    return true;
+  }
+
+  function createLocalVehicle(saved, model = vehicleModel?.clone(true)) {
+    if (disposed || !navigation || !player?.position || vehicle || !vehicleModel) {
+      if (saved) pendingVehicleRecord = saved;
+      return false;
+    }
     const spawn = navigation.spawn(outdoorBounds);
     if (!spawn) throw new Error('找不到可到达的停车区');
     const sample = (x, z) => navigation.sample(x, z, outdoorBounds);
-    vehicle = createManorVehicle({ THREE, model, scene, player, spawn, sample, disposeModel, onMove: flagShadows });
+    vehicle = createManorVehicle({ THREE, model, scene, player, spawn, sample, saved,
+      disposeModel: () => {}, onMove: flagShadows });
+    pendingVehicleRecord = null;
     if (!isInsideBuilding() && !courtyardPassage) player.avoidVilla();
     flagShadows();
     return true;
+  }
+
+  function setVehicleRecord(record) {
+    if (disposed || !record) return false;
+    pendingVehicleRecord = record;
+    return vehicle ? vehicle.restore(record) : createLocalVehicle(record);
+  }
+
+  function getVehicleSyncState() {
+    return vehicle?.syncState() || null;
   }
 
   function outdoorPlayerNavigation(nextNavigation) {
@@ -472,6 +515,8 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   function clearCommunityView() {
     if (!communityView) return;
     for (const id of sharedNodes.keys()) removeSharedRecord(id);
+    sharedVehicleRecords.clear();
+    sharedOwnPlayerId = '';
     scene.remove(communityView);
     communityView = null;
     if (sharedAvatarResources) {
@@ -488,6 +533,9 @@ function createManorScene({ THREE, renderer, disposeModel }) {
       movingAvatars.delete(node);
       remoteAvatars.delete(node);
       removeAvatarSkin(node);
+      node.group.removeFromParent();
+    } else if (node.kind === 'manor3dVehicle') {
+      sharedVehicles.delete(node);
       node.group.removeFromParent();
     } else disposeSharedNode(node);
     sharedNodes.delete(id);
@@ -760,8 +808,56 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     }));
   }
 
+  function applySharedVehicle(record, current = sharedNodes.get(record.id)) {
+    const owned = record.mine === true || (!!sharedOwnPlayerId && record.ownerId === sharedOwnPlayerId);
+    const position = record.position3d;
+    if (owned || !vehicleModel || !navigation || !position || ![position.x, position.z, record.yaw].every(finite) ||
+        Math.abs(position.x) > config.width / 2 + 2 || Math.abs(position.z) > config.depth / 2 + 2) {
+      if (current?.kind === 'manor3dVehicle') removeSharedRecord(record.id);
+      return;
+    }
+    const ground = navigation.sample(position.x, position.z, outdoorBounds);
+    const y = finite(ground) ? ground : finite(position.y) ? position.y : config.ground;
+    if (current?.kind === 'manor3dVehicle') {
+      current.target.set(position.x, y, position.z);
+      current.targetYaw = record.yaw;
+      current.signature = JSON.stringify([position.x, y, position.z, record.yaw]);
+      return;
+    }
+    if (current) removeSharedRecord(record.id);
+    const model = vehicleModel.clone(true);
+    model.traverse(node => {
+      if (node.isMesh) node.castShadow = node.receiveShadow = true;
+    });
+    const group = new THREE.Group();
+    group.name = 'Shared Copper GT ' + record.id;
+    group.position.set(position.x, y, position.z);
+    group.rotation.y = record.yaw;
+    group.add(model);
+    communityView.add(group);
+    const node = { kind: 'manor3dVehicle', group, target: new THREE.Vector3(position.x, y, position.z),
+      targetYaw: record.yaw, signature: JSON.stringify([position.x, y, position.z, record.yaw]) };
+    sharedVehicles.add(node);
+    sharedNodes.set(record.id, node);
+  }
+
+  function refreshSharedVehicles() {
+    for (const record of sharedVehicleRecords.values()) applySharedVehicle(record);
+  }
+
+  function updateSharedVehicles(dt) {
+    if (dt <= 0) return;
+    const amount = 1 - Math.exp(-8 * dt);
+    for (const node of sharedVehicles) {
+      node.group.position.lerp(node.target, amount);
+      const angle = node.targetYaw - node.group.rotation.y;
+      node.group.rotation.y += Math.atan2(Math.sin(angle), Math.cos(angle)) * amount;
+    }
+  }
+
   function setSharedRecords(records, ownPlayerId, { replace = true } = {}) {
     if (disposed || !config || !Array.isArray(records)) return;
+    sharedOwnPlayerId = ownPlayerId || '';
     if (!communityView) {
       communityView = new THREE.Group();
       communityView.name = 'Shared community scene';
@@ -773,6 +869,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
       received?.add(record.id);
       const current = sharedNodes.get(record.id);
       if (record.deleted) {
+        sharedVehicleRecords.delete(record.id);
         removeSharedRecord(record.id);
         continue;
       }
@@ -795,10 +892,19 @@ function createManorScene({ THREE, renderer, disposeModel }) {
         sharedNodes.set(record.id, { kind: 'plot', signature, group });
       } else if (record.kind === 'presence') {
         applySharedPresence(record, ownPlayerId, current);
+      } else if (record.kind === 'manor3dVehicle') {
+        sharedVehicleRecords.set(record.id, record);
+        applySharedVehicle(record, current);
       }
     }
     if (received) for (const id of sharedNodes.keys()) {
       if (!received.has(id)) removeSharedRecord(id);
+    }
+    if (received) for (const id of sharedVehicleRecords.keys()) {
+      if (!received.has(id)) {
+        sharedVehicleRecords.delete(id);
+        removeSharedRecord(id);
+      }
     }
   }
 
@@ -1750,6 +1856,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     if (view === 'player' && dt > 0) trackPlayer(false, dt);
     if (dirty || eyeView) updateCamera(dt);
     updateRemoteAvatars(dt);
+    updateSharedVehicles(dt);
     renderer.render(scene, camera);
   }
 
@@ -1819,6 +1926,8 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     removeVilla();
     clearCommunityView();
     disposeRemoteCharacterModels();
+    if (vehicleModel) disposeModel(vehicleModel);
+    vehicleModel = null;
     if (landscape) disposeModel(landscape);
     landscape = config = plannedPlot = navigation = null;
     interior = interiorNavigation = interiorElevator = interiorMetadata = null;
@@ -1836,7 +1945,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     focusVilla, focusCharacter, setFirstPerson, render, dispose,
     getBuildPlots, setBuildModel, hasBuildModel: buildings.hasModel, setBuildPreview, pickBuildGround, setPlacedBuildings,
     getCourtyardDoor, interactCourtyardDoor,
-    showVehicle, getVehicleState, enterVehicle, exitVehicle,
+    showVehicle, setVehicleModel, setVehicleRecord, getVehicleSyncState, getVehicleState, enterVehicle, exitVehicle,
     brakeVehicle: () => vehicle?.brake() || false,
     clearVehicleInput: () => vehicle?.clearInput(),
     get isInsideCourtyard() { return Boolean(activeCourtyard) },

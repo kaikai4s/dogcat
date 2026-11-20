@@ -38,25 +38,32 @@ function footprint(sample, x, z, yaw) {
   return high - low > .62 ? null : total / 9
 }
 
+function validParking(sample, candidate) {
+  if (![candidate?.x, candidate?.z, candidate?.yaw].every(Number.isFinite)) return null
+  const y = footprint(sample, candidate.x, candidate.z, candidate.yaw)
+  if (y === null) return null
+  const sidePoints = [-1, 1].map(side => worldPoint(candidate, candidate.yaw, side * DOOR_STEP, -.78))
+  if (!sidePoints.every(point => {
+    const ground = sample(point.x, point.z)
+    return Number.isFinite(ground) && Math.abs(ground - y) < .42
+  })) return null
+  return { x: candidate.x, y, z: candidate.z, yaw: candidate.yaw }
+}
+
 function parkingSpot(sample, spawn) {
   for (const radius of [5, 6, 8, 11, 15, 22]) {
     for (let i = 0; i < 16; i++) {
       const angle = i * Math.PI / 8
       const yaw = angle + Math.PI / 2
       const { x, z } = worldPoint(spawn, angle, 0, radius)
-      const y = footprint(sample, x, z, yaw)
-      if (y === null) continue
-      const sidePoints = [-1, 1].map(side => worldPoint({ x, z }, yaw, side * DOOR_STEP, -.78))
-      if (sidePoints.every(point => {
-        const ground = sample(point.x, point.z)
-        return Number.isFinite(ground) && Math.abs(ground - y) < .42
-      })) return { x, y, z, yaw }
+      const parked = validParking(sample, { x, z, yaw })
+      if (parked) return parked
     }
   }
   return null
 }
 
-function createManorVehicle({ THREE, model, scene, player, sample, spawn, disposeModel, onMove }) {
+function createManorVehicle({ THREE, model, scene, player, sample, spawn, saved, disposeModel, onMove }) {
   const doors = { L: model.getObjectByName('Door_L'), R: model.getObjectByName('Door_R') }
   const wheel = model.getObjectByName('Steering_Wheel')
   const steering = ['Steer_FL', 'Steer_FR'].map(name => model.getObjectByName(name))
@@ -64,7 +71,11 @@ function createManorVehicle({ THREE, model, scene, player, sample, spawn, dispos
   if (!doors.L || !doors.R || !wheel || [...steering, ...tires].some(node => !node)) {
     throw new Error('Copper GT 缺少车门、车轮或方向盘节点')
   }
-  const parked = parkingSpot(sample, spawn)
+  const parked = validParking(sample, {
+    x: saved?.position3d?.x,
+    z: saved?.position3d?.z,
+    yaw: saved?.yaw
+  }) || parkingSpot(sample, spawn)
   if (!parked) throw new Error('附近没有适合停放 Copper GT 的位置')
 
   const anchor = new THREE.Group()
@@ -314,6 +325,30 @@ function createManorVehicle({ THREE, model, scene, player, sample, spawn, dispos
     return { ...p, facing: anchor.rotation.y }
   }
 
+  function syncState() {
+    return {
+      position3d: { x: anchor.position.x, y: anchor.position.y, z: anchor.position.z },
+      yaw: anchor.rotation.y,
+      moving: Math.abs(speed) > .04
+    }
+  }
+
+  function restore(record) {
+    if (busy()) return false
+    const parked = validParking(sample, {
+      x: record?.position3d?.x,
+      z: record?.position3d?.z,
+      yaw: record?.yaw
+    })
+    if (!parked) return false
+    speed = inputX = inputY = 0
+    braking = false
+    anchor.position.set(parked.x, parked.y, parked.z)
+    anchor.rotation.y = parked.yaw
+    onMove()
+    return true
+  }
+
   function clearInput() {
     inputX = inputY = 0
     speed = 0
@@ -326,7 +361,8 @@ function createManorVehicle({ THREE, model, scene, player, sample, spawn, dispos
     disposeModel(model)
   }
 
-  return { blocks, busy, enter, exit, setInput, brake, update, state, viewpoint, checkpoint, clearInput, dispose }
+  return { blocks, busy, enter, exit, setInput, brake, update, state, viewpoint, checkpoint, syncState,
+    restore, clearInput, dispose }
 }
 
 module.exports = { createManorVehicle }

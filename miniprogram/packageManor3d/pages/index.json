@@ -1,6 +1,6 @@
 {
   "navigationStyle": "custom",
-  "pageOrientation": "auto",
+  "pageOrientation": "landscape",
   "backgroundColor": "#e1eadb",
   "disableScroll": true
 }

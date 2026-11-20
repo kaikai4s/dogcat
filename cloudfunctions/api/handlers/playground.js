@@ -16,8 +16,10 @@ module.exports = function createHandler(context) {
 
   return async function playground(openid, action, data = {}) {
     if (action === 'syncManor3d') return shared.syncManor3d(openid, data)
+    if (action === 'syncManor3dVehicle') return shared.syncManor3dVehicle(openid, data)
     if (action === 'getScene' && data.manor3d === true) return shared.snapshot(openid, data)
     const user = await getUser(openid)
+    if (action === 'listManor3dHomes') return shared.listManor3dHomes(openid, user)
     if (action === 'listUserTitles') return context.getUserTitleState(user)
     if (action === 'equipUserTitle') {
       const { record, ...result } = await context.equipUserTitle(user, data.titleId)

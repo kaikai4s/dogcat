@@ -29,6 +29,19 @@ module.exports = function createCommunities({ db, normalizeCityName = value => S
     if (!selectable(row)) throw new Error('小区尚未启用或已停用，请重新选择')
     return fromManaged(row)
   }
+  async function resolveIds(ids) {
+    const wanted = new Set((ids || []).map(String).filter(Boolean))
+    if (!wanted.size) return new Map()
+    const rows = await readDocuments(db, db.command, 'platform_configs', { key: 'service_community', enabled: true }, 1001)
+    if (rows.length > 1000) throw new Error('小区较多，请联系平台分城市查询')
+    const resolved = new Map()
+    for (const row of rows) {
+      if (!selectable(row)) continue
+      const community = fromManaged(row), id = world.communityId({ residentialCommunity: community })
+      if (wanted.has(id)) resolved.set(id, community)
+    }
+    return resolved
+  }
   async function entry(value, user, store = db) {
     if (!value?.serviceCommunityId) return { community: normalize(value), retired: false }
     const id = String(value.serviceCommunityId)
@@ -114,5 +127,5 @@ module.exports = function createCommunities({ db, normalizeCityName = value => S
     const page = Math.max(1, Math.floor(Number(data.page) || 1)), pageSize = 20
     return { list: items.slice((page - 1) * pageSize, page * pageSize), hasMore: page * pageSize < items.length, page }
   }
-  return { list, info, resolve, entry }
+  return { list, info, resolve, resolveIds, entry }
 }

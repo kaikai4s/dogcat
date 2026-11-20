@@ -15,8 +15,9 @@ const BUILDINGS = new Map([
 const PLOTS = new Map(require('./manor3d-building-plots.json').map(([id, x, z, width, depth]) => [id, { x, z, width, depth }]))
 
 const soloSceneId = openid => 'solo_' + world.hash(openid)
-const canBuild = (openid, user, sceneId, retired = false) => sceneId === soloSceneId(openid) ||
-  (!retired && !!sceneId && sceneId === world.communityId(user || {}))
+const canBuild = (openid, actor, sceneId) => actor?.manor3dSession === true && (
+  sceneId === soloSceneId(openid) ||
+  (!!sceneId && actor.communityId === sceneId && actor.manor3dCommunityRetired !== true))
 
 function checkFootprint({ buildingId, plotId, x, z, rotation }) {
   const building = BUILDINGS.get(buildingId), plot = PLOTS.get(plotId)
@@ -42,7 +43,6 @@ function publicBuilding(row) {
 
 function create(context, { check, publish, project }) {
   const { db } = context
-  const communities = require('../playground-communities')(context)
   return async function place(openid, user, data) {
     if (typeof data?.session !== 'string' || !data.session || typeof data.sceneId !== 'string' || !data.sceneId) {
       throw new Error('场景已切换，请重新进入')
@@ -51,12 +51,7 @@ function create(context, { check, publish, project }) {
     const row = await transaction(db, async tx => {
       const actor = await check(openid, data, tx)
       const communityId = actor.communityId
-      if (communityId !== soloSceneId(openid)) {
-        const currentUser = await world.readDocument(tx, 'users', user._id, '读取庄园归属')
-        if (!canBuild(openid, currentUser, communityId)) throw new Error('只能在自己的庄园或所属小区建造')
-        const entry = await communities.entry(currentUser.residentialCommunity, currentUser, tx)
-        if (entry.retired) throw new Error('该小区已停止建造')
-      }
+      if (!canBuild(openid, actor, communityId)) throw new Error('只能在当前已进入的 3D 小区建造')
       // Deterministic document ID serializes claims to a tile in the same scene.
       const id = 'manor3d_building_' + world.hash(communityId + '|' + placement.plotId)
       const existing = await world.readDocument(tx, COLLECTION, id, '读取 3D 地块占用', true)
@@ -67,6 +62,7 @@ function create(context, { check, publish, project }) {
       }
       const saved = {
         kind: KIND, communityId, ownerOpenid: openid, ...placement,
+        community: actor.manor3dCommunity || null,
         revision: context.nowMs ? context.nowMs() : Date.now()
       }
       await tx.collection(COLLECTION).doc(id).set({ data: saved })

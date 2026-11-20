@@ -30,6 +30,53 @@ test('community selection displays real counts and returns public community iden
   assert.equal(result.district, '浦东')
   assert.equal(component.data.visible, false)
 })
+
+test('3D chooser pins owned manor communities and marks them as occupied', async () => {
+  const home = { id: 'scene-owned', community: { name: '自己的小区', city: '上海', address: '上海 自己的小区' }, occupied: true }
+  const f = setup(action => action === 'listManor3dHomes'
+    ? { communities: [home, { ...home }] }
+    : { list: [
+      { id: 'scene-other', community: { name: '其他小区', city: '上海' }, residentCount: 12 },
+      { id: 'scene-owned', community: { name: '旧名称' }, residentCount: 4 }
+    ], hasMore: false })
+  const selection = f.component.open({ manor3d: true })
+  await flush()
+  assert.equal(f.calls.filter(call => call.action === 'listManor3dHomes').length, 1)
+  assert.equal(f.component.data.list[0].id, 'scene-owned')
+  assert.equal(f.component.data.list[0].occupied, true)
+  assert.equal(f.component.data.list[0].community.name, '自己的小区')
+  assert.deepEqual([...f.component.data.list.map(row => row.id)], ['scene-owned', 'scene-other'])
+  const template = fs.readFileSync(path.join(__dirname, '../../miniprogram/packagePlayground/components/community-chooser/index.wxml'), 'utf8')
+  assert.match(template, /item\.occupied \? '已入驻'/)
+  f.component.select({ currentTarget: { dataset: { id: 'scene-owned' } } })
+  assert.equal(JSON.stringify(await selection), JSON.stringify(home.community))
+})
+
+test('3D occupancy lookup failure does not prevent normal selection', async () => {
+  const community = { name: '普通小区', city: '杭州' }
+  const f = setup(action => {
+    if (action === 'listManor3dHomes') throw new Error('暂不可用')
+    return { list: [{ id: 'regular', community }], hasMore: false }
+  })
+  const selection = f.component.open({ manor3d: true })
+  await flush()
+  assert.equal(f.component.data.list[0].id, 'regular')
+  f.component.select({ currentTarget: { dataset: { id: 'regular' } } })
+  assert.deepEqual(await selection, community)
+})
+
+test('ordinary 2D chooser does not request or alter 3D occupancy data', async () => {
+  const community = { name: '2D小区', city: '杭州' }
+  const f = setup(action => action === 'listManor3dHomes'
+    ? { communities: [{ id: 'owned', community: { name: '3D小区' }, occupied: true }] }
+    : { list: [{ id: '2d', community }], hasMore: false })
+  const selection = f.component.open()
+  await flush()
+  assert.equal(f.calls.some(call => call.action === 'listManor3dHomes'), false)
+  assert.deepEqual([...f.component.data.list.map(row => row.id)], ['2d'])
+  f.component.select({ currentTarget: { dataset: { id: '2d' } } })
+  assert.deepEqual(await selection, community)
+})
 test('map selection creates only a public-name application and cannot select an unreviewed community', async () => {
   let fail = true
   const { component, errors, calls } = setup((action) => {

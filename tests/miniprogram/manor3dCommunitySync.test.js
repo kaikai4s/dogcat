@@ -128,6 +128,23 @@ test('watch publishes only updated peers, discards older versions, and expires d
   f.sync.stop()
 })
 
+test('the snapshot and live watcher publish personal manor vehicle records', async () => {
+  const vehicle = { id: 'car-neighbor', kind: 'manor3dVehicle', ownerId: 'neighbor',
+    position3d: { x: 12, y: 4, z: 18 }, yaw: .4, seq: 2, version: { epoch: 1, seq: 2 } }
+  const f = fixture(action => action === 'getScene' ? { records: [vehicle], serverTime: 100000 }
+    : { accepted: true, ackSeq: 1 })
+  await f.sync.start()
+  assert.equal(f.applied[0].records[0].kind, 'manor3dVehicle')
+  assert.equal(f.applied[0].records[0].mine, false)
+  const moved = { ...vehicle, position3d: { x: 22, y: 4, z: 28 }, version: { epoch: 1, seq: 3 } }
+  f.watch({ docs: [{ records: { [moved.id]: moved } }] })
+  await f.advance(32)
+  assert.equal(f.applied[1].replace, false)
+  assert.deepEqual(f.applied[1].records[0].position3d, moved.position3d)
+  assert.equal(f.applied[1].records[0].mine, false)
+  f.sync.stop()
+})
+
 test('backgrounding while a movement request is in flight ignores its late failure', async () => {
   let rejectPosition
   const position = new Promise((resolve, reject) => { rejectPosition = reject })

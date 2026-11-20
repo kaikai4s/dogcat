@@ -16,7 +16,7 @@
       <scroll-view scroll-y class="community-list" bindscrolltolower="more">
         <view class="list-error" wx:if="{{error}}">{{error}}<button bindtap="search">重新加载</button></view>
         <view class="community-row" wx:for="{{list}}" wx:key="id" data-id="{{item.id}}" bindtap="select" hover-class="community-row-pressed">
-          <view class="community-copy"><view class="name">{{item.community.name}}</view><view class="address">{{item.community.address || '邻里共享宠物庄园'}}</view><text class="community-tag {{item.mine ? 'mine' : ''}}">{{item.mine ? '常住小区' : item.maintained ? '已维护' : '历史庄园'}}</text></view>
+          <view class="community-copy"><view class="name">{{item.community.name}}</view><view class="address">{{item.community.address || '邻里共享宠物庄园'}}</view><text class="community-tag {{item.occupied ? 'occupied' : item.mine ? 'mine' : ''}}">{{item.occupied ? '已入驻' : item.mine ? '常住小区' : item.maintained ? '已维护' : '历史庄园'}}</text></view>
           <view class="residents"><text class="count">{{item.residentCount}}</text><view>人已入住</view></view><text class="row-arrow">›</text>
         </view>
         <view class="skeleton-list" wx:if="{{loading && !list.length}}" aria-label="正在加载小区">

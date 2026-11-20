@@ -13,6 +13,7 @@ function fixture({ navigationThrows = false, storageThrows = false } = {}) {
   let definition
   let resolveSelection, rejectSelection
   let chooserCalls = 0
+  let chooserOptions
   const storage = new Map()
   const removed = []
   const navigations = []
@@ -43,8 +44,9 @@ function fixture({ navigationThrows = false, storageThrows = false } = {}) {
     selectComponent(id) {
       assert.equal(id, '#communityChooser')
       return {
-        open() {
+        open(options) {
           chooserCalls++
+          chooserOptions = options
           return new Promise((resolve, reject) => {
             resolveSelection = resolve
             rejectSelection = reject
@@ -63,6 +65,7 @@ function fixture({ navigationThrows = false, storageThrows = false } = {}) {
     navigations,
     errors,
     chooserCalls: () => chooserCalls,
+    chooserOptions: () => chooserOptions,
     resolveSelection: value => resolveSelection(value),
     rejectSelection: error => rejectSelection(error)
   }
@@ -77,6 +80,7 @@ test('a community selection is passed through a short one-time key without savin
   }
   const entering = f.page.chooseCommunity()
   assert.equal(f.chooserCalls(), 1)
+  assert.equal(f.chooserOptions().manor3d, true)
   f.resolveSelection(community)
   await entering
 

@@ -17,7 +17,8 @@ function samePosition(a, b) {
 }
 
 function relevant(record) {
-  return record && typeof record.id === 'string' && ['presence', 'manor3dPresence', 'plot', 'manor3dBuilding'].includes(record.kind)
+  return record && typeof record.id === 'string' &&
+    ['presence', 'manor3dPresence', 'plot', 'manor3dBuilding', 'manor3dVehicle'].includes(record.kind)
 }
 
 function stalePeer(record, now) {

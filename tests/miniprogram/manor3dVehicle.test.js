@@ -3,7 +3,7 @@ const test = require('node:test')
 const { THREE } = require('../../miniprogram/packageManor3d/vendor/three-runtime')
 const { createManorVehicle } = require('../../miniprogram/packageManor3d/utils/manor-vehicle')
 
-function setup(sample = () => 0) {
+function setup(sample = () => 0, saved) {
   const scene = new THREE.Scene()
   const model = new THREE.Group()
   for (const name of ['Door_L', 'Door_R', 'Spin_FL', 'Spin_FR', 'Spin_RL', 'Spin_RR',
@@ -24,7 +24,7 @@ function setup(sample = () => 0) {
   }
   let disposed
   const vehicle = createManorVehicle({
-    THREE, model, scene, player, sample, spawn: { x: 0, y: 0, z: 0 },
+    THREE, model, scene, player, sample, spawn: { x: 0, y: 0, z: 0 }, saved,
     disposeModel: value => { disposed = value }, onMove() {}
   })
   const node = name => model.getObjectByName(name)
@@ -85,4 +85,26 @@ test('driver can steer and brake while the vehicle footprint stops at unwalkable
   tick(180)
   assert.equal(vehicle.state().speed, 0)
   assert.ok(anchor.position.x > start.x + 2 && anchor.position.x < 10)
+})
+
+test('the owner vehicle restores its saved coordinates and reports a syncable pose', () => {
+  const saved = { position3d: { x: 42, y: 18, z: -36 }, yaw: 1.25 }
+  const { vehicle, model } = setup(() => 4.1, saved)
+  const anchor = model.parent
+  let state = vehicle.syncState()
+  assert.equal(state.position3d.x, 42)
+  assert.ok(Math.abs(state.position3d.y - 4.1) < 1e-9)
+  assert.equal(state.position3d.z, -36)
+  assert.equal(state.yaw, 1.25)
+  assert.equal(state.moving, false)
+
+  assert.equal(vehicle.restore({ position3d: { x: 60, y: 2, z: -20 }, yaw: -0.5 }), true)
+  state = vehicle.syncState()
+  assert.equal(state.position3d.x, 60)
+  assert.ok(Math.abs(state.position3d.y - 4.1) < 1e-9)
+  assert.equal(state.position3d.z, -20)
+  assert.equal(state.yaw, -0.5)
+  assert.equal(state.moving, false)
+  assert.equal(anchor.position.x, 60)
+  vehicle.dispose()
 })

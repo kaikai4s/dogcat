@@ -40,7 +40,7 @@ Page({
     const generation = this._openingGeneration = (this._openingGeneration || 0) + 1
     this.setData({ opening: true, error: '' })
     try {
-      const community = await this.selectComponent('#communityChooser').open()
+      const community = await this.selectComponent('#communityChooser').open({ manor3d: true })
       if (!this._alive || generation !== this._openingGeneration) return
       this.openManor(copyCommunity(community))
     } catch (error) {

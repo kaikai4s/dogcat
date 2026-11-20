@@ -36,6 +36,7 @@ button[disabled] { opacity: .55; }
 .address { margin-top: 6rpx; font-size: 22rpx; color: #778471; line-height: 1.6; word-break: break-all; }
 .community-tag { display: inline-block; font-size: 19rpx; color: #73816f; background: #eef1e8; border-radius: 6rpx; margin-top: 10rpx; padding: 3rpx 10rpx; }
 .community-tag.mine { color: #3c7046; background: #e2efdf; }
+.community-tag.occupied { color: #17615a; background: #dff1eb; }
 .residents { flex-shrink: 0; text-align: right; color: #56774b; }
 .count { font-size: 34rpx; font-weight: 700; }
 .residents view { margin-top: 3rpx; font-size: 20rpx; }

@@ -50,6 +50,17 @@ function makeCharacter() {
   return { model, body }
 }
 
+function makeCar() {
+  const model = new THREE.Group()
+  for (const name of ['Door_L', 'Door_R', 'Spin_FL', 'Spin_FR', 'Spin_RL', 'Spin_RR',
+    'Steer_FL', 'Steer_FR', 'Steering_Wheel']) {
+    const node = new THREE.Group()
+    node.name = name
+    model.add(node)
+  }
+  return model
+}
+
 test('running advances the avatar and camera faster, and replacing it leaves only one model at the same position', () => {
   const { view, frames, disposed } = createFixture()
   view.showLandscape(new THREE.Group(), layout)
@@ -139,6 +150,51 @@ test('shared 2D plots keep trees without rendering lot lines, paving or substitu
     ['Shared plot detail tree'])
   assert.equal(scene.getObjectByName('Shared plot over-stream'), undefined)
   assert.equal(villa.parent.parent, scene)
+  view.dispose()
+})
+
+test('shared Copper GT records render nearby peer cars and never create a second owned display car', () => {
+  const { view } = createFixture()
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 4), new THREE.MeshBasicMaterial())
+  const model = new THREE.Group().add(mesh)
+  const landscape = new THREE.Group()
+  view.showLandscape(landscape, layout)
+  view.setVehicleModel(model)
+  const peer = { id: 'peer-car', kind: 'manor3dVehicle', ownerId: 'neighbor',
+    position3d: { x: 28, y: 4.1, z: 80 }, yaw: .7 }
+  const own = { ...peer, id: 'own-car', ownerId: 'viewer', position3d: { x: 40, y: 4.1, z: 80 } }
+  view.setSharedRecords([peer, own], 'viewer')
+  const sceneRoot = landscape.parent
+  assert.equal(view.getVehicleSyncState(), null)
+  assert.ok(model.parent === null)
+  view.render(.1, .05)
+  const rendered = sceneRoot.getObjectByName('Shared Copper GT peer-car')
+  assert.ok(rendered)
+  assert.equal(sceneRoot.getObjectByName('Shared Copper GT own-car'), undefined)
+  const x = rendered.position.x
+  const updated = { ...peer, position3d: { x: 32, y: 4.1, z: 80 }, yaw: 1.1 }
+  view.setSharedRecords([updated], 'viewer', { replace: false })
+  view.render(.15, .05)
+  assert.ok(rendered.position.x > x && rendered.position.x < 32)
+  view.setSharedRecords([{ id: 'peer-car', deleted: true }], 'viewer', { replace: false })
+  assert.equal(rendered.parent, null)
+  view.dispose()
+})
+
+test('an owner vehicle record waits for the character when the car asset loads first', () => {
+  const { view } = createFixture()
+  view.showLandscape(new THREE.Group(), layout)
+  const saved = { position3d: { x: 24, y: 4.1, z: 120 }, yaw: .4 }
+  assert.equal(view.setVehicleModel(makeCar(), saved), true)
+  assert.equal(view.getVehicleSyncState(), null)
+
+  view.showCharacter(makeCharacter().model)
+
+  const restored = view.getVehicleSyncState()
+  assert.ok(restored)
+  assert.equal(restored.position3d.x, saved.position3d.x)
+  assert.equal(restored.position3d.z, saved.position3d.z)
+  assert.equal(restored.yaw, saved.yaw)
   view.dispose()
 })
 

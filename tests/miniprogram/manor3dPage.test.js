@@ -19,14 +19,16 @@ const touchEvent = (points, changed = []) => {
 function fixture({ envId = ENV_MAP.trial, read = key => key === 'layout' ? layout : key,
   decode = key => ({ key }), savedCharacter, savedSensitivity, canGoBack = true, entryTicket, communityScene,
   placeResult = true, syncStart = null, buildPlots = [], buildGround, saveBuilding,
-  checkpointStorage = new Map(), asyncPositionWrites } = {}) {
+  checkpointStorage = new Map(), asyncPositionWrites, vehicleSyncState = null } = {}) {
   let definition, nextFrame = 0, now = 0, lost = false, pixelRatio = 1
   let sensitivityStorage = savedSensitivity
   let canvasSize = { width: 390, height: 780 }
   let playerPosition = null
   let playerCheckpoint = null
+  let vehicleLoaded = false
   const events = [], frames = new Map(), updates = [], inputs = [], sizes = [], drawSizes = [], selections = []
   const communityRequests = [], syncEvents = [], syncInstances = [], placements = [], sharedRecords = [], removedTickets = []
+  const vehicleLoads = [], vehicleRecords = []
   const buildPreviews = [], groundPicks = [], placedBuildings = []
   const modals = [], restoredPositions = [], interiorEntries = []
   const canvas = {
@@ -99,7 +101,13 @@ function fixture({ envId = ENV_MAP.trial, read = key => key === 'layout' ? layou
       dispose() { events.push('disposeScene') }, pan(x, y) { events.push(['pan', x, y]) },
       orbit(x, y) { events.push(['orbit', x, y]) }, zoom(ratio) { events.push(['zoom', ratio]) },
       enterMapView() { events.push('enterMap') }, exitMapView() { events.push('exitMap') }, focusVilla() { events.push('focus') },
-      focusCharacter() { events.push('focusCharacter') }
+      focusCharacter() { events.push('focusCharacter') },
+      ...(vehicleSyncState ? {
+        showVehicle(model, saved) { vehicleLoaded = true; vehicleLoads.push({ model: model.key, saved: structuredClone(saved) }); return true },
+        setVehicleModel(model, saved) { vehicleLoaded = true; vehicleLoads.push({ model: model.key, saved: structuredClone(saved) }); return true },
+        setVehicleRecord(record) { vehicleRecords.push(structuredClone(record)); return true },
+        getVehicleSyncState() { return vehicleLoaded ? structuredClone(vehicleSyncState) : null }
+      } : {})
     }) },
     '../../utils/cloud': {
       async ensureLogin() { communityRequests.push({ type: 'login' }) },
@@ -109,6 +117,7 @@ function fixture({ envId = ENV_MAP.trial, read = key => key === 'layout' ? layou
           assert.equal(typeof saveBuilding, 'function')
           return saveBuilding(data)
         }
+        if (action === 'syncManor3dVehicle') return { accepted: true, ackSeq: data.seq, vehicle: { ...data } }
         const scene = typeof communityScene === 'function' ? await communityScene() : communityScene || {
           session: 'session', sceneId: 'community', playerId: 'presence', hasAvatar: true,
           position3d: { x: 12, z: 18 }, community: { name: '青溪花园' }
@@ -173,7 +182,7 @@ function fixture({ envId = ENV_MAP.trial, read = key => key === 'layout' ? layou
   } }
   return { page, frames, events, updates, inputs, sizes, drawSizes, selections, loseContext() { lost = true }, restoreContext() { lost = false },
     getSavedSensitivity() { return sensitivityStorage }, communityRequests, syncEvents, syncInstances, placements, sharedRecords, removedTickets,
-    buildPreviews, groundPicks, placedBuildings, modals, restoredPositions, interiorEntries,
+    buildPreviews, groundPicks, placedBuildings, modals, restoredPositions, interiorEntries, vehicleLoads, vehicleRecords,
     setPlayerPosition(x, z) { playerPosition = { x, z } },
     setPlayerCheckpoint(checkpoint) {
       playerCheckpoint = structuredClone(checkpoint)
@@ -496,7 +505,7 @@ test('resuming the manor keeps the local character and avoids downloading it aga
 test('the title-free page follows screen orientation and can leave when opened directly', () => {
   const f = fixture({ canGoBack: false })
   assert.equal(pageConfig.navigationStyle, 'custom')
-  assert.equal(pageConfig.pageOrientation, 'auto')
+  assert.equal(pageConfig.pageOrientation, 'landscape')
   assert.ok(!Object.hasOwn(pageConfig, 'navigationBarTitleText'))
   assert.match(styles, /\.manor-top-controls\s*\{[^}]*left:\s*calc\(4px \+ env\(safe-area-inset-left\)\);/)
   assert.match(markup, /class="manor-top-controls"[\s\S]*bindtap="toggleMenu"[\s\S]*class="manor-menu"[\s\S]*bindtap="openBuild"/)
@@ -514,7 +523,8 @@ test('leaving the manor confirms once, then saves position before going back or 
 
   f.page.goBack()
   f.page.goBack()
-  assert.equal(f.modals.length, 1)
+  assert.equal(f.modals.length, 1, JSON.stringify({ scene: f.page._communityScene, state: f.page.data,
+    hasLandscape: f.page._hasLandscape, hasVilla: f.page._hasVilla, activeCharacter: f.page.data.activeCharacter }))
   f.modals[0].success({ confirm: false })
   f.modals[0].complete()
   assert.deepEqual(f.events.slice(start), [])
@@ -583,6 +593,60 @@ test('the selected community route ticket enters that cloud scene and starts sha
   assert.ok(f.syncEvents.some(event => Array.isArray(event) && event[0] === 'position'))
   f.page.onUnload()
   assert.ok(f.syncEvents.includes('stop'))
+})
+
+test('a first-time owner gets the red-tile build prompt and can start construction from it', async () => {
+  const community = { name: '松林小区' }
+  const f = fixture({ entryTicket: { community, createdAt: 0 }, communityScene: {
+    session: 'first-home-session', sceneId: 'first-home-community', playerId: 'first-home-player',
+    hasAvatar: false, manor3dCanPublish: true, canBuildManor3d: true, hasAnyManor3dHome: false,
+    position3d: null, community
+  } })
+  f.mount({ entryKey: 'firsthome' })
+  await flush()
+  await flush()
+  await flush()
+
+  assert.equal(f.modals.length, 1)
+  assert.match(f.modals[0].content, /松林小区/)
+  f.modals[0].success({ confirm: true })
+  assert.equal(f.page.data.buildMode, true)
+  assert.equal(f.page.data.buildId, 'red_tile_villa')
+  f.page.onUnload()
+})
+
+test('a user with a house in another community is not prompted and their own car restores and syncs', async () => {
+  const community = { name: '青溪花园' }
+  const vehicle = { id: 'own-car', communityId: 'community-with-home', position3d: { x: 22, y: 4.1, z: -18 },
+    yaw: 1.25, moving: false, seq: 18 }
+  const f = fixture({ entryTicket: { community, createdAt: 0 }, vehicleSyncState: {
+    position3d: { x: 24, y: 4.1, z: -20 }, yaw: 1.5, moving: true
+  }, communityScene: {
+    session: 'vehicle-session', sceneId: 'community-with-home', playerId: 'vehicle-owner',
+    hasAvatar: false, manor3dCanPublish: true, canBuildManor3d: true, hasAnyManor3dHome: true,
+    position3d: null, manor3dVehicle: vehicle, community
+  } })
+  f.mount({ entryKey: 'owncar' })
+  await flush()
+  await flush()
+  await flush()
+
+  assert.equal(f.modals.length, 0)
+  assert.equal(f.page._entrySelected, true)
+  assert.equal(f.page._communityScene.manor3dVehicle?.id, vehicle.id, JSON.stringify({
+    communityRequests: f.communityRequests, communityScene: f.page._communityScene, loads: f.vehicleLoads
+  }))
+  assert.deepEqual(f.vehicleLoads, [{ model: 'car', saved: vehicle }])
+  assert.equal(f.page._syncManor3dVehicle(true), true)
+  const syncCall = f.communityRequests.filter(request => request.action === 'syncManor3dVehicle').at(-1)
+  assert.equal(syncCall.data.seq, 19)
+  assert.deepEqual(syncCall.data.position3d, { x: 24, y: 4.1, z: -20 })
+  assert.equal(syncCall.data.yaw, 1.5)
+  assert.equal(syncCall.data.moving, true)
+  f.page.onHide()
+  const offlineCall = f.communityRequests.filter(request => request.action === 'syncManor3dVehicle').at(-1)
+  assert.equal(offlineCall.data.online, false)
+  f.page.onUnload()
 })
 
 test('retry replaces expired scene credentials and ignores callbacks from the old session', async () => {
