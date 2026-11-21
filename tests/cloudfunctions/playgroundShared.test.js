@@ -337,7 +337,10 @@ test('3D manor presence shares centered coordinates in its community without cha
   })
   assert.deepEqual(first,{accepted:true,ackSeq:1,position3d:{x:initial.x+2,z:initial.z},manor3dOnline:true,serverTime:f.now()})
   const saved=f.db.state.pet_playground_plots.find(row=>row._id===scene.scene.playerId)
-  assert.deepEqual(saved.position,before.position)
+  assert.deepEqual(saved.position,{
+    x:((initial.x + 2) / 1200 + .5) * worldConfig.width,
+    z:(initial.z / 960 + .5) * worldConfig.height
+  })
   assert.equal(saved.seq,before.seq)
 
   const records=await f.snapshot('b',peer)
@@ -392,7 +395,7 @@ test('3D manor accepts coalesced movement, publishes the latest state and restor
   const inside={x:43,y:6.25,z:14},interior={kind:'courtyard',plotId:'M042'}
   await send(3,inside,{interior})
   const visible=(await handler('b','getScene',{...f.auth(b),manor3d:true})).records
-  assert.ok(visible.every(item=>item.kind!=='resident'&&item.kind!=='vehicle'))
+  assert.ok(visible.some(item=>item.kind==='resident'&&Array.isArray(item.pets)))
   const peer=visible.find(item=>item.id===a.playerId)
   assert.deepEqual(peer.position3d,inside)
   assert.deepEqual(peer.manor3dInterior,interior)
@@ -431,6 +434,47 @@ test('existing offline residents pets appear without owner login after deploymen
   assert.ok(rows.some((r)=>r.kind==='resident'&&!r.mine&&r.pets.some((p)=>p.id==='pet_a')))
 })
 
+test('3D snapshots initialize offline residents and advance their pet needs',async()=>{
+  const f=fixture(),handler=require('../../cloudfunctions/api/handlers/playground')(f.context)
+  await f.plots.claim('a',f.users[0],{x:280,z:280})
+  const visitor=await handler('b','enterScene',{manor3d:true})
+  let rows=await handler('b','getScene',{...f.auth(visitor.scene),manor3d:true})
+  let resident=rows.records.find(row=>row.kind==='resident'&&row.ownerId==='presence_'+world.hash('a'))
+  assert.ok(resident)
+  assert.ok(resident.pets.some(pet=>pet.id==='pet_a'))
+
+  const stored=f.db.state.pet_playground_plots.find(row=>row.kind==='resident'&&row.ownerOpenid==='a')
+  stored.pets[0].needs={at:f.now()-3600000,energy:100,satiety:40,hydration:100,pee:0,poop:0}
+  f.advance(5000)
+  rows=await handler('b','getScene',{...f.auth(visitor.scene),manor3d:true})
+  resident=rows.records.find(row=>row.kind==='resident'&&row.ownerId==='presence_'+world.hash('a'))
+  assert.ok(resident.pets[0].needs.satiety<40)
+})
+
+test('3D villa owners without a 2D yard get pet residents, needs, and care actions',async()=>{
+  const f=fixture(),handler=require('../../cloudfunctions/api/handlers/playground')(f.context)
+  const rows=f.db.state.pet_playground_plots ||= []
+  const sceneId=world.communityId(f.users[0])
+  rows.push({_id:'villa_only_a',kind:'manor3dBuilding',communityId:sceneId,ownerOpenid:'a',buildingId:'red_tile_villa',plotId:'M02',x:-454,z:-308})
+  const owner=await handler('a','enterScene',{manor3d:true})
+  const visitor=await handler('b','enterScene',{manor3d:true})
+  let snapshot=await handler('b','getScene',{...f.auth(visitor.scene),manor3d:true})
+  let resident=snapshot.records.find(row=>row.kind==='resident'&&row.ownerId==='presence_'+world.hash('a'))
+  assert.ok(resident?.pets.some(pet=>pet.id==='pet_a'))
+  let saved=f.db.state.pet_playground_plots.find(row=>row.kind==='resident'&&row.ownerOpenid==='a')
+  assert.equal(saved.manor3dOnly,true)
+  saved.pets[0].needs={at:f.now()-3600000,energy:100,satiety:40,hydration:100,pee:0,poop:0}
+  f.advance(5000)
+  snapshot=await handler('b','getScene',{...f.auth(visitor.scene),manor3d:true})
+  resident=snapshot.records.find(row=>row.kind==='resident'&&row.ownerId==='presence_'+world.hash('a'))
+  assert.ok(resident.pets[0].needs.satiety<40)
+
+  await f.shared.syncManor3d('a',{...f.auth(owner.scene),seq:1,position3d:{x:-454,z:-308},moving:false,running:false,facing:0})
+  const cared=await f.shared.companions.action('a',{...f.auth(owner.scene),petId:'pet_a',operation:'sleep',commandSeq:1,
+    manor3dPosition:{x:-454,z:-308}})
+  assert.equal(cared.pet.care.type,'sleep')
+})
+
 test('pet interaction is owned, checks proximity and shares the pause and feedback',async()=>{
   const f=fixture()
   await f.plots.claim('a',f.users[0],{x:280,z:280})
@@ -443,6 +487,74 @@ test('pet interaction is owned, checks proximity and shares the pause and feedba
   assert.deepEqual(sampleMotion(result.pet.motion,f.now()+2000).position,current)
   assert.equal(result.pet.interactionUntil,f.now()+2500)
   await assert.rejects(()=>f.shared.commandPet('a',{...f.auth(a),petId:'pet_a',interact:true,commandSeq:2}),/稍等/)
+})
+
+test('3D pet commands accept a manor position and publish a projected pet route',async()=>{
+  const f=fixture(),handler=require('../../cloudfunctions/api/handlers/playground')(f.context)
+  await f.plots.claim('a',f.users[0],{x:280,z:280})
+  const scene=await handler('a','enterScene',{})
+  const manor3dPosition=scene.scene.position3d
+  const interaction=await f.shared.commandPet('a',{...f.auth(scene.scene),petId:'pet_a',interact:true,commandSeq:1,manor3dPosition})
+  assert.ok(interaction.pet.motion)
+  const action=await f.shared.companions.action('a',{...f.auth(scene.scene),petId:'pet_a',operation:'follow',commandSeq:2,manor3dPosition})
+  assert.equal(action.pet.following,true)
+  const resident=(await f.snapshot('a',scene.scene)).find((row)=>row.kind==='resident'&&row.mine)
+  const pet=resident.pets.find((item)=>item.id==='pet_a')
+  assert.ok(Array.isArray(pet.manor3dMotion.approach))
+  assert.ok(pet.manor3dMotion.approach.length>=1)
+})
+
+test('3D pet routes use configured 2D world dimensions when projecting coordinates',async()=>{
+  const f=fixture()
+  f.db.state.pet_playground_plots ||= []
+  f.db.state.pet_playground_plots.push({_id:'world_config_v2',width:4480,height:1120})
+  await f.plots.claim('a',f.users[0],{x:280,z:280})
+  const scene=await f.enter('a')
+  const resident=f.db.state.pet_playground_plots.find(row=>row.kind==='resident'&&row.ownerOpenid==='a')
+  resident.pets[0].motion={epoch:f.now(),approach:[{x:0,z:0},{x:4480,z:1120}],patrol:[{x:0,z:0},{x:4480,z:1120}],speed:7,roamSpeed:3}
+
+  const snapshot=await f.shared.snapshot('a',{...f.auth(scene),manor3d:true})
+  const pet=snapshot.records.find(row=>row.kind==='resident'&&row.mine).pets[0]
+  assert.deepEqual(pet.manor3dMotion.approach,[{x:-600,z:-480},{x:600,z:480}])
+  assert.deepEqual(pet.manor3dMotion.patrol,[{x:-600,z:-480},{x:600,z:480}])
+})
+
+test('3D pet interaction and feeding use the manor distance scale',async()=>{
+  const f=fixture(),handler=require('../../cloudfunctions/api/handlers/playground')(f.context)
+  await f.plots.claim('a',f.users[0],{x:280,z:280})
+  const scene=await handler('a','enterScene',{manor3d:true}),cfg=await f.plots.config()
+  const position={x:(scene.scene.position.x/cfg.width-.5)*1200,z:(scene.scene.position.z/cfg.height-.5)*960}
+  await f.shared.syncManor3d('a',{...f.auth(scene.scene),seq:1,position3d:position,moving:false,running:false,facing:0})
+  const interaction=await f.shared.commandPet('a',{...f.auth(scene.scene),petId:'pet_a',interact:true,commandSeq:1,
+    manor3dPosition:{x:position.x+4.4,z:position.z}})
+  assert.equal(interaction.pet.commandSeq,1)
+
+  const next=await f.enter('a')
+  const resident=f.db.state.pet_playground_plots.find(row=>row.kind==='resident'&&row.ownerOpenid==='a')
+  resident.pets[0].needs={at:f.now(),energy:100,satiety:40,hydration:100,pee:0,poop:0}
+  const fed=await f.shared.companions.action('a',{...f.auth(next),petId:'pet_a',operation:'feed',commandSeq:2,
+    manor3dPosition:{x:next.position3d.x+4.9,z:next.position3d.z}})
+  assert.equal(fed.pet.needs.satiety,65)
+})
+
+test('3D position sync advances pet needs and publishes automatic relief',async()=>{
+  const f=fixture(),handler=require('../../cloudfunctions/api/handlers/playground')(f.context)
+  await f.plots.claim('a',f.users[0],{x:280,z:280})
+  const scene=await handler('a','enterScene',{})
+  const resident=f.db.state.pet_playground_plots.find(row=>row.kind==='resident'&&row.ownerOpenid==='a')
+  const pet=resident.pets[0]
+  pet.needs={at:f.now(),energy:100,satiety:40,hydration:100,pee:0,poop:0}
+  f.advance(1000)
+  await f.shared.syncManor3d('a',{...f.auth(scene.scene),seq:1,position3d:scene.scene.position3d,moving:false,running:false,facing:0})
+  let saved=f.db.state.pet_playground_plots.find(row=>row.kind==='resident'&&row.ownerOpenid==='a')
+  assert.ok(saved.pets[0].needs.satiety<40)
+
+  saved.pets[0].needs={at:f.now(),energy:100,satiety:100,hydration:100,pee:0,poop:100}
+  saved.pets[0].motion={epoch:f.now(),approach:[{x:280,z:350}],patrol:[{x:280,z:350}],speed:7}
+  f.advance(1000)
+  await f.shared.syncManor3d('a',{...f.auth(scene.scene),seq:2,position3d:scene.scene.position3d,moving:false,running:false,facing:0})
+  saved=f.db.state.pet_playground_plots.find(row=>row.kind==='resident'&&row.ownerOpenid==='a')
+  assert.equal(saved.pets[0].waste.at(-1).type,'poop')
 })
 
 test('demolition despawns avatar and pets, keeps profiles, and rebuilding in another community restores them',async()=>{

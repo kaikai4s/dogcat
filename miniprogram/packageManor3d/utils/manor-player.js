@@ -294,7 +294,7 @@ function createManorPlayer({ THREE, scene, navigation, getVillaBounds, disposeMo
 
   const jumpPoint = new THREE.Vector3()
   function jumpRootY() {
-    return current?.jumpRoot?.getWorldPosition(jumpPoint).y || 0
+    return current?.jumpRoot ? current.jumpRoot.getWorldPosition(jumpPoint).y - anchor.position.y : 0
   }
 
   function jump() {
@@ -456,15 +456,6 @@ function createManorPlayer({ THREE, scene, navigation, getVillaBounds, disposeMo
     if (!current || !(dt > 0)) return
     current.animator.setSeatWeight(0)
     shadow.visible = true
-    if (jumpElapsed !== null) {
-      // The model's bones carry the height and landing motion. Keep the
-      // navigation position on the floor and avoid moving through geometry.
-      const duration = poseDuration('jump')
-      jumpElapsed = Math.min(duration, jumpElapsed + dt)
-      animatePose('jump', jumpElapsed / duration, dt)
-      if (jumpElapsed >= duration) jumpElapsed = null
-      return
-    }
     let gait = 0, groundSpeed = 0
     if (inputMagnitude > DEAD_ZONE) {
       const tilt = Math.min(inputMagnitude, 1)
@@ -482,7 +473,15 @@ function createManorPlayer({ THREE, scene, navigation, getVillaBounds, disposeMo
         face(Math.atan2(dx, dz), dt)
       }
     }
-    animate(gait, groundSpeed, dt)
+    if (jumpElapsed !== null) {
+      // Keep the navigation position on the floor while the jump clip raises the model.
+      const duration = poseDuration('jump')
+      jumpElapsed = Math.min(duration, jumpElapsed + dt)
+      animatePose('jump', jumpElapsed / duration, dt)
+      if (jumpElapsed >= duration) jumpElapsed = null
+    } else {
+      animate(gait, groundSpeed, dt)
+    }
   }
 
   function dispose() {

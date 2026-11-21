@@ -12,6 +12,8 @@ const MANOR_ASSET_FILES = Object.freeze({
   interior: 'manor-villa-interior.glb',
   boy: 'boy-animated.glb',
   girl: 'girl-animated.glb',
+  dog: 'dog.glb',
+  cat: 'cat.glb',
   car: 'copper-gt-fitted.glb'
 })
 
@@ -36,6 +38,8 @@ const ASSET_BYTES = {
   interior: 1817160,
   boy: 5665896,
   girl: 3902180,
+  dog: 376892,
+  cat: 108896,
   car: 2127176
 }
 

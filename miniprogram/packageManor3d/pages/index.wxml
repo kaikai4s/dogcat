@@ -23,7 +23,7 @@
     </view>
   </view>
   <block wx:elif="{{status === 'ready'}}">
-    <view class="manor-notices {{minimap && !mapMode && !insideVilla ? 'manor-notices-with-map' : ''}}" wx:if="{{communityStatus === 'loading' || communityStatus === 'error' || characterStatus === 'loading' || characterStatus === 'drawing' || characterStatus === 'error' || villaStatus === 'loading' || villaStatus === 'drawing' || villaStatus === 'error' || interiorStatus === 'loading' || interiorStatus === 'drawing' || interiorStatus === 'error' || (vehicleLoadError && !insideVilla && !mapMode && !buildMode)}}">
+    <view class="manor-notices {{minimap && !mapMode && !insideVilla ? 'manor-notices-with-map' : ''}}" wx:if="{{communityStatus === 'loading' || communityStatus === 'error' || characterStatus === 'loading' || characterStatus === 'drawing' || characterStatus === 'error' || villaStatus === 'loading' || villaStatus === 'drawing' || villaStatus === 'error' || interiorStatus === 'loading' || interiorStatus === 'drawing' || interiorStatus === 'error' || petModelsStatus === 'loading' || petModelsStatus === 'error' || (vehicleLoadError && !insideVilla && !mapMode && !buildMode)}}">
       <view wx:if="{{communityStatus === 'loading' || communityStatus === 'error'}}" class="manor-notice manor-community-notice">
         <text wx:if="{{communityStatus === 'loading'}}" class="manor-notice-text">正在连接{{communityName ? ' · ' + communityName : '庄园场景'}}</text>
         <block wx:else>
@@ -55,45 +55,14 @@
           <button class="manor-link" bindtap="retryInterior">重试</button>
         </block>
       </view>
+      <view wx:if="{{petModelsStatus === 'loading' || petModelsStatus === 'error'}}" class="manor-notice manor-pet-notice">
+        <text wx:if="{{petModelsStatus === 'loading'}}" class="manor-notice-text">正在准备猫狗模型</text>
+        <block wx:else><text class="manor-notice-text">{{petModelsError}}</text><button class="manor-link" bindtap="retryPetModels">重试</button></block>
+      </view>
       <view wx:if="{{vehicleLoadError && !insideVilla && !mapMode && !buildMode}}" class="manor-notice">
         <text class="manor-notice-text">{{vehicleLoadError}}</text>
         <button class="manor-link" bindtap="retryVehicle">重试</button>
       </view>
-    </view>
-    <view wx:if="{{doorPrompt && !insideVilla && !buildMode && !mapMode && vehicleState === 'walking' && !vehiclePanelOpen}}" class="manor-door-prompt">
-      <view class="manor-door-copy">
-        <text class="manor-door-title">{{courtyardDoorLabel ? '松影叠院 · ' + courtyardDoorLabel : '已到达别墅门口'}}</text>
-        <text class="manor-door-caption">开门后进入室内</text>
-      </view>
-      <button class="manor-action manor-primary manor-door-button" bindtap="enterVilla">开门进入</button>
-    </view>
-    <view wx:if="{{insideVilla}}" class="manor-interior-bar">
-      <text class="manor-interior-title">{{insideCourtyard ? '松影叠院' : '别墅内部'}}</text>
-      <button wx:if="{{!insideCourtyard || courtyardDoorLabel}}" class="manor-action manor-interior-exit"
-        disabled="{{doorBusy || restLocked || (elevator && elevator.busy)}}" bindtap="exitVilla">{{insideCourtyard ? '开门离开' : '离开别墅'}}</button>
-    </view>
-    <view wx:if="{{insideVilla && restPrompt && playerActions && !menuOpen && !roomDoor && !elevator}}" class="manor-door-prompt manor-rest-prompt">
-      <view class="manor-door-copy"><text class="manor-door-title">{{restPrompt.name}}</text></view>
-      <button class="manor-action manor-primary manor-door-button" data-rest-kind="{{restPrompt.kind}}" bindtap="interactRest"
-        disabled="{{restPrompt.busy}}">{{restPrompt.label}}</button>
-    </view>
-    <view wx:if="{{insideCourtyard && roomDoor && !menuOpen}}" class="manor-door-prompt manor-room-door-prompt">
-      <view class="manor-door-copy"><text class="manor-door-title">{{roomDoor.label}}</text></view>
-      <button class="manor-action manor-primary manor-door-button" data-door-id="{{roomDoor.id}}" bindtap="useRoomDoor"
-        disabled="{{roomDoor.busy}}">{{roomDoor.busy ? '正在开关门' : roomDoor.open ? '关门' : '开门'}}</button>
-    </view>
-    <view wx:if="{{insideVilla && elevator}}" class="manor-door-prompt manor-elevator-prompt">
-      <view class="manor-door-copy">
-        <text class="manor-door-title">{{elevator.title}}</text>
-      </view>
-      <view wx:if="{{!elevator.busy}}" class="manor-elevator-targets">
-        <button wx:for="{{elevator.buttons}}" wx:key="floor" class="manor-action manor-primary manor-door-button manor-elevator-button"
-          data-floor="{{item.floor}}" bindtap="useElevator" disabled="{{restLocked || doorBusy}}">
-          <text class="{{item.up ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'}}" aria-hidden="true"></text>
-          前往{{item.label}}
-        </button>
-      </view>
-      <text wx:else class="manor-elevator-destination">{{elevator.destination}}</text>
     </view>
     <view wx:if="{{buildMode}}" class="manor-build-panel" aria-label="建筑建造">
       <view class="manor-build-header">
@@ -142,6 +111,22 @@
         </view>
         <text class="manor-minimap-label">{{mapNeighbors.length ? '邻居 ' + mapNeighbors.length : '地图'}}</text>
       </button>
+      <view wx:if="{{pets.length && !insideVilla && !mapMode && !buildMode}}" class="manor-pet-hud">
+        <button class="manor-pet-roster-toggle {{petRosterOpen ? 'manor-pet-roster-open' : ''}}" bindtap="togglePetRoster"
+          aria-label="{{petRosterOpen ? '收起宠物列表' : '打开宠物列表'}}">
+          <text class="manor-pet-hud-icon">🐾</text><text>宠物 {{pets.length}}</text>
+        </button>
+        <view wx:if="{{petRosterOpen}}" class="manor-pet-roster" catchtap="swallowPetTouch">
+          <view class="manor-pet-roster-heading"><text>我的伙伴</text><text class="manor-pet-roster-count">{{pets.length}} 只</text></view>
+          <scroll-view scroll-y class="manor-pet-roster-list">
+            <button wx:for="{{pets}}" wx:key="id" data-pet-id="{{item.id}}" bindtap="selectPet"
+              class="manor-pet-roster-item {{selectedPetId === item.id ? 'manor-pet-roster-selected' : ''}}">
+              <view class="manor-pet-roster-main"><text class="manor-pet-roster-name">{{item.name}}</text><text class="manor-pet-roster-meta">{{item.species === 'cat' ? '猫咪' : '狗狗'}} · {{item.activity || '自由活动'}}</text></view>
+              <text wx:if="{{item.following}}" class="manor-pet-roster-follow">跟随</text>
+            </button>
+          </scroll-view>
+        </view>
+      </view>
       <view wx:if="{{activeCharacter && !vehiclePanelOpen && (vehicleState === 'walking' || vehicleState === 'driver')}}"
         class="manor-joystick {{vehicleState === 'driver' || firstPerson ? 'manor-joystick-left' : ''}} {{stickActive ? 'manor-joystick-active' : ''}} {{restLocked || doorBusy || (elevator && elevator.busy) ? 'manor-joystick-locked' : ''}}" id="manor-stick"
         aria-label="{{vehicleState === 'driver' ? '向上加速，向下减速或倒车，左右转向' : '轻推摇杆行走，推远奔跑'}}" catchtouchstart="onStickStart" catchtouchmove="onStickMove"
@@ -152,19 +137,52 @@
         <view class="manor-stick-axis manor-stick-east"></view>
         <view class="manor-stick-knob" style="transform: translate({{stickX}}px, {{stickY}}px);"></view>
       </view>
-      <view wx:if="{{playerActions && !menuOpen && !vehiclePanelOpen && vehicleState === 'walking' && !doorBusy && !(elevator && elevator.busy)}}"
+      <view wx:if="{{!menuOpen && !vehiclePanelOpen && vehicleState === 'walking'}}"
         class="manor-player-actions" aria-label="角色动作">
-        <button wx:if="{{vehicleNearby && !insideVilla}}" class="manor-action manor-vehicle-open" bindtap="openVehiclePanel" aria-label="为 Copper GT 选座上车">
-          <text>选座上车</text><text class="ri-arrow-up-s-line" aria-hidden="true"></text>
-        </button>
-        <view class="manor-player-action-row">
-          <button class="manor-action manor-player-action manor-player-rest" data-rest-kind="sit" bindtap="interactRest"
+        <view class="manor-context-actions" aria-label="附近交互">
+          <button wx:if="{{doorPrompt && !insideVilla}}" class="manor-action manor-context-action" bindtap="enterVilla" aria-label="{{courtyardDoorLabel ? courtyardDoorLabel + '，开门进入' : '开门进入别墅'}}">开门进入</button>
+          <button wx:if="{{insideVilla && (!insideCourtyard || courtyardDoorLabel)}}" class="manor-action manor-context-action"
+            disabled="{{doorBusy || restLocked || (elevator && elevator.busy)}}" bindtap="exitVilla">{{insideCourtyard ? '开门离开' : '离开别墅'}}</button>
+          <button wx:if="{{insideCourtyard && roomDoor}}" class="manor-action manor-context-action" data-door-id="{{roomDoor.id}}" bindtap="useRoomDoor"
+            disabled="{{roomDoor.busy}}" aria-label="{{roomDoor.label + '，' + (roomDoor.open ? '关门' : '开门')}}">{{roomDoor.busy ? '开关门中' : roomDoor.open ? '关门' : '开门'}}</button>
+          <block wx:if="{{insideVilla && elevator}}">
+            <block wx:if="{{!elevator.busy}}">
+              <button wx:for="{{elevator.buttons}}" wx:key="floor" class="manor-action manor-context-action"
+                data-floor="{{item.floor}}" bindtap="useElevator" disabled="{{restLocked || doorBusy}}">前往{{item.label}}</button>
+            </block>
+            <text wx:if="{{elevator.busy}}" class="manor-context-status" aria-live="polite">{{elevator.title}} · {{elevator.destination}}</text>
+          </block>
+          <button wx:if="{{playerActions && vehicleNearby && !insideVilla && !doorBusy}}" class="manor-action manor-context-action" bindtap="openVehiclePanel" aria-label="为 Copper GT 选座上车">选座上车</button>
+          <button wx:if="{{nearbyPet && !insideVilla && !doorBusy}}" class="manor-action manor-context-action" bindtap="interactPet" disabled="{{petCareBusy}}">摸摸 {{nearbyPet.name}}</button>
+        </view>
+        <view wx:if="{{playerActions && !doorBusy && !(elevator && elevator.busy)}}" class="manor-player-action-row">
+          <button class="manor-action manor-player-action manor-player-rest manor-player-sit" data-rest-kind="sit" bindtap="interactRest"
             disabled="{{!playerActions.sit || playerActions.sit.busy}}"
             aria-label="{{playerActions.sit ? playerActions.sit.label + '，' + playerActions.sit.name : '坐下，靠近可坐的家具后可用'}}">{{playerActions.sit ? playerActions.sit.label : '坐下'}}</button>
-          <button class="manor-action manor-player-action manor-player-rest" data-rest-kind="lie" bindtap="interactRest"
+          <button class="manor-action manor-player-action manor-player-rest manor-player-lie" data-rest-kind="lie" bindtap="interactRest"
             disabled="{{!playerActions.lie || playerActions.lie.busy}}"
             aria-label="{{playerActions.lie ? playerActions.lie.label + '，' + playerActions.lie.name : '躺下，靠近可躺的家具后可用'}}">{{playerActions.lie ? playerActions.lie.label : '躺下'}}</button>
           <button class="manor-action manor-player-action manor-player-jump" bindtap="jumpPlayer" disabled="{{!playerActions.jump}}">跳跃</button>
+        </view>
+      </view>
+      <view wx:if="{{selectedPet && !insideVilla && !mapMode && !buildMode && !vehiclePanelOpen}}" class="manor-pet-panel" catchtap="swallowPetTouch">
+        <view class="manor-pet-panel-heading">
+          <view><text class="manor-pet-panel-name">{{selectedPet.name}}</text><text class="manor-pet-panel-activity">{{selectedPet.activity || '自由活动'}}</text></view>
+          <button class="manor-pet-panel-close" bindtap="clearSelectedPet" aria-label="收起宠物状态">×</button>
+        </view>
+        <view class="manor-pet-needs" wx:if="{{selectedPet.needs && selectedPet.needs.length}}">
+          <view wx:for="{{selectedPet.needs}}" wx:key="key" class="manor-pet-need {{item.low ? 'manor-pet-need-low' : ''}}">
+            <view class="manor-pet-need-label"><text>{{item.label}}</text><text>{{item.value}}%</text></view>
+            <view class="manor-pet-need-track"><view style="width:{{item.value}}%"></view></view>
+          </view>
+        </view>
+        <view class="manor-pet-actions">
+          <button class="manor-action manor-pet-action-primary" data-operation="{{selectedPet.following ? 'stay' : 'follow'}}" bindtap="petAction" disabled="{{petCareBusy}}">{{selectedPet.following ? '取消跟随' : '让它跟我走'}}</button>
+          <button class="manor-action" data-operation="feed" bindtap="petAction" disabled="{{petCareBusy}}">喂零食</button>
+          <button class="manor-action" data-operation="eat" bindtap="petAction" disabled="{{petCareBusy}}">去碗边吃饭</button>
+          <button class="manor-action" data-operation="drink" bindtap="petAction" disabled="{{petCareBusy}}">去喝水</button>
+          <button class="manor-action" data-operation="sleep" bindtap="petAction" disabled="{{petCareBusy}}">回窝休息</button>
+          <button wx:if="{{selectedPet.hasCleanableWaste}}" class="manor-action manor-pet-action-warn" bindtap="clearPetWaste" disabled="{{petCareBusy}}">清理便便</button>
         </view>
       </view>
       <block wx:if="{{!insideVilla && activeCharacter}}">
@@ -236,7 +254,7 @@
         <view class="manor-hud-face"><text class="ri-eye-line" aria-hidden="true"></text><text>第一人称</text></view>
       </button>
     </block>
-    <button class="manor-hud-button {{mapMode || buildMode ? 'manor-map-back' : ''}}" bindtap="goBack" disabled="{{buildSaving}}"
+    <button class="manor-hud-button manor-exit-control {{mapMode || buildMode ? 'manor-map-back' : ''}}" bindtap="goBack" disabled="{{buildSaving}}"
       aria-label="{{buildMode ? '退出建造' : mapMode ? '退出地图预览，回到角色' : '退出 3D 庄园'}}">
       <view class="manor-hud-face"><view class="manor-back-arrow"></view><text wx:if="{{mapMode || buildMode}}">{{buildMode ? '退出建造' : '回到角色'}}</text></view>
     </button>

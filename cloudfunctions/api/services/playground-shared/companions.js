@@ -16,6 +16,14 @@ module.exports=function createCompanions(context,hooks) {
   async function startCare(tx,resident,pet,home,operation,cfg,plots,stamp,automatic=false) {
     const current=sampleMotion(pet.motion,stamp).position
     const species=pet.species==='cat'?'cat':'dog'
+    if(resident.manor3dOnly) {
+      const spec=recoverySpec(pet,operation)
+      if(!spec)return false
+      const seconds=automatic?Math.max(spec.seconds,(100-pet.needs[spec.key])/spec.rate):spec.seconds
+      pet.following=false;pet.care={type:operation,startsAt:stamp,endsAt:stamp+seconds*1000}
+      pet.motion={epoch:stamp,approach:[current],patrol:[current],speed:7,roamSpeed:3,wait:3}
+      return true
+    }
     const food={dog:0,cat:0,...home.foodBowls}
     if(operation==='eat'&&food[species]<25)return false
     const target=yardLayout(home).stations[species][operation]
@@ -69,8 +77,11 @@ module.exports=function createCompanions(context,hooks) {
   }
   async function advance(tx,resident,cfg,plots) {
     const stamp=now(),before=JSON.parse(JSON.stringify(resident.pets||[]))
-    const home=await hooks.read(tx,world.ownerId(resident.ownerOpenid))
-    if(!home||home.communityId!==resident.communityId||home.plotId!==resident.plotId)return false
+    const home=resident.manor3dOnly
+      ? {communityId:resident.communityId,plotId:resident.plotId,x:resident.homePosition?.x,z:resident.homePosition?.z,size:48}
+      : await hooks.read(tx,world.ownerId(resident.ownerOpenid))
+    if(!home||!resident.manor3dOnly&&(home.communityId!==resident.communityId||home.plotId!==resident.plotId)||
+      resident.manor3dOnly&&![home.x,home.z].every(Number.isFinite))return false
     for(const pet of resident.pets||[]) {
       if(!pet.motion)continue
       if(pet.relieving&&stamp<pet.relieving.until)continue
@@ -94,7 +105,9 @@ module.exports=function createCompanions(context,hooks) {
         const spec=recoverySpec(pet,pet.care.type)
         if(stamp<pet.care.endsAt&&(!spec||values[spec.key]<98))continue
         pet.care=null
-        pet.motion=hooks.motion(cfg,plots,current,stamp,pet.id+'roam')
+        pet.motion=resident.manor3dOnly
+          ? {epoch:stamp,approach:[current],patrol:[current],speed:7,roamSpeed:3,wait:3}
+          : hooks.motion(cfg,plots,current,stamp,pet.id+'roam')
       }
       if(!inside||pet.ridingVehicleId||pet.interactionUntil>stamp)continue
       const actions=Object.keys(RECOVERY).filter((op)=>values[RECOVERY[op].key]<=20)
@@ -108,10 +121,20 @@ module.exports=function createCompanions(context,hooks) {
     })
     return changed
   }
-  function followRoute(pet,actor,cfg,plots,allowed,index=0) {
+  function followRoute(pet,actor,cfg,plots,allowed,index=0,manor3dOnly=false) {
     const stamp=now()
     const previous=pet.motion
     let current=sampleMotion(previous,stamp).position
+    if(manor3dOnly) {
+      const target=actor.position
+      if(!target||![target.x,target.z].every(Number.isFinite))return false
+      const distance=Math.hypot(current.x-target.x,current.z-target.z)
+      const speed=Math.min(16,7+distance*.25)
+      pet.motion={epoch:stamp,approach:[current,target],patrol:[target],speed,roamSpeed:2,wait:2,
+        followUntil:stamp+distance/speed*1000}
+      pet.followCenter={...target};pet.followUpdatedAt=stamp
+      return true
+    }
     const nav=hooks.navigation(cfg,plots,current,actor.position,'companion',null,allowed)
     // Expired access or a newly built fence can invalidate an old route.
     if(!nav.walkable(current))current=hooks.safePoint(nav,current)
@@ -160,27 +183,43 @@ module.exports=function createCompanions(context,hooks) {
         throw new Error('宠物操作已更新，请重试')
       }
       if((actor.vehicleId||resident.ridingVehicleId||pet.ridingVehicleId)&&operation!=='feed')throw new Error('请先下车再安排宠物活动')
-      const current=sampleMotion(pet.motion,stamp).position
+      let current=sampleMotion(pet.motion,stamp).position
+      const manor3dPosition=hooks.commandManor3dPosition?.(data,cfg)
+      if(manor3dPosition) {
+        current=manor3dPosition
+        if(!resident.manor3dOnly&&!hooks.navigation(cfg,plots,current,current,'pet',resident.plotId).walkable(current)) {
+          throw new Error('宠物不能进入其他住户的庭院')
+        }
+        pet.motion=resident.manor3dOnly
+          ? {epoch:stamp,approach:[current],patrol:[current],speed:7,roamSpeed:3,wait:3}
+          : hooks.motion(cfg,plots,current,stamp,pet.id+'-manor3d')
+      }
       const values=settleNeeds(pet,stamp)
       if(operation==='feed') {
         if(pet.fedAt&&stamp-pet.fedAt<60000)throw new Error('宠物刚吃过零食，过一分钟再喂吧')
         if(values.satiety>=95)throw new Error('宠物已经吃饱啦')
         const effective=pet.ridingVehicleId?actor.position:current
-        if(Math.hypot(actor.position.x-effective.x,actor.position.z-effective.z)>5)throw new Error('请先走近宠物再喂食')
-        if(!pet.ridingVehicleId&&!hooks.publicNavigation(cfg,plots,await hooks.access(openid,plots,tx)).clearSegment(actor.position,current))throw new Error('请走到宠物身边，不能隔着围栏喂食')
+        const close=manor3dPosition&&Number.isFinite(actor.position3d?.x)&&Number.isFinite(actor.position3d?.z)
+          ? Math.hypot(actor.position3d.x-data.manor3dPosition.x,actor.position3d.z-data.manor3dPosition.z)<=5
+          : Math.hypot(actor.position.x-effective.x,actor.position.z-effective.z)<=5
+        if(!close)throw new Error('请先走近宠物再喂食')
+        if(!resident.manor3dOnly&&!pet.ridingVehicleId&&!hooks.publicNavigation(cfg,plots,await hooks.access(openid,plots,tx)).clearSegment(actor.position,current))throw new Error('请走到宠物身边，不能隔着围栏喂食')
         values.satiety=Math.min(100,values.satiety+25);pet.fedAt=stamp
       } else if(operation==='follow') {
         const allowed=await hooks.access(openid,plots,tx)
         if(Math.hypot(actor.position.x-current.x,actor.position.z-current.z)>300)throw new Error('宠物离你太远，请先靠近一些')
-        if(!followRoute(pet,actor,cfg,plots,allowed,resident.pets.indexOf(pet)))throw new Error('宠物暂时无法到你身边，请从院门进出')
+        if(!followRoute(pet,actor,cfg,plots,allowed,resident.pets.indexOf(pet),resident.manor3dOnly))throw new Error('宠物暂时无法到你身边，请从院门进出')
         pet.following=true;pet.care=null
         await tx.collection(COLLECTION).doc(actor._id).update({data:{hasFollowers:true}})
       } else if(operation==='stay') {
-        pet.following=false;pet.care=null;pet.motion=hooks.motion(cfg,plots,current,stamp,pet.id+'stay')
+        pet.following=false;pet.care=null
+        pet.motion=resident.manor3dOnly
+          ? {epoch:stamp,approach:[current],patrol:[current],speed:7,roamSpeed:3,wait:3}
+          : hooks.motion(cfg,plots,current,stamp,pet.id+'stay')
       } else {
-        const home=await hooks.read(tx,world.ownerId(openid))
-        if(!home||home.communityId!==actor.communityId||home.plotId!==resident.plotId)throw new Error('请回到自家庭院照料宠物')
-        if(operation==='eat'&&Number(home.foodBowls&&home.foodBowls[pet.species==='cat'?'cat':'dog']||0)<25)throw new Error('碗里粮食不足，请先添粮')
+        const home=resident.manor3dOnly?null:await hooks.read(tx,world.ownerId(openid))
+        if(!resident.manor3dOnly&&(!home||home.communityId!==actor.communityId||home.plotId!==resident.plotId))throw new Error('请回到自家庭院照料宠物')
+        if(!resident.manor3dOnly&&operation==='eat'&&Number(home.foodBowls&&home.foodBowls[pet.species==='cat'?'cat':'dog']||0)<25)throw new Error('碗里粮食不足，请先添粮')
         if(!await startCare(tx,resident,pet,home,operation,cfg,plots,stamp))throw new Error('暂时无法到达，请从自家庭院院门进出')
       }
       pet.commandSeq=data.commandSeq;pet.lastOperation=operation;resident.petSeq=data.commandSeq
@@ -205,7 +244,7 @@ module.exports=function createCompanions(context,hooks) {
       for(const pet of followers) {
         if(pet.relieving&&stamp<pet.relieving.until)continue
         if(!force&&pet.followCenter&&Math.hypot(pet.followCenter.x-actor.position.x,pet.followCenter.z-actor.position.z)<2)continue
-        changed=followRoute(pet,actor,cfg,plots,allowed,resident.pets.indexOf(pet))||changed
+        changed=followRoute(pet,actor,cfg,plots,allowed,resident.pets.indexOf(pet),resident.manor3dOnly)||changed
       }
     } else {
       actor.hasFollowers=false

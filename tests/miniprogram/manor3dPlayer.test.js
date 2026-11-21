@@ -64,7 +64,6 @@ test('new rest clips sample exact transition frames and reverse to get up', () =
 test('jump plays and lands in place, can be cancelled and never changes the saved floor position', () => {
   const { player, hips, navigation } = fixture()
   const original = player.position.clone()
-  player.setInput(0, 1)
   assert.equal(player.canJump, true)
   assert.equal(player.jump(), true)
   assert.equal(player.jump(), false)
@@ -78,13 +77,39 @@ test('jump plays and lands in place, can be cancelled and never changes the save
   assert.ok(player.position.equals(original))
   assert.equal(player.isJumping, false)
   player.update(.5, 0)
-  assert.ok(player.position.z <= .25)
   assert.equal(player.jump(), true)
   player.update(.61, 0)
   player.setNavigation(navigation)
   assert.equal(player.isJumping, false)
   assert.equal(player.jumpHeight, 0)
   near(hips.position.y, .8)
+})
+
+test('jump retains movement and permits direction changes while respecting navigation', () => {
+  const { player, hips } = fixture()
+  player.setInput(0, -1)
+  assert.equal(player.jump(), true)
+  player.update(.3, 0)
+  const forward = player.position.clone()
+  assert.ok(forward.z < 0)
+  assert.equal(player.isJumping, true)
+  assert.ok(hips.position.y > .8)
+
+  player.setInput(1, 0)
+  player.update(.3, 0)
+  assert.ok(player.position.x > forward.x)
+  near(player.position.z, forward.z)
+  assert.equal(player.isJumping, true)
+
+  player.setInput(0, 0)
+  const stopped = player.position.clone()
+  player.update(.2, 0)
+  assert.ok(player.position.equals(stopped))
+
+  player.setInput(0, 1)
+  player.update(.42, 0)
+  assert.ok(player.position.z <= .25)
+  assert.equal(player.isJumping, false)
 })
 
 test('fitted car uses its seat and driving clips with the authored model offset', () => {

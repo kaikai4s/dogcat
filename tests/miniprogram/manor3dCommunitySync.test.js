@@ -131,17 +131,33 @@ test('watch publishes only updated peers, discards older versions, and expires d
 test('the snapshot and live watcher publish personal manor vehicle records', async () => {
   const vehicle = { id: 'car-neighbor', kind: 'manor3dVehicle', ownerId: 'neighbor',
     position3d: { x: 12, y: 4, z: 18 }, yaw: .4, seq: 2, version: { epoch: 1, seq: 2 } }
-  const f = fixture(action => action === 'getScene' ? { records: [vehicle], serverTime: 100000 }
+  const resident = { id: 'resident-neighbor', kind: 'resident', ownerId: 'neighbor', pets: [], version: { epoch: 1, seq: 1 } }
+  const f = fixture(action => action === 'getScene' ? { records: [vehicle, resident], serverTime: 100000 }
     : { accepted: true, ackSeq: 1 })
   await f.sync.start()
   assert.equal(f.applied[0].records[0].kind, 'manor3dVehicle')
   assert.equal(f.applied[0].records[0].mine, false)
+  assert.equal(f.applied[0].records[1].kind, 'resident')
   const moved = { ...vehicle, position3d: { x: 22, y: 4, z: 28 }, version: { epoch: 1, seq: 3 } }
   f.watch({ docs: [{ records: { [moved.id]: moved } }] })
   await f.advance(32)
   assert.equal(f.applied[1].replace, false)
   assert.deepEqual(f.applied[1].records[0].position3d, moved.position3d)
   assert.equal(f.applied[1].records[0].mine, false)
+  f.sync.stop()
+})
+
+test('resident need snapshots refresh derived values without changing the record version', async () => {
+  const first = { id: 'resident-neighbor', kind: 'resident', ownerId: 'neighbor',
+    pets: [{ id: 'pet', needs: { at: 100000, satiety: 80 } }], version: { epoch: 1, seq: 1 } }
+  let needs = first.pets[0].needs
+  const f = fixture(() => ({ records: [{ ...first, pets: [{ id: 'pet', needs }] }], serverTime: 100000 }))
+  await f.sync.start()
+  needs = { at: 101500, satiety: 79.5 }
+  await f.sync.snapshot()
+  assert.equal(f.applied.length, 2)
+  assert.equal(f.applied[1].records[0].version.seq, 1)
+  assert.equal(f.applied[1].records[0].pets[0].needs.satiety, 79.5)
   f.sync.stop()
 })
 

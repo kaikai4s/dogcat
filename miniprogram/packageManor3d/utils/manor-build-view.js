@@ -154,12 +154,12 @@ function createManorBuildView({ THREE, scene, disposeModel }) {
       remaining.add(record.plotId)
       const current = nodes.get(record.plotId)
       if (current?.model === model && current.x === record.x && current.z === record.z &&
-          current.y === plot.y && current.rotation === record.rotation) continue
+          current.y === plot.y && current.rotation === record.rotation && current.ownerId === record.ownerId) continue
       current?.anchor.removeFromParent()
       const { anchor, content } = instantiate(model, 'Built building ' + (record.id || record.plotId))
       transform(anchor, record, plot.y)
       placed.add(anchor)
-      nodes.set(record.plotId, { model, anchor, content, buildingId: record.buildingId, x: record.x, y: plot.y, z: record.z,
+      nodes.set(record.plotId, { model, anchor, content, ownerId: record.ownerId || '', buildingId: record.buildingId, x: record.x, y: plot.y, z: record.z,
         rotation: record.rotation, bounds: buildingBounds(model, anchor, spec) })
       changed = true
     }
@@ -213,6 +213,12 @@ function createManorBuildView({ THREE, scene, disposeModel }) {
     hasModel: id => models.has(id), setModel, forgetBorrowedModel,
     placedModels(id) {
       return Array.from(nodes, ([plotId, node]) => node.buildingId === id ? { plotId, model: node.content } : null).filter(Boolean)
+    },
+    buildingBounds(ownerId, id) {
+      const matches = Array.from(nodes.values()).filter(node => node.ownerId === ownerId && node.buildingId === id)
+      if (!matches.length) return null
+      const bounds = matches.flatMap(node => node.bounds)
+      return bounds.slice(1).reduce((result, value) => result.union(value), bounds[0].clone())
     },
     get collision() { return collision }, get occupied() { return occupied },
     setPlots(value, reset = false) {

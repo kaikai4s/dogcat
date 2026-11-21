@@ -18,7 +18,7 @@ function samePosition(a, b) {
 
 function relevant(record) {
   return record && typeof record.id === 'string' &&
-    ['presence', 'manor3dPresence', 'plot', 'manor3dBuilding', 'manor3dVehicle'].includes(record.kind)
+    ['presence', 'manor3dPresence', 'plot', 'resident', 'manor3dBuilding', 'manor3dVehicle'].includes(record.kind)
 }
 
 function stalePeer(record, now) {
@@ -31,6 +31,15 @@ function newer(next, previous) {
   const a = next.version || {}
   const b = previous.version || {}
   return a.epoch > b.epoch || a.epoch === b.epoch && a.seq > b.seq
+}
+
+function residentNeedsAdvanced(next, previous) {
+  if (next.kind !== 'resident' || previous?.kind !== 'resident') return false
+  const nextVersion = next.version || {}
+  const previousVersion = previous.version || {}
+  if (nextVersion.epoch !== previousVersion.epoch || nextVersion.seq !== previousVersion.seq) return false
+  const previousPets = new Map((previous.pets || []).map(pet => [pet.id, Number(pet.needs?.at) || 0]))
+  return (next.pets || []).some(pet => (Number(pet.needs?.at) || 0) > (previousPets.get(pet.id) || 0))
 }
 
 class ManorCommunitySync {
@@ -79,8 +88,9 @@ class ManorCommunitySync {
   }
 
   merge(record) {
+    const previous = this.records.get(record?.id)
     if (!relevant(record) || stalePeer(record, Date.now() + this.serverClockOffset) ||
-        !newer(record, this.records.get(record.id))) return
+        !newer(record, previous) && !residentNeedsAdvanced(record, previous)) return
     this.eventSequence += 1
     const next = {
       ...record,

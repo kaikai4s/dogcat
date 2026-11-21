@@ -1,4 +1,5 @@
 const { getActiveEnvId } = require('../../envList')
+const { callFunction } = require('../../utils/cloud')
 const { createCloudAssets, hasManorAssets } = require('../utils/cloud-assets')
 const { THREE, createRenderer, loadGlb, disposeModel } = require('../utils/model-runtime')
 const { createManorScene } = require('../utils/manor-scene')
@@ -211,12 +212,24 @@ Page({
     firstPerson: false,
     stickX: 0,
     stickY: 0,
-    stickActive: false
+  stickActive: false,
+  pets: [],
+  selectedPetId: '',
+  selectedPetName: '',
+  selectedPet: null,
+  nearbyPet: null,
+  petRosterOpen: false,
+  petCareBusy: false,
+  petModelsStatus: 'pending',
+  petModelsError: ''
   },
 
   onLoad(options = {}) {
     this._positionMinimap()
     this._vehicleSyncSeq = 0
+    this._petCommandSeq = 0
+    this._petModelSessions = new Map()
+    this._petUiSignature = ''
     this._vehicleSyncSignature = ''
     this._nextVehicleSync = 0
     this._firstHomePromptSceneId = ''
@@ -245,10 +258,15 @@ Page({
     this._shown = true
     this._prepareCommunityEntry()
     if (this._hasLandscape) {
-      this.onResize()
-      this._startFrames()
+      const resumeToken = this._resumeToken = {}
+      // The native canvas backing size can change while the page is hidden.
+      this._viewport = null
+      this.onResize().then(() => {
+        if (this._shown && this._resumeToken === resumeToken) this._startFrames()
+      })
       this._loadCharacter()
       this._loadVehicle()
+      this._loadPetModels()
       this._restorePlayerPosition()
     }
     this._beginLoad()
@@ -259,6 +277,7 @@ Page({
     this._syncManor3dVehicle(true, false)
     this._shown = false
     this._resizeToken = null
+    this._resumeToken = null
     if (!this._closed) this.closeMenu()
     this._endBuild()
     this._resetCanvasTouches()
@@ -272,6 +291,12 @@ Page({
     this._stopLoad('_buildModelSession')
     this._stopLoad('_vehicleSession')
     this._stopLoad('_remoteCharacterSession')
+    const petModelsPending = this._petModelsLoading || this.data.petModelsStatus === 'loading'
+    this._petModelsGeneration = (this._petModelsGeneration || 0) + 1
+    this._petModelsLoading = false
+    for (const session of this._petModelSessions?.values?.() || []) session.assets?.cancel?.()
+    this._petModelSessions?.clear?.()
+    if (!this._closed && petModelsPending) this.setData({ petModelsStatus: 'pending', petModelsError: '' })
     if (!this._closed && this.data.courtyardStatus === 'loading') this.setData({ courtyardStatus: 'idle' })
     this._disconnectCommunity()
     if (!this._scene?.isInsideVilla) {
@@ -326,7 +351,7 @@ Page({
   _isCurrent(session) {
     return this._shown && !this._closed && (this._session === session || this._characterSession === session ||
       this._interiorSession === session || this._buildModelSession === session || this._vehicleSession === session ||
-      this._remoteCharacterSession === session)
+      this._remoteCharacterSession === session || [...(this._petModelSessions?.values?.() || [])].some(item => item === session))
   },
 
   _stopLoad(field = '_session') {
@@ -372,7 +397,9 @@ Page({
       courtyardDoorLabel: '', doorBusy: false, roomDoor: null, elevator: null, interiorStatus: 'idle',
       interiorProgress: -1, interiorError: '', courtyardStatus: 'idle', courtyardProgress: -1, courtyardError: '',
       vehicleLoadError: '', vehicleNearby: false, vehiclePanelOpen: false, vehicleSeats: [], vehicleState: 'walking',
-      vehicleStatus: '', vehicleSeatLabel: '', vehicleSpeed: 0, vehicleCanExit: false })
+      vehicleStatus: '', vehicleSeatLabel: '', vehicleSpeed: 0, vehicleCanExit: false,
+      pets: [], selectedPetId: '', selectedPetName: '', selectedPet: null, nearbyPet: null,
+      petRosterOpen: false, petCareBusy: false, petModelsStatus: 'pending', petModelsError: '' })
   },
 
   _readEntryTicket(options = {}) {
@@ -695,6 +722,8 @@ Page({
 
   _applySharedRecords(records, ownPlayerId, { replace = true } = {}) {
     this._scene.setSharedRecords?.(records, ownPlayerId, { replace })
+    this._scene.setPetRecords?.(records.filter(record => record.kind === 'resident'), { replace, ownPlayerId })
+    this._refreshPetUi()
     if (replace || records.some(record => record.kind === 'presence')) this._refreshCommunityPlayers()
     const previous = this._placedBuildings
     let buildings
@@ -719,6 +748,203 @@ Page({
     }
     this._restorePlayerPosition()
   },
+
+  async _loadPetModels() {
+    if (!this._shown || this._closed || !this._hasLandscape || !this._scene?.setPetModel ||
+        this._petModelsLoading || this.data.petModelsStatus === 'ready') return
+    this._petModelsLoading = true
+    const generation = this._petModelsGeneration = (this._petModelsGeneration || 0) + 1
+    this.setData({ petModelsStatus: 'loading', petModelsError: '' })
+    try {
+      await Promise.all(['dog', 'cat'].map(type => this._loadPetModel(type)))
+      if (this._petModelsGeneration === generation && this._shown && !this._closed) {
+        this.setData({ petModelsStatus: 'ready' })
+      }
+    } catch (error) {
+      if (this._petModelsGeneration === generation && this._shown && !this._closed) {
+        this.setData({ petModelsStatus: 'error', petModelsError: error?.message || '宠物模型加载失败' })
+      }
+    } finally {
+      if (this._petModelsGeneration === generation) this._petModelsLoading = false
+    }
+  },
+
+  retryPetModels() {
+    if (this.data.petModelsStatus !== 'error') return
+    this._petModelSessions?.clear?.()
+    this.setData({ petModelsStatus: 'pending', petModelsError: '' })
+    this._loadPetModels()
+  },
+
+  async _loadPetModel(type) {
+    if (this._petModelSessions?.has(type)) return this._petModelSessions.get(type).promise
+    const session = { assets: createCloudAssets({ wx, envId: this._envId }) }
+    session.promise = this._attach(session, type, null, () => {}, model => {
+      const attached = this._scene?.setPetModel?.(type, model)
+      return attached !== false
+    })
+    this._petModelSessions.set(type, session)
+    try {
+      return await session.promise
+    } finally {
+      if (this._petModelSessions.get(type) === session) this._petModelSessions.delete(type)
+    }
+  },
+
+  _refreshPetUi() {
+    const state = this._scene?.getPetUiState?.() || {}
+    const pets = Array.isArray(state) ? state : (Array.isArray(state.pets) ? state.pets : [])
+    const selected = (Array.isArray(state) ? null : state.selected) ||
+      pets.find(pet => pet.id === this.data.selectedPetId) || null
+    const interaction = this._scene?.getPetInteractionState?.() || {}
+    const nearby = interaction.nearby || (interaction.id && pets.find(pet => pet.id === interaction.id)) || null
+    const displayPet = pet => {
+      if (!pet) return null
+      const { position3d, position, ...display } = pet
+      if (Array.isArray(display.waste)) display.waste = display.waste.filter(item => item?.type !== 'poop' || !item.vehicleId)
+      display.hasCleanableWaste = display.waste?.some(item => item?.type === 'poop' && !item.vehicleId) === true
+      return display
+    }
+    const displayPets = pets.map(displayPet)
+    const selectedPet = displayPet(selected)
+    const nearbyPet = displayPet(nearby)
+    const signature = JSON.stringify([displayPets, selectedPet, nearbyPet])
+    if (signature === this._petUiSignature) return
+    this._petUiSignature = signature
+    this.setData({
+      pets: displayPets,
+      selectedPetId: selectedPet?.id || '',
+      selectedPetName: selectedPet?.name || '',
+      selectedPet,
+      nearbyPet
+    })
+  },
+
+  _petPosition(petId) {
+    return this._scene?.getPetPosition?.(petId) ||
+      this.data.selectedPet?.position3d || this.data.selectedPet?.position || null
+  },
+
+  _nextPetCommand() {
+    const latest = Math.max(0, ...(this.data.pets || []).map(pet => Number(pet.commandSeq || 0)))
+    this._petCommandSeq = Math.max(this._petCommandSeq || 0, latest) + 1
+    return this._petCommandSeq
+  },
+
+  _petCredentials() {
+    const scene = this._communityScene
+    return scene ? { sceneId: scene.sceneId, session: scene.session } : null
+  },
+
+  _applyPetResult(result) {
+    if (result?.pet) this._scene?.applyPetRecord?.(result.pet)
+    this._refreshPetUi()
+    this._communitySync?.snapshot?.().catch(() => {})
+  },
+
+  async petAction(event) {
+    const operation = event?.currentTarget?.dataset?.operation
+    const petId = event?.currentTarget?.dataset?.petId || this.data.selectedPetId
+    if (!petId || !['follow', 'stay', 'eat', 'sleep', 'drink', 'feed'].includes(operation) || this.data.petCareBusy) return
+    const credentials = this._petCredentials()
+    if (!credentials) return wx.showToast?.({ title: '庄园连接中，请稍后重试', icon: 'none' })
+    this._stopStick()
+    this.setData({ petCareBusy: true })
+    try {
+      const manor3dPosition = this._petPosition(petId)
+      const result = await callFunction('playground', 'petAction', {
+        ...credentials,
+        petId,
+        operation,
+        commandSeq: this._nextPetCommand(),
+        ...(manor3dPosition ? { manor3dPosition } : {})
+      })
+      this._scene?.petAction?.(petId, operation)
+      this._applyPetResult(result)
+      const messages = {
+        follow: '宠物会跟在你身边，停下后会在周围自由活动',
+        stay: '已取消跟随，宠物会在当前位置附近活动',
+        feed: '喂食完成，饱腹值已恢复',
+        eat: '宠物正前往碗边吃饭',
+        drink: '宠物正前往喷泉喝水',
+        sleep: '宠物正回窝休息'
+      }
+      wx.showToast?.({ title: messages[operation], icon: 'none' })
+    } catch (error) {
+      wx.showToast?.({ title: error?.message || '宠物操作失败，请重试', icon: 'none' })
+    } finally {
+      if (!this._closed) this.setData({ petCareBusy: false })
+    }
+  },
+
+  async interactPet() {
+    const petId = this.data.nearbyPet?.id || this.data.selectedPetId
+    const credentials = this._petCredentials()
+    if (!petId || !credentials || this.data.petCareBusy) return
+    this._stopStick()
+    this.setData({ petCareBusy: true })
+    try {
+      const manor3dPosition = this._petPosition(petId)
+      const result = await callFunction('playground', 'interactPet', {
+        ...credentials,
+        petId,
+        commandSeq: this._nextPetCommand(),
+        ...(manor3dPosition ? { manor3dPosition } : {})
+      })
+      this._scene?.petInteract?.(petId)
+      this._applyPetResult(result)
+      wx.showToast?.({ title: `${this.data.nearbyPet?.name || '宠物'}开心地蹭了蹭你`, icon: 'none' })
+    } catch (error) {
+      wx.showToast?.({ title: error?.message || '请先走近自己的宠物', icon: 'none' })
+    } finally {
+      if (!this._closed) this.setData({ petCareBusy: false })
+    }
+  },
+
+  async clearPetWaste() {
+    const pet = this.data.selectedPet || this.data.nearbyPet
+    const waste = pet?.waste?.find(item => item.type === 'poop' && !item.vehicleId)
+    const credentials = this._petCredentials()
+    if (!pet || !waste || !credentials || this.data.petCareBusy) return
+    this.setData({ petCareBusy: true })
+    try {
+      await callFunction('playground', 'farmAction', {
+        ...credentials,
+        operation: 'pickupPoop',
+        poopId: waste.id,
+        quantity: 1,
+        requestId: 'manor3d_poop_' + Date.now().toString(36)
+      })
+      this._scene?.clearPetWaste?.(pet.id, waste.id)
+      this._communitySync?.snapshot?.().catch(() => {})
+      this._refreshPetUi()
+      wx.showToast?.({ title: '便便已清理', icon: 'none' })
+    } catch (error) {
+      wx.showToast?.({ title: error?.message || '清理失败，请重试', icon: 'none' })
+    } finally {
+      if (!this._closed) this.setData({ petCareBusy: false })
+    }
+  },
+
+  togglePetRoster() {
+    this.setData({ petRosterOpen: !this.data.petRosterOpen })
+  },
+
+  selectPet(event) {
+    const id = event?.currentTarget?.dataset?.petId
+    if (!id) return
+    this._scene?.selectPet?.(id)
+    this.setData({ petRosterOpen: false })
+    this._refreshPetUi()
+  },
+
+  clearSelectedPet() {
+    if (this._scene?.clearPetSelection) this._scene.clearPetSelection()
+    else this._scene?.selectPet?.('')
+    this.setData({ selectedPetId: '', selectedPetName: '', selectedPet: null })
+  },
+
+  swallowPetTouch() {},
 
   _progress(session, field) {
     if (!field) return undefined
@@ -812,12 +1038,14 @@ Page({
         this._startFrames()
         this._applyPendingSharedRecords()
         this._applyPendingCommunityPosition()
+        this._loadPetModels()
         // Give the player priority over the optional villa on first entry.
         await this._loadCharacter()
         this._loadVehicle()
       }
       if (!this._isCurrent(session) || this.data.villaStatus === 'error') return
       if (this._hasVilla) {
+        this._loadPetModels()
         if (!this._interiorMetadata && this.data.interiorStatus !== 'error') await this._loadVillaInteriorMetadata(session)
         this._restorePlayerPosition()
         return
@@ -833,6 +1061,7 @@ Page({
         this._updateMinimapPlayer()
         this._maybePromptFirstHome()
         await this._loadVillaInteriorMetadata(session)
+        this._loadPetModels()
       }
     } catch (error) {
       if (!this._isCurrent(session)) return
@@ -999,6 +1228,9 @@ Page({
   _draw(dt = 0) {
     if (this._renderer.getContext().isContextLost?.()) throw new Error('3D 渲染已中断')
     this._scene.render(this._timeSeconds || 0, dt)
+    const playerState = this._scene.getPlayerSyncState?.()
+    if (playerState?.position3d) this._scene.setPetPlayerPosition?.(playerState.position3d)
+    this._refreshPetUi()
     this._updateVehicleState()
     this._updateDoorState()
     this._updateElevatorState()
