@@ -60,16 +60,39 @@ module.exports = function createService({ db, safeText }) {
       if (summary.invalid || !Number.isSafeInteger(summary.cents)) throw new Error(`财务数据金额异常，请核对 ${collection}`)
       return summary
     }
-    const paidOrder = $.or([eq('paymentStatus', 'paid'), isIn('status', ['paid', 'assigned', 'in_service', 'day_completed', 'completed'])])
-    const paidPayment = $.and([isIn('status', ['success', 'paid']), $.neq([$.ifNull(['$targetType', '']), 'staff_deposit'])])
+    const nonMockOrder = $.and([
+      $.neq([$.ifNull(['$isMockPayment', false]), true]),
+      $.neq([$.ifNull(['$paymentChannel', '']), 'mock'])
+    ])
+    const paidOrder = $.and([
+      $.or([eq('paymentStatus', 'paid'), isIn('status', ['paid', 'assigned', 'on_the_way', 'in_service', 'day_completed', 'completed'])]),
+      nonMockOrder
+    ])
+    const paidMallOrder = $.and([
+      $.or([eq('paymentStatus', 'paid'), isIn('status', ['paid', 'pending_ship', 'shipped', 'completed'])]),
+      nonMockOrder
+    ])
+    const paidPayment = $.and([
+      isIn('status', ['success', 'paid']),
+      $.neq([$.ifNull(['$targetType', '']), 'staff_deposit']),
+      $.neq([$.ifNull(['$channel', '']), 'mock']),
+      $.neq([$.ifNull(['$isMock', false]), true])
+    ])
+    const realOrderRefund = $.and([
+      $.neq([$.ifNull(['$targetType', '']), 'staff_deposit']),
+      $.neq([$.ifNull(['$collectionName', '']), 'staff_deposits']),
+      $.neq([$.ifNull(['$channel', '']), 'mock']),
+      $.neq([$.ifNull(['$isMock', false]), true])
+    ])
     const realStaffEarning = $.and([
       $.neq([$.ifNull(['$isMock', false]), true]),
       $.neq([$.ifNull(['$paymentChannel', '']), 'mock'])
     ])
-    const [orders, payments, refunds, earnings, withdraws, paidWithdraws, logResult, recent] = await Promise.all([
+    const [orders, mallOrders, payments, refunds, earnings, withdraws, paidWithdraws, logResult, recent] = await Promise.all([
       summarize('orders', ['paidAt', 'createdAt'], 'payAmount', paidOrder),
+      summarize('mall_orders', ['paidAt', 'createdAt'], 'payAmount', paidMallOrder),
       summarize('payments', ['paidAt', 'updatedAt', 'createdAt'], 'amount', paidPayment),
-      summarize('refunds', ['succeededAt', 'updatedAt', 'createdAt'], 'refundAmount', null, eq('status', 'success')),
+      summarize('refunds', ['succeededAt', 'updatedAt', 'createdAt'], 'refundAmount', realOrderRefund, eq('status', 'success')),
       summarize('staff_earnings', ['createdAt', 'completedAt'], 'amount', realStaffEarning),
       summarize('withdraw_requests', ['createdAt', 'paidAt'], 'amount'),
       summarize('withdraw_requests', ['paidAt', 'createdAt'], 'amount', eq('status', 'paid')),
@@ -79,10 +102,11 @@ module.exports = function createService({ db, safeText }) {
     const statuses = summary => Object.fromEntries(summary.statuses.map(item => [item.status, item.count]))
     const withdrawAmount = status => (withdraws.statuses.find(item => item.status === status)?.cents || 0) / 100
     const withdrawingAmount = ['approved', 'transferring', 'transfer_failed'].reduce((sum, status) => sum + withdrawAmount(status), 0)
+    const gmvCents = orders.cents + mallOrders.cents
     return {
       range: { startDate: range.startDate, endDate: range.endDate },
       metrics: {
-        gmv: orders.cents / 100, received: payments.cents / 100, refundAmount: refunds.cents / 100,
+        gmv: gmvCents / 100, received: payments.cents / 100, refundAmount: refunds.cents / 100,
         netRevenue: (payments.cents - refunds.cents) / 100, staffEarningAmount: earnings.cents / 100,
         platformGrossProfit: (payments.cents - refunds.cents - earnings.cents) / 100,
         pendingWithdrawAmount: withdrawAmount('pending'), withdrawingAmount,
@@ -92,7 +116,7 @@ module.exports = function createService({ db, safeText }) {
         missingCosts: ['mallCost', 'paymentFee', 'tax', 'marketing', 'reimbursement', 'operatingCost'],
         refundDate: 'succeededAt', paidWithdrawDate: 'paidAt', pendingWithdrawDate: 'createdAt',
         historicalDateFallback: true, snapshotConsistent: false },
-      counts: { paidOrders: orders.count, payments: payments.count, refunds: refunds.count,
+      counts: { paidOrders: orders.count + mallOrders.count, payments: payments.count, refunds: refunds.count,
         earnings: earnings.count, withdraws: withdraws.count, logs: logResult.list[0]?.count || 0,
         withdrawStatus: statuses(withdraws), earningStatus: statuses(earnings), refundStatus: statuses(refunds) },
       recentLogs: recent.list.map(({ reportDate, ...log }) => log)

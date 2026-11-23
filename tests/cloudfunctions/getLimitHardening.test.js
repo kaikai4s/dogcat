@@ -157,14 +157,17 @@ test('4. admin notifications markAdminNotificationRead processes > 100 unread re
   const ctx = createContext({ db, cloud: {} })
   const adminNotifications = createAdminNotifications(ctx)
 
-  // 一键全部已读
+  // 一键全部已读（仅标记当前管理员已读，不全局覆盖其他管理员的未读状态）
   const res = await adminNotifications.markAdminNotificationRead({ all: true }, adminOpenid)
   assert.equal(res.count, 130, '全部 130 条通知都被标为已读')
-  assert.ok(db.state.admin_notifications.every(n => n.read === true), '所有通知状态均为 read: true')
+  assert.ok(db.state.admin_notifications.every(n => Array.isArray(n.readBy) && n.readBy.includes(adminOpenid)), '所有通知均记录当前管理员 readBy')
+  assert.ok(db.state.admin_notifications.every(n => n.read === false), '不全局覆写 read: true 影响其他管理员')
 
-  // 角标统计
+  // 当前管理员角标统计归零，其他管理员仍保持未读
   const badgeRes = await adminNotifications.getAdminNotificationBadge(adminOpenid)
-  assert.equal(badgeRes.unreadCount, 0, '未读数清零')
+  assert.equal(badgeRes.unreadCount, 0, '当前管理员未读数清零')
+  const otherBadgeRes = await adminNotifications.getAdminNotificationBadge('other_admin')
+  assert.equal(otherBadgeRes.unreadCount, 130, '其他管理员仍保留 130 条未读')
 })
 
 test('5. penalty evidences list returns total > 100 in admin handler', async () => {

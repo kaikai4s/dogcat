@@ -45,7 +45,7 @@
         <view class="service-title">公开发布抢单</view>
         <view class="service-desc">支付后附近审核通过的宠托师可抢单</view>
       </view>
-      <view class="publish-option {{form.publishMode === 'direct' ? 'active' : ''}}" data-mode="direct" bindtap="choosePublishMode">
+      <view wx:if="{{!groupBuyMode}}" class="publish-option {{form.publishMode === 'direct' ? 'active' : ''}}" data-mode="direct" bindtap="choosePublishMode">
         <view class="remix-icon ri-user-star-line option-icon"></view>
         <view class="service-title">指定宠托师接单</view>
         <view class="service-desc">支付后仅指定宠托师可看到并接单</view>
@@ -384,7 +384,7 @@
         <view class="service-title">单次服务</view>
         <view class="service-desc">只预约当天一次上门</view>
       </view>
-      <view class="service-option {{form.orderType === 'multi_day' ? 'active' : ''}}" data-type="multi_day" bindtap="chooseOrderType">
+      <view wx:if="{{!groupBuyMode}}" class="service-option {{form.orderType === 'multi_day' ? 'active' : ''}}" data-type="multi_day" bindtap="chooseOrderType">
         <view class="service-title">连续多天</view>
         <view class="service-desc">每天同一时间上门服务</view>
       </view>
@@ -665,7 +665,7 @@
             <view class="strong">单次服务</view>
             <view class="muted">预约当天一次</view>
           </view>
-          <view class="sheet-tab {{calendarTempOrderType === 'multi_day' ? 'active' : ''}}" data-type="multi_day" bindtap="changeCalendarOrderType">
+          <view wx:if="{{!groupBuyMode}}" class="sheet-tab {{calendarTempOrderType === 'multi_day' ? 'active' : ''}}" data-type="multi_day" bindtap="changeCalendarOrderType">
             <view class="strong">连续多天</view>
             <view class="muted">连续日期每天一次</view>
           </view>

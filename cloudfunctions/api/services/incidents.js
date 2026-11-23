@@ -24,11 +24,20 @@ module.exports = function createService({
 
   async function getIncidentForAccess(openid, incidentId) {
     const user = await getUser(openid)
-    if (user.roles.includes('admin')) await authorizeAdmin(user)
     const incidentRes = await db.collection('order_incidents').doc(incidentId).get().catch(() => ({ data: null }))
     const incident = incidentRes && incidentRes.data
     if (!incident) throw new Error('纠纷不存在')
-    if (user.roles.includes('admin') || incident.clientOpenid === openid || incident.staffOpenid === openid) return { user, incident }
+    const isParticipant = incident.clientOpenid === openid || incident.staffOpenid === openid
+    if (user.roles.includes('admin')) {
+      try {
+        await authorizeAdmin(user)
+        return { user, incident, isAdminAccess: true }
+      } catch (error) {
+        if (isParticipant) return { user, incident, isAdminAccess: false }
+        throw error
+      }
+    }
+    if (isParticipant) return { user, incident, isAdminAccess: false }
     throw new Error('无权访问纠纷')
   }
 

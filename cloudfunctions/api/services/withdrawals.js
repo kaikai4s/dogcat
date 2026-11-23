@@ -82,7 +82,9 @@ module.exports = function createService(context) {
     const settings = await getSystemSettings()
     if (!internal.adminSettlementId && await readManualRedemption(db, settings)) throw new Error('当前收益由平台登记兑换，已关闭自主提现')
     const selected = []
+    const eligibleEarnings = []
     let totalCents = 0
+    let eligibleCount = 0
     if (internal.adminSettlementId) {
       if (!Array.isArray(internal.earningIds) || !internal.earningIds.length || internal.earningIds.length > maxEarnings || new Set(internal.earningIds).size !== internal.earningIds.length) throw new Error('结清收益明细异常')
       for (const id of internal.earningIds) {
@@ -93,22 +95,68 @@ module.exports = function createService(context) {
       }
       if (totalCents !== requestedCents) throw new Error('结清收益金额已变化，请重新核对')
     } else {
-    selectEarnings: for await (const earnings of documentPages(db, db.command, 'staff_earnings', { staffOpenid: openid, status: 'available' })) {
-      for (const earning of earnings) {
-        if (earning.isMock === true || earning.paymentChannel === 'mock' || earning.status === 'mock_settled' || earning.pendingRefundIds?.length || earning.frozenIncidentId) continue
-        // Refresh already clears confirmed stale bindings. Any remaining
-        // request still occupies this earning, including approved payouts.
-        if (earning.withdrawRequestId) continue
-        if (totalCents >= targetCents || selected.length > maxEarnings) break selectEarnings
-        selected.push(earning)
-        totalCents += cents(earning.amount)
-        if (!Number.isSafeInteger(totalCents)) throw new Error('提现金额不正确')
+      selectEarnings: for await (const earnings of documentPages(db, db.command, 'staff_earnings', { staffOpenid: openid, status: 'available' })) {
+        for (const earning of earnings) {
+          if (earning.isMock === true || earning.paymentChannel === 'mock' || earning.status === 'mock_settled' || earning.pendingRefundIds?.length || earning.frozenIncidentId) continue
+          // Refresh already clears confirmed stale bindings. Any remaining
+          // request still occupies this earning, including approved payouts.
+          if (earning.withdrawRequestId) continue
+          eligibleCount += 1
+          const entryCents = cents(earning.amount)
+          if (eligibleEarnings.length < 200) eligibleEarnings.push({ earning, entryCents })
+          if (requestedCents === null) {
+            if (selected.length > maxEarnings) break selectEarnings
+            selected.push(earning)
+            totalCents += entryCents
+            if (!Number.isSafeInteger(totalCents)) throw new Error('提现金额不正确')
+          } else {
+            if (totalCents < targetCents && selected.length < maxEarnings && totalCents + entryCents <= targetCents) {
+              selected.push(earning)
+              totalCents += entryCents
+              if (!Number.isSafeInteger(totalCents)) throw new Error('提现金额不正确')
+            }
+            if (totalCents === targetCents) break selectEarnings
+          }
+        }
       }
-    }
+      if (requestedCents !== null && totalCents !== requestedCents && eligibleEarnings.length > 0 && requestedCents > 0) {
+        const dp = new Map([[0, null]])
+        const MAX_DP_STATES = 6000
+        for (let idx = 0; idx < eligibleEarnings.length; idx += 1) {
+          const itemCents = eligibleEarnings[idx].entryCents
+          if (itemCents <= 0 || itemCents > requestedCents) continue
+          const sums = Array.from(dp.keys())
+          for (const sum of sums) {
+            const state = dp.get(sum)
+            const count = state ? state.count : 0
+            if (count >= maxEarnings) continue
+            const nextSum = sum + itemCents
+            if (nextSum > requestedCents || dp.has(nextSum)) continue
+            if (dp.size >= MAX_DP_STATES && nextSum !== requestedCents) continue
+            dp.set(nextSum, { prevSum: sum, itemIndex: idx, count: count + 1 })
+            if (nextSum === requestedCents) break
+          }
+          if (dp.has(requestedCents)) break
+        }
+        if (dp.has(requestedCents)) {
+          const matchedIndices = []
+          let cursorSum = requestedCents
+          while (cursorSum > 0) {
+            const node = dp.get(cursorSum)
+            if (!node) break
+            matchedIndices.push(node.itemIndex)
+            cursorSum = node.prevSum
+          }
+          matchedIndices.reverse()
+          selected.length = 0
+          for (const idx of matchedIndices) selected.push(eligibleEarnings[idx].earning)
+          totalCents = requestedCents
+        }
+      }
     }
     // Earnings are indivisible ledger entries. Never silently turn a smaller
     // requested amount into a larger withdrawal by selecting the next entry.
-    if (requestedCents !== null && totalCents > requestedCents) {
+    if (requestedCents !== null && eligibleCount > 0 && totalCents !== requestedCents) {
       throw new Error('提现金额需按收益记录整笔申请，请调整为不超过可选收益的金额')
     }
     const time = now()

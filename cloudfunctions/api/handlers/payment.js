@@ -21,8 +21,10 @@ module.exports = function createHandler(context) {
     getSystemSettings,
     getUser,
     getWechatPayConfig,
+    isZeroPayCouponOrder,
     logAdmin,
     markOrderPaid,
+    markZeroPayOrderPaid,
     now,
     requireAdmin,
     requireClientPayableOrder,
@@ -91,6 +93,9 @@ module.exports = function createHandler(context) {
       } else {
         assertOrderTransition(order.status, ORDER_STATUS.PAID, '订单状态不可支付')
       }
+      if (typeof isZeroPayCouponOrder === 'function' && isZeroPayCouponOrder(order) && typeof markZeroPayOrderPaid === 'function') {
+        return markZeroPayOrderPaid(data.orderId, openid)
+      }
       if (Number(order.payAmount || 0) <= 0) throw new Error('订单金额不正确')
       if (order.couponId) {
         const couponRes = await db.collection('user_coupons').doc(order.couponId).get().catch(() => ({ data: null }))
@@ -149,6 +154,9 @@ module.exports = function createHandler(context) {
       if (order.paymentStatus === 'paid') return { orderId: data.orderId, status: 'paid' }
       assertOrderPaymentOpen(order)
       if (order.status !== 'pending_pay' || order.paymentStatus === 'closed') throw new Error('订单状态不可支付')
+      if (typeof isZeroPayCouponOrder === 'function' && isZeroPayCouponOrder(order) && typeof markZeroPayOrderPaid === 'function') {
+        return markZeroPayOrderPaid(data.orderId, openid)
+      }
       if (order.couponId) {
         const couponRes = await db.collection('user_coupons').doc(order.couponId).get().catch(() => ({ data: null }))
         const coupon = couponRes && couponRes.data

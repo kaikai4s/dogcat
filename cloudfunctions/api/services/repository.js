@@ -47,11 +47,50 @@ module.exports = function createService({
     return Number(currentValue || 0) + Number(delta || 0)
   }
 
-  async function safeCollectionData(name, builder) {
+  async function safeCollectionData(name, builder, { pageSize = 100, maxRows = 2000 } = {}) {
     try {
-      const query = builder ? builder(db.collection(name)) : db.collection(name)
-      const res = await query.get()
-      return res.data || []
+      let hasExplicitLimit = false
+      let targetQuery = db.collection(name)
+      const wrapQuery = (raw) => {
+        const wrapper = {
+          where: (...args) => wrapQuery(raw.where(...args)),
+          orderBy: (...args) => wrapQuery(raw.orderBy(...args)),
+          field: (...args) => wrapQuery(raw.field(...args)),
+          skip: (...args) => wrapQuery(raw.skip(...args)),
+          limit: (...args) => {
+            hasExplicitLimit = true
+            return wrapQuery(raw.limit(...args))
+          },
+          get: () => raw.get()
+        }
+        targetQuery = raw
+        return wrapper
+      }
+      if (builder) {
+        const built = builder(wrapQuery(targetQuery))
+        if (built && typeof built.get === 'function' && built !== targetQuery && hasExplicitLimit) {
+          const res = await built.get()
+          return res.data || []
+        }
+      }
+      if (hasExplicitLimit) {
+        const res = await targetQuery.get()
+        return res.data || []
+      }
+      const rows = []
+      const batchSize = Math.min(Math.max(Number(pageSize || 100), 1), 100)
+      while (rows.length < maxRows) {
+        const remaining = maxRows - rows.length
+        const limit = Math.min(batchSize, remaining)
+        if (rows.length > 0 && typeof targetQuery.skip !== 'function') break
+        const pageQuery = typeof targetQuery.skip === 'function' && rows.length > 0
+          ? targetQuery.skip(rows.length).limit(limit)
+          : targetQuery.limit(limit)
+        const page = (await pageQuery.get()).data || []
+        rows.push(...page)
+        if (page.length < limit) break
+      }
+      return rows
     } catch (error) {
       return []
     }

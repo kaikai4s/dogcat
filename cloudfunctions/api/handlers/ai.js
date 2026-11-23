@@ -263,22 +263,23 @@ ${order.completedAt ? `订单完成时间：${safeText(order.completedAt)}\n` : 
         console.warn('[generatePetVoice] AI model call failed:', (err && err.message) || err)
       }
 
-      const chosenVoice = (source === 'hy3' && voices.length > 0) ? voices[0] : ''
       const fallbacks = fallbackVoices()
-      for (const text of fallbacks) {
-        if (voices.length >= 5) break
-        if (!voices.includes(text)) voices.push(text)
-      }
-
-      if (typeof checkTextSecurity === 'function') {
-        const safeVoices = []
+      if (typeof checkTextSecurity === 'function' && voices.length > 0) {
+        const safeAiVoices = []
         for (const text of voices) {
           try {
             await checkTextSecurity(openid, text, { scene: 2, label: 'AI宠物心声' })
-            safeVoices.push(text)
+            safeAiVoices.push(text)
           } catch (_) {}
         }
-        voices = safeVoices.length >= 5 ? safeVoices.slice(0, 5) : fallbacks
+        voices = safeAiVoices
+        if (!voices.length) source = 'fallback'
+      }
+
+      const chosenVoice = (source === 'hy3' && voices.length > 0) ? voices[0] : ''
+      for (const text of fallbacks) {
+        if (voices.length >= 5) break
+        if (!voices.includes(text)) voices.push(text)
       }
 
       await db.collection('pet_voice_daily_cache').doc(cacheId).set({ data: {

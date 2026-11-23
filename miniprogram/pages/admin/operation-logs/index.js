@@ -26,23 +26,29 @@ Page({
       await this.load(true)
     } catch (error) { showError(error) }
   },
-  actor(e) { const index = Number(e.detail.value); this.setData({ actorIndex: index, actorOpenid: this.data.actors[index].openid }); this.load(true) },
+  actor(e) { const index = Number(e.detail.value); const picked = this.data.actors[index]; if (!picked) return; this.setData({ actorIndex: index, actorOpenid: picked.openid }, () => this.load(true)) },
   actorInput(e) { this.setData({ actorOpenid: e.detail.value }) },
-  status(e) { const index = Number(e.detail.value); this.setData({ statusIndex: index, status: ['', 'succeeded', 'failed', 'denied', 'started'][index] }); this.load(true) },
+  status(e) { const index = Number(e.detail.value); this.setData({ statusIndex: index, status: ['', 'succeeded', 'failed', 'denied', 'started'][index] }, () => this.load(true)) },
   action(e) { this.setData({ action: e.detail.value }) },
   search() { this.load(true) },
   async load(reset = false) {
-    if (this.data.loading) return
+    if (this.data.loading && !reset) return
     const page = reset ? 1 : this.data.page + 1
+    const seq = (this._loadSeq = (this._loadSeq || 0) + 1)
     this.setData({ loading: true })
     try {
       const result = await callFunction('admin', 'listOperationLogs', { page, actorOpenid: this.data.actorOpenid.trim(), status: this.data.status, action: this.data.action.trim() })
+      if (seq !== this._loadSeq) return
       const rows = result.list.map(row => ({ ...row, timeText: formatDateTime(row.createdAt), resultText: statuses[row.status] || '操作结果未知',
         actionText: (this.names || {})[row.permission || `${row.module}.${row.action}`] || '其他后台操作',
         errorText: row.errorCode ? (row.errorCode === 'ADMIN_FORBIDDEN' ? '无权执行此操作' : '操作未完成，请核查处理结果') : '',
         targetText: Object.values(row.target || {}).join(' · ') }))
       this.setData({ rows: reset ? rows : this.data.rows.concat(rows), page, hasMore: result.hasMore })
-    } catch (error) { showError(error) } finally { this.setData({ loading: false }) }
+    } catch (error) {
+      if (seq === this._loadSeq) showError(error)
+    } finally {
+      if (seq === this._loadSeq) this.setData({ loading: false })
+    }
   },
-  onReachBottom() { if (this.data.hasMore) this.load() }
+  onReachBottom() { if (this.data.hasMore && !this.data.loading) this.load() }
 })

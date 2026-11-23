@@ -514,6 +514,7 @@ module.exports = function createHandler(context) {
         (ORDER_STATUS && ORDER_STATUS.PENDING_PAY) || 'pending_pay',
         (ORDER_STATUS && ORDER_STATUS.PAID) || 'paid',
         (ORDER_STATUS && ORDER_STATUS.ASSIGNED) || 'assigned',
+        (ORDER_STATUS && ORDER_STATUS.ON_THE_WAY) || 'on_the_way',
         (ORDER_STATUS && ORDER_STATUS.IN_SERVICE) || 'in_service',
         (ORDER_STATUS && ORDER_STATUS.DAY_COMPLETED) || 'day_completed'
       ]

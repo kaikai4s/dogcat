@@ -320,7 +320,7 @@ module.exports = function createHandler(context) {
       const available = Math.round(Math.max(0, netAvailable) * 100)
       const status = safeText(deposit.status).trim()
       const refundStatus = safeText(deposit.refundStatus).trim()
-      const isRefundInFlight = ['refund_requested', 'refund_approved'].includes(status) || ['requested', 'approved', 'processing'].includes(refundStatus)
+      const isRefundInFlight = ['refund_requested', 'refund_approved', 'refunding'].includes(status) || ['requested', 'approved', 'processing'].includes(refundStatus)
       return available > 0 || isRefundInFlight
     })
     if (unsettled) {
@@ -719,7 +719,7 @@ module.exports = function createHandler(context) {
     orders.forEach((o) => {
       if (o && o._id) matchedOrderIds.add(o._id)
       if (o && o.orderNo) matchedOrderIds.add(o.orderNo)
-      if (o && o.userOpenid) matchedOpenids.add(o.userOpenid)
+      if (o && (o.clientOpenid || o.userOpenid)) matchedOpenids.add(o.clientOpenid || o.userOpenid)
       if (o && o.staffOpenid) matchedOpenids.add(o.staffOpenid)
     })
 
@@ -822,6 +822,7 @@ module.exports = function createHandler(context) {
         baseWhere,
         dateRange: range,
         dateFields: ['createdAt'],
+        page: data.page,
         pageSize: data.pageSize,
         keyword,
         searchContext
@@ -838,6 +839,7 @@ module.exports = function createHandler(context) {
         baseWhere,
         dateRange: range,
         dateFields: ['paidAt', 'updatedAt', 'createdAt'],
+        page: data.page,
         pageSize: data.pageSize,
         keyword,
         searchContext
@@ -866,6 +868,7 @@ module.exports = function createHandler(context) {
         baseWhere,
         dateRange: range,
         dateFields: ['createdAt', 'updatedAt'],
+        page: data.page,
         pageSize: data.pageSize,
         keyword,
         searchContext
@@ -895,6 +898,7 @@ module.exports = function createHandler(context) {
         baseWhere,
         dateRange: range,
         dateFields: ['createdAt', 'completedAt'],
+        page: data.page,
         pageSize: data.pageSize,
         keyword,
         searchContext
@@ -934,6 +938,7 @@ module.exports = function createHandler(context) {
           baseWhere,
           dateRange: range,
           dateFields: ['createdAt', 'paidAt'],
+          page: data.page,
           pageSize: data.pageSize,
           keyword,
           searchContext
@@ -1021,6 +1026,7 @@ module.exports = function createHandler(context) {
         baseWhere: where,
         dateRange: buildDateRange(data),
         dateFields: ['createdAt', 'paidAt'],
+        page: data.page,
         pageSize: data.pageSize,
         keyword,
         searchContext
@@ -1820,7 +1826,7 @@ module.exports = function createHandler(context) {
             const available = Math.round(Math.max(0, netAvailable) * 100)
             const status = safeText(deposit.status).trim()
             const refundStatus = safeText(deposit.refundStatus).trim()
-            const isRefundInFlight = ['refund_requested', 'refund_approved'].includes(status) || ['requested', 'approved', 'processing'].includes(refundStatus)
+            const isRefundInFlight = ['refund_requested', 'refund_approved', 'refunding'].includes(status) || ['requested', 'approved', 'processing'].includes(refundStatus)
             return available > 0 || isRefundInFlight
           })
           const hasUnsettledDeposit = Boolean(unsettledDeposit)
@@ -2103,11 +2109,15 @@ module.exports = function createHandler(context) {
       const profileRes = await db.collection('staff_profiles').where({ openid: staffOpenid }).limit(1).get().catch(() => ({ data: [] }))
       const profile = profileRes.data && profileRes.data[0] || null
 
-      const depositRes = await db.collection('staff_deposits').where({ staffOpenid }).orderBy('createdAt', 'desc').limit(1).get().catch(() => ({ data: [] }))
-      const deposit = depositRes.data && depositRes.data[0] || null
+      const deposits = typeof readScopedDocuments === 'function'
+        ? await readScopedDocuments('staff_deposits', { staffOpenid }, 'createdAt', 'desc').catch(() => [])
+        : ((await db.collection('staff_deposits').where({ staffOpenid }).orderBy('createdAt', 'desc').limit(100).get().catch(() => ({ data: [] }))).data || [])
+      const deposit = deposits.find((d) => ['paid', 'partially_refunded', 'refund_requested', 'refund_approved', 'refunding'].includes(d.status) && Number(d.availableRefundAmount ?? 0) > 0) || deposits[0] || null
 
-      const eventsRes = await db.collection('staff_deposit_events').where({ staffOpenid }).orderBy('createdAt', 'desc').get().catch(() => ({ data: [] }))
-      const events = (eventsRes.data || []).map((e) => ({
+      const rawEvents = typeof readScopedDocuments === 'function'
+        ? await readScopedDocuments('staff_deposit_events', { staffOpenid }, 'createdAt', 'desc').catch(() => [])
+        : ((await db.collection('staff_deposit_events').where({ staffOpenid }).orderBy('createdAt', 'desc').limit(1000).get().catch(() => ({ data: [] }))).data || [])
+      const events = rawEvents.map((e) => ({
         _id: e._id,
         type: e.type,
         amount: Number(e.amount || 0),
@@ -2116,9 +2126,16 @@ module.exports = function createHandler(context) {
         createdAt: e.createdAt || ''
       }))
 
-      const availableRefundAmount = deposit ? Number(deposit.availableRefundAmount || 0) : 0
-      const paidAmount = deposit ? Number(deposit.paidAmount || 0) : 0
-      const forfeitedAmount = deposit ? Number(deposit.forfeitedAmount || 0) : 0
+      let availableRefundAmount = 0
+      for (const d of deposits) {
+        const netAvailable = d.availableRefundAmount != null
+          ? Number(d.availableRefundAmount)
+          : (Number(d.paidAmount || 0) - Number(d.refundedAmount || 0) - Number(d.forfeitedAmount || 0) - Number(d.supplyFeeDeductedAmount || 0))
+        availableRefundAmount += Math.max(0, netAvailable)
+      }
+      availableRefundAmount = Math.round(availableRefundAmount * 100) / 100
+      const paidAmount = Math.round(deposits.reduce((sum, d) => sum + Number(d.paidAmount || 0), 0) * 100) / 100
+      const forfeitedAmount = Math.round(deposits.reduce((sum, d) => sum + Number(d.forfeitedAmount || 0), 0) * 100) / 100
 
       return {
         staffOpenid,
@@ -2261,7 +2278,7 @@ module.exports = function createHandler(context) {
         orders = orders.filter((order) => isOrderOverdue(order))
       }
       if (orderKeyword) {
-        orders = orders.filter((order) => [order._id, order.orderNo].some((value) => safeText(value).toLowerCase().includes(orderKeyword)))
+        orders = orders.filter((order) => [order._id, order.orderNo, order.clientOpenid, order.staffOpenid, order.requestedStaffOpenid].some((value) => safeText(value).toLowerCase().includes(orderKeyword)))
       }
       if (clientOpenids) {
         orders = orders.filter((order) => clientOpenids.has(safeText(order.clientOpenid)) || safeText(order.contactPhone).includes(clientPhone))
@@ -2504,37 +2521,71 @@ module.exports = function createHandler(context) {
         adminManualStatusByOpenid: openid,
         updatedAt: time
       }
-      if (targetStatus === 'completed' && !order.completedAt) {
-        updateData.completedAt = time
+      let finalSession = null
+      if (targetStatus === 'completed') {
+        const sessions = normalizeServiceSessions(order).map(session => ({
+          ...session,
+          status: 'completed',
+          finishedAt: session.finishedAt || time
+        }))
+        finalSession = sessions[sessions.length - 1] || null
+        Object.assign(updateData, {
+          serviceSessions: sessions,
+          lastCompletedSessionIndex: finalSession ? finalSession.index : Number(order.lastCompletedSessionIndex || 0),
+          activeSessionIndex: 0,
+          activeSessionDate: '',
+          currentSessionStartedAt: '',
+          isStartOverdue: false,
+          isFinishOverdue: false
+        })
+        if (order.groupBuyId) {
+          if (!finalSession) throw new Error('拼单服务场次缺失，请联系平台')
+          Object.assign(updateData, {
+            status: 'day_completed',
+            groupCompletionSession: { ...finalSession, finishedAt: time },
+            groupCompletionPending: true,
+            groupCompletionIsAuto: false
+          })
+        } else if (!order.completedAt) {
+          updateData.completedAt = time
+        }
       }
       if (targetStatus === 'cancelled' && !order.cancelledAt) {
         updateData.cancelledAt = time
       }
+      let finalStatus = updateData.status
       await updateOrderStatusWithScheduling(orderId, order, updateData)
-      // 管理员核实完单也必须创建收益记录，否则订单已完成但宠托师永远收不到收益。
-      // ensureStaffEarning 按 orderId 幂等，重复操作不会重复入账。
-      if (targetStatus === 'completed' && order.staffOpenid) {
-        await ensureStaffEarning({ ...order, ...updateData, _id: orderId }, time)
-      }
-      if (targetStatus === 'completed' && typeof destroyOrderHomeSecuritySecrets === 'function') {
-        await destroyOrderHomeSecuritySecrets(orderId, {
-          reason: 'admin_manual_status_completed',
-          actor: 'admin',
-          time
-        }).catch(() => {})
+      if (targetStatus === 'completed') {
+        if (order.groupBuyId) {
+          await completeOrderService({ ...order, ...updateData, _id: orderId }, updateData.groupCompletionSession, time, { actor: 'admin' })
+          const latestOrder = (await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))).data
+          if (latestOrder && latestOrder.status) finalStatus = latestOrder.status
+        } else {
+          await ensureOrderCompletionRewards({ ...order, ...updateData, _id: orderId }, time)
+        }
+        await resolveOrderDispatchNotifications(orderId, { reason: 'admin_manual_status_completed', actor: openid, time }).catch(() => {})
+        if (typeof destroyOrderHomeSecuritySecrets === 'function') {
+          await destroyOrderHomeSecuritySecrets(orderId, {
+            reason: 'admin_manual_status_completed',
+            actor: 'admin',
+            time
+          }).catch(() => {})
+        }
       }
 
       const statusLabels = {
         pending_pay: '待支付',
         paid: '已支付/待接单',
         assigned: '已派单/待服务',
+        on_the_way: '前往中',
         in_service: '服务中',
+        day_completed: '今日已完成',
         completed: '已完成',
         cancelled: '已取消',
         refunded: '已退款'
       }
       const fromLabel = statusLabels[prevStatus] || prevStatus
-      const toLabel = statusLabels[targetStatus] || targetStatus
+      const toLabel = statusLabels[finalStatus] || finalStatus
 
       await appendOrderTimeline(orderId, 'status_changed', `管理员手动修改状态：${fromLabel} ➔ ${toLabel}`, remark, 'admin')
       await appendOrderClientMessage({ ...order, _id: orderId }, {
@@ -2543,8 +2594,8 @@ module.exports = function createHandler(context) {
         detail: `管理员操作说明：${remark}`,
         actorRole: 'admin'
       })
-      await logAdmin(admin, 'order', orderId, 'updateOrderStatus', { prevStatus, targetStatus, remark })
-      return { orderId, status: targetStatus, prevStatus, remark }
+      await logAdmin(admin, 'order', orderId, 'updateOrderStatus', { prevStatus, targetStatus: finalStatus, remark })
+      return { orderId, status: finalStatus, prevStatus, remark }
     }
     if (action === 'manualCompleteOrder') {
       const orderId = safeText(data.id || data.orderId).trim()
@@ -3196,19 +3247,45 @@ module.exports = function createHandler(context) {
       const workflowUpdate = status === 'approved'
         ? { staffLevel: 'applicant', onboardingStatus: 'training_pending', videoAuditStatus: 'not_started', promotionStatus: 'none' }
         : { staffLevel: 'applicant', onboardingStatus: 'application_pending', videoAuditStatus: 'not_started', promotionStatus: 'none' }
-      await db.collection('staff_profiles').doc(staffProfileId).update({ data: { auditStatus: status, auditRemark, identityStatus, faceVerifyStatus, ...workflowUpdate, ...(status === 'approved' ? { certificationLockedAt: profile.certificationLockedAt || time } : {}), updatedAt: time } })
-      const identityRes = await db.collection('staff_identity_verifications').where({ staffProfileId }).limit(1).get()
-      if (identityRes.data[0]) await db.collection('staff_identity_verifications').doc(identityRes.data[0]._id).update({ data: { auditStatus: status, auditRemark, identityStatus, faceVerifyStatus, auditedByOpenid: openid, auditedAt: time, updatedAt: time } })
       const userRes = await db.collection('users').where({ openid: profile.openid }).limit(1).get()
       const staffUser = userRes.data[0]
+      let nextUserRoles = null
+      let shouldResetActiveRole = false
       if (staffUser && status === 'rejected') {
         const existingRoles = Array.isArray(staffUser.roles) ? staffUser.roles : ['client']
         const roles = existingRoles.filter((role) => role !== 'staff')
         await assertStaffFundsSettledBeforeRoleRemoval(staffUser, roles)
-        const userUpdate = { roles: roles.length ? roles : ['client'], updatedAt: time }
-        if (staffUser.activeRole === 'staff') userUpdate.activeRole = 'client'
-        await db.collection('users').doc(staffUser._id).update({ data: userUpdate })
+        nextUserRoles = roles.length ? roles : ['client']
+        shouldResetActiveRole = staffUser.activeRole === 'staff'
       }
+      await db.runTransaction(async (tx) => {
+        const latestProfileRes = await tx.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))
+        const latestProfile = latestProfileRes && latestProfileRes.data
+        if (!latestProfile) throw new Error('宠托师档案不存在')
+        if (latestProfile.auditStatus === status) throw new Error('该宠托师资质已处于该审核状态，请勿重复操作')
+        await tx.collection('staff_profiles').doc(staffProfileId).update({
+          data: {
+            auditStatus: status,
+            auditRemark,
+            identityStatus,
+            faceVerifyStatus,
+            ...workflowUpdate,
+            ...(status === 'approved' ? { certificationLockedAt: latestProfile.certificationLockedAt || time } : {}),
+            updatedAt: time
+          }
+        })
+        const identityRes = await tx.collection('staff_identity_verifications').where({ staffProfileId }).limit(1).get()
+        if (identityRes.data[0]) {
+          await tx.collection('staff_identity_verifications').doc(identityRes.data[0]._id).update({
+            data: { auditStatus: status, auditRemark, identityStatus, faceVerifyStatus, auditedByOpenid: openid, auditedAt: time, updatedAt: time }
+          })
+        }
+        if (staffUser && status === 'rejected') {
+          const userUpdate = { roles: nextUserRoles, updatedAt: time }
+          if (shouldResetActiveRole) userUpdate.activeRole = 'client'
+          await tx.collection('users').doc(staffUser._id).update({ data: userUpdate })
+        }
+      })
       if (typeof sendSystemNotification === 'function' && profile.openid) {
         const approved = status === 'approved'
         await sendSystemNotification({
@@ -3548,7 +3625,7 @@ module.exports = function createHandler(context) {
         const deposits = typeof readScopedDocuments === 'function'
           ? await readScopedDocuments('staff_deposits', { staffOpenid }, 'createdAt', 'desc').catch(() => [])
           : (((await db.collection('staff_deposits').where({ staffOpenid }).orderBy('createdAt', 'desc').limit(100).get().catch(() => ({ data: [] }))).data) || [])
-        const target = deposits.find((d) => Number(d.availableRefundAmount || 0) > 0 && ['paid', 'partially_refunded', 'refund_requested', 'refund_approved'].includes(d.status)) || deposits[0]
+        const target = deposits.find((d) => Number(d.availableRefundAmount || 0) > 0 && ['paid', 'partially_refunded', 'refund_requested', 'refund_approved', 'refunding'].includes(d.status)) || deposits[0]
         if (target) id = target._id
       }
       const reason = safeText(data.reason || '管理员退还宠托师保证金').trim()

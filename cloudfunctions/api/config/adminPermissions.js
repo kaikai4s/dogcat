@@ -16,7 +16,7 @@ const definitions = [
   ['mall', '商城', 'adminMall', 'listCategories:查看分类 saveCategory:编辑分类 deleteCategory:删除分类 listProducts:商品列表 saveProduct:编辑商品 toggleProductStatus:上下架 getShopConfig:查看微信小店配置 saveShopConfig:编辑微信小店配置 listOrders:订单列表 getOrderDetail:订单详情 listExpressCompanies:查看快递公司 queryOrderLogistics:查询订单物流 shipOrder:发货 updateOrderStatus:修改订单 refundOrder:退款 auditRefund:审核售后'],
   ['incidents', '纠纷', 'incident', 'listIncidents:纠纷列表 getIncidentDetail:纠纷详情 appendIncidentComment:留言 uploadIncidentEvidence:上传证据 updateIncidentStatus:更新状态 resolveIncident:标记解决 proposeResolution:处理方案 freezeStaffEarning:冻结收益 linkRefund:关联退款 closeIncident:结案扣减'],
   ['payments', '支付与活动维护', 'payment', 'createRefund:发起退款 listRefunds:查看退款 queryRefund:查询退款'],
-  ['beauty', '选美活动管理', 'petBeauty', 'settleMonthlyRanking:结算月度排名 disqualifyPetBeautyCandidate:取消参赛资格 reinstatePetBeautyCandidate:恢复参赛资格 grantPetBeautyChampionPrize:发放冠军奖金 syncBeautyPhotoFlags:同步美照状态'],
+  ['beauty', '选美活动管理', 'petBeauty', 'settleMonthlyRanking:结算月度排名 listDisqualifiedPetBeautyCandidates:查看取消资格名单 disqualifyPetBeautyCandidate:取消参赛资格 reinstatePetBeautyCandidate:恢复参赛资格 grantPetBeautyChampionPrize:发放冠军奖金 syncBeautyPhotoFlags:同步美照状态'],
   ['questionnaires', '问卷调查', 'questionnaire', 'listAdmin:问卷列表 detailAdmin:问卷详情 create:新建问卷 update:编辑问卷 publish:发布问卷 close:关闭问卷 delete:删除问卷 clone:克隆问卷 responses:回收记录 analyzeAI:AI分析 getAiReport:查看AI报告 retryReward:补发奖励 retryAllRewards:批量补发'],
   ['timeouts', '订单超时巡检', 'order', 'checkOverdueOrders:执行订单超时巡检'],
   ['reminders', '临近服务提醒', 'staff', 'checkUpcomingReminders:触发临近服务提醒'],
@@ -157,7 +157,7 @@ depend('adminMall.getOrderDetail', 'adminMall.listOrders')
 depend('admin.listOperationActors', 'admin.listOperationLogs')
 requires['admin.grantUserAssetCash'] = []
 // Separate title/vaccine pages do not require the coupon page.
-const apiOnly = new Set(['order.checkOverdueOrders', 'staff.checkUpcomingReminders', 'admin.grantUserAssetCash', 'payment.createRefund', 'petBeauty.settleMonthlyRanking', 'petBeauty.disqualifyPetBeautyCandidate', 'petBeauty.reinstatePetBeautyCandidate', 'petBeauty.grantPetBeautyChampionPrize', 'petBeauty.syncBeautyPhotoFlags'])
+const apiOnly = new Set(['order.checkOverdueOrders', 'staff.checkUpcomingReminders', 'admin.grantUserAssetCash', 'payment.createRefund', 'petBeauty.settleMonthlyRanking', 'petBeauty.listDisqualifiedPetBeautyCandidates', 'petBeauty.disqualifyPetBeautyCandidate', 'petBeauty.reinstatePetBeautyCandidate', 'petBeauty.grantPetBeautyChampionPrize', 'petBeauty.syncBeautyPhotoFlags'])
 const tree = groups.map(({ id, label, module, actions }) => ({ id, label, description: descriptions[id], children: actions.map(item => {
   const [action, name] = item.split(':')
   const key = `${module}.${action}`

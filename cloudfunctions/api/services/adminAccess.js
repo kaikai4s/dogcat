@@ -58,7 +58,7 @@ module.exports = function createService({ db, crypto, now }) {
     if (current.superAdmin) return user
     const hasPermission = current.permissions.includes(key) ||
       (key === 'admin.listPets' && current.permissions.includes('admin.listUsers')) ||
-      (['petBeauty.disqualifyPetBeautyCandidate', 'petBeauty.reinstatePetBeautyCandidate'].includes(key) &&
+      (['petBeauty.listDisqualifiedPetBeautyCandidates', 'petBeauty.disqualifyPetBeautyCandidate', 'petBeauty.reinstatePetBeautyCandidate'].includes(key) &&
         (current.permissions.includes('admin.listPets') || current.permissions.includes('admin.listUsers')))
     if (ownerActions.has(key) || !hasPermission) throw denied()
     if (key === 'admin.getSystemSettings' && request.data.includeSecrets === true) throw denied()

@@ -68,6 +68,8 @@ module.exports = function createService(context) {
     getOrderTimeRanges,
     getSystemSettings,
     hasCoordinate,
+    isAdminDeletedOrder,
+    orderHasUnvaccinatedPets,
     makeIdempotencyKey,
     now,
     orderMatchesCity,
@@ -89,7 +91,8 @@ module.exports = function createService(context) {
     if (order.publishMode !== 'open') return false
     if (order.staffOpenid || order.requestedStaffOpenid) return false
     if (order.deletedAt) return false
-    if (order.isAdminDeleted === true || order.deletedByAdmin === true) return false
+    if ((typeof isAdminDeletedOrder === 'function' && isAdminDeletedOrder(order)) ||
+      order.adminDeletedAt || order.isAdminDeleted === true || order.deletedByAdmin === true) return false
     // 拼单必须成团且未退款
     if (order.groupBuyId && (order.groupBuyStatus !== 'formed' || order.groupBuyRefundRequired)) return false
     // 服务开始时间已过
@@ -142,9 +145,8 @@ module.exports = function createService(context) {
 
     // 8. 疫苗认证拒绝设置校验
     const hasUnvaccinatedPets = Boolean(
-      (Array.isArray(order.petSnapshots) && order.petSnapshots.some(p => p && p.isVaccinated === false)) ||
-      (order.petSnapshot && order.petSnapshot.isVaccinated === false) ||
-      order.hasUnvaccinatedPets === true
+      order.hasUnvaccinatedPets === true ||
+      (typeof orderHasUnvaccinatedPets === 'function' && orderHasUnvaccinatedPets(order))
     )
     if (profile.rejectUnvaccinatedPets === true && hasUnvaccinatedPets) {
       return { eligible: false, reason: 'unvaccinated_pet_rejected' }
@@ -251,16 +253,18 @@ module.exports = function createService(context) {
       return { status: 'skipped', reason: 'subscription_disabled', notifiedCount: 0 }
     }
 
-    // 1. 获取候选宠托师档案（支持分页拉取多达 300 名宠托师）
+    // 1. 获取候选宠托师档案（全量游标分页，避免超 300 档案后漏通知活跃本地宠托师）
     let candidateProfiles = []
     if (Array.isArray(options.candidateProfiles)) {
       candidateProfiles = options.candidateProfiles
+    } else if (typeof readScopedDocuments === 'function') {
+      candidateProfiles = await readScopedDocuments('staff_profiles', { auditStatus: 'approved' }).catch(() => [])
     } else {
       const condition = {
         auditStatus: 'approved'
       }
       let cursor = ''
-      while (candidateProfiles.length < 300) {
+      while (true) {
         const queryCond = { ...condition }
         if (cursor && db.command && typeof db.command.gt === 'function') {
           queryCond._id = db.command.gt(cursor)
@@ -269,7 +273,9 @@ module.exports = function createService(context) {
         const page = fetchRes.data || []
         candidateProfiles.push(...page)
         if (page.length < 100) break
-        cursor = page[page.length - 1]._id
+        const nextCursor = page[page.length - 1]._id
+        if (!nextCursor || nextCursor === cursor) break
+        cursor = nextCursor
       }
     }
 

@@ -153,16 +153,17 @@ module.exports = function createHandler(context) {
       return { _id: created._id, ...incident }
     }
     if (action === 'getIncidentDetail') {
-      const { user, incident } = await getIncidentForAccess(openid, data.id || data.incidentId)
+      const { user, incident, isAdminAccess } = await getIncidentForAccess(openid, data.id || data.incidentId)
+      const adminView = isAdminAccess === true
       const [comments, actions] = await Promise.all([
         readScopedDocuments('incident_comments', { incidentId: incident._id }, 'createdAt', 'asc'),
-        user.roles.includes('admin') ? readScopedDocuments('incident_actions', { incidentId: incident._id }, 'createdAt', 'asc') : Promise.resolve([])
+        adminView ? readScopedDocuments('incident_actions', { incidentId: incident._id }, 'createdAt', 'asc') : Promise.resolve([])
       ])
       const orderRes = incident.orderId ? await db.collection('orders').doc(incident.orderId).get().catch(() => ({ data: null })) : null
       const order = orderRes && orderRes.data
       let publicOrder = null
       if (order) {
-        if (user.roles.includes('admin')) {
+        if (adminView) {
           const { groupBuyIntent, groupBuyHouseholdKey, doorLockCode, doorLockCodeCipher, doorLockCodeIv, doorLockCodeTag, code, ...display } = await attachOrderDisplayData(order)
           const security = toPublicOrderHomeSecurity(order.orderHomeSecurity || order.homeSecuritySnapshot)
           publicOrder = { ...display, orderHomeSecurity: security, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(security) }
@@ -176,7 +177,7 @@ module.exports = function createHandler(context) {
       return { incident, comments, actions, order: publicOrder }
     }
     if (action === 'appendIncidentComment') {
-      const { user, incident } = await getIncidentForAccess(openid, data.incidentId)
+      const { incident, isAdminAccess } = await getIncidentForAccess(openid, data.incidentId)
       const content = safeText(data.content).trim()
       if (content.length > 500) throw new Error('留言内容不能超过 500 字')
       if (content && typeof checkTextSecurity === 'function') {
@@ -188,14 +189,14 @@ module.exports = function createHandler(context) {
           if (fileId) await checkImageSecurity(openid, fileId, { scene: 2, label: '纠纷证据图片' })
         }
       }
-      const actorRole = user.roles.includes('admin') ? 'admin' : (incident.staffOpenid === openid ? 'staff' : 'client')
+      const actorRole = isAdminAccess === true ? 'admin' : (incident.staffOpenid === openid ? 'staff' : 'client')
       const comment = await appendIncidentComment(data.incidentId, actorRole, openid, content, mediaFileIds)
       await db.collection('order_incidents').doc(data.incidentId).update({ data: { updatedAt: now() } })
       await recordIncidentAction(data.incidentId, 'commented', actorRole, openid, { commentId: comment._id })
       return comment
     }
     if (action === 'uploadIncidentEvidence') {
-      const { user, incident } = await getIncidentForAccess(openid, data.incidentId)
+      const { incident, isAdminAccess } = await getIncidentForAccess(openid, data.incidentId)
       const remark = safeText(data.remark).trim() || '补充证据'
       if (remark.length > 200) throw new Error('证据备注不能超过 200 字')
       if (remark && typeof checkTextSecurity === 'function') {
@@ -207,7 +208,7 @@ module.exports = function createHandler(context) {
           if (fileId) await checkImageSecurity(openid, fileId, { scene: 2, label: '补充证据图片' })
         }
       }
-      const actorRole = user.roles.includes('admin') ? 'admin' : (incident.staffOpenid === openid ? 'staff' : 'client')
+      const actorRole = isAdminAccess === true ? 'admin' : (incident.staffOpenid === openid ? 'staff' : 'client')
       const comment = await appendIncidentComment(data.incidentId, actorRole, openid, remark, mediaFileIds)
       await recordIncidentAction(data.incidentId, 'evidence_uploaded', actorRole, openid, { commentId: comment._id })
       return comment

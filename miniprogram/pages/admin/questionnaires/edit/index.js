@@ -110,7 +110,9 @@ Page({
       .then((list) => {
         const templates = list || []
         const names = ['不发放优惠券'].concat(templates.map(item => {
-          const discountDesc = item.discountType === 'fixed' ? `减¥${item.discountValue}` : `${item.discountValue}折`
+          const couponType = item.discountType || item.type || 'fixed'
+          const couponValue = item.discountValue != null ? item.discountValue : Number(item.discountAmount || 0)
+          const discountDesc = couponType === 'discount' ? `${couponValue}折` : `减¥${couponValue}`
           return `${item.name || '优惠券'} (${discountDesc})`
         }))
         this.setData({ couponTemplates: templates, couponNames: names })

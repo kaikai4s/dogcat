@@ -29,6 +29,6 @@
     </view>
   </view>
 
-  <button class="primary-btn submit-btn" bindtap="save"><text class="remix-icon ri-save-3-line"></text><text>保存地址</text></button>
+  <button class="primary-btn submit-btn" loading="{{saving}}" disabled="{{saving}}" bindtap="save"><text class="remix-icon ri-save-3-line"></text><text>{{saving ? '保存中...' : '保存地址'}}</text></button>
 </view>
 <global-loading />

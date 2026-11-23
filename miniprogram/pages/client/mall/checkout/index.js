@@ -74,9 +74,22 @@ Page({
   },
 
   loadCoupons() {
-    const items = this.data.items.map((item) => ({ productId: item.productId, skuId: item.skuId, price: item.price, quantity: item.quantity }))
+    const items = this.data.items.map((item) => ({
+      productId: item.productId,
+      skuId: item.skuId,
+      price: item.price,
+      quantity: item.quantity,
+      shippingFee: Number(item.shippingFee ?? (item.product && item.product.shippingFee) ?? 0)
+    }))
     return callFunction('coupon', 'listMallCoupons', { items })
-      .then((coupons) => this.setData({ coupons: (coupons || []).filter((item) => item.status === 'available') }, () => this.refreshPricing()))
+      .then((coupons) => {
+        const usable = (coupons || []).filter((item) => item.status === 'available' && item.applicable !== false)
+        const selectedValid = this.data.couponId && usable.some((item) => item._id === this.data.couponId)
+        this.setData({
+          coupons: usable,
+          ...(this.data.couponId && !selectedValid ? { couponId: '', couponName: '' } : {})
+        }, () => this.refreshPricing())
+      })
       .catch(() => {})
   },
 

@@ -50,7 +50,7 @@ module.exports = function createService({
     return { _id: created._id, ...notification }
   }
 
-  async function readAllNotifications(where = {}, maxLimit = 2000) {
+  async function readAllNotifications(where = {}, maxLimit = Infinity) {
     const rows = []
     let cursor = ''
     while (rows.length < maxLimit) {
@@ -59,11 +59,14 @@ module.exports = function createService({
         condition._id = db.command.gt(cursor)
       }
       const page = (await db.collection('admin_notifications').where(condition).orderBy('_id', 'asc').limit(100).get()).data || []
+      if (!page.length) break
       rows.push(...page)
       if (page.length < 100) break
-      cursor = page[page.length - 1]._id
+      const nextCursor = page[page.length - 1]._id
+      if (!nextCursor || nextCursor === cursor) break
+      cursor = nextCursor
     }
-    return rows
+    return Number.isFinite(maxLimit) ? rows.slice(0, maxLimit) : rows
   }
 
   function sosIncidentId(notification) {
@@ -133,6 +136,12 @@ module.exports = function createService({
     }).update({ data: { resolved: true, resolvedAt: time, resolvedBy: actor, resolutionReason: reason, updatedAt: time } })
   }
 
+  function isReadByAdmin(item, currentAdminOpenid = '') {
+    const readBy = Array.isArray(item && item.readBy) ? item.readBy : []
+    if (currentAdminOpenid && readBy.includes(currentAdminOpenid)) return true
+    return Boolean(item && item.read === true && readBy.length === 0)
+  }
+
   /**
    * 管理员查询系统通知列表
    */
@@ -145,7 +154,7 @@ module.exports = function createService({
     if (type && type !== 'all') where.type = type
     if (level && level !== 'all') where.level = level
 
-    const allNotifications = (await attachResolutionState(await readAllNotifications(where, 2000)))
+    const allNotifications = (await attachResolutionState(await readAllNotifications(where)))
       .sort((a, b) => {
         const bTime = a && b ? new Date(b.createdAt || 0).getTime() : 0
         const aTime = a ? new Date(a.createdAt || 0).getTime() : 0
@@ -154,15 +163,15 @@ module.exports = function createService({
 
     let list = allNotifications
     if (status === 'unread') {
-      list = list.filter((item) => !item.isResolved && !item.read && !(Array.isArray(item.readBy) && item.readBy.includes(currentAdminOpenid)))
+      list = list.filter((item) => !item.isResolved && !isReadByAdmin(item, currentAdminOpenid))
     } else if (status === 'read') {
-      list = list.filter((item) => item.read || (Array.isArray(item.readBy) && item.readBy.includes(currentAdminOpenid)))
+      list = list.filter((item) => isReadByAdmin(item, currentAdminOpenid))
     }
 
-    const unreadCount = allNotifications.filter((item) => !item.isResolved && !item.read && !(Array.isArray(item.readBy) && item.readBy.includes(currentAdminOpenid))).length
+    const unreadCount = allNotifications.filter((item) => !item.isResolved && !isReadByAdmin(item, currentAdminOpenid)).length
 
     const enriched = list.map((item) => {
-      const isRead = item.read === true || (Array.isArray(item.readBy) && item.readBy.includes(currentAdminOpenid))
+      const isRead = isReadByAdmin(item, currentAdminOpenid)
       return {
         ...item,
         isRead
@@ -182,13 +191,19 @@ module.exports = function createService({
    */
   async function markAdminNotificationRead(data = {}, currentAdminOpenid = '') {
     const time = now()
+    const adminOpenid = safeText(currentAdminOpenid).trim()
     if (data.all === true) {
-      const unreads = await readAllNotifications({ read: false }, 2000)
+      const candidates = await readAllNotifications({ read: false })
+      const unreads = adminOpenid
+        ? candidates.filter((item) => !isReadByAdmin(item, adminOpenid))
+        : candidates
       for (const item of unreads) {
-        const readBy = Array.isArray(item.readBy) ? Array.from(new Set([...item.readBy, currentAdminOpenid])) : [currentAdminOpenid]
+        const readBy = Array.isArray(item.readBy)
+          ? (adminOpenid ? Array.from(new Set([...item.readBy, adminOpenid])) : item.readBy)
+          : (adminOpenid ? [adminOpenid] : [])
         await db.collection('admin_notifications').doc(item._id).update({
           data: {
-            read: true,
+            ...(adminOpenid ? {} : { read: true }),
             readBy,
             readAt: time,
             updatedAt: time
@@ -204,10 +219,12 @@ module.exports = function createService({
     const item = itemRes && itemRes.data
     if (!item) throw new Error('通知不存在')
 
-    const readBy = Array.isArray(item.readBy) ? Array.from(new Set([...item.readBy, currentAdminOpenid])) : [currentAdminOpenid]
+    const readBy = Array.isArray(item.readBy)
+      ? (adminOpenid ? Array.from(new Set([...item.readBy, adminOpenid])) : item.readBy)
+      : (adminOpenid ? [adminOpenid] : [])
     await db.collection('admin_notifications').doc(id).update({
       data: {
-        read: true,
+        ...(adminOpenid ? {} : { read: true }),
         readBy,
         readAt: time,
         updatedAt: time
@@ -220,9 +237,9 @@ module.exports = function createService({
    * 获取未读通知总数
    */
   async function getAdminNotificationBadge(currentAdminOpenid = '') {
-    const unreads = await readAllNotifications({ read: false }, 1000)
+    const unreads = await readAllNotifications({ read: false })
     const list = (await attachResolutionState(unreads))
-      .filter((item) => !item.isResolved && !(Array.isArray(item.readBy) && item.readBy.includes(currentAdminOpenid)))
+      .filter((item) => !item.isResolved && !isReadByAdmin(item, currentAdminOpenid))
       .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
     const urgentCount = list.filter((item) => item.level === 'urgent').length
     const latestUrgent = list.find((item) => item.level === 'urgent') || null

@@ -135,7 +135,10 @@ module.exports = context => {
     for (const job of jobs.data || []) {
       try {
         const app = await read(db, job.applicationId)
-        if (!app || app.key !== 'memorial_demolished' || app.status !== 'demolished') continue
+        if (!app || app.key !== 'memorial_demolished' || app.status !== 'demolished') {
+          await db.collection('platform_configs').doc(job._id).remove()
+          continue
+        }
         const rows = await db.collection('platform_configs').where({ applicationId: job.applicationId }).limit(40).get()
         // The job itself has applicationId and must be excluded from this page.
         const related = (rows.data || []).filter(r => r.key !== 'memorial_cleanup')

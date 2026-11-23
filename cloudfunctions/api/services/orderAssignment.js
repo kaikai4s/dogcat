@@ -162,13 +162,19 @@ module.exports = function createService(context) {
         throw new Error('订单状态已变化，请刷新后重试')
       }
       const updated = { ...order, ...patch }
-      // 服务开始后订单归属和履约状态只能由正常服务流程推进，禁止管理员
-      // 通过手动回退状态再走派单接口，变相重新指派订单。
+      // 服务开始后禁止重新指派宠托师或手动回退履约状态；
+      // 仅允许正常向前流转至完结状态（completed / 拼单待统一结算）或已到账退款态（refunded）。
       const serviceStartedStatuses = ['in_service', 'day_completed', 'completed']
       const assignmentChanged = ['staffOpenid', 'staffUserId', 'staffProfileId'].some((key) =>
         Object.prototype.hasOwnProperty.call(patch, key) && patch[key] !== order[key]
       )
-      if (serviceStartedStatuses.includes(order.status) && (assignmentChanged || updated.status !== order.status)) {
+      const allowedStartedForwardTarget =
+        (updated.status === 'refunded' && updated.paymentStatus === 'refunded') ||
+        (['in_service', 'day_completed'].includes(order.status) && (
+          updated.status === 'completed' ||
+          (updated.status === 'day_completed' && updated.groupCompletionPending === true)
+        ))
+      if (serviceStartedStatuses.includes(order.status) && (assignmentChanged || (updated.status !== order.status && !allowedStartedForwardTarget))) {
         throw new Error('订单已开始履约，不允许修改状态或重新指派宠托师')
       }
       if (['assigned', 'on_the_way'].includes(order.status) && assignmentChanged && order.staffOpenid) {

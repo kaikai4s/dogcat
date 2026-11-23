@@ -13,6 +13,7 @@ Page({
   data: {
     id: '',
     initialized: false,
+    saving: false,
     sectionHomeUrl: '',
     canGoBack: false,
     form: {
@@ -101,6 +102,7 @@ Page({
   onUnload() { this._closed = true; this._locationSeq = (this._locationSeq || 0) + 1 },
 
   save() {
+    if (this._savingLock || this.data.saving) return
     const form = this.data.form
     if (!form.serviceAddress) {
       wx.showToast({ title: '请选择服务地址', icon: 'none' })
@@ -118,12 +120,23 @@ Page({
       wx.showToast({ title: '请填写门牌号或入户说明', icon: 'none' })
       return
     }
-    callFunction('client', 'saveAddress', { ...form, id: this.data.id })
+    this._savingLock = true
+    this.setData({ saving: true })
+    return callFunction('client', 'saveAddress', { ...form, id: this.data.id })
       .then(() => {
         wx.showToast({ title: '已保存' })
-        wx.navigateBack()
+        wx.navigateBack({
+          fail: () => {
+            this._savingLock = false
+            this.setData({ saving: false })
+          }
+        })
       })
-      .catch(showError)
+      .catch((error) => {
+        this._savingLock = false
+        this.setData({ saving: false })
+        showError(error)
+      })
   },
 
   ...navMethods()

@@ -142,16 +142,22 @@ module.exports = function createService({
     if (!openids.length) return profiles
 
     const userMap = {}
+    const chunks = []
+    for (let i = 0; i < openids.length; i += 100) {
+      chunks.push(openids.slice(i, i + 100))
+    }
     try {
-      const userRes = await db.collection('users').where({
-        openid: db.command.in(openids)
-      }).limit(Math.min(openids.length, 100)).get()
-      const users = userRes.data || []
-      users.forEach((user) => {
-        if (user && user.openid) {
-          userMap[user.openid] = user
-        }
-      })
+      for (const batch of chunks) {
+        const userRes = await db.collection('users').where({
+          openid: db.command.in(batch)
+        }).limit(batch.length).get()
+        const users = userRes.data || []
+        users.forEach((user) => {
+          if (user && user.openid) {
+            userMap[user.openid] = user
+          }
+        })
+      }
     } catch (err) {
       for (const openid of openids) {
         try {

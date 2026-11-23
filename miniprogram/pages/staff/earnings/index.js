@@ -5,6 +5,63 @@ const { applyTheme, getThemeState } = require('../../../utils/theme')
 
 const WECHAT_MIN_TRANSFER_AMOUNT = 0.10
 const WECHAT_MAX_TRANSFER_AMOUNT = 200
+const MAX_EARNINGS_PER_WITHDRAW = 50
+
+function computeMaxWithdrawableAmount(earnings = [], available = 0, capAmount = WECHAT_MAX_TRANSFER_AMOUNT) {
+  const safeAvailable = Number(available || 0)
+  const safeCap = Math.min(
+    Number.isFinite(safeAvailable) && safeAvailable > 0 ? safeAvailable : 0,
+    Number.isFinite(Number(capAmount)) && Number(capAmount) >= 0 ? Number(capAmount) : WECHAT_MAX_TRANSFER_AMOUNT
+  )
+  const capCents = Math.round(safeCap * 100)
+  if (capCents <= 0) return 0
+  const candidates = (Array.isArray(earnings) ? earnings : [])
+    .filter((item) => item && item.isAvailable && Number(item.amount || 0) > 0)
+    .slice()
+    .sort((a, b) => {
+      const idA = String(a._id || '')
+      const idB = String(b._id || '')
+      return idA < idB ? -1 : (idA > idB ? 1 : 0)
+    })
+  if (!candidates.length) {
+    return capCents / 100
+  }
+  let totalCents = 0
+  let count = 0
+  for (const item of candidates) {
+    if (count >= MAX_EARNINGS_PER_WITHDRAW) break
+    const itemCents = Math.round(Number(item.amount || 0) * 100)
+    if (!Number.isFinite(itemCents) || itemCents <= 0) continue
+    if (totalCents + itemCents > capCents) continue
+    totalCents += itemCents
+    count += 1
+  }
+  if (totalCents === capCents || candidates.length <= 1) {
+    return totalCents / 100
+  }
+  const reachable = new Map([[0, 0]])
+  const MAX_DP_STATES = 6000
+  let bestCents = totalCents
+  const limit = Math.min(candidates.length, 200)
+  for (let idx = 0; idx < limit; idx += 1) {
+    const itemCents = Math.round(Number(candidates[idx].amount || 0) * 100)
+    if (!Number.isFinite(itemCents) || itemCents <= 0 || itemCents > capCents) continue
+    const sums = Array.from(reachable.keys())
+    for (const sum of sums) {
+      const cnt = reachable.get(sum)
+      if (cnt >= MAX_EARNINGS_PER_WITHDRAW) continue
+      const nextSum = sum + itemCents
+      if (nextSum > capCents) continue
+      const existingCnt = reachable.get(nextSum)
+      if (existingCnt !== undefined && existingCnt <= cnt + 1) continue
+      if (existingCnt === undefined && reachable.size >= MAX_DP_STATES && nextSum <= bestCents) continue
+      reachable.set(nextSum, cnt + 1)
+      if (nextSum > bestCents) bestCents = nextSum
+      if (bestCents === capCents) return bestCents / 100
+    }
+  }
+  return bestCents / 100
+}
 
 const earningStatusText = {
   pending: '待结算',
@@ -167,10 +224,14 @@ Page({
       .then(([balance, earnings, withdraws]) => {
         if (!isCurrent()) return
         const quota = balance.wechatTransferQuota || {}
-        const maxAmount = quota.effectiveRemainingAmount === null || quota.effectiveRemainingAmount === undefined
-          ? Number(balance.available || 0)
-          : Math.min(Number(balance.available || 0), Number(quota.effectiveRemainingAmount || 0))
+        const singleMax = quota.singleMaxAmount === null || quota.singleMaxAmount === undefined
+          ? WECHAT_MAX_TRANSFER_AMOUNT
+          : Number(quota.singleMaxAmount || 0)
+        const quotaCap = quota.effectiveRemainingAmount === null || quota.effectiveRemainingAmount === undefined
+          ? singleMax
+          : Math.min(singleMax, Number(quota.effectiveRemainingAmount || 0))
         const decoratedEarnings = (earnings || []).map(item => withEarning(item, balance.manualRedemption))
+        const maxAmount = computeMaxWithdrawableAmount(decoratedEarnings, Number(balance.available || 0), quotaCap)
         const availableEarningsCount = decoratedEarnings.filter((item) => item.isAvailable).length
         const pendingEarningsCount = decoratedEarnings.filter((item) => item.status === 'pending' && !item.isMock).length
         const currentFilter = this.data.earningFilterStatus
@@ -218,8 +279,17 @@ Page({
     if (available <= 0) {
       return wx.showToast({ title: '暂无可提现余额', icon: 'none' })
     }
-    const maxTransfer = Number(this.data.balance?.wechatTransferQuota?.singleMaxAmount || 200)
-    const target = Math.min(available, maxTransfer)
+    const quota = this.data.balance?.wechatTransferQuota || {}
+    const singleMax = quota.singleMaxAmount === null || quota.singleMaxAmount === undefined
+      ? WECHAT_MAX_TRANSFER_AMOUNT
+      : Number(quota.singleMaxAmount || 0)
+    const cap = quota.effectiveRemainingAmount === null || quota.effectiveRemainingAmount === undefined
+      ? singleMax
+      : Math.min(singleMax, Number(quota.effectiveRemainingAmount || 0))
+    const target = computeMaxWithdrawableAmount(this.data.earnings, available, cap)
+    if (target <= 0) {
+      return wx.showToast({ title: '当前单笔收益超出限额，请联系平台处理', icon: 'none' })
+    }
     this.setData({ amount: String(Number(target.toFixed(2))) })
   },
 

@@ -258,9 +258,27 @@ function getSitterScheduleForDate(dateStr, requestedSitter, sitterAvailability =
   return { available: true, slots, busyOrders: [], reason: '' }
 }
 
+function mergeContiguousSlots(slots = []) {
+  const sorted = (Array.isArray(slots) ? slots : [])
+    .map((s) => ({ start: Number(s.start || 0), end: Number(s.end || 0) }))
+    .filter((s) => s.end > s.start)
+    .sort((a, b) => a.start - b.start || a.end - b.end)
+  const merged = []
+  for (const slot of sorted) {
+    const prev = merged[merged.length - 1]
+    if (prev && slot.start <= prev.end) {
+      prev.end = Math.max(prev.end, slot.end)
+    } else {
+      merged.push({ start: slot.start, end: slot.end })
+    }
+  }
+  return merged
+}
+
 function formatSitterSlotsText(slots) {
-  if (!slots || !slots.length) return '全天可预约'
-  return slots.map((s) => `${String(s.start).padStart(2, '0')}:00-${String(s.end).padStart(2, '0')}:00`).join('、')
+  const merged = mergeContiguousSlots(slots)
+  if (!merged.length) return '全天可预约'
+  return merged.map((s) => `${String(s.start).padStart(2, '0')}:00-${String(s.end).padStart(2, '0')}:00`).join('、')
 }
 
 function checkTimeFitsSitterSchedule(startTimeStr, endTimeStr, schedule) {
@@ -275,10 +293,11 @@ function checkTimeFitsSitterSchedule(startTimeStr, endTimeStr, schedule) {
   const [eh, em] = endTimeStr.slice(11, 16).split(':').map(Number)
   const startVal = sh + sm / 60
   const endVal = eh + em / 60
+  const mergedSlots = mergeContiguousSlots(schedule.slots)
 
-  const fitsInSlot = schedule.slots.some((slot) => startVal >= slot.start && endVal <= slot.end)
+  const fitsInSlot = mergedSlots.some((slot) => startVal >= slot.start && endVal <= slot.end)
   if (!fitsInSlot) {
-    const allowedText = formatSitterSlotsText(schedule.slots)
+    const allowedText = formatSitterSlotsText(mergedSlots)
     return { ok: false, reason: `不在接单时段（${allowedText}）内`, allowedText }
   }
 
@@ -668,7 +687,8 @@ typeof Page === 'function' ? Page({
   },
 
   onLoad(options = {}) {
-    this.setData({ groupBuyMode: options.source === 'community_groupbuy' || !!options.groupBuyId, groupBuyId: options.groupBuyId || '' })
+    const groupBuyMode = options.source === 'community_groupbuy' || !!options.groupBuyId
+    this.setData({ groupBuyMode, groupBuyId: options.groupBuyId || '' })
     const initialTime = getInitialServiceTime()
     this.setData({
       'form.startDate': initialTime.startDate,
@@ -681,11 +701,11 @@ typeof Page === 'function' ? Page({
       this.initPricingSurcharges(settings && settings.pricingSurcharges)
     }).catch(() => null)
     this.setData({ ...createPageNav(options), pendingOptions: options || {} })
-    const publishMode = options.publishMode === 'direct' ? 'direct' : 'open'
-    const staffProfileId = options.staffProfileId || ''
+    const publishMode = groupBuyMode ? 'open' : (options.publishMode === 'direct' ? 'direct' : 'open')
+    const staffProfileId = groupBuyMode ? '' : (options.staffProfileId || '')
     const serviceType = options.serviceType || options.serviceKey || ''
     this.setData({ autoSelectWalk: (!serviceType || serviceType === 'walk') && !options.rebookOrderId })
-    const nextData = { ['form.publishMode']: publishMode, ['form.staffProfileId']: staffProfileId }
+    const nextData = { ['form.publishMode']: publishMode, ['form.staffProfileId']: staffProfileId, ...(groupBuyMode ? { ['form.orderType']: 'single' } : {}) }
     nextData['form.staffGenderRequirement'] = ['male', 'female'].includes(options.staffGenderRequirement) ? options.staffGenderRequirement : 'any'
     if (serviceType) {
       const serviceTypes = ensureVisitFeeServiceTypes(serviceType === VISIT_FEE_SERVICE_KEY ? [] : [serviceType])
@@ -917,6 +937,9 @@ typeof Page === 'function' ? Page({
     if (this._closed || this.data.creating) return
     if (this.data.communityApplicationBusy) return this.showBookingNotice({ title: '请等待小区申请提交完成' })
     const publishMode = e.currentTarget.dataset.mode
+    if (this.data.groupBuyMode && publishMode !== 'open') {
+      return this.showBookingNotice({ title: '同小区拼单由平台统一派单，暂不支持指定宠托师' })
+    }
     if (publishMode === 'open') {
       this.setData({ ['form.publishMode']: 'open', ['form.staffProfileId']: '', requestedSitter: null, sitterAvailability: [], selectedAvailability: null, isOutOfRange: false, rangeDistanceText: '', rangeWarningText: '' }, () => {
         this.prepareTime()
@@ -1472,7 +1495,7 @@ typeof Page === 'function' ? Page({
     const requestId = (this.data.petVoiceRequestId || 0) + 1
     this.setData({ petVoiceRequestId: requestId, loadingPetVoice: true })
 
-    const activeService = (this.data.serviceOptions || []).find((s) => s.value === this.data.form.serviceType)
+    const activeService = (this.data.serviceOptions || []).find((s) => s.key === this.data.form.serviceType || s.value === this.data.form.serviceType)
     const serviceName = activeService ? activeService.label : '上门宠托'
     const targetStartDate = startDate || this.data.form.startDate
 
@@ -1638,7 +1661,7 @@ typeof Page === 'function' ? Page({
       showCalendarModal: true,
       calendarYear,
       calendarMonth,
-      calendarTempOrderType: form.orderType || 'single',
+      calendarTempOrderType: this.data.groupBuyMode ? 'single' : (form.orderType || 'single'),
       calendarTempStartDate: startDate,
       calendarTempEndDate: form.endDate || startDate,
       calendarTempStartClock: form.startClock || '09:00'
@@ -1653,6 +1676,9 @@ typeof Page === 'function' ? Page({
 
   changeCalendarOrderType(e) {
     const type = e.currentTarget.dataset.type
+    if (this.data.groupBuyMode && type === 'multi_day') {
+      return this.showBookingNotice({ title: '同小区拼单仅支持单日服务，不可跨天预约' })
+    }
     if (!type || type === this.data.calendarTempOrderType) return
     const startDate = this.data.calendarTempStartDate || formatDate(new Date())
     this.setData({
@@ -2017,6 +2043,9 @@ typeof Page === 'function' ? Page({
   },
 
   chooseOrderType(e) {
+    if (this.data.groupBuyMode && e.currentTarget.dataset.type === 'multi_day') {
+      return this.showBookingNotice({ title: '同小区拼单仅支持单日服务，不可跨天预约' })
+    }
     const orderType = e.currentTarget.dataset.type === 'multi_day' ? 'multi_day' : 'single'
     const next = { ['form.orderType']: orderType }
     if (orderType === 'single') next['form.endDate'] = this.data.form.startDate
@@ -2163,11 +2192,13 @@ typeof Page === 'function' ? Page({
     const serviceSessions = buildDailySessions(form)
     return {
       ...form,
+      publishMode: this.data.groupBuyMode ? 'open' : form.publishMode,
+      staffProfileId: this.data.groupBuyMode ? '' : form.staffProfileId,
       serviceCommunityId: !this.data.groupBuyMode && form.publishMode === 'open' ? form.serviceCommunityId : '',
       serviceCommunityApplicationId: !this.data.groupBuyMode && form.publishMode === 'open' ? form.serviceCommunityApplicationId : '',
       ...(this.data.groupBuyMode ? { source: 'community_groupbuy', groupBuyId: this.data.groupBuyId, communityId: this.data.groupBuyCommunityId } : {}),
       petServiceDurations: form.petServiceDurations.map(({ serviceKey, petId, durationMinutes }) => ({ serviceKey, petId, durationMinutes })),
-      orderType: form.orderType || 'single',
+      orderType: this.data.groupBuyMode ? 'single' : (form.orderType || 'single'),
       endDate: form.endDate || form.startDate,
       petId: petIds[0] || '',
       petIds,
@@ -2442,6 +2473,8 @@ typeof Page === 'function' ? Page({
         showError(error)
       })
   },
+
+  noop() {},
 
   ...navMethods()
 }) : null

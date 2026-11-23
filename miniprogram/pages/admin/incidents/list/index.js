@@ -28,12 +28,14 @@ Page({
   },
 
   load(options = {}) {
-    if (this.data.loading) return
     const reset = options.reset === true
+    if (this.data.loading && !reset) return
     const page = reset ? 1 : this.data.page
+    const seq = (this._loadSeq = (this._loadSeq || 0) + 1)
     this.setData({ loading: true })
-    callFunction('incident', 'listIncidents', { status: this.data.status, orderId: this.data.orderId, page, pageSize: this.data.pageSize })
+    return callFunction('incident', 'listIncidents', { status: this.data.status, orderId: this.data.orderId, page, pageSize: this.data.pageSize })
       .then((result) => {
+        if (seq !== this._loadSeq) return
         const pageData = pageList(result)
         const incidents = pageData.list.map(withIncidentText)
         this.setData({
@@ -45,6 +47,7 @@ Page({
         })
       })
       .catch((error) => {
+        if (seq !== this._loadSeq) return
         this.setData({ loading: false })
         showError(error)
       })
@@ -60,7 +63,13 @@ Page({
   },
 
   resolve(e) {
-    callFunction('incident', 'resolveIncident', { id: e.currentTarget.dataset.id }).then(() => this.load({ reset: true })).catch(showError)
+    const id = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.id
+    if (!id || this._resolvingLock) return
+    this._resolvingLock = true
+    return callFunction('incident', 'resolveIncident', { id })
+      .then(() => this.load({ reset: true }))
+      .catch(showError)
+      .finally(() => { this._resolvingLock = false })
   },
 
   detail(e) {

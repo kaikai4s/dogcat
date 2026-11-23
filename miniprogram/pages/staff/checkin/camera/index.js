@@ -17,6 +17,8 @@ Page({
     eventType: '',
     eventTypeText: '',
     isBeautyCheckin: false,
+    isSanitization: false,
+    isReadOnly: false,
     remark: '',
     photos: [],
     uploading: false,
@@ -26,7 +28,17 @@ Page({
   },
   onLoad(q) {
     this.applyCurrentTheme()
-    this.setData({ ...createPageNav(q), orderId: q.id, eventType: q.eventType, eventTypeText: formatCheckinEvent(q.eventType), isBeautyCheckin: q.eventType === 'pet_beauty_photo' })
+    const isSanitization = q.eventType === 'sanitization'
+    const isReadOnly = q.readOnly === '1' || (isSanitization && q.orderStatus === 'in_service')
+    this.setData({
+      ...createPageNav(q),
+      orderId: q.id,
+      eventType: q.eventType,
+      eventTypeText: formatCheckinEvent(q.eventType),
+      isBeautyCheckin: q.eventType === 'pet_beauty_photo',
+      isSanitization,
+      isReadOnly
+    })
     this.loadPhotos()
   },
   onShow() {
@@ -51,6 +63,10 @@ Page({
   chooseAndCreateCheckins() {
     if (this.data.uploading) return
     const isSanitization = this.data.eventType === 'sanitization'
+    if (this.data.isReadOnly) {
+      wx.showToast({ title: '服务已开始，仅可查看服务前消毒凭证', icon: 'none' })
+      return
+    }
     const chooseMedia = () => wx.chooseMedia({
       count: isSanitization ? 1 : 9,
       mediaType: ['image'],
@@ -60,10 +76,24 @@ Page({
         if (!files.length) return
         this.setData({ uploading: true })
         getServiceLocation()
-          .then((loc) => files.reduce((chain, file) => chain.then(() => this.uploadAndCreate(file.tempFilePath, loc)), Promise.resolve()))
-          .then(() => {
-            wx.showToast({ title: '已打卡' })
+          .then((loc) => files.reduce(
+            (chain, file) => chain.then((summary) => this.uploadAndCreate(file.tempFilePath, loc).then((itemResult) => ({
+              syncedCount: summary.syncedCount + (itemResult && itemResult.queued ? 0 : 1),
+              queuedCount: summary.queuedCount + (itemResult && itemResult.queued ? 1 : 0)
+            }))),
+            Promise.resolve({ syncedCount: 0, queuedCount: 0 })
+          ))
+          .then((summary) => {
             this.setData({ uploading: false })
+            if (summary.queuedCount > 0 && summary.syncedCount === 0) {
+              wx.showToast({ title: '网络异常，已加入待补传', icon: 'none' })
+              return
+            }
+            if (summary.queuedCount > 0) {
+              wx.showToast({ title: '部分已加入待补传', icon: 'none' })
+              return
+            }
+            wx.showToast({ title: '已打卡' })
             if (isSanitization) {
               setTimeout(() => wx.navigateBack(), 800)
             }
@@ -107,13 +137,14 @@ Page({
       return callFunction('checkin', 'createCheckin', payload)
         .then((checkin) => {
           this.setData({ photos: [...this.data.photos, withCheckinText(checkin)] })
+          return { synced: true, queued: false }
         })
         .catch((error) => {
           const message = (error && (error.message || error.errMsg)) || ''
-          if (message.includes('network') || message.includes('timeout') || message.includes('fail')) {
+          // 消毒打卡仅允许服务开始前现场上传，不支持离线补传
+          if (!isSanitization && (message.includes('network') || message.includes('timeout') || message.includes('fail'))) {
             enqueueOfflineTask('checkin', payload)
-            wx.showToast({ title: '网络异常，已加入待补传', icon: 'none' })
-            return
+            return { synced: false, queued: true }
           }
           throw error
         })

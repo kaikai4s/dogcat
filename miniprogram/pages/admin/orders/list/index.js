@@ -22,6 +22,13 @@ function applySelected(orders, selectedOrderIds) {
 
 Page({
   data: { tabs, activeStatus: '', specialFilter: '', orderKeyword: '', clientPhone: '', staffPhone: '', selectedOrderIds: [], deleting: false, orders: [], page: 1, pageSize: 20, hasMore: true, loading: false, total: 0 },
+  onLoad(query) {
+    const raw = (query && query.keyword) || ''
+    if (!raw) return
+    let keyword = String(raw)
+    try { keyword = decodeURIComponent(keyword) } catch (_) {}
+    if (keyword.trim()) this.setData({ orderKeyword: keyword.trim() })
+  },
   onShow() { this.load({ reset: true }) },
   onReachBottom() { this.loadMore() },
   onPullDownRefresh() { return this.load({ reset: true, force: true }).finally(() => wx.stopPullDownRefresh()) },

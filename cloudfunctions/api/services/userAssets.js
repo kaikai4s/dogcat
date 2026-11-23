@@ -15,6 +15,7 @@ module.exports = function createService(context) {
     getSystemSettings,
     getUser,
     getWechatTransferQuotaSnapshot,
+    incUpdateValue,
     now,
     releaseWechatTransferQuota,
     reserveWechatApplicationQuota,
@@ -116,22 +117,25 @@ module.exports = function createService(context) {
     const settings = await getInviteSettings()
     const validityDays = Math.max(0, Math.floor(Number(settings.commissionValidityDays || 0)))
     const time = now()
-    const available = await readDocuments(db, db.command, 'user_asset_earnings', {
-      status: 'available'
-    }, 1000)
-    const due = available.filter((r) => isEarningExpired(r, time, validityDays))
+    let expiredCount = 0
     let totalExpiredFen = 0
-    for (const r of due) {
-      totalExpiredFen += cents(r.amount, true)
-      await db.collection('user_asset_earnings').doc(r._id).update({
-        data: {
-          status: 'expired',
-          expiredAt: time,
-          updatedAt: time
+    for await (const page of require('../utils/documentPages').documentPages(db, db.command, 'user_asset_earnings', { status: 'available' })) {
+      for (const r of page) {
+        if (!isEarningExpired(r, time, validityDays)) continue
+        const res = await db.collection('user_asset_earnings').doc(r._id).update({
+          data: {
+            status: 'expired',
+            expiredAt: time,
+            updatedAt: time
+          }
+        }).catch(() => ({ stats: { updated: 0 } }))
+        if (res && (!res.stats || res.stats.updated > 0)) {
+          expiredCount += 1
+          totalExpiredFen += cents(r.amount, true)
         }
-      }).catch(() => {})
+      }
     }
-    return { count: due.length, totalAmount: totalExpiredFen / 100 }
+    return { count: expiredCount, totalAmount: totalExpiredFen / 100 }
   }
 
   async function grantInviteReward(invite, options = {}) {
@@ -429,7 +433,32 @@ module.exports = function createService(context) {
     const rewardAmount = invitation.enabled === true && Number.isFinite(configuredRewardAmount) && configuredRewardAmount > 0 ? Math.round(configuredRewardAmount * 100) / 100 : 0
     const inviteId = `invite_${openid}`
     const time = now()
-    const record = { inviterUserId: inviter._id, inviterOpenid: inviter.openid, invitedUserId: user._id, invitedOpenid: openid, inviteCode: code, bindingSource: safeText(data.bindingSource).trim() || 'manual', rewarded: false, rewardAmount, createdAt: time, updatedAt: time }
+    let inviterStaffEligibleAt = ''
+    try {
+      const profileRes = await db.collection('staff_profiles').where({ openid: inviter.openid }).limit(1).get()
+      const profile = profileRes.data && profileRes.data[0]
+      const depositOkay = profile && (profile.depositRequired !== true || profile.depositStatus === 'paid')
+      if (profile && profile.auditStatus === 'approved' && profile.staffLevel === 'certified' && depositOkay && !['requested', 'approved', 'exited'].includes(profile.exitStatus)) {
+        inviterStaffEligibleAt = profile.certifiedAt || profile.certificationLockedAt || profile.updatedAt || time
+      }
+    } catch (_) {}
+    const record = {
+      inviterUserId: inviter._id,
+      inviterOpenid: inviter.openid,
+      invitedUserId: user._id,
+      invitedOpenid: openid,
+      inviteCode: code,
+      bindingSource: safeText(data.bindingSource).trim() || 'manual',
+      rewarded: true,
+      rewardType: 'retro_card',
+      rewardCount: 1,
+      inviterStaffEligibleAt,
+      eligibleForSupplyReimbursement: Boolean(inviterStaffEligibleAt),
+      rewardAmount,
+      rewardEarningId: '',
+      createdAt: time,
+      updatedAt: time
+    }
     const result = await db.runTransaction(async tx => {
       const current = (await tx.collection('users').doc(user._id).get()).data
       if (current.inviterOpenid) throw new Error('每个用户只能绑定一次邀请码，绑定后不能修改')
@@ -440,6 +469,39 @@ module.exports = function createService(context) {
       }
       await tx.collection('user_invites').doc(inviteId).set({ data: record })
       await tx.collection('users').doc(user._id).update({ data: { inviterOpenid: inviter.openid, updatedAt: time } })
+      const inviterDoc = (await tx.collection('users').doc(inviter._id).get().catch(() => ({ data: null }))).data
+      const currentCards = Number(inviterDoc && inviterDoc.retroCardCount !== undefined ? inviterDoc.retroCardCount : (inviter.retroCardCount || 0))
+      const nextCards = currentCards + 1
+      const retroUpdate = typeof incUpdateValue === 'function'
+        ? incUpdateValue(inviterDoc && inviterDoc.retroCardCount, 1)
+        : (db.command && typeof db.command.inc === 'function' ? db.command.inc(1) : nextCards)
+      await tx.collection('users').doc(inviter._id).update({ data: { retroCardCount: retroUpdate, updatedAt: time } })
+      const retroLogId = idFor('invite_retro', [inviter.openid, openid])
+      await tx.collection('retro_card_logs').doc(retroLogId).set({
+        data: {
+          userId: inviter._id,
+          openid: inviter.openid,
+          delta: 1,
+          balance: nextCards,
+          sourceType: 'invite_first_login',
+          sourceId: openid,
+          reason: '邀请新用户绑定奖励补签卡 +1',
+          createdAt: time
+        }
+      })
+      const currentDayKey = (typeof toCstParts === 'function' ? toCstParts(time) : {}).dateKey || new Date(time).toISOString().slice(0, 10)
+      const bonusVoteDocId = `bonus_vote_${inviter.openid}_${openid}`
+      await tx.collection('pet_beauty_bonus_votes').doc(bonusVoteDocId).set({
+        data: {
+          openid: inviter.openid,
+          userId: inviter._id,
+          invitedOpenid: openid,
+          invitedUserId: user._id,
+          dateKey: currentDayKey,
+          source: 'invite_new_user',
+          createdAt: time
+        }
+      })
       return { ...record, _id: inviteId }
     })
     try {
@@ -600,6 +662,7 @@ module.exports = function createService(context) {
       const request = (await tx.collection('withdraw_requests').doc(withdrawId).get()).data
       if (!request || request.assetType !== 'user') throw new Error('用户资产提现申请不存在')
       if (['paid', 'rejected'].includes(request.status)) return { request, changed: false }
+      if (request.status === 'transfer_failed' && request.gatewayFailureConfirmed === true) return { request, changed: false }
       if (!['approved', 'transferring', 'transfer_failed'].includes(request.status)) throw new Error('当前用户资产提现状态不可失败回退')
       const time = now()
       await releaseWechatTransferQuota(tx, { _id: withdrawId, ...request }, 'transfer_failed')

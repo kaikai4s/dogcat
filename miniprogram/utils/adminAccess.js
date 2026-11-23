@@ -38,7 +38,7 @@ function installAdminPageGuard() {
   if (typeof Page !== 'function' || Page.__adminGuard) return
   const originalPage = Page
   Page = function guardedPage(options) {
-    const load = options.onLoad, show = options.onShow
+    const load = options.onLoad, show = options.onShow, hide = options.onHide, unload = options.onUnload
     options.onLoad = function (...args) {
       if (String(this.route || '').startsWith('pages/admin/') && args[0] && args[0].sharedHome === '1') {
         this._shareLandingRedirect = true
@@ -48,11 +48,25 @@ function installAdminPageGuard() {
       if (!String(this.route || '').startsWith('pages/admin/')) return load && load.apply(this, args)
       this._adminLoadArgs = args
     }
+    options.onHide = function (...args) {
+      this._adminGuardClosed = true
+      this._adminGuardSeq = (this._adminGuardSeq || 0) + 1
+      return hide && hide.apply(this, args)
+    }
+    options.onUnload = function (...args) {
+      this._adminGuardClosed = true
+      this._adminGuardSeq = (this._adminGuardSeq || 0) + 1
+      return unload && unload.apply(this, args)
+    }
     options.onShow = function (...args) {
       if (this._shareLandingRedirect) return
       if (!String(this.route || '').startsWith('pages/admin/')) return show && show.apply(this, args)
+      this._adminGuardClosed = false
+      const guardSeq = this._adminGuardSeq = (this._adminGuardSeq || 0) + 1
       const { callFunction, showError } = require('./cloud')
-      return callFunction('admin', 'getMyAdminAccess').then(async access => {
+      const isInactive = () => this._adminGuardClosed || guardSeq !== this._adminGuardSeq
+      return callFunction('admin', 'getMyAdminAccess').then(async (access) => {
+        if (isInactive()) return
         if (!canVisit(access, this.route)) {
           wx.showToast({ title: '没有该页面的访问权限', icon: 'none' })
           wx.redirectTo({ url: '/pages/admin/home/index' })
@@ -61,13 +75,22 @@ function installAdminPageGuard() {
         const adminPermissions = {}
         for (const key of access.permissions || []) adminPermissions[key.replace(/\./g, '_')] = true
         this.setData({ adminAccess: access, adminPermissions, adminSuper: access.superAdmin })
-        if (this._adminLoadArgs) {
-          const loadArgs = this._adminLoadArgs
-          delete this._adminLoadArgs
-          if (load) await load.apply(this, loadArgs)
+        try {
+          if (this._adminLoadArgs) {
+            const loadArgs = this._adminLoadArgs
+            delete this._adminLoadArgs
+            if (load) await load.apply(this, loadArgs)
+          }
+          if (isInactive()) return
+          return show && await show.apply(this, args)
+        } catch (pageErr) {
+          if (!isInactive()) showError(pageErr)
         }
-        return show && show.apply(this, args)
-      }).catch(error => { showError(error); wx.redirectTo({ url: '/pages/role-select/index' }) })
+      }, (error) => {
+        if (isInactive()) return
+        showError(error)
+        wx.redirectTo({ url: '/pages/role-select/index' })
+      })
     }
     return originalPage(options)
   }

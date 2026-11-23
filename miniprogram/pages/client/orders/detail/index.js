@@ -112,6 +112,7 @@ Page({
     canGoBack: false
   },
   onLoad(q) {
+    this._unloaded = false
     this.setData({ ...createPageNav(q), id: q.id })
     if (q.openChat === '1' || q.openChat === 'true' || q.openChat === true) {
       this._autoOpenChat = true
@@ -123,15 +124,17 @@ Page({
 
   onShow() {
     loadSystemSettings().catch(() => null)
+    this._unloaded = false
     this._chatPageVisible = true
     this.applyCurrentTheme()
     ensureLogin({ content: '登录后可查看订单详情。' })
       .then(() => {
+        if (!this._chatPageVisible || this._unloaded) return
         this.load()
         if (this._autoOpenChat) {
           this._autoOpenChat = false
           setTimeout(() => {
-            if (typeof this.openSessionChat === 'function') this.openSessionChat({ silent: true })
+            if (this._chatPageVisible && !this._unloaded && typeof this.openSessionChat === 'function') this.openSessionChat({ silent: true })
           }, 400)
         }
         if (this._chatPageVisible && this.data.showChatModal) this.startSessionChatRefresh()
@@ -144,6 +147,7 @@ Page({
     this.stopEarlyStartPolling()
   },
   onUnload() {
+    this._unloaded = true
     this._chatPageVisible = false
     this.stopSessionChatRefresh()
     this.stopEarlyStartPolling()
@@ -182,6 +186,7 @@ Page({
           loading: false,
           loadError: false
         })
+        if (!this._chatPageVisible || this._unloaded) return
         callFunction('message', 'markOrderThreadRead', { orderId: this.data.id }).catch(() => {})
         if (displayOrder.earlyStartRequest && displayOrder.earlyStartRequest.status === 'pending') {
           this.checkPromptEarlyStart(displayOrder.earlyStartRequest)
@@ -228,10 +233,15 @@ Page({
   },
   startEarlyStartPolling() {
     this.stopEarlyStartPolling()
+    if (!this._chatPageVisible || this._unloaded) return
     const order = this.data.order
     if (!order || !['assigned', 'on_the_way', 'in_service', 'day_completed'].includes(order.status)) return
 
     this.earlyStartPollTimer = setInterval(() => {
+      if (!this._chatPageVisible || this._unloaded) {
+        this.stopEarlyStartPolling()
+        return
+      }
       if (!this.data.id || this.data.handlingEarlyStart || this.data.paying || this._earlyStartPollRequest) return
       const pollSeq = this._earlyStartPollSeq = (this._earlyStartPollSeq || 0) + 1
       this._earlyStartPollRequest = callFunction('order', 'getOrderProgress', { id: this.data.id })

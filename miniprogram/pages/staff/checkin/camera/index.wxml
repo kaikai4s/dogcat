@@ -9,7 +9,7 @@
     <view class="hero-desc">{{isBeautyCheckin ? '上传服务中拍到的宠物美照，宠物家长可在服务报告中保存或加入宠物相册。' : (eventType === 'sanitization' ? '服务开始前必须自备并穿戴好一次性手套、口罩与鞋套，手持安全宠物消毒用品现场拍照，做好隔离病菌防护。' : '拍照或上传截图后将保存至订单证据链，服务结束前可删除并重新上传。')}}</view>
   </view>
 
-  <view class="card form-card">
+  <view class="card form-card" wx:if="{{!isReadOnly}}">
     <view class="card-subtitle">
       <text class="remix-icon ri-edit-2-line sub-icon"></text>
       <text>本次打卡备注</text>
@@ -17,11 +17,12 @@
     <textarea class="remark-textarea" placeholder="备注（会随本次上传的照片保存）" value="{{remark}}" bindinput="input" />
   </view>
 
-  <button class="primary-btn upload-btn" loading="{{uploading}}" disabled="{{uploading}}" bindtap="chooseAndCreateCheckins">
+  <button wx:if="{{!isReadOnly}}" class="primary-btn upload-btn" loading="{{uploading}}" disabled="{{uploading}}" bindtap="chooseAndCreateCheckins">
     <text class="remix-icon ri-image-add-line"></text>
     <text class="upload-label">{{uploading ? '上传中...' : (isBeautyCheckin ? '拍照 / 上传美照' : (eventType === 'sanitization' ? '现场拍照打卡' : '拍照 / 上传截图'))}}</text>
   </button>
-  <view class="capture-note" wx:if="{{eventType === 'sanitization'}}">仅限现场拍摄</view>
+  <view class="capture-note" wx:if="{{!isReadOnly && eventType === 'sanitization'}}">仅限现场拍摄</view>
+  <view class="capture-note" wx:if="{{isReadOnly}}">服务已开始，以下为本次服务前上传的消毒凭证（仅查看）</view>
 
   <view class="card photo-card">
     <view class="photo-head">
@@ -39,7 +40,7 @@
       <view class="photo-cell" wx:for="{{photos}}" wx:key="_id">
         <image class="checkin-photo" src="{{item.mediaFileId}}" mode="aspectFill" data-url="{{item.mediaFileId}}" bindtap="previewPhoto" lazy-load="true" />
         <view class="photo-meta">{{item.remark || '无备注'}}</view>
-        <button wx:if="{{item.canDelete}}" class="mini-delete" data-id="{{item._id}}" loading="{{deletingId === item._id}}" disabled="{{deletingId === item._id}}" bindtap="deletePhoto">
+        <button wx:if="{{item.canDelete && !isReadOnly}}" class="mini-delete" data-id="{{item._id}}" loading="{{deletingId === item._id}}" disabled="{{deletingId === item._id}}" bindtap="deletePhoto">
           <text class="remix-icon ri-delete-bin-line"></text>
           <text>删除</text>
         </button>

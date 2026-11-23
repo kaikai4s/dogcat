@@ -640,9 +640,9 @@ Page({
         this.setData({ actionBusy: true })
         wx.showLoading({ title: '正在发起原路退款...', mask: true })
         callFunction('admin', 'autoRefundStaffDeposit', { id, reason: '管理员自动原路退还' })
-          .then(() => {
+          .then((result) => {
             wx.hideLoading()
-            wx.showToast({ title: '已自动原路退还', icon: 'success' })
+            wx.showToast({ title: result && result.status === 'refunding' ? '退款处理中，请稍后刷新' : '已自动原路退还', icon: result && result.status === 'refunding' ? 'none' : 'success' })
             this.loadStaffFinance()
           })
           .catch((err) => {

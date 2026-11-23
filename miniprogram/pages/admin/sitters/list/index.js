@@ -130,6 +130,14 @@ Page({
     redemptionLocked: false
   },
 
+  onLoad(query) {
+    const raw = (query && query.keyword) || ''
+    if (!raw) return
+    let keyword = String(raw)
+    try { keyword = decodeURIComponent(keyword) } catch (_) {}
+    if (keyword.trim()) this.setData({ keyword: keyword.trim() })
+  },
+
   onPullDownRefresh() {
     Promise.resolve(this.load({ reset: true })).finally(() => wx.stopPullDownRefresh())
   },

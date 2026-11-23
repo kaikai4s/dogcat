@@ -30,22 +30,33 @@ Component({
       }
     },
     detached() {
+      this._isPageShowing = false
       if (this._onShow) loadingBus.off('show', this._onShow)
       if (this._onHide) loadingBus.off('hide', this._onHide)
+      if (this.data.visible) {
+        loadingBus.hide()
+      }
     }
   },
   pageLifetimes: {
     show() {
       this._isPageShowing = true
+      if (this._onShow) loadingBus.on('show', this._onShow)
+      if (this._onHide) loadingBus.on('hide', this._onHide)
       const state = loadingBus.getState()
       if (state.isVisible) {
         this.setData({ visible: true, title: state.currentTitle })
+      } else if (this.data.visible) {
+        this.setData({ visible: false })
       }
     },
     hide() {
       this._isPageShowing = false
+      if (this._onShow) loadingBus.off('show', this._onShow)
+      if (this._onHide) loadingBus.off('hide', this._onHide)
       if (this.data.visible) {
         this.setData({ visible: false })
+        loadingBus.hide()
       }
     }
   },

@@ -4,8 +4,17 @@ const { parseDateValue } = require('../utils/time')
 module.exports = function createService(context) {
   const { db, crypto, now, getPayableOrder, createPaymentNo,
     normalizeMallProduct, getSkuById, assertOrderPaymentOpen, amountYuanToFen, enqueueOrderNotification,
-    enqueueStaffDirectOrder, notifyStaffDirectOrder } = context
+    enqueueStaffDirectOrder, notifyStaffDirectOrder, restoreOrderCoupon } = context
   const key = (prefix, value) => `${prefix}_${crypto.createHash('sha256').update(value).digest('hex').slice(0, 32)}`
+  function isZeroPayCouponOrder(order = {}) {
+    const amount = Number(order && order.amount || 0)
+    const discountAmount = Number(order && order.discountAmount || 0)
+    const payAmount = Number(order && order.payAmount)
+    return Boolean(order && order.couponId) &&
+      Number.isFinite(amount) && amount > 0 &&
+      Number.isFinite(discountAmount) && discountAmount >= amount &&
+      Number.isFinite(payAmount) && payAmount === 0
+  }
   async function optional(tx, name, id) {
     try { return (await tx.collection(name).doc(id).get()).data || null } catch (error) {
       if (String(error.message || error.errMsg).includes(`document with _id ${id} does not exist`)) return null
@@ -278,6 +287,143 @@ module.exports = function createService(context) {
     return result
   }
 
+  async function settleZeroPayOrder(orderId, openid) {
+    const resolved = await getPayableOrder(orderId)
+    if (!resolved.order) throw new Error('订单不存在')
+    const result = await db.runTransaction(async tx => {
+      const order = (await tx.collection(resolved.collectionName).doc(orderId).get().catch(() => ({ data: null }))).data
+      if (!order || (openid && order.clientOpenid !== openid)) throw new Error('订单不存在')
+      if (order.paymentStatus === 'paid' || ['refunding', 'refunded'].includes(order.paymentStatus)) {
+        return { order, changed: false, orderType: resolved.orderType }
+      }
+      if (order.status !== 'pending_pay' || order.paymentStatus === 'closed') throw new Error('订单状态不可支付')
+      assertOrderPaymentOpen(order)
+      if (order.groupBuyId && order.groupBuyStatus === 'cancelled') throw new Error('拼单已取消，不可支付')
+      if (!isZeroPayCouponOrder(order)) throw new Error('订单金额不正确')
+      const time = now()
+      const coupon = await optional(tx, 'user_coupons', order.couponId)
+      if (!coupon || coupon.openid !== order.clientOpenid || coupon.status !== 'locked' || coupon.lockedOrderId !== orderId) {
+        throw new Error('优惠券状态异常')
+      }
+      const products = new Map()
+      if (resolved.orderType === 'mall') {
+        if (!Array.isArray(order.items) || !order.items.length || order.items.length > 40) throw new Error('商城订单商品记录异常')
+        for (const item of order.items) {
+          const quantity = Number(item.quantity)
+          if (!Number.isSafeInteger(quantity) || quantity <= 0) throw new Error('商品数量不正确')
+          let product = products.get(item.productId)
+          if (!product) product = normalizeMallProduct(await optional(tx, 'mall_products', item.productId) || {})
+          if (order.stockReserved === true) {
+            const sku = getSkuById(product, item.skuId)
+            const skus = product.skus.map(row => row.skuId === (sku ? sku.skuId : item.skuId)
+              ? { ...row, salesCount: Number(row.salesCount || 0) + quantity }
+              : row)
+            const changed = skus.find(row => row.skuId === (sku ? sku.skuId : item.skuId))
+            product = normalizeMallProduct({
+              ...product,
+              ...(product.specMode === 'single' && changed ? { salesCount: changed.salesCount } : {}),
+              skus
+            })
+            products.set(item.productId, product)
+          } else {
+            if (product.status !== 'on_sale') throw new Error(`商品已下架：${item.name}`)
+            const sku = getSkuById(product, item.skuId)
+            if (!sku || sku.status === 'off_sale' || Number(sku.stock) < quantity) throw new Error(`商品库存不足：${item.name}`)
+            const skus = product.skus.map(row => row.skuId === sku.skuId ? { ...row, stock: Number(row.stock) - quantity, salesCount: Number(row.salesCount || 0) + quantity } : row)
+            const changed = skus.find(row => row.skuId === sku.skuId)
+            product = normalizeMallProduct({ ...product, ...(product.specMode === 'single' ? { stock: changed.stock, salesCount: changed.salesCount } : {}), skus })
+            products.set(item.productId, product)
+          }
+        }
+      }
+      for (const [id, product] of products) {
+        const { skus, price, originalPrice, stock, totalStock, minPrice, maxPrice, salesCount, specText } = product
+        await tx.collection('mall_products').doc(id).update({ data: { skus, price, originalPrice, stock, totalStock, minPrice, maxPrice, salesCount, specText, updatedAt: time } })
+      }
+      const paymentNo = order.paymentNo || createPaymentNo()
+      const patch = {
+        paymentStatus: 'paid',
+        paymentChannel: 'coupon',
+        isMockPayment: false,
+        status: resolved.orderType === 'mall' ? 'pending_ship' : 'paid',
+        paymentNo,
+        wxTransactionId: '',
+        paidAt: time,
+        updatedAt: time
+      }
+      await tx.collection(resolved.collectionName).doc(orderId).update({ data: patch })
+      await tx.collection('user_coupons').doc(coupon._id).update({ data: { status: 'used', usedOrderId: orderId, usedAt: time, updatedAt: time } })
+      const logId = key('paid', `${resolved.collectionName}:${orderId}`)
+      await tx.collection('finance_logs').doc(logId).set({ data: {
+        action: resolved.orderType === 'mall' ? 'mall_order_paid' : 'order_paid',
+        targetType: resolved.orderType === 'mall' ? 'mall_order' : 'order',
+        targetId: orderId,
+        orderId,
+        amountDelta: 0,
+        detail: { paymentNo, channel: 'coupon', couponId: order.couponId, zeroPay: true },
+        createdAt: time
+      } })
+      await tx.collection('payment_events').doc(logId).set({ data: {
+        eventType: 'paid',
+        orderId,
+        paymentNo,
+        status: 'success',
+        detail: { channel: 'coupon', amount: 0, zeroPay: true },
+        createdAt: time
+      } })
+      const paidOrder = { ...order, ...patch }
+      const activated = resolved.orderType === 'service' && order.groupBuyId
+        ? await require('./playground-group-buy')(context).activatePaidOrder(tx, paidOrder)
+        : paidOrder
+      if (resolved.orderType === 'service' && activated.groupBuyRefundRequired) {
+        const expirePatch = {
+          status: 'expired',
+          expiredAt: time,
+          expireReason: activated.groupBuyRefundReason || '拼单已截止或无法加入，订单自动关闭',
+          updatedAt: time
+        }
+        await tx.collection(resolved.collectionName).doc(orderId).update({ data: expirePatch })
+        if (typeof restoreOrderCoupon === 'function') {
+          await restoreOrderCoupon(order.couponId, orderId, tx)
+        } else {
+          await tx.collection('user_coupons').doc(coupon._id).update({
+            data: { status: 'available', lockedOrderId: '', lockedAt: null, usedOrderId: '', usedAt: null, updatedAt: time }
+          })
+        }
+        return { order: { ...activated, ...expirePatch }, changed: true, orderType: resolved.orderType, mallAdminRecipients: [] }
+      }
+      if (resolved.orderType === 'service') {
+        await tx.collection('order_timeline').doc(logId).set({ data: {
+          orderId, type: 'paid', title: '订单已支付', detail: '支付金额 ¥0（优惠券全额抵扣）', actorRole: 'client', createdAt: time
+        } })
+        await enqueueOrderNotification(tx, order.clientOpenid, 'orderPaid', activated, { amount: 0, statusText: '已支付' })
+        if (order.publishMode === 'direct' && order.requestedStaffOpenid) await enqueueStaffDirectOrder(tx, activated, 'request')
+      }
+      const mallAdminRecipients = resolved.orderType === 'mall'
+        ? await context.enqueueMallPaidAdminNotifications(tx, activated)
+        : []
+      return { order: activated, changed: true, orderType: resolved.orderType, mallAdminRecipients }
+    })
+
+    if (result.changed && result.orderType === 'mall') {
+      try { await context.notifyMallPaidAdmins(result.order, result.mallAdminRecipients) }
+      catch (error) { console.error('[mall-admin-notification]', { orderId, message: error.message }) }
+    }
+    if (result.changed && result.orderType === 'service' && result.order.status === 'paid' && result.order.publishMode === 'direct' && result.order.requestedStaffOpenid) {
+      await notifyStaffDirectOrder(result.order, 'request')
+    }
+    if (result.changed && result.orderType === 'service' && result.order.status === 'paid' && result.order.publishMode === 'open') {
+      try {
+        if (typeof context.notifyEligibleSittersForPublicOrder === 'function') {
+          await context.notifyEligibleSittersForPublicOrder(result.order)
+        }
+      } catch (error) {
+        console.error('[public-order-grab-notification]', { orderId: result.order._id, message: error.message })
+      }
+    }
+    return result
+  }
+
   async function createOrderWithCouponLock({
     collectionName,
     order,
@@ -422,5 +568,5 @@ module.exports = function createService(context) {
     }
   }
 
-  return { reserveOrderPayment, settleOrderPayment, createOrderWithCouponLock }
+  return { isZeroPayCouponOrder, reserveOrderPayment, settleOrderPayment, settleZeroPayOrder, createOrderWithCouponLock }
 }

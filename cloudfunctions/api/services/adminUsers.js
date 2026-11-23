@@ -98,7 +98,7 @@ module.exports = function createService({
     }
 
     // 检查是否存在履约中或售后处理中的商城订单
-    const activeMallStatuses = ['pending_pay', 'paid', 'shipped', 'refund_applied']
+    const activeMallStatuses = ['pending_pay', 'paid', 'pending_ship', 'shipped', 'refund_applied']
     const activeMallOrderCount = await countByQuery('mall_orders', {
       clientOpenid: target.openid,
       status: inOp(activeMallStatuses)
@@ -120,7 +120,7 @@ module.exports = function createService({
     }
 
     // 3. 检查是否存在待处理纠纷
-    const activeIncidentStatuses = ['pending', 'processing']
+    const activeIncidentStatuses = ['open', 'triaging', 'waiting_client', 'waiting_staff', 'pending', 'processing', 'refund_pending']
     const clientIncidentCount = await countByQuery('order_incidents', {
       clientOpenid: target.openid,
       status: inOp(activeIncidentStatuses)
@@ -148,6 +148,40 @@ module.exports = function createService({
       assetType: 'user', userOpenid: target.openid, status: inOp(activeWithdrawStatuses)
     })
     if (activeUserAssetWithdrawCount > 0) throw new Error('该用户存在待处理的资产提现申请，无法删除')
+
+    // 5. 检查作为宠托师是否存在未结清收益
+    const earnings = await readScopedDocuments('staff_earnings', { staffOpenid: target.openid }, '_id', 'asc')
+    const unsettledEarningStatuses = new Set(['pending', 'available', 'withdrawing', 'frozen'])
+    const unsettledEarnings = earnings.filter((earning) =>
+      unsettledEarningStatuses.has(String(earning.status || '').trim()) &&
+      earning.isMock !== true &&
+      earning.paymentChannel !== 'mock'
+    )
+    const earningAmount = unsettledEarnings.reduce((sum, earning) => sum + Number(earning.amount || 0), 0)
+    if (Math.round(earningAmount * 100) > 0) {
+      throw new Error(`该宠托师存在未结清收益（¥${earningAmount.toFixed(2)}），请先结清后再删除`)
+    }
+
+    // 6. 检查作为宠托师是否存在未退还或退还中的履约保证金
+    const deposits = await readScopedDocuments('staff_deposits', { staffOpenid: target.openid }, '_id', 'asc')
+    const unsettledDeposit = deposits.find((deposit) => {
+      const netAvailable = deposit.availableRefundAmount != null
+        ? Number(deposit.availableRefundAmount)
+        : (Number(deposit.paidAmount || 0) - Number(deposit.refundedAmount || 0) - Number(deposit.forfeitedAmount || 0) - Number(deposit.supplyFeeDeductedAmount || 0))
+      const availableCents = Math.round(Math.max(0, netAvailable) * 100)
+      const status = String(deposit.status || '').trim()
+      const refundStatus = String(deposit.refundStatus || '').trim()
+      const isRefundInFlight = ['refund_requested', 'refund_approved', 'refunding'].includes(status) ||
+        ['requested', 'approved', 'processing'].includes(refundStatus)
+      return availableCents > 0 || isRefundInFlight
+    })
+    if (unsettledDeposit) {
+      const netAvailable = unsettledDeposit.availableRefundAmount != null
+        ? Number(unsettledDeposit.availableRefundAmount)
+        : (Number(unsettledDeposit.paidAmount || 0) - Number(unsettledDeposit.refundedAmount || 0) - Number(unsettledDeposit.forfeitedAmount || 0) - Number(unsettledDeposit.supplyFeeDeductedAmount || 0))
+      const amount = Math.max(0, netAvailable).toFixed(2)
+      throw new Error(`该宠托师保证金尚未处理完成（可退余额 ¥${amount}），请先完成扣除或退款后再删除`)
+    }
   }
 
   async function cleanupUserPersonalData(targetOpenid) {

@@ -329,7 +329,7 @@ test('global bugfixes: autoRefundStaffDeposit recovers gracefully when WeChat re
         const err = new Error('RESOURCE_ALREADY_EXISTS: 退款单号已存在')
         throw err
       }
-      if (method === 'GET' && path.includes('/v3/refund/domestic/refunds/out-refund-no/')) {
+      if (method === 'GET' && path.startsWith('/v3/refund/domestic/refunds/') && !path.includes('/out-refund-no/')) {
         wechatQueried = true
         return { status: 'SUCCESS', refund_id: 'wx_refund_123' }
       }

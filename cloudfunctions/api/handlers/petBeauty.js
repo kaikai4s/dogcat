@@ -63,22 +63,18 @@ module.exports = function createHandler(context) {
       return setPetBeautyTitle(openid, safeText(data.petId).trim(), '')
     }
 
-    async function readBeautyCandidatePets(maxLimit = 1000) {
-      // 扫描全平台有效宠物（未删除且包含美照或头像），确保全平台参赛宠物均按票数排进前 100
+    async function readBeautyCandidatePets() {
+      // 全量按 _id 游标分页并流式过滤，避免先截断前 1000 条原始文档导致新增或靠后宠物缺席选美
       const rows = []
       let cursor = ''
-      while (rows.length < maxLimit) {
+      while (true) {
         const condition = {}
         if (cursor) condition._id = db.command.gt(cursor)
-        const fetchLimit = Math.min(100, maxLimit - rows.length)
-        const page = (await db.collection('pets').where(condition).orderBy('_id', 'asc').limit(fetchLimit).get()).data || []
-        rows.push(...page)
-        if (page.length < fetchLimit) break
-        cursor = page[page.length - 1]._id
-      }
-      return rows
-        .filter((pet) => !pet.deletedAt && !pet.beautyContestDisqualified && ((Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length > 0) || pet.avatarFileId || pet.avatarUrl))
-        .map((pet) => {
+        const page = (await db.collection('pets').where(condition).orderBy('_id', 'asc').limit(100).get()).data || []
+        if (!page.length) break
+        for (const pet of page) {
+          if (!pet || pet.deletedAt || pet.beautyContestDisqualified) continue
+          if (!((Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length > 0) || pet.avatarFileId || pet.avatarUrl)) continue
           const avatar = safeFileId(pet.avatarFileId || pet.avatarUrl) || safeText(pet.avatarFileId || pet.avatarUrl)
           if (!Array.isArray(pet.beautyPhotos) || !pet.beautyPhotos.length) {
             let beautyPhotos = []
@@ -89,16 +85,23 @@ module.exports = function createHandler(context) {
                 beautyPhotos = [{ id: `bp_${pet._id || '0'}`, fileId: avatar, source: 'pet_profile' }]
               }
             }
-            return {
+            rows.push({
               ...pet,
               avatarFileId: avatar || pet.avatarFileId || '',
               beautyPhotos,
               hasBeautyPhotos: beautyPhotos.length > 0,
               beautyPhotoCount: beautyPhotos.length
-            }
+            })
+          } else {
+            rows.push(pet)
           }
-          return pet
-        })
+        }
+        if (page.length < 100) break
+        const nextCursor = page[page.length - 1]._id
+        if (!nextCursor || nextCursor === cursor) break
+        cursor = nextCursor
+      }
+      return rows
     }
 
     async function getPublicPetsWithVotes() {
@@ -253,7 +256,8 @@ module.exports = function createHandler(context) {
       }
       if (!pet || pet.deletedAt) throw new Error('宠物不存在')
       if (pet.beautyContestDisqualified) throw new Error('该宠物已被取消参赛资格')
-      if (!Array.isArray(pet.beautyPhotos) || !pet.beautyPhotos.length) throw new Error('该宠物还没有美照')
+      const hasAvatarPhoto = Boolean(safeFileId(pet.avatarFileId || pet.avatarUrl) || safeText(pet.avatarFileId || pet.avatarUrl).trim())
+      if ((!Array.isArray(pet.beautyPhotos) || !pet.beautyPhotos.length) && !hasAvatarPhoto) throw new Error('该宠物还没有美照')
 
       const exclusiveId = await ensurePetExclusiveId({ ...pet, _id: petId })
       const time = now()
@@ -374,11 +378,16 @@ module.exports = function createHandler(context) {
       if (!petId) throw new Error('请选择宠物')
       const photoId = safeText(data.photoId).trim()
       const fileId = safeText(data.fileId).trim()
+      if (!photoId && !fileId) throw new Error('请选择要删除的美照')
       const petRes = await db.collection('pets').doc(petId).get().catch(() => ({ data: null }))
       const pet = petRes && petRes.data
       if (!pet || pet.deletedAt || pet.openid !== openid) throw new Error('宠物不存在')
       const currentPhotos = Array.isArray(pet.beautyPhotos) ? pet.beautyPhotos : []
-      const beautyPhotos = currentPhotos.filter((photo) => (photoId && photo.id !== photoId) || (fileId && photo.fileId !== fileId))
+      const beautyPhotos = currentPhotos.filter((photo) => {
+        const matchId = Boolean(photoId && photo.id === photoId)
+        const matchFileId = Boolean(fileId && photo.fileId === fileId)
+        return !(matchId || matchFileId)
+      })
       if (beautyPhotos.length === currentPhotos.length) throw new Error('美照不存在')
       if (!beautyPhotos.length) throw new Error('至少保留一张宠物美照')
       const avatarFileId = beautyPhotos.some((photo) => photo.fileId === pet.avatarFileId) ? pet.avatarFileId : beautyPhotos[0].fileId

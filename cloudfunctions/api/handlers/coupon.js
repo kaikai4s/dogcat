@@ -49,11 +49,20 @@ module.exports = function createHandler(context) {
     if (action === 'listMallCoupons') {
       await getUser(openid)
       const coupons = await readUserCoupons(openid)
-      const pricing = calcMallPricing(Array.isArray(data.items) ? data.items : [])
+      const rawItems = Array.isArray(data.items) ? data.items : []
+      const hydratedItems = await Promise.all(rawItems.map(async (item) => {
+        if (!item || item.shippingFee != null || (item.product && item.product.shippingFee != null) || !item.productId) {
+          return item
+        }
+        const productRes = await db.collection('mall_products').doc(item.productId).get().catch(() => ({ data: null }))
+        const product = productRes && productRes.data
+        return product ? { ...item, shippingFee: Number(product.shippingFee || 0) } : item
+      }))
+      const pricing = calcMallPricing(hydratedItems)
       return coupons
         .filter((coupon) => ['mall', 'all'].includes(normalizeCouponSnapshot(coupon).usageScope))
         .map((coupon) => {
-          const result = evaluateCoupon(coupon, pricing, openid)
+          const result = evaluateCoupon(coupon, { ...pricing, serviceTypes: ['mall'] }, openid)
           return formatUserCoupon(coupon, {
             status: couponDisplayStatus(coupon),
             applicable: result.applicable,

@@ -209,11 +209,15 @@ module.exports = function createHandler(context) {
             ? toTimeValue(approvedEarlyStart.approvedAt || approvedEarlyStart.createdAt)
             : sessionRegularStart
           const sessionEnd = toTimeValue(targetSession.endTime)
-          if ((sessionStart && current < sessionStart) || (sessionEnd && current > sessionEnd)) {
+          const isActiveInServiceSession = order.status === 'in_service' && (
+            targetSession.status === 'in_service' ||
+            (Number(order.activeSessionIndex || 0) > 0 && Number(order.activeSessionIndex) === Number(targetSession.index))
+          )
+          if ((sessionStart && current < sessionStart) || (sessionEnd && current > sessionEnd && !isActiveInServiceSession)) {
             throw new Error('不在服务解锁时间窗口')
           }
         } else {
-          if ((start && current < start) || (end && current > end)) throw new Error('不在服务解锁时间窗口')
+          if ((start && current < start) || (end && current > end && order.status !== 'in_service')) throw new Error('不在服务解锁时间窗口')
         }
 
         let security = (await db.collection('order_home_security').where({ orderId }).limit(1).get()).data[0]
@@ -353,7 +357,7 @@ module.exports = function createHandler(context) {
       const order = orderRes && orderRes.data
       if (!order) throw new Error('订单不存在')
       if (order.clientOpenid !== openid) throw new Error('无权修改该订单')
-      if (!['pending_pay', 'paid', 'assigned', 'on_the_way', 'in_service'].includes(order.status)) throw new Error('当前订单状态不可修改密码')
+      if (!['pending_pay', 'paid', 'assigned', 'on_the_way', 'in_service', 'day_completed'].includes(order.status)) throw new Error('当前订单状态不可修改密码')
       const entryNotes = safeText(data.entryNotes).trim()
       if (entryNotes.length > 500) throw new Error('一次性开门指引不能超过 500 字')
       if (entryNotes && typeof checkTextSecurity === 'function') {
@@ -361,7 +365,23 @@ module.exports = function createHandler(context) {
       }
       const time = now()
       const existingSecurity = stripLegacyHomeSecuritySecrets(order.orderHomeSecurity || {})
-      let security = { ...existingSecurity, type: 'one_time_code', lockMethod: 'one_time_code', lockMethodText: lockMethodText('one_time_code'), entryNotes: entryNotes || existingSecurity.entryNotes || '', hasDoorLockCode: true, updatedAt: time }
+      const wasDestroyed = Boolean(existingSecurity.destroyed || existingSecurity.isPasswordDestroyed || order.isDoorLockCodeDestroyed)
+      let security = {
+        ...existingSecurity,
+        type: 'one_time_code',
+        lockMethod: 'one_time_code',
+        lockMethodText: lockMethodText('one_time_code'),
+        entryNotes: entryNotes || existingSecurity.entryNotes || '',
+        hasDoorLockCode: true,
+        ...(wasDestroyed ? { destroyed: false, isPasswordDestroyed: false, destroyedAt: null, destroyedReason: '' } : {}),
+        updatedAt: time
+      }
+      if (!wasDestroyed) {
+        delete security.destroyed
+        delete security.isPasswordDestroyed
+        delete security.destroyedAt
+        delete security.destroyedReason
+      }
 
       if (Array.isArray(data.sessionCodes) && data.sessionCodes.length) {
         const sessionCodes = data.sessionCodes.map((item, idx) => {
@@ -384,7 +404,7 @@ module.exports = function createHandler(context) {
           }
         })
         security.sessionCodes = sessionCodes
-        if (!security.oneTimeCode && sessionCodes[0]) {
+        if ((!security.oneTimeCode || security.oneTimeCode.destroyed) && sessionCodes[0]) {
           security.oneTimeCode = { ...sessionCodes[0] }
         }
       } else if (data.sessionIndex !== undefined && data.sessionIndex !== null && String(data.sessionIndex).trim() !== '') {
@@ -411,7 +431,7 @@ module.exports = function createHandler(context) {
         if (existIdx >= 0) currentSessionCodes[existIdx] = sessionItem
         else currentSessionCodes.push(sessionItem)
         security.sessionCodes = currentSessionCodes
-        if (!security.oneTimeCode) {
+        if (!security.oneTimeCode || security.oneTimeCode.destroyed) {
           security.oneTimeCode = { ...sessionItem }
         }
       } else {
@@ -432,10 +452,27 @@ module.exports = function createHandler(context) {
         }
       }
 
-      await db.collection('orders').doc(orderId).update({ data: { orderHomeSecurity: security, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(security), updatedAt: time } })
+      await db.collection('orders').doc(orderId).update({
+        data: {
+          orderHomeSecurity: security,
+          homeSecuritySnapshot: toPublicHomeSecuritySnapshot(security),
+          hasDoorLockCode: true,
+          ...(wasDestroyed ? { isDoorLockCodeDestroyed: false, doorLockCodeDestroyedAt: null } : {}),
+          updatedAt: time
+        }
+      })
       const securityRes = await db.collection('order_home_security').where({ orderId }).limit(1).get().catch(() => ({ data: [] }))
       const secDoc = securityRes && securityRes.data && securityRes.data[0]
-      if (secDoc) await db.collection('order_home_security').doc(secDoc._id).update({ data: removeLegacySecretFields({ ...security, updatedAt: time }) })
+      if (secDoc) {
+        const resetSecDestroyed = Boolean(wasDestroyed || secDoc.destroyed || secDoc.isPasswordDestroyed)
+        await db.collection('order_home_security').doc(secDoc._id).update({
+          data: removeLegacySecretFields({
+            ...security,
+            ...(resetSecDestroyed ? { destroyed: false, isPasswordDestroyed: false, destroyedAt: null, destroyedReason: '' } : {}),
+            updatedAt: time
+          })
+        })
+      }
       await appendOrderStaffMessage({ ...order, _id: orderId, orderHomeSecurity: security, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(security), updatedAt: time }, { eventType: 'one_time_code_updated', title: '一次性密码已更新', detail: '宠物主已重新填写一次性门锁密码，请在服务时间内查看。', actorRole: 'client', idempotencyKey: makeIdempotencyKey('order_staff_message', orderId, 'one_time_code_updated', time.toISOString()) })
       return toPublicOrderHomeSecurity(security)
     }

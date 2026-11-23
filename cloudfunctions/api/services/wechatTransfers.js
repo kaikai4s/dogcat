@@ -408,11 +408,17 @@ module.exports = function createService({
   async function reconcileWechatTransfers(limit = 10) {
     const maxLimit = Math.min(Math.max(Number(limit || 10), 1), 20)
     const statusFilter = db.command && typeof db.command.in === 'function' ? db.command.in(['approved', 'transferring', 'transfer_failed']) : undefined
+    const notConfirmedFailure = db.command && typeof db.command.neq === 'function' ? { gatewayFailureConfirmed: db.command.neq(true) } : {}
     const query = statusFilter
-      ? db.collection('withdraw_requests').where({ payoutChannel: 'wechat_wallet', status: statusFilter })
-      : db.collection('withdraw_requests').where({ payoutChannel: 'wechat_wallet' })
+      ? db.collection('withdraw_requests').where({ payoutChannel: 'wechat_wallet', status: statusFilter, ...notConfirmedFailure })
+      : db.collection('withdraw_requests').where({ payoutChannel: 'wechat_wallet', ...notConfirmedFailure })
     const rows = (await query.orderBy('lastTransferCheckedAt', 'asc').orderBy('_id', 'asc').limit(maxLimit).get()).data || []
-    const pending = rows.filter(item => ['approved', 'transferring', 'transfer_failed'].includes(safeText(item.status).trim()) || ['processing', 'unknown', 'submitting'].includes(safeText(item.transferStatus).trim()))
+    const pending = rows.filter(item => {
+      const status = safeText(item.status).trim()
+      if (status === 'transfer_failed' && item.gatewayFailureConfirmed === true) return false
+      return ['approved', 'transferring', 'transfer_failed'].includes(status) ||
+        ['processing', 'unknown', 'submitting'].includes(safeText(item.transferStatus).trim())
+    })
     const results = []
     for (const item of pending.slice(0, maxLimit)) {
       // Advance the scheduling timestamp before I/O, including failures and

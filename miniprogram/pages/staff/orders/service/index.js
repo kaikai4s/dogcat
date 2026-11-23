@@ -856,9 +856,10 @@ Page({
         await callFunction('order', 'checkServiceTimeReadyForCheckin', { id: orderId })
       }
       if (!isActive()) return
+      const readOnlySuffix = isSanitization && order.status === 'in_service' ? '&readOnly=1' : ''
       await new Promise((resolve, reject) => {
         wx.navigateTo({
-          url: '/pages/staff/checkin/camera/index?id=' + encodeURIComponent(orderId) + '&eventType=' + encodeURIComponent(eventType),
+          url: '/pages/staff/checkin/camera/index?id=' + encodeURIComponent(orderId) + '&eventType=' + encodeURIComponent(eventType) + readOnlySuffix,
           success: resolve,
           fail: reject
         })

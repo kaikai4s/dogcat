@@ -46,9 +46,20 @@ module.exports = function createHandler(context) {
   function mockPhoneCodeAllowed(settings = {}) {
     if (typeof isProductionPaymentEnv === 'function' && isProductionPaymentEnv()) return false
     if (process.env.NODE_ENV === 'production' || process.env.PAYMENT_ENV === 'production') return false
+    if (process.env.ALLOW_MOCK_PHONE_CODE === 'false') return false
     if (settings.enableTestAddressMode === true) return true
     if (process.env.ALLOW_MOCK_PHONE_CODE === 'true') return true
-    return true
+    if (settings && settings.payment && settings.payment.mode === 'wechat') return false
+    const isCloudRuntime = Boolean(
+      process.env.TENCENTCLOUD_RUNENV ||
+      process.env.SCF_NAMESPACE ||
+      process.env.TCB_ENV ||
+      process.env.WX_ENV_ID
+    )
+    if (isCloudRuntime) return false
+    return process.env.NODE_ENV === 'test' ||
+      Boolean(process.env.NODE_TEST_CONTEXT) ||
+      (Array.isArray(process.argv) && process.argv.some((arg) => /\.test\.js$/.test(String(arg || ''))))
   }
 
   async function resolveWechatPhone(code, settings = {}) {

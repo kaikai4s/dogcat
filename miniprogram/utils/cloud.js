@@ -140,18 +140,17 @@ try {
 function showLoading(options = '加载中...') {
   const opts = typeof options === 'string' ? { title: options } : (options || {})
   const title = opts.title || '加载中...'
-  if (loadingBus && typeof loadingBus.show === 'function') {
+  if (loadingBus && typeof loadingBus.hasActiveListener === 'function' && loadingBus.hasActiveListener() && typeof loadingBus.show === 'function') {
     loadingBus.show({ title })
+    return
   }
   if (typeof wx !== 'undefined' && typeof wx.showLoading === 'function') {
     try {
-      if (!loadingBus || !loadingBus.hasActiveListener()) {
-        wx.showLoading({
-          title,
-          mask: true,
-          ...opts
-        })
-      }
+      wx.showLoading({
+        title,
+        mask: true,
+        ...opts
+      })
     } catch (_) {}
   }
 }

@@ -188,6 +188,8 @@ Page({
     this.setData({ showModal: false })
   },
 
+  noop() {},
+
   setPrizeType(e) {
     const type = e.currentTarget.dataset.type || 'text'
     const defaultItem = type === 'coupon'

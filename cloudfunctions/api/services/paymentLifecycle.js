@@ -1,5 +1,5 @@
 module.exports = function createService({
-  db, getStaffProfileByOpenid, recordStaffDepositPayment, reserveOrderPayment, settleOrderPayment, requestOrderRefund,
+  db, getStaffProfileByOpenid, recordStaffDepositPayment, reserveOrderPayment, settleOrderPayment, settleZeroPayOrder, requestOrderRefund,
   appendOrderClientMessage, createPaymentNo, notifyOrder,
   getSystemSettings, getWechatPayConfig, wechatPayRequest, appendPaymentEvent,
   sanitizeWechatPayload, validatePaymentCallbackPayload, getPayableOrder, readScopedDocuments, syncStaffDepositRefund, now
@@ -27,6 +27,18 @@ module.exports = function createService({
       } catch (error) { console.error('[paid-notification]', { orderId, message: error.message }) }
     }
     return { orderId, status: 'paid', paymentNo: order.paymentNo }
+  }
+
+  async function markZeroPayOrderPaid(orderId, openid) {
+    const result = await settleZeroPayOrder(orderId, openid)
+    const order = result.order
+    if (result.changed && result.orderType === 'service' && order.status === 'paid') {
+      try {
+        await appendOrderClientMessage(order, { eventType: 'paid', title: '订单已支付', detail: '支付金额 ¥0（优惠券全额抵扣）', actorRole: 'system', unreadForClient: true })
+        await notifyOrder(order.clientOpenid, 'orderPaid', order, { amount: 0, statusText: '已支付' })
+      } catch (error) { console.error('[paid-notification]', { orderId, message: error.message }) }
+    }
+    return { orderId, status: order.status, paymentStatus: order.paymentStatus || 'paid', paid: order.paymentStatus === 'paid', zeroPay: true, paymentNo: order.paymentNo || '', amount: 0 }
   }
 
   async function markStaffDepositPaid(depositId, paymentPayload = {}) {
@@ -210,6 +222,7 @@ module.exports = function createService({
     markMallOrderPaid,
     ensurePaymentRecord,
     markOrderPaid,
+    markZeroPayOrderPaid,
     markStaffDepositPaid,
     createRefundForOrder,
     syncWechatPaidOrder,

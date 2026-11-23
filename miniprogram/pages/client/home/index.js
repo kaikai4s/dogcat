@@ -734,7 +734,7 @@ Page({
           })
           return
         }
-        return callFunction('order', 'getClientOrders', { page: 1, pageSize: 5 })
+        return callFunction('order', 'listOrders', { page: 1, pageSize: 5 })
           .then((res) => {
             const list = (res && res.list) || []
             const validOrder = list.find((o) => ['completed', 'in_service', 'assigned'].includes(o.status)) || list[0]

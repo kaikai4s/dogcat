@@ -817,12 +817,13 @@ module.exports = function createService(context) {
     const refundAmount = balance.available / 100
     // 构造具备唯一幂等性的退款单号，若原记录已发起过退款尝试则复用，杜绝重试导致微信商户重复出款
     const deterministicRefundNo = `R${crypto.createHash('sha256').update(`staff_deposit_refund:${depositId}:${deposit.paidAt || deposit.createdAt || ''}`).digest('hex').slice(0, 24)}`
-    const refundNo = deposit.lastRefundNo || deterministicRefundNo
+    const refundNo = deposit.refundNo || deposit.lastRefundNo || deterministicRefundNo
     const time = now()
 
     let paymentReference = ''
     let confirmationSource = 'auto_mock'
     let refundChannel = isMock ? 'mock' : 'wechat'
+    let pendingWxResult = null
 
     if (!isMock) {
       if (paymentSettings.refundEnabled === false) {
@@ -842,42 +843,129 @@ module.exports = function createService(context) {
       } catch (cfgErr) {
         throw new Error(`微信支付配置不完整：${cfgErr.message || cfgErr}`)
       }
+      const totalFen = Math.round(Number(payment.amount || deposit.paidAmount || deposit.amount) * 100)
       const refundBody = {
         out_refund_no: refundNo,
         reason: reason || '宠托师保证金退还',
         amount: {
           refund: balance.available,
-          total: Math.round(Number(payment.amount || deposit.paidAmount || deposit.amount) * 100),
+          total: totalFen,
           currency: 'CNY'
         },
         ...(payment.wxTransactionId ? { transaction_id: payment.wxTransactionId } : { out_trade_no: payment.paymentNo })
       }
-      let wxRes
-      try {
-        wxRes = await wechatRequest('POST', '/v3/refund/domestic/refunds', refundBody, payConfig)
-      } catch (err) {
-        const errMsg = String(err && (err.message || err.errMsg || err) || '').toLowerCase()
-        const isDuplicateOrExists = /already|exist|duplicate|out_trade_no_used|trade_state_error|已退款|已存在|重复/.test(errMsg)
-        let recovered = false
-        if (isDuplicateOrExists) {
-          try {
-            const queryRes = await wechatRequest('GET', `/v3/refund/domestic/refunds/out-refund-no/${encodeURIComponent(refundNo)}`, null, payConfig)
-            if (queryRes && (queryRes.status === 'SUCCESS' || queryRes.status === 'PROCESSING' || queryRes.refund_id)) {
-              wxRes = queryRes
-              recovered = true
-            }
-          } catch (_) {}
+      let wxRes = null
+      const queryExistingRefund = async () => {
+        const queryRes = await wechatRequest('GET', `/v3/refund/domestic/refunds/${encodeURIComponent(refundNo)}`, null, payConfig)
+        if (queryRes && (queryRes.status === 'SUCCESS' || queryRes.status === 'PROCESSING' || queryRes.refund_id)) {
+          return queryRes
         }
-        if (!recovered) {
-          throw new Error(`微信原路退款发起失败：${err.message || err}`)
+        return null
+      }
+      if (deposit.status === 'refunding' && deposit.refundChannel === 'wechat' && (deposit.refundNo || deposit.lastRefundNo)) {
+        try {
+          wxRes = await queryExistingRefund()
+        } catch (queryErr) {
+          if (queryErr && queryErr.code !== 'RESOURCE_NOT_EXISTS') {
+            throw new Error(`微信原路退款查询失败：${queryErr.message || queryErr}`)
+          }
         }
       }
-      if (wxRes?.status !== 'SUCCESS') throw new Error('微信原路退款尚未成功，请稍后按同一退款单号重新核实，勿人工重复退款')
+      if (!wxRes) {
+        try {
+          wxRes = await wechatRequest('POST', '/v3/refund/domestic/refunds', refundBody, payConfig)
+        } catch (err) {
+          const errMsg = String(err && (err.message || err.errMsg || err) || '').toLowerCase()
+          const isDuplicateOrExists = /already|exist|duplicate|out_trade_no_used|trade_state_error|已退款|已存在|重复/.test(errMsg)
+          let recovered = false
+          if (isDuplicateOrExists) {
+            try {
+              const queried = await queryExistingRefund()
+              if (queried) {
+                wxRes = queried
+                recovered = true
+              }
+            } catch (_) {}
+          }
+          if (!recovered) {
+            throw new Error(`微信原路退款发起失败：${err.message || err}`)
+          }
+        }
+      }
+      if (wxRes?.status === 'PROCESSING') {
+        pendingWxResult = { wxRes, payConfig, totalFen }
+      } else if (wxRes?.status !== 'SUCCESS') {
+        throw new Error(`微信原路退款状态异常（${wxRes?.status || 'UNKNOWN'}），请稍后核对原退款单，勿人工重复退款`)
+      }
       paymentReference = (wxRes && (wxRes.refund_id || wxRes.out_refund_no)) || refundNo
       confirmationSource = 'auto_wechat'
     } else {
       paymentReference = `MOCK_${refundNo}`
       confirmationSource = 'auto_mock'
+    }
+
+    if (pendingWxResult) {
+      const { wxRes, payConfig, totalFen } = pendingWxResult
+      return db.runTransaction(async tx => {
+        const curDeposit = (await tx.collection('staff_deposits').doc(depositId).get().catch(() => ({ data: null }))).data
+        if (!curDeposit) throw new Error('保证金记录不存在')
+        if (curDeposit.refundStatus === 'success' || curDeposit.status === 'refunded') {
+          return {
+            id: depositId,
+            refundNo: curDeposit.refundNo || curDeposit.lastRefundNo || refundNo,
+            refundAmount,
+            channel: 'wechat',
+            confirmationSource: 'auto_wechat',
+            status: 'refunded',
+            refundStatus: 'success',
+            exitCompleted: true
+          }
+        }
+        const curBalance = balances(curDeposit)
+        if (curBalance.available !== balance.available) throw new Error('保证金余额已发生变动，请重新确认')
+        const profile = await profileFor(tx, curDeposit)
+        await tx.collection('staff_deposits').doc(depositId).update({
+          data: {
+            status: 'refunding',
+            statusText: '微信已受理，原路退款处理中',
+            refundStatus: 'processing',
+            refundChannel: 'wechat',
+            refundNo,
+            lastRefundNo: refundNo,
+            approvedRefundAmount: refundAmount,
+            refundReason: reason,
+            refundMchId: payConfig.mchId,
+            refundAppId: payConfig.appId,
+            refundPaymentNo: payment.paymentNo || '',
+            refundOriginalTransactionId: payment.wxTransactionId || '',
+            refundTotalFen: totalFen,
+            refundAmountFen: curBalance.available,
+            refundRequestReason: safeText(reason || '宠托师保证金退还').slice(0, 80),
+            wechatRefundId: wxRes.refund_id || '',
+            wechatRefundState: 'PROCESSING',
+            refundSubmittedAt: curDeposit.refundSubmittedAt || time,
+            refundNextCheckAt: new Date(new Date(time).getTime() + 60 * 1000),
+            refundLastCheckedAt: time,
+            refundLastError: '',
+            updatedAt: time
+          }
+        })
+        if (profile && !['approved', 'exited'].includes(profile.exitStatus)) {
+          await tx.collection('staff_profiles').doc(profile._id).update({
+            data: { exitStatus: 'approved', depositStatus: 'refund_approved', updatedAt: time }
+          })
+        }
+        return {
+          id: depositId,
+          refundNo,
+          refundAmount,
+          channel: 'wechat',
+          confirmationSource: 'auto_wechat',
+          status: 'refunding',
+          refundStatus: 'processing',
+          exitCompleted: false
+        }
+      })
     }
 
     return db.runTransaction(async tx => {
@@ -899,6 +987,8 @@ module.exports = function createService(context) {
         refundConfirmationSource: confirmationSource,
         lastRefundReason: reason,
         lastRefundNo: refundNo,
+        refundLastError: '',
+        ...(!isMock ? { wechatRefundId: paymentReference, wechatRefundState: 'SUCCESS' } : {}),
         updatedAt: time
       }
 

@@ -19,7 +19,7 @@ Page({
   },
   onHide() { this._request = (this._request || 0) + 1 },
   onUnload() { this._request = (this._request || 0) + 1 },
-  openProfile() { wx.switchTab({ url: '/pages/client/profile/index' }) },
+  openProfile() { wx.navigateTo({ url: '/pages/client/profile/index' }) },
   start() { wx.navigateTo({ url: '/pages/client/orders/create/index?source=community_groupbuy' }) },
   join(e) { wx.navigateTo({ url: '/pages/client/orders/create/index?source=community_groupbuy&groupBuyId=' + encodeURIComponent(e.currentTarget.dataset.id) }) },
   detail(e) { wx.navigateTo({ url: '/pages/client/orders/detail/index?id=' + encodeURIComponent(e.currentTarget.dataset.id) }) },

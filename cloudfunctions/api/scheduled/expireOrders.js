@@ -52,7 +52,8 @@ async function expireUnacceptedOrder(orderId, order, time = now(), forceGroupExp
   if (!refund) {
     const changed = await db.runTransaction(async tx => {
       const current = (await tx.collection('orders').doc(orderId).get().catch(() => ({ data: null }))).data
-      if (!eligible(current) || ['paid', 'paying', 'refunding', 'refunded'].includes(current.paymentStatus) ||
+      const isZeroPaid = Boolean(current && current.paymentStatus === 'paid' && current.payAmount === 0 && current.couponId)
+      if (!eligible(current) || ((!isZeroPaid && current.paymentStatus === 'paid') || ['paying', 'refunding', 'refunded'].includes(current.paymentStatus)) ||
           (forceGroupExpire && current.groupBuyId !== order.groupBuyId)) return false
       await tx.collection('orders').doc(orderId).update({ data: update })
       if (current.couponId && typeof restoreOrderCoupon === 'function') {

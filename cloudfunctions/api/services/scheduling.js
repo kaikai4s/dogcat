@@ -14,21 +14,34 @@ module.exports = function createService({
   safeText,
   toTimeValue
 }) {
+  function normalizeScheduleSlots(raw) {
+    const list = Array.isArray(raw) ? raw : []
+    const sorted = list
+      .map((slot) => ({
+        start: Math.max(0, Math.min(23, Math.floor(Number(slot.start || 0)))),
+        end: Math.max(1, Math.min(24, Math.floor(Number(slot.end || 0))))
+      }))
+      .filter((slot) => slot.end > slot.start)
+      .sort((a, b) => a.start - b.start || a.end - b.end)
+    const merged = []
+    for (const slot of sorted) {
+      const prev = merged[merged.length - 1]
+      if (prev && slot.start <= prev.end) {
+        prev.end = Math.max(prev.end, slot.end)
+      } else {
+        merged.push({ start: slot.start, end: slot.end })
+      }
+    }
+    return merged
+  }
+
   function normalizeWeeklySchedule(raw) {
     if (!raw || typeof raw !== 'object') return null
     const result = {}
     let hasAnySlot = false
     for (let day = 1; day <= 7; day += 1) {
       const key = String(day)
-      const list = Array.isArray(raw[key]) ? raw[key] : []
-      const normalizedList = list
-        .map((slot) => ({
-          start: Math.max(0, Math.min(23, Math.floor(Number(slot.start || 0)))),
-          end: Math.max(1, Math.min(24, Math.floor(Number(slot.end || 0))))
-        }))
-        .filter((slot) => slot.end > slot.start)
-        .sort((a, b) => a.start - b.start)
-
+      const normalizedList = normalizeScheduleSlots(raw[key])
       result[key] = normalizedList
       if (normalizedList.length > 0) hasAnySlot = true
     }
@@ -114,17 +127,6 @@ module.exports = function createService({
     }
   }
 
-  function normalizeScheduleSlots(raw) {
-    const list = Array.isArray(raw) ? raw : []
-    return list
-      .map((slot) => ({
-        start: Math.max(0, Math.min(23, Math.floor(Number(slot.start || 0)))),
-        end: Math.max(1, Math.min(24, Math.floor(Number(slot.end || 0))))
-      }))
-      .filter((slot) => slot.end > slot.start)
-      .sort((a, b) => a.start - b.start)
-  }
-
   function normalizeScheduleException(data = {}, profile = {}) {
     const dateKey = safeText(data.dateKey).trim()
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) throw new Error('请选择日期')
@@ -142,6 +144,7 @@ module.exports = function createService({
   }
 
   function validateSlotsForDate(slots, startTimeStr, endTimeStr, dateKey, emptyMessage) {
+    const mergedSlots = normalizeScheduleSlots(slots)
     const startParts = parseDateTimeParts(startTimeStr)
     const endParts = parseDateTimeParts(endTimeStr)
     if (!startParts || !endParts || endParts.dateObj <= startParts.dateObj) throw new Error('服务时间格式无效')
@@ -149,12 +152,12 @@ module.exports = function createService({
     const endKey = getDateKeyFromTime(endTimeStr)
     const endsAtMidnight = endParts.dateObj.getTime() === toTimeValue(dateKey) + 86400000
     if (startKey !== dateKey || (endKey !== dateKey && !endsAtMidnight)) throw new Error('跨日期服务需按天校验排班')
-    if (!slots.length) throw new Error(emptyMessage)
+    if (!mergedSlots.length) throw new Error(emptyMessage)
     const startVal = clockHours(startParts)
     const endVal = endsAtMidnight ? 24 : clockHours(endParts)
-    const fits = slots.some((slot) => startVal >= slot.start && endVal <= slot.end)
+    const fits = mergedSlots.some((slot) => startVal >= slot.start && endVal <= slot.end)
     if (!fits) {
-      const allowedText = slots.map((s) => `${String(s.start).padStart(2, '0')}:00-${String(s.end).padStart(2, '0')}:00`).join('、')
+      const allowedText = mergedSlots.map((s) => `${String(s.start).padStart(2, '0')}:00-${String(s.end).padStart(2, '0')}:00`).join('、')
       throw new Error(`预约时间不在宠托师当天可接单时间段（${allowedText}）内`)
     }
   }
