@@ -108,6 +108,8 @@
             style="left:{{item.x}}%;top:{{item.y}}%;width:{{item.width}}%;height:{{item.height}}%"></view>
           <view wx:for="{{mapNeighbors}}" wx:key="id" class="manor-minimap-mark manor-minimap-neighbor"
             style="left:{{item.x}}%;top:{{item.y}}%"></view>
+          <view wx:if="{{mapVehicle}}" class="manor-minimap-mark manor-minimap-vehicle"
+            style="left:{{mapVehicle.x}}%;top:{{mapVehicle.y}}%" aria-label="我的车"></view>
           <view wx:if="{{mapPlayer}}" class="manor-minimap-mark manor-minimap-player"
             style="left:{{mapPlayer.x}}%;top:{{mapPlayer.y}}%"></view>
         </view>
@@ -130,7 +132,7 @@
         </view>
       </view>
       <view wx:if="{{activeCharacter && !vehiclePanelOpen && (vehicleState === 'walking' || vehicleState === 'driver')}}"
-        class="manor-joystick {{vehicleState === 'driver' || firstPerson ? 'manor-joystick-left' : ''}} {{stickActive ? 'manor-joystick-active' : ''}} {{restLocked || doorBusy || (elevator && elevator.busy) ? 'manor-joystick-locked' : ''}}" id="manor-stick"
+        class="manor-joystick {{stickActive ? 'manor-joystick-active' : ''}} {{restLocked || doorBusy || (elevator && elevator.busy) ? 'manor-joystick-locked' : ''}}" id="manor-stick"
         aria-label="{{vehicleState === 'driver' ? '向上加速，向下减速或倒车，左右转向' : '轻推摇杆行走，推远奔跑'}}" catchtouchstart="onStickStart" catchtouchmove="onStickMove"
         catchtouchend="onStickEnd" catchtouchcancel="onStickCancel">
         <view class="manor-stick-axis manor-stick-north"></view>
@@ -164,7 +166,8 @@
           <button class="manor-action manor-player-action manor-player-rest manor-player-lie" data-rest-kind="lie" bindtap="interactRest"
             disabled="{{!playerActions.lie || playerActions.lie.busy}}"
             aria-label="{{playerActions.lie ? playerActions.lie.label + '，' + playerActions.lie.name : '躺下，靠近可躺的家具后可用'}}">{{playerActions.lie ? playerActions.lie.label : '躺下'}}</button>
-          <button class="manor-action manor-player-action manor-player-jump" bindtap="jumpPlayer" disabled="{{!playerActions.jump}}">跳跃</button>
+          <button class="manor-action manor-player-action manor-player-jump {{!playerActions.jump ? 'manor-player-jump-disabled' : ''}}"
+            catchtouchstart="jumpPlayer" aria-disabled="{{!playerActions.jump}}">跳跃</button>
         </view>
       </view>
       <view wx:if="{{selectedPet && !insideVilla && !mapMode && !buildMode && !vehiclePanelOpen}}" class="manor-pet-panel" catchtap="swallowPetTouch">
@@ -236,6 +239,7 @@
         <view wx:if="{{menuOpen}}" class="manor-menu" aria-label="庄园设置">
           <button wx:if="{{canBuildManor3d && !insideVilla && vehicleState === 'walking' && !vehiclePanelOpen}}" class="manor-menu-action" bindtap="openBuild">建造</button>
           <button wx:if="{{!insideVilla && vehicleState === 'walking' && !vehiclePanelOpen}}" class="manor-menu-action" bindtap="openMap">查看地图</button>
+          <button wx:if="{{mapVehicle && !insideVilla && vehicleState === 'walking' && !vehiclePanelOpen}}" class="manor-menu-action" bindtap="focusVehicle">找车</button>
           <button wx:if="{{!insideVilla && villaStatus === 'ready' && vehicleState === 'walking' && !vehiclePanelOpen}}" class="manor-menu-action" bindtap="focusVilla">看别墅</button>
           <button wx:if="{{activeCharacter}}" class="manor-menu-action" bindtap="focusCharacter">回到角色</button>
           <view class="manor-sensitivity">

@@ -151,8 +151,8 @@ page { width: 100%; height: 100%; overflow: hidden; background: #e1eadb; }
 .manor-joystick {
   box-sizing: border-box;
   position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 20px;
+  left: calc(20px + env(safe-area-inset-left));
   bottom: 32px;
   bottom: calc(32px + env(safe-area-inset-bottom));
   width: 88px;
@@ -220,11 +220,6 @@ page { width: 100%; height: 100%; overflow: hidden; background: #e1eadb; }
 .manor-hud-active .manor-hud-face { background: #28624f; color: #fff; }
 .manor-view-toggle .manor-hud-face { flex-direction: column; gap: 0; font-size: 8px; line-height: 1; }
 .manor-view-toggle .ri-eye-line { font-size: 14px; }
-.manor-joystick-left {
-  left: 20px;
-  left: calc(20px + env(safe-area-inset-left));
-  transform: none;
-}
 .manor-map-back { width: 100px; border-radius: 22px; }
 .manor-map-back .manor-hud-face { width: 92px; gap: 7px; border-radius: 17px; font-size: 12px; }
 .manor-map-bar {
@@ -273,6 +268,15 @@ page { width: 100%; height: 100%; overflow: hidden; background: #e1eadb; }
 .manor-minimap-tree { min-width: 2px; min-height: 2px; border-radius: 50%; background: #789e6b; }
 .manor-minimap-bridge { min-width: 2px; min-height: 2px; background: #f8e7bb; }
 .manor-minimap-tower { min-width: 3px; min-height: 3px; border-radius: 1px; background: #796a62; }
+.manor-minimap-vehicle {
+  box-sizing: border-box;
+  z-index: 1;
+  width: 9px;
+  height: 6px;
+  border: 1px solid #fff;
+  border-radius: 2px;
+  background: #245fa4;
+}
 .manor-minimap-neighbor {
   box-sizing: border-box;
   width: 7px;
@@ -518,9 +522,8 @@ page { width: 100%; height: 100%; overflow: hidden; background: #e1eadb; }
 }
 .manor-player-sit { left: 0; bottom: 0; }
 .manor-player-lie { left: 50px; bottom: 36px; }
-.manor-player-jump { color: #fff; background: #2f6a57; }
-.manor-player-jump { right: 0; bottom: 0; }
-.manor-player-action[disabled] { color: #536359; background: #e3eae1; opacity: .78; }
+.manor-player-jump { right: 0; bottom: 0; color: #fff; background: #2f6a57; touch-action: none; }
+.manor-player-action[disabled], .manor-player-jump-disabled { color: #536359; background: #e3eae1; opacity: .78; }
 
 .manor-pet-hud {
   position: absolute;
@@ -633,7 +636,7 @@ page { width: 100%; height: 100%; overflow: hidden; background: #e1eadb; }
 
 @media (orientation: landscape) {
   .manor-top-controls { top: 8px; top: calc(8px + env(safe-area-inset-top)); }
-  .manor-joystick { left: 28px; left: calc(28px + env(safe-area-inset-left)); transform: none; }
+  .manor-joystick { left: 28px; left: calc(28px + env(safe-area-inset-left)); }
   .manor-minimap { top: 54px; top: calc(54px + env(safe-area-inset-top)); }
   .manor-notices { top: 56px; top: calc(56px + env(safe-area-inset-top)); flex-direction: row; flex-wrap: wrap; }
   .manor-vehicle-panel, .manor-vehicle-progress {

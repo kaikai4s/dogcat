@@ -1,6 +1,7 @@
 const INVALID_TOWER = '小区住宅楼模型缺少有效的外景'
 const EXTERIOR_LAYER = /^(?:Structure|Facade)(?:_\d+)?$/
 const EXTERIOR_DOOR = /^(?:SouthEntry_[LR]|S[12]_Discharge|[A-D]_Balcony(?:Fixed|Slider))(?:_\d+)?$/
+const ENTRY_LEAF = /^SouthEntry_[LR]$/
 const MAX_BATCH_VERTICES = 65535
 const FLOORS_PER_BATCH = 4
 
@@ -11,12 +12,13 @@ function collectMeshes(root, region = []) {
   return region
 }
 
-function floorMeshes(floor) {
+function floorMeshes(floor, excludeEntry = false) {
   const meshes = []
   for (const layer of floor.children) {
     if (EXTERIOR_LAYER.test(layer.name)) collectMeshes(layer, meshes)
     if (/^Doors(?:_\d+)?$/.test(layer.name)) {
-      layer.children.filter(door => EXTERIOR_DOOR.test(door.name)).forEach(door => collectMeshes(door, meshes))
+      layer.children.filter(door => EXTERIOR_DOOR.test(door.name) && (!excludeEntry || !ENTRY_LEAF.test(door.name)))
+        .forEach(door => collectMeshes(door, meshes))
     }
   }
   if (!meshes.length) throw new Error(INVALID_TOWER)
@@ -127,13 +129,42 @@ function createManorTowerDisplay(THREE, model) {
   const sharedMaterials = new Map()
   const translated = new THREE.Matrix4()
   try {
-    for (const [name, meshes] of [['Podium', [...floorMeshes(floors[0]), ...collectMeshes(site)]],
+    const groundFloor = floors[0]
+    const leaves = groundFloor.children.find(node => node.name === 'Doors')?.children.filter(node => ENTRY_LEAF.test(node.name)) || []
+    for (const [name, meshes] of [['Facade', floorMeshes(groundFloor, true)], ['Site', collectMeshes(site)],
       ['Roof', collectMeshes(roof)]]) {
       if (!meshes.length) throw new Error(INVALID_TOWER)
       const group = new THREE.Group()
       group.name = name
       root.add(group)
       buildBatches(THREE, [{ meshes, fromWorld }], sharedMaterials, group)
+    }
+
+    for (const leaf of leaves) {
+      const door = new THREE.Group()
+      door.name = leaf.name
+      door.position.copy(leaf.getWorldPosition(new THREE.Vector3()).applyMatrix4(fromWorld))
+      door.userData = { slideX: leaf.userData.slideX, operableDoor: true, doorMotion: true }
+      const relativeToLeaf = new THREE.Matrix4().makeTranslation(-door.position.x, -door.position.y, -door.position.z)
+      root.add(door)
+      buildBatches(THREE, [{ meshes: collectMeshes(leaf), fromWorld: relativeToLeaf.multiply(fromWorld) }], sharedMaterials, door)
+    }
+
+    if (leaves.length === 2 && leaves.every(leaf => Number.isFinite(leaf.userData.slideX))) {
+      const lobby = new THREE.Group()
+      lobby.name = 'Tower lobby'
+      const layers = groundFloor.children.filter(node => ['Walls', 'Core', 'Detail', 'LiftLandings'].includes(node.name))
+      const interiorDoors = groundFloor.children.find(node => node.name === 'Doors').children
+        .filter(node => !EXTERIOR_DOOR.test(node.name))
+      root.add(lobby)
+      for (const layer of layers) {
+        const group = new THREE.Group()
+        group.name = layer.name
+        lobby.add(group)
+        buildBatches(THREE, [{ meshes: collectMeshes(layer), fromWorld }], sharedMaterials, group)
+      }
+      buildBatches(THREE, [{ meshes: interiorDoors.flatMap(node => collectMeshes(node)), fromWorld }], sharedMaterials, lobby)
+      lobby.visible = false
     }
 
     // Storeys 2–18 have the same exterior and regular spacing in this GLB.

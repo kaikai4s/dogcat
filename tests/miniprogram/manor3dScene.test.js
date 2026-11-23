@@ -233,6 +233,32 @@ test('an owner vehicle record waits for the character when the car asset loads f
   view.dispose()
 })
 
+test('a late villa relocates a car it covers and Find Car centers on the new parking spot', () => {
+  const { view, frames } = createFixture()
+  view.showLandscape(new THREE.Group(), layout)
+  view.showCharacter(makeCharacter().model)
+  const player = view.getMapPlayerPosition()
+  const saved = { position3d: { x: 54, y: 4.1, z: 88 }, yaw: 0 }
+  assert.equal(view.setVehicleModel(makeCar(), saved), true)
+  const initialParking = view.getVehicleSyncState().position3d
+  assert.equal(initialParking.x, saved.position3d.x)
+  assert.equal(initialParking.z, saved.position3d.z)
+  assert.equal(view.focusVehicle(), true)
+
+  view.showVilla(makeVilla())
+  const parked = view.getVehicleSyncState().position3d
+  const relocation = Math.hypot(parked.x - initialParking.x, parked.z - initialParking.z)
+  assert.ok(relocation > 0 && relocation <= 22)
+  view.resize(700, 390)
+  view.render(0)
+  const camera = frames.at(-1)
+  const center = new THREE.Vector3(parked.x, parked.y + .7, parked.z).project(camera)
+  assert.ok(Math.abs(center.x) < 1e-6 && Math.abs(center.y) < 1e-6)
+  view.exitMapView()
+  assert.deepEqual(view.getMapPlayerPosition(), player)
+  view.dispose()
+})
+
 test('live presence deltas interpolate existing avatars and preserve unchanged scene nodes', () => {
   const { view } = createFixture()
   const landscape = new THREE.Group()

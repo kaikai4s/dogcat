@@ -375,6 +375,7 @@ test('3D manor presence rejects stale sessions, malformed input and world bounds
   await assert.rejects(()=>handler('a','syncManor3d',{...auth,seq:1,position3d:start,moving:true,running:false,facing:'invalid'}),/朝向无效/)
   await assert.rejects(()=>handler('a','syncManor3d',{...auth,seq:1,position3d:{...start,y:Infinity},moving:true,running:false,facing:0}),/位置超出庄园范围/)
   await assert.rejects(()=>handler('a','syncManor3d',{...auth,seq:1,position3d:start,interior:{kind:'courtyard',plotId:'unknown'},moving:true,running:false,facing:0}),/室内区域无效/)
+  await assert.rejects(()=>handler('a','syncManor3d',{...auth,seq:1,position3d:start,interior:{kind:'tower',plotId:'tower-unknown'},moving:true,running:false,facing:0}),/室内区域无效/)
   await assert.rejects(()=>handler('a','syncManor3d',{...auth,seq:1,position3d:start,moving:false,running:false,facing:0,pose:'sleep'}),/姿势无效/)
   assert.equal(f.db.state.pet_playground_plots.find(row=>row._id===scene.scene.playerId).manor3dSeq,0)
 })
@@ -412,6 +413,23 @@ test('3D manor accepts coalesced movement, publishes the latest state and restor
   assert.deepEqual(resumed.manor3dInterior,interior)
   assert.equal(resumed.manor3dFacing,.7)
   await assert.rejects(()=>send(99,inside),/场景已切换/)
+})
+
+test('a high-rise lobby is preserved in shared 3D presence and on reentry',async()=>{
+  const f=fixture(),handler=require('../../cloudfunctions/api/handlers/playground')(f.context)
+  const a=(await handler('a','enterScene',{manor3d:true})).scene
+  const b=(await handler('b','enterScene',{manor3d:true})).scene
+  const position3d={x:-44,y:4.215,z:142}
+  const interior={kind:'tower',plotId:'tower-west'}
+
+  await handler('a','syncManor3d',{...f.auth(a),seq:1,position3d,interior,moving:false,running:false,facing:0})
+  const {records}=await handler('b','getScene',{...f.auth(b),manor3d:true})
+  const remote=records.find(row=>row.id===a.playerId)
+  assert.deepEqual(remote.manor3dInterior,interior)
+  assert.deepEqual(remote.position3d,position3d)
+  const {scene}=await handler('a','enterScene',{manor3d:true})
+  assert.deepEqual(scene.manor3dInterior,interior)
+  assert.deepEqual(scene.position3d,position3d)
 })
 
 test('shared snapshots paginate all neighbors without leaking records from another community',async()=>{

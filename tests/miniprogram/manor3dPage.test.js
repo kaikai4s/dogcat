@@ -108,6 +108,8 @@ function fixture({ envId = ENV_MAP.trial, read = key => key === 'layout' ? layou
         showVehicle(model, saved) { vehicleLoaded = true; vehicleLoads.push({ model: model.key, saved: structuredClone(saved) }); return true },
         setVehicleModel(model, saved) { vehicleLoaded = true; vehicleLoads.push({ model: model.key, saved: structuredClone(saved) }); return true },
         setVehicleRecord(record) { vehicleRecords.push(structuredClone(record)); return true },
+        getVehicleState() { return null },
+        focusVehicle() { if (!vehicleLoaded) return false; events.push('focusVehicle'); return true },
         getVehicleSyncState() { return vehicleLoaded ? structuredClone(vehicleSyncState) : null }
       } : {})
     }) },
@@ -438,6 +440,37 @@ test('a finger on a toolbar button does not modify a canvas gesture', async () =
   f.page.onTouchMove(touchEvent([button, [1, 75, 58]]))
   assert.deepEqual(f.events.filter(Array.isArray), [['orbit', 1, -1], ['zoom', 2], ['orbit', 1.5, 0]])
   f.page.onUnload()
+})
+
+test('jump fires on touch down and the joystick keeps its own finger in both press orders', async () => {
+  assert.match(markup, /class="[^"]*\bmanor-player-jump\b[^"]*"\s+catchtouchstart="jumpPlayer"/)
+  const stick = [1, 95, 350]
+  const turned = [1, 65, 320]
+  const jump = [2, 340, 350]
+
+  for (const jumpFirst of [false, true]) {
+    const f = fixture()
+    f.mount()
+    await flush()
+    let jumping = false, jumpCount = 0
+    f.page._scene.canJumpPlayer = () => !jumping
+    f.page._scene.jumpPlayer = () => { jumping = true; jumpCount++; return true }
+
+    if (jumpFirst) f.page.jumpPlayer(touchEvent([jump], [jump]))
+    f.page.onStickStart(touchEvent(jumpFirst ? [jump, stick] : [stick], [stick]))
+    if (!jumpFirst) f.page.jumpPlayer(touchEvent([stick, jump], [jump]))
+    assert.equal(jumpCount, 1)
+    assert.equal(f.page.data.stickActive, true)
+    assert.deepEqual(f.inputs.at(-1), { x: 1, y: 0 })
+
+    f.page.onStickCancel(touchEvent([stick], [jump]))
+    f.page.onStickMove(touchEvent([turned], [turned]))
+    assert.deepEqual(f.inputs.at(-1), { x: 0, y: -1 })
+    f.page.onStickEnd(touchEvent([], [turned]))
+    assert.equal(f.page.data.stickActive, false)
+    assert.deepEqual(f.inputs.at(-1), { x: 0, y: 0 })
+    f.page.onUnload()
+  }
 })
 
 test('switching avatars downloads and attaches the selected cloud model', async () => {
@@ -808,6 +841,29 @@ test('a user with a house in another community is not prompted and their own car
   f.page.onHide()
   const offlineCall = f.communityRequests.filter(request => request.action === 'syncManor3dVehicle').at(-1)
   assert.equal(offlineCall.data.online, false)
+  f.page.onUnload()
+})
+
+test('the owner car appears on the minimap and the Find Car action opens its view', async () => {
+  const vehicleSyncState = { position3d: { x: 120, y: 4.1, z: 96 }, yaw: .4, moving: false }
+  const f = fixture({ vehicleSyncState })
+  f.mount()
+  await flush()
+  assert.deepEqual(structuredClone(f.page.data.mapVehicle), { x: 60, y: 60 })
+  assert.match(markup, /class="manor-minimap-mark manor-minimap-vehicle"/)
+  assert.match(markup, /bindtap="focusVehicle">找车/)
+
+  vehicleSyncState.position3d.x = 240
+  f.tick()
+  assert.deepEqual(structuredClone(f.page.data.mapVehicle), { x: 70, y: 60 })
+  f.page.toggleMenu()
+  f.page.focusVehicle()
+  assert.equal(f.page.data.mapMode, true)
+  assert.equal(f.page.data.menuOpen, false)
+  assert.ok(f.events.includes('focusVehicle'))
+  f.page.goBack()
+  assert.equal(f.page.data.mapMode, false)
+  assert.deepEqual(f.placements, [])
   f.page.onUnload()
 })
 

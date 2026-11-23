@@ -92,6 +92,9 @@ function manor3dInterior(interior) {
   if(interior.kind==='courtyard'&&typeof interior.plotId==='string'&&/^M\d{3}$/.test(interior.plotId)) {
     return {kind:'courtyard',plotId:interior.plotId}
   }
+  if(interior.kind==='tower'&&typeof interior.plotId==='string'&&/^tower-(west|walk|east|south-east|south|south-west)$/.test(interior.plotId)) {
+    return {kind:'tower',plotId:interior.plotId}
+  }
   throw new Error('3D角色室内区域无效')
 }
 function validManor3dFacing(facing) {

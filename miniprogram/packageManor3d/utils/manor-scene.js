@@ -10,6 +10,7 @@ const { createManorBuildView, RED_VILLA, COURTYARD, visualSpecs } = require('./m
 const { createManorPetManager } = require('./manor-pets');
 const { createManorTowerLayout } = require('./manor-tower-layout');
 const { createManorTowerDisplay } = require('./manor-tower-model');
+const { createTowerInterior } = require('./manor-tower-interior');
 
 const MIN_DISTANCE = 23;
 const PLAYER_DISTANCE = 8.5;
@@ -314,6 +315,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   let outdoorOrbit;
   let insideVilla = false;
   const courtyards = new Map();
+  const towerInteriors = new Map();
   let activeCourtyard;
   let courtyardPassage;
   const isInsideBuilding = () => insideVilla || !!activeCourtyard;
@@ -529,7 +531,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     if (!position) return null;
     return {
       position3d: { x: position.x, y: position.y, z: position.z },
-      interior: insideVilla ? { kind: 'red' } : activeCourtyard ? { kind: 'courtyard', plotId: activeCourtyard.building.plotId } : null,
+      interior: insideVilla ? { kind: 'red' } : activeCourtyard ? buildingInteriorRegion(activeCourtyard.building) : null,
       moving: playerMoved,
       running: playerMoved && player.isRunning && !vehicle?.busy() && !courtyardPassage,
       pose: restInteraction?.phase === 'holding' ? restInteraction.spot.kind : null,
@@ -561,7 +563,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   function restorePlayerPosition(saved) {
     if (disposed || isInsideBuilding() || courtyardPassage || !player?.position ||
         ![saved?.x, saved?.y, saved?.z, saved?.facing].every(finite)) return false;
-    if (saved.interior?.kind === 'courtyard') return restoreCourtyardPosition(saved);
+    if (saved.interior?.kind === 'courtyard' || saved.interior?.kind === 'tower') return restoreCourtyardPosition(saved);
     if (saved.interior) return false;
     if (!placeCharacterAt(saved, saved.facing)) return false;
     focusCharacter();
@@ -704,11 +706,15 @@ function createManorScene({ THREE, renderer, disposeModel }) {
 
   function interiorZone(interior) {
     if (interior?.kind === 'red') return 'red';
-    return interior?.kind === 'courtyard' && interior.plotId ? 'courtyard:' + interior.plotId : '';
+    return interior?.plotId && ['courtyard', 'tower'].includes(interior.kind) ? interior.kind + ':' + interior.plotId : '';
+  }
+
+  function buildingInteriorRegion({ plotId, kind = 'courtyard' }) {
+    return { kind, plotId };
   }
 
   function viewerZone() {
-    return insideVilla ? 'red' : activeCourtyard ? 'courtyard:' + activeCourtyard.building.plotId : '';
+    return insideVilla ? 'red' : activeCourtyard ? interiorZone(buildingInteriorRegion(activeCourtyard.building)) : '';
   }
 
   function applyAvatarTransform(avatar, amount = 1) {
@@ -1175,6 +1181,21 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     return true;
   }
 
+  function focusVehicle() {
+    if (disposed || isInsideBuilding() || courtyardPassage || buildOrbit || vehicle?.busy()) return false;
+    const position = getVehicleSyncState()?.position3d;
+    if (!position) return false;
+    mapView = true;
+    player?.setInput(0, 0);
+    view = 'vehicle';
+    azimuth = .54;
+    elevation = .6;
+    const { x, y, z } = position;
+    target.set(x, y + .7, z);
+    fit([[x - 4, y, z - 4], [x + 4, y + 2, z + 4], [x - 4, y + 2, z + 4], [x + 4, y, z - 4]], MIN_DISTANCE);
+    return true;
+  }
+
   function resize(nextWidth, nextHeight) {
     if (disposed || !finite(nextWidth) || !finite(nextHeight) || nextWidth <= 0 || nextHeight <= 0) return;
     width = nextWidth;
@@ -1184,6 +1205,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     camera.updateProjectionMatrix();
     if (view === 'default') defaultView();
     else if (view === 'villa') focusVilla();
+    else if (view === 'vehicle') focusVehicle();
     else if (view === 'overview') enterMapView();
     else if (view === 'player') {
       fitAvatar();
@@ -1204,6 +1226,10 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   function refreshOutdoorBounds(relocate = false) {
     outdoorBounds = [...towerBounds, ...buildings.collision];
     if (villaBounds) outdoorBounds.push(villaBounds);
+    if (relocate && vehicle?.revalidateParking()) {
+      if (view === 'player') trackPlayer(true);
+      else if (view === 'vehicle') focusVehicle();
+    }
     const position = player?.position;
     if (relocate && !isInsideBuilding() && !courtyardPassage && !vehicle?.busy() && position &&
         navigation.sample(position.x, position.z, outdoorBounds) === null) {
@@ -1382,6 +1408,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     highRises = null;
     towerBounds = [];
     towerCameraDistance = undefined;
+    towerInteriors.clear();
   }
 
   function showHighRises(model, communityId) {
@@ -1401,16 +1428,17 @@ function createManorScene({ THREE, renderer, disposeModel }) {
       tower.position.set(x - Math.sin(yaw) * TOWER_SITE.centerZ, y + TOWER_SITE.lift, z - Math.cos(yaw) * TOWER_SITE.centerZ);
       tower.rotation.y = yaw;
       tower.updateMatrix();
-      tower.add(i === 0 ? display : display.clone(true));
+      const model = i === 0 ? display : display.clone(true);
+      tower.add(model);
       group.add(tower);
+      const interior = createTowerInterior({ THREE, model });
+      if (interior) towerInteriors.set(id, { kind: 'tower', plotId: id, model, interior, doors: interior.doors });
       return body.clone().applyMatrix4(tower.matrix);
     });
     highRises = group;
     towerBounds = bounds;
     scene.add(group);
     clearTowerTurf(grass, footprints);
-    refreshOutdoorBounds();
-    if (vehicle?.revalidateParking() && view === 'player') trackPlayer(true);
     refreshOutdoorBounds(true);
     pets.repositionBlocked();
     return footprints;
@@ -1445,7 +1473,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     villaBounds = bounds.translate(anchor.position);
     pets.repositionNearVilla();
     buildings.setPlots(getBuildPlots());
-    refreshOutdoorBounds();
+    refreshOutdoorBounds(true);
     refreshCourtyards();
     refreshCourtyards();
     interiorNavigation = createManorInteriorNavigation({ metadata: interiorMetadata, origin: anchor.position });
@@ -1754,7 +1782,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
         vehicle?.busy() || activeElevator()?.busy || player.isJumping || restInteraction) return null;
     const inside = Boolean(activeCourtyard);
     let nearest = null;
-    for (const building of inside ? [activeCourtyard.building] : courtyards.values()) {
+    for (const building of inside ? [activeCourtyard.building] : [...courtyards.values(), ...towerInteriors.values()]) {
       for (const door of building.doors) {
         const approach = inside ? door.inside : door.outside;
         const distance = Math.hypot(position.x - approach.x, position.z - approach.z);
@@ -1786,6 +1814,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
       return false;
     }
     activeCourtyard = { building, exterior };
+    building.interior.setOccupied?.(true);
     outdoorOrbit = { distance, azimuth, elevation };
     mapView = false;
     view = 'player';
@@ -1822,6 +1851,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     const { building, door, outside, inside } = candidate;
     // Animate only this placed building, including when using the older facade asset.
     if (!building.interior.setDoorProgress(door.id, .001)) return false;
+    building.interior.setOccupied?.(true);
     const start = player.position.clone();
     const points = inside ? [start, door.inside, door.threshold, outside] : [start, outside, door.threshold, door.inside];
     let length = 0;
@@ -1874,6 +1904,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     }
     if (closing >= swingTime) {
       courtyardPassage = null;
+      building.interior.setOccupied?.(activeCourtyard?.building === building);
       if (activeCourtyard) prepareInteriorCamera(activeCourtyard.building.model);
     }
     return true;
@@ -1889,13 +1920,14 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     const { x, y, z } = point;
     const facing = restSpot?.yaw ?? (passage ? passage.startFacing : player.facing);
     if (!activeCourtyard) return { x, y, z, facing };
-    const { building: { plotId }, exterior } = activeCourtyard;
-    return { x, y, z, facing, interior: { kind: 'courtyard', plotId },
+    const { building, exterior } = activeCourtyard;
+    return { x, y, z, facing, interior: buildingInteriorRegion(building),
       ...(exterior ? { exterior: { x: exterior.x, y: exterior.y, z: exterior.z } } : {}) };
   }
 
   function restoreCourtyardPosition(saved) {
-    const building = courtyards.get(saved.interior?.plotId);
+    const interiors = saved.interior?.kind === 'tower' ? towerInteriors : courtyards;
+    const building = interiors.get(saved.interior?.plotId);
     if (!building || !player?.position || ![saved.x, saved.y, saved.z, saved.facing].every(finite) ||
         !finite(building.interior.navigation.sample(saved.x, saved.z, null, saved.y))) return false;
     const exterior = building.doors.map(courtyardExterior).filter(Boolean).sort((a, b) => {
@@ -2288,7 +2320,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     setPetModel, setPetRecords, setPetPlayerPosition, repositionNearVilla: pets.repositionNearVilla, applyPetRecord, updatePet, getPet, getPets, getPetUiState,
     getPetInteractionState, getPetPosition: petPosition, selectPet, clearPetSelection, petAction: petCommand,
     petInteract, petRelief, clearPetWaste,
-    focusVilla, focusCharacter, setFirstPerson, render, dispose,
+    focusVilla, focusVehicle, focusCharacter, setFirstPerson, render, dispose,
     getBuildPlots, setBuildModel, hasBuildModel: buildings.hasModel, setBuildPreview, pickBuildGround, setPlacedBuildings,
     getCourtyardDoor, interactCourtyardDoor,
     showVehicle, setVehicleModel, setVehicleRecord, getVehicleSyncState, getVehicleState, enterVehicle, exitVehicle,

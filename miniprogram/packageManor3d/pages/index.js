@@ -140,6 +140,11 @@ function validInteriorAnchor(anchor) {
     anchor.position.slice(0, 3).every(Number.isFinite)
 }
 
+function validPlayerInterior(interior) {
+  return interior?.kind === 'red' ||
+    (['courtyard', 'tower'].includes(interior?.kind) && typeof interior.plotId === 'string')
+}
+
 function validInteriorMetadata(metadata) {
   return metadata && typeof metadata.model === 'string' && metadata.model.length > 0 &&
     validInteriorAnchor(metadata.anchors?.FrontDoor) && validInteriorAnchor(metadata.anchors?.InteriorSpawn) &&
@@ -189,6 +194,7 @@ Page({
     mapMode: false,
     minimap: null,
     mapPlayer: null,
+    mapVehicle: null,
     mapNeighbors: [],
     minimapTop: 0,
     menuOpen: false,
@@ -402,7 +408,7 @@ Page({
     if (!this._closed) this.setData({ doorPrompt: false, insideVilla: false, insideCourtyard: false,
       courtyardDoorLabel: '', doorBusy: false, roomDoor: null, elevator: null, interiorStatus: 'idle',
       interiorProgress: -1, interiorError: '', courtyardStatus: 'idle', courtyardProgress: -1, courtyardError: '',
-      vehicleLoadError: '', vehicleNearby: false, vehiclePanelOpen: false, vehicleSeats: [], vehicleState: 'walking',
+      vehicleLoadError: '', vehicleNearby: false, vehiclePanelOpen: false, vehicleSeats: [], vehicleState: 'walking', mapVehicle: null,
       vehicleStatus: '', vehicleSeatLabel: '', vehicleSpeed: 0, vehicleCanExit: false,
       pets: [], selectedPetId: '', selectedPetName: '', selectedPet: null, nearbyPet: null,
       petRosterOpen: false, petCareBusy: false, petModelsStatus: 'pending', petModelsError: '' })
@@ -438,8 +444,7 @@ Page({
     try {
       const writing = positionWrites.get(key)
       const saved = writing?.next?.checkpoint || writing?.current?.checkpoint || wx.getStorageSync(key)
-      const validInterior = !saved?.interior || saved.interior.kind === 'red' ||
-        (saved.interior.kind === 'courtyard' && typeof saved.interior.plotId === 'string')
+      const validInterior = !saved?.interior || validPlayerInterior(saved.interior)
       if (saved?.version === POSITION_VERSION && validInterior && [saved.x, saved.y, saved.z, saved.facing].every(Number.isFinite)) {
         this._pendingPlayerPosition = this._lastPlayerCheckpoint = saved
       }
@@ -500,6 +505,10 @@ Page({
           this.data.courtyardStatus === 'error') return this._finishPlayerRestore(false, saved)
       if (this.data.courtyardStatus !== 'ready') return false
     }
+    if (saved.interior?.kind === 'tower') {
+      if (this._highRiseUnavailable) return this._finishPlayerRestore(false, saved)
+      if (!this._hasHighRises) return false
+    }
     return this._finishPlayerRestore(this._scene.restorePlayerPosition?.(saved), saved)
   },
 
@@ -541,7 +550,7 @@ Page({
         const position = scene.position3d
         const interior = scene.manor3dInterior
         if (!stayingHere && !this._pendingPlayerPosition && [position?.x, position?.y, position?.z].every(Number.isFinite) &&
-            (interior?.kind === 'red' || (interior?.kind === 'courtyard' && typeof interior.plotId === 'string'))) {
+            validPlayerInterior(interior)) {
           this._pendingPlayerPosition = { version: POSITION_VERSION, ...position, interior,
             facing: Number.isFinite(scene.manor3dFacing) ? scene.manor3dFacing : 0 }
         }
@@ -1033,7 +1042,7 @@ Page({
           () => this.setData({ stage: '正在绘制草坪、树林和溪流', progress: -1 }),
           model => {
             this._scene.showLandscape(model, layout)
-            this.setData({ minimap: createManorMinimap(layout, model), mapPlayer: null, mapNeighbors: [] })
+            this.setData({ minimap: createManorMinimap(layout, model), mapPlayer: null, mapVehicle: null, mapNeighbors: [] })
           })
         if (!attached || !this._isCurrent(session)) return
         try { this._draw() } catch (error) {
@@ -1165,6 +1174,7 @@ Page({
       if (attached && this._isCurrent(session)) {
         this._hasVehicle = true
         this._updateVehicleState()
+        this._updateMinimapPlayer()
       }
     } catch (error) {
       if (!this._isCurrent(session)) return
@@ -1202,7 +1212,10 @@ Page({
       this._highRiseUnavailable = true
       console.warn('[manor3d] 小区住宅楼加载失败', error?.message)
     } finally {
-      if (this._highRiseSession === session) this._stopLoad('_highRiseSession')
+      if (this._highRiseSession === session) {
+        this._stopLoad('_highRiseSession')
+        this._restorePlayerPosition()
+      }
     }
   },
 
@@ -1279,7 +1292,7 @@ Page({
     this._syncCommunityPosition()
     this._syncManor3dVehicle()
     if (this._communitySync) this._refreshCommunityPlayers()
-    if (this._stick) {
+    if (this._stick || this._hasVehicle) {
       const now = Date.now()
       if (now >= (this._nextMinimapUpdate || 0)) {
         this._nextMinimapUpdate = now + MINIMAP_UPDATE_MS
@@ -1387,9 +1400,15 @@ Page({
   },
 
   _updateMinimapPlayer() {
+    const { minimap } = this.data
     const position = this._scene?.getMapPlayerPosition()
-    const mapPlayer = position ? projectManorMapPoint(this.data.minimap, position.x, position.z) : null
-    if (mapPlayer?.x !== this.data.mapPlayer?.x || mapPlayer?.y !== this.data.mapPlayer?.y) this.setData({ mapPlayer })
+    const car = this._scene?.getVehicleSyncState?.()?.position3d
+    const mapPlayer = projectManorMapPoint(minimap, position?.x, position?.z)
+    const mapVehicle = projectManorMapPoint(minimap, car?.x, car?.z)
+    const updates = {}
+    if (mapPlayer?.x !== this.data.mapPlayer?.x || mapPlayer?.y !== this.data.mapPlayer?.y) updates.mapPlayer = mapPlayer
+    if (mapVehicle?.x !== this.data.mapVehicle?.x || mapVehicle?.y !== this.data.mapVehicle?.y) updates.mapVehicle = mapVehicle
+    if (Object.keys(updates).length) this.setData(updates)
   },
 
   _failRenderer(error) {
@@ -1904,11 +1923,11 @@ Page({
 
   onStickEnd(event) {
     if (!this._stick) return
-    if (event.changedTouches?.length && !event.changedTouches.some(touch => touch.identifier === this._stick.id)) return
+    if (event?.changedTouches?.length && !event.changedTouches.some(touch => touch.identifier === this._stick.id)) return
     this._stopStick()
   },
 
-  onStickCancel() { this._stopStick() },
+  onStickCancel(event) { this.onStickEnd(event) },
 
   _stopStick() {
     if (!this._stick && !this.data.stickActive) return
@@ -1965,6 +1984,16 @@ Page({
     if (!this._shown || !this._hasVilla || this.data.insideVilla) return
     this.openMap()
     if (this.data.mapMode) this._scene.focusVilla()
+  },
+
+  focusVehicle() {
+    if (!this._shown || !this._hasLandscape || this.data.mapMode || this.data.buildMode || this.data.insideVilla ||
+        this.data.vehicleState !== 'walking' || this.data.vehiclePanelOpen ||
+        this._pendingPlayerPosition || this._scene?.isCourtyardDoorBusy || this._interiorSession ||
+        !this._scene?.focusVehicle?.()) return
+    this._stopStick()
+    this._resetCanvasTouches()
+    this.setData({ mapMode: true, menuOpen: false })
   },
 
   focusCharacter() {
