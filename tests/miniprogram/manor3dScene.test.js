@@ -100,6 +100,41 @@ test('running advances the avatar and camera faster, and replacing it leaves onl
   assert.ok(disposed.includes(girl.model))
 })
 
+test('jumping preserves movement input and allows steering and stopping in the air', () => {
+  const { view } = createFixture()
+  view.showLandscape(new THREE.Group(), layout)
+  const { model, hips } = createAnimatedCharacter(THREE)
+  model.animations.push(new THREE.AnimationClip('Jump', 1, [
+    new THREE.VectorKeyframeTrack('Hips.position', [0, .5, 1], [0, .8, 0, 0, 1.12, 0, 0, .8, 0])
+  ]))
+  view.showCharacter(model)
+  view.render(0)
+  const anchor = model.parent
+  const start = anchor.position.clone()
+  view.setPlayerInput(0, .5)
+  assert.equal(view.jumpPlayer(), true)
+  for (let i = 1; i <= 6; i++) view.render(i / 30, 1 / 30)
+  const forward = anchor.position.clone()
+  assert.ok(forward.distanceTo(start) > .2)
+  assert.ok(hips.position.y > .8)
+  assert.equal(view.canJumpPlayer(), false)
+
+  view.setPlayerInput(1, 0)
+  for (let i = 7; i <= 12; i++) view.render(i / 30, 1 / 30)
+  const turned = anchor.position.clone()
+  const firstDirection = forward.clone().sub(start)
+  const secondDirection = turned.clone().sub(forward)
+  assert.ok(secondDirection.length() > firstDirection.length())
+  assert.ok(Math.abs(firstDirection.dot(secondDirection)) < .01)
+
+  view.setPlayerInput(0, 0)
+  for (let i = 13; i <= 18; i++) view.render(i / 30, 1 / 30)
+  assert.ok(anchor.position.distanceTo(turned) < 1e-6)
+  for (let i = 19; i <= 31; i++) view.render(i / 30, 1 / 30)
+  assert.equal(view.canJumpPlayer(), true)
+  view.dispose()
+})
+
 test('villa uses the closest fitting plot and only suppresses grass on that plot while its neighbors remain visible', () => {
   const { view, resized } = createFixture()
   const [tiny, home, neighbor] = layout.plots.map(makeGrass)

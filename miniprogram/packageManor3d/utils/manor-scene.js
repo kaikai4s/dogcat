@@ -7,6 +7,7 @@ const { createManorPlayer, createAvatarAnimator } = require('./manor-player');
 const { cloneAvatarModel, disposeAvatarSkeletons } = require('./manor-avatar-clone');
 const { createManorVehicle } = require('./manor-vehicle');
 const { createManorBuildView, RED_VILLA, COURTYARD, visualSpecs } = require('./manor-build-view');
+const { createManorPetManager } = require('./manor-pets');
 
 const MIN_DISTANCE = 23;
 const PLAYER_DISTANCE = 8.5;
@@ -315,8 +316,20 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   const movingAvatars = new Set();
   const animatedAvatars = new Set();
   let sharedOwnPlayerId = '';
+  let selectedPetId = '';
   let dirty = true;
   let disposed = false;
+
+  const pets = createManorPetManager({
+    THREE,
+    scene,
+    getNavigation: () => navigation,
+    getOutdoorBounds: () => outdoorBounds,
+    getVillaBounds: ownerId => buildings.buildingBounds(ownerId, RED_VILLA) ||
+      (ownerId === sharedOwnPlayerId ? villaBounds : null),
+    disposeModel,
+    mapPoint: point => point && finite(point.x) && finite(point.z) ? manorPoint(point.x, point.z) : null
+  });
 
   function trackPlayer(force = false, dt = 0) {
     if (!player?.position) return;
@@ -516,6 +529,8 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   }
 
   function clearCommunityView() {
+    pets.setRecords([], { replace: true });
+    selectedPetId = '';
     if (!communityView) return;
     for (const id of sharedNodes.keys()) removeSharedRecord(id);
     sharedVehicleRecords.clear();
@@ -867,6 +882,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
       scene.add(communityView);
     }
     const received = replace ? new Set() : null;
+    pets.setRecords(records.filter(record => record?.kind === 'resident'), { replace });
     for (const record of records) {
       if (!record?.id) continue;
       received?.add(record.id);
@@ -895,6 +911,8 @@ function createManorScene({ THREE, renderer, disposeModel }) {
         sharedNodes.set(record.id, { kind: 'plot', signature, group });
       } else if (record.kind === 'presence') {
         applySharedPresence(record, ownPlayerId, current);
+      } else if (record.kind === 'resident') {
+        continue;
       } else if (record.kind === 'manor3dVehicle') {
         sharedVehicleRecords.set(record.id, record);
         applySharedVehicle(record, current);
@@ -909,6 +927,128 @@ function createManorScene({ THREE, renderer, disposeModel }) {
         removeSharedRecord(id);
       }
     }
+  }
+
+  function setPetModel(type, model) {
+    return pets.setModel(type, model)
+  }
+
+  function setPetRecords(records, options) {
+    pets.setRecords(records, options)
+    if (selectedPetId && !pets.getPet(selectedPetId)) selectedPetId = ''
+    return pets.getPets()
+  }
+
+  function setPetPlayerPosition(position) {
+    pets.setPlayerPosition(position)
+  }
+
+  function updatePet(dt) {
+    pets.update(Number.isFinite(dt) ? dt : 0)
+  }
+
+  function getPet(id) {
+    return pets.getPet(id)
+  }
+
+  function getPets() {
+    return pets.getPets()
+  }
+
+  function petPosition(id) {
+    const pet = pets.getPet(id)
+    if (!pet) return null
+    const { x, y, z } = pet.group.position
+    return { x, y, z, facing: pet.group.rotation.y }
+  }
+
+  function selectPet(id) {
+    if (!id) {
+      selectedPetId = ''
+      return true
+    }
+    const pet = pets.getPet(id)
+    if (!pet || pet.mine !== true) return false
+    selectedPetId = pet.id
+    return true
+  }
+
+  function clearPetSelection() {
+    selectedPetId = ''
+    return true
+  }
+
+  function petActivity(pet) {
+    if (!pet) return ''
+    if (pet.relieving?.type) return pet.relieving.type === 'poop' ? '便便中' : '嘘嘘中'
+    if (pet.care?.type === 'eat') return '正在进食'
+    if (pet.care?.type === 'drink') return '正在饮水'
+    if (pet.care?.type === 'sleep') return '正在休息'
+    if (pet.following) return '跟随主人'
+    return pet.moving ? '自由活动' : '休息中'
+  }
+
+  function petNeeds(pet) {
+    const needs = pet?.needs || {}
+    const labels = { energy: '精力', satiety: '饱腹', hydration: '水分', pee: '嘘嘘', poop: '便便' }
+    return ['energy', 'satiety', 'hydration', 'pee', 'poop'].map(key => ({
+      key,
+      label: labels[key],
+      value: Math.round(clamp(Number(needs[key]) || 0, 0, 100)),
+      low: key === 'pee' || key === 'poop' ? Number(needs[key]) >= (key === 'pee' ? 20 : 40) : Number(needs[key]) <= 20
+    }))
+  }
+
+  function getPetUiState() {
+    const list = pets.getPets().filter(pet => pet.mine === true).map(pet => ({
+      id: pet.id,
+      name: pet.name,
+      species: pet.species,
+      selected: pet.id === selectedPetId,
+      following: pet.following,
+      moving: pet.moving,
+      activity: petActivity(pet),
+      needs: petNeeds(pet),
+      waste: Array.isArray(pet.record?.waste) ? pet.record.waste : [],
+      position3d: petPosition(pet.id)
+    }))
+    return { pets: list, selected: list.find(pet => pet.id === selectedPetId) || null }
+  }
+
+  function getPetInteractionState() {
+    const position = player?.position
+    if (!position || isInsideBuilding() || vehicle?.busy()) return null
+    let nearestPet = null
+    for (const pet of pets.getPets()) {
+      if (pet.mine !== true || !pet.group.visible) continue
+      const distance = Math.hypot(position.x - pet.group.position.x, position.z - pet.group.position.z)
+      if (distance > 4.5 || (nearestPet && nearestPet.distance <= distance)) continue
+      nearestPet = { id: pet.id, name: pet.name, species: pet.species, distance, position3d: petPosition(pet.id) }
+    }
+    return nearestPet
+  }
+
+  function petCommand(id, operation) {
+    return pets.command(id, operation)
+  }
+
+  function petInteract(id) {
+    const nearby = getPetInteractionState()
+    if (!nearby || nearby.id !== String(id)) return false
+    return pets.interact(id)
+  }
+
+  function petRelief(id, type) {
+    return pets.relief(id, type)
+  }
+
+  function clearPetWaste(id, wasteId) {
+    return pets.clearWaste(id, wasteId)
+  }
+
+  function applyPetRecord(record) {
+    const id = record?.id || record?._id
+    return id ? pets.applyRecordById(String(id), record) : false
   }
 
   function maxDistance() {
@@ -1040,6 +1180,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     if (buildings.setModel(id, group)) {
       refreshOutdoorBounds(true);
       refreshCourtyards();
+      pets.repositionNearVilla();
     }
   }
 
@@ -1047,6 +1188,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     if (!disposed && config && buildings.setPlaced(records)) {
       refreshOutdoorBounds(true);
       refreshCourtyards();
+      pets.repositionNearVilla();
     }
   }
 
@@ -1174,6 +1316,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     config = next;
     grass = nextGrass;
     landscape = group;
+    pets.setPlayerPosition(player?.position);
     plannedPlot = next.plots.find(plot => plot.width >= 21 && plot.depth >= 13) || next.plots[0];
     buildOrbit = null;
     buildings.showPreview(null);
@@ -1217,6 +1360,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     villaAnchor = anchor;
     villaPlot = plot;
     villaBounds = bounds.translate(anchor.position);
+    pets.repositionNearVilla();
     buildings.setPlots(getBuildPlots());
     refreshOutdoorBounds();
     refreshCourtyards();
@@ -1937,6 +2081,8 @@ function createManorScene({ THREE, renderer, disposeModel }) {
       if (restInteraction) updateRestInteraction(dt);
       else player?.update(dt, eyeView ? lookYaw + Math.PI : azimuth);
     }
+    if (player?.position && !isInsideBuilding()) pets.setPlayerPosition(player.position);
+    pets.update(dt);
     if (dt > 0) playerMoved = !!position && (x !== position.x || y !== position.y || z !== position.z);
     if (view === 'player' && dt > 0) trackPlayer(false, dt);
     if (dirty || eyeView) updateCamera(dt);
@@ -2014,6 +2160,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     disposeRemoteCharacterModels();
     if (vehicleModel) disposeModel(vehicleModel);
     vehicleModel = null;
+    pets.dispose();
     if (landscape) disposeModel(landscape);
     landscape = config = plannedPlot = navigation = null;
     interior = interiorNavigation = interiorElevator = interiorMetadata = null;
@@ -2028,6 +2175,9 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     enterMapView, exitMapView, getMapPlayerPosition, getPlayerSyncState, placeCharacterAt,
     getPlayerCheckpoint, restorePlayerPosition,
     setSharedRecords, getCommunityPlayers, setRemoteCharacterModel, hasRemoteCharacterModel,
+    setPetModel, setPetRecords, setPetPlayerPosition, repositionNearVilla: pets.repositionNearVilla, applyPetRecord, updatePet, getPet, getPets, getPetUiState,
+    getPetInteractionState, getPetPosition: petPosition, selectPet, clearPetSelection, petAction: petCommand,
+    petInteract, petRelief, clearPetWaste,
     focusVilla, focusCharacter, setFirstPerson, render, dispose,
     getBuildPlots, setBuildModel, hasBuildModel: buildings.hasModel, setBuildPreview, pickBuildGround, setPlacedBuildings,
     getCourtyardDoor, interactCourtyardDoor,

@@ -58,6 +58,8 @@ test('only the confirmed cloud environment can use the uploaded 3D asset files',
   assert.equal(getManorAssetFileId(TRIAL, 'interior'), ROOT + 'manor-villa-interior.glb')
   assert.equal(getManorAssetFileId(TRIAL, 'boy'), ROOT + 'boy-animated.glb')
   assert.equal(getManorAssetFileId(TRIAL, 'girl'), ROOT + 'girl-animated.glb')
+  assert.equal(getManorAssetFileId(TRIAL, 'dog'), ROOT + 'dog.glb')
+  assert.equal(getManorAssetFileId(TRIAL, 'cat'), ROOT + 'cat.glb')
   assert.equal(getManorAssetFileId(TRIAL, 'car'), ROOT + 'copper-gt-fitted.glb')
   assert.equal(getManorAssetFileId(PRODUCTION, 'boy'), '')
   assert.equal(getManorAssetFileId(PRODUCTION, 'girl'), '')

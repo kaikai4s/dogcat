@@ -12,6 +12,11 @@ const manor3dBuildings = require('./manor3d-buildings')
 const COLLECTION = 'pet_playground_plots'
 const MANOR3D_WIDTH = 1200
 const MANOR3D_DEPTH = 960
+const MANOR3D_SOURCE_WIDTH = 2240
+const MANOR3D_SOURCE_DEPTH = 2240
+const PLAYGROUND_CONFIG_CACHE_MS = 5000
+const MANOR3D_PLOT_CACHE_MS = 5000
+const RESIDENT_SWEEP_CACHE_MS = 30000
 const MANOR3D_HEIGHT_LIMIT = 1200
 const MANOR3D_ONLINE_TTL = 15000
 const MANOR3D_MOVING_TTL = 3000
@@ -24,6 +29,54 @@ function projectManor3dPosition(position, config) {
     z: (position.z / config.height - .5) * MANOR3D_DEPTH
   }
 }
+
+function projectPlaygroundPosition(position, config) {
+  if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.z)) return null
+  return {
+    x: (position.x / MANOR3D_WIDTH + .5) * config.width,
+    z: (position.z / MANOR3D_DEPTH + .5) * config.height
+  }
+}
+
+function projectManor3dPoint(point, config) {
+  if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.z)) return point
+  return {
+    x: (point.x / (config?.width || MANOR3D_SOURCE_WIDTH) - .5) * MANOR3D_WIDTH,
+    z: (point.z / (config?.height || MANOR3D_SOURCE_DEPTH) - .5) * MANOR3D_DEPTH
+  }
+}
+
+function projectManor3dMotion(motion, config) {
+  if (!motion || typeof motion !== 'object') return null
+  const result = { ...motion }
+  for (const key of ['origin', 'followCenter']) {
+    if (motion[key]) result[key] = projectManor3dPoint(motion[key], config)
+  }
+  for (const key of ['approach', 'patrol']) {
+    if (Array.isArray(motion[key])) result[key] = motion[key].map(point => projectManor3dPoint(point, config))
+  }
+  const speedFor=(key)=>{
+    if(!Array.isArray(motion[key])||!Number.isFinite(motion[key==='approach'?'speed':'roamSpeed']))return
+    const length=points=>points.slice(1).reduce((total,point,index)=>total+
+      Math.hypot(point.x-points[index].x,point.z-points[index].z),0)
+    const sourceLength=length(motion[key]),projectedLength=length(result[key])
+    if(sourceLength>0)result[key==='approach'?'speed':'roamSpeed']=motion[key==='approach'?'speed':'roamSpeed']*projectedLength/sourceLength
+  }
+  speedFor('approach')
+  speedFor('patrol')
+  return result
+}
+
+function commandManor3dPosition(data, config) {
+  if (!data || data.manor3dPosition == null) return null
+  if (!validManor3dPosition(data.manor3dPosition)) throw new Error('宠物 3D 位置无效')
+  const point = projectPlaygroundPosition(data.manor3dPosition, config)
+  if (!point || point.x < 0 || point.x > config.width || point.z < 0 || point.z > config.height) {
+    throw new Error('宠物 3D 位置超出庄园范围')
+  }
+  return point
+}
+
 function validManor3dPosition(position) {
   return !!position && typeof position === 'object' &&
     Number.isFinite(position.x) && Number.isFinite(position.z) &&
@@ -145,6 +198,39 @@ module.exports = function createShared(context) {
   const {db} = context, service=world.create(context)
   const live=require('../playground-live')(context),social=require('../playground-social')(context)
   const now=()=>context.nowMs ? context.nowMs() : Date.now()
+  let playgroundConfigPromise,playgroundConfigAt=0,playgroundConfigValue=null,playgroundCareRulesPromise,playgroundCareRulesAt=0
+  const manor3dPlotCache=new Map(),residentSweepCache=new Map()
+  const readPlaygroundConfig=()=>{
+    if(playgroundConfigPromise&&now()-playgroundConfigAt<PLAYGROUND_CONFIG_CACHE_MS)return playgroundConfigPromise
+    const pending=service.config().then(config=>{
+      playgroundConfigValue=config
+      return config
+    })
+    playgroundConfigPromise=pending
+    playgroundConfigAt=now()
+    return pending.catch(error=>{
+      if(playgroundConfigPromise===pending){playgroundConfigPromise=null;playgroundConfigAt=0}
+      throw error
+    })
+  }
+  const readPlaygroundCareRules=()=>{
+    if(playgroundCareRulesPromise&&now()-playgroundCareRulesAt<PLAYGROUND_CONFIG_CACHE_MS)return playgroundCareRulesPromise
+    const pending=require('../playground-config').readConfig(db).then(result=>result.care)
+    playgroundCareRulesPromise=pending
+    playgroundCareRulesAt=now()
+    return pending.catch(error=>{
+      if(playgroundCareRulesPromise===pending){playgroundCareRulesPromise=null;playgroundCareRulesAt=0}
+      throw error
+    })
+  }
+  const readManor3dPlots=async(communityId)=>{
+    const cached=manor3dPlotCache.get(communityId)
+    if(cached&&now()-cached.at<MANOR3D_PLOT_CACHE_MS)return cached.rows
+    const result=await rows(communityId,'plot')
+    manor3dPlotCache.set(communityId,{at:now(),rows:result})
+    if(manor3dPlotCache.size>24)manor3dPlotCache.delete(manor3dPlotCache.keys().next().value)
+    return result
+  }
   const read=async(database,id)=>{const row=await world.read(database,id);return row?{...row}:null}
   function publicRecord(row) {
     if(row.kind===manor3dBuildings.KIND) return manor3dBuildings.publicBuilding(row)
@@ -160,6 +246,7 @@ module.exports = function createShared(context) {
         pets:(row.pets||[]).map((pet)=>({
           ...pet,
           waste:(pet.waste||[]).filter((w)=>!isWasteExpired(w, stamp)),
+          manor3dMotion:pet.manor3dMotion||projectManor3dMotion(pet.motion,playgroundConfigValue),
           lifeManaged:true,
           appearance:publicAppearance(pet.appearance,'pet',pet.id,row.ownerOpenid)
         }))
@@ -256,9 +343,109 @@ module.exports = function createShared(context) {
     }
     return result
   }
-  const hooks={read,check,publish,rows,safePoint,publicNavigation,navigation,motion,
+  async function ensureResidentRecords(sceneId,plots,cfg,manor3dHomes=[]) {
+    const cached=residentSweepCache.get(sceneId)
+    if(cached&&now()-cached.at<RESIDENT_SWEEP_CACHE_MS)return cached.promise
+    const pending=(async()=>{
+      const existing=await rows(sceneId,'resident')
+      const homes=plots.filter(item=>!item.isNewPlot).map(plot=>({ownerOpenid:plot.ownerOpenid,plotId:plot._id,plot,manor3dOnly:false}))
+      const residentOwners=new Set(homes.map(home=>home.ownerOpenid))
+      for(const villa of manor3dHomes.filter(item=>item.buildingId==='red_tile_villa'&&!residentOwners.has(item.ownerOpenid))) {
+        residentOwners.add(villa.ownerOpenid)
+        homes.push({ownerOpenid:villa.ownerOpenid,plotId:'',villa,manor3dOnly:true})
+      }
+      for(const home of homes) if(!existing.some(row=>row.ownerOpenid===home.ownerOpenid&&row.communityId===sceneId&&
+        (home.manor3dOnly?row.manor3dOnly===true:row.plotId===home.plotId))) {
+        const pets=((await db.collection('pets').where({openid:home.ownerOpenid}).orderBy('createdAt','desc').limit(100).get()).data||[])
+          .filter(pet=>!pet.deletedAt&&['cat','dog'].includes(pet.species||'dog')).slice(0,8)
+        const homePosition=home.manor3dOnly?projectPlaygroundPosition(home.villa,cfg):null
+        await transaction(db,async(tx)=>{
+          const owned=await read(tx,world.ownerId(home.ownerOpenid)),old=await read(tx,residentId(home.ownerOpenid))
+          if(home.manor3dOnly) {
+            const villa=await read(tx,home.villa._id)
+            if(!villa||villa.communityId!==sceneId||villa.ownerOpenid!==home.ownerOpenid||villa.buildingId!=='red_tile_villa'||
+              old&&old.communityId===sceneId)return
+          } else if(!owned||owned.communityId!==sceneId||owned.plotId!==home.plotId||old&&old.communityId===sceneId&&old.plotId===home.plotId)return
+          const petsNow=await currentPets(tx,pets,home.ownerOpenid)
+          const origin=home.manor3dOnly?homePosition:{x:home.plot.x,z:home.plot.z}
+          const resident={kind:'resident',communityId:sceneId,ownerOpenid:home.ownerOpenid,plotId:home.plotId,
+            ...(home.manor3dOnly?{manor3dOnly:true,manor3dPlotId:home.villa.plotId,homePosition}:{}),revision:now(),
+            name:home.plot?.ownerName||String(home.plot?.name||'邻居').replace(/的庭院$/,''),nameColor:owned?.nameColor||'',layoutKey:layoutKey(plots),
+            pets:petsNow.map((pet,index)=>({
+              id:pet._id,name:pet.name||'宠物',species:pet.species==='cat'?'cat':'dog',
+              appearance:publicAppearance(pet.playgroundAppearance,'pet',pet._id,home.ownerOpenid),
+              needs:{at:now(),energy:100,satiety:100,hydration:100},
+              modelScale:Math.max(.5,Math.min(2,Number(pet.playgroundScale)||1)),
+              motion:home.manor3dOnly
+                ? {epoch:now(),approach:[origin],patrol:[origin],speed:7,roamSpeed:3,wait:3}
+                : motion(cfg,plots,{x:origin.x+(index%3-1)*5,z:origin.z+14+Math.floor(index/3)*4},now(),pet._id)
+            }))}
+          await tx.collection(COLLECTION).doc(residentId(home.ownerOpenid)).set({data:resident})
+        })
+      }
+    })()
+    residentSweepCache.set(sceneId,{at:now(),promise:pending})
+    try {
+      await pending
+      residentSweepCache.set(sceneId,{at:now(),promise:Promise.resolve()})
+    } catch(error) {
+      if(residentSweepCache.get(sceneId)?.promise===pending)residentSweepCache.delete(sceneId)
+      throw error
+    }
+  }
+  async function advanceResidentRows(page,sceneId,plots,cfg,careService,careRules,throttleMs=0,manor3dHomes=[]) {
+    const stamp=now(),geometry=layoutKey(plots)
+    for(let i=0;i<page.length;i++) if(page[i].kind==='resident'&&(
+      plots.some(plot=>plot.ownerOpenid===page[i].ownerOpenid&&plot._id===page[i].plotId)||
+      page[i].manor3dOnly&&manor3dHomes.some(home=>home.ownerOpenid===page[i].ownerOpenid&&home.buildingId==='red_tile_villa'))) {
+      if(throttleMs&&stamp-Number(page[i].manor3dLifeAdvancedAt||0)<throttleMs)continue
+      const serviceOrders=page[i].manor3dOnly?[]:await careService.activeOrders(page[i].ownerOpenid)
+      page[i]=await transaction(db,async(tx)=>{
+        const row=await read(tx,page[i]._id)
+        if(!row||row.communityId!==sceneId)return {...page[i],pets:[]}
+        if(throttleMs&&stamp-Number(row.manor3dLifeAdvancedAt||0)<throttleMs)return row
+        const layoutMismatch=!row.manor3dOnly&&row.layoutKey!==geometry
+        row.pets=(row.pets||[]).map((pet)=>{
+          if(pet.ridingVehicleId)return pet
+          if(layoutMismatch) {
+            const current=sampleMotion(pet.motion,stamp).position
+            const start=safePoint(navigation(cfg,plots,current,current,'pet',row.plotId),current)
+            settleNeeds(pet,stamp)
+            return {...pet,care:null,motion:motion(cfg,plots,start,stamp,pet.id+geometry)}
+          }
+          return pet
+        })
+        let rulesChanged=false
+        for(const pet of row.pets||[]) {
+          const rules=careRules[pet.species==='cat'?'cat':'dog']
+          if(JSON.stringify(pet.needsRules)!==JSON.stringify(rules)) {
+            settleNeeds(pet,stamp);pet.needsRules=rules;rulesChanged=true
+          }
+        }
+        const serviceChanged=row.manor3dOnly?false:await careService.advance(tx,row,cfg,plots,hooks,serviceOrders)
+        const lifeChanged=await companions.advance(tx,row,cfg,plots)
+        if(!layoutMismatch&&!lifeChanged&&!serviceChanged&&!rulesChanged&&!throttleMs)return row
+        if(layoutMismatch)row.layoutKey=geometry
+        if(throttleMs)row.manor3dLifeAdvancedAt=stamp
+        row.revision=Math.max(stamp,(row.revision||0)+1)
+        const id=row._id
+        delete row._id
+        await tx.collection(COLLECTION).doc(id).set({data:row})
+        return {...row,_id:id}
+      })
+      if(!page[i].manor3dOnly&&(page[i].pets.some((pet)=>pet.care&&pet.care.type==='eat')||(page[i].careAgents||[]).some((agent)=>agent.phase==='caring'))) {
+        const latest=await read(db,page[i].plotId),plotIndex=page.findIndex((row)=>row._id===page[i].plotId)
+        if(latest) {
+          if(plotIndex>=0)page[plotIndex]=latest
+          await publish(latest)
+        }
+      }
+    }
+    return page
+  }
+  const hooks={read,check,publish,rows,safePoint,publicNavigation,navigation,motion,commandManor3dPosition,
     publicRecord:(row)=>({...publicRecord(row),version:version(row)}),
-    config:()=>service.config(),access:(...args)=>social.access(...args),social}
+    config:()=>readPlaygroundConfig(),access:(...args)=>social.access(...args),social}
   const manor3dVehicles=require('./manor3d-vehicles')(context,{check,publish,publicRecord:hooks.publicRecord})
   const placeManor3dBuildingBase=manor3dBuildings.create(context,{check,publish,project:hooks.publicRecord})
   async function placeManor3dBuilding(openid,user,data) {
@@ -275,7 +462,7 @@ module.exports = function createShared(context) {
   const rides=require('./rides')(context,{...hooks,companions})
   const vehicles=require('./vehicles')(context,{...hooks,companions,rides,
     publicRecord:(row)=>({...publicRecord(row),version:version(row)}),
-    config:()=>service.config(),access:(...args)=>social.access(...args),nextEpoch:(...args)=>live.nextEpoch(...args),
+    config:()=>readPlaygroundConfig(),access:(...args)=>social.access(...args),nextEpoch:(...args)=>live.nextEpoch(...args),
     response:({actor,car,records=[]})=>({actor:{...publicRecord(actor),version:version(actor)},vehicle:{...publicRecord(car),version:version(car)},records:records.filter(Boolean).map((r)=>({...publicRecord(r),version:version(r)})),serverTime:now()})})
   async function enter(openid,user,data,pets) {
     const communities=require('../playground-communities')(context)
@@ -286,7 +473,7 @@ module.exports = function createShared(context) {
     await rides.prepareEntry(openid,id)
     await service.own(openid)
     await vehicles.ensure(openid)
-    const cfg=await service.config()
+    const cfg=await readPlaygroundConfig()
     const plots=await rows(id,'plot')
     const ownedManor3d=manor3dSession?await ownedManor3dHomes(openid):[]
     const hasAnyManor3dHome=ownedManor3d.some(row=>!!row.communityId&&!String(row.communityId).startsWith('solo_'))
@@ -325,22 +512,28 @@ module.exports = function createShared(context) {
         manor3dMoving:false,manor3dRunning:false,manor3dFacing:saved3d?old.manor3dFacing??null:null,manor3dOnline:false,
         position,characterType:old && old.characterType==='girl'?'girl':'boy',mirrored:!!(old&&old.mirrored),facing:old&&old.facing||'sw',
         session,seq:0,active:!!currentHome,homePlotId:currentHome?currentHome.plotId:'',online:true,lastSeen:stamp,sessionStarted:Math.max(actorEpoch,(old&&old.sessionStarted||0)+1)}
-      const canKeepPets=!!currentOwn
+      const residentVilla=!currentOwn&&manor3dSession&&ownedVilla?await read(tx,ownedVilla._id):null
+      const manor3dOnly=!currentOwn&&!!residentVilla&&residentVilla.communityId===id&&residentVilla.ownerOpenid===openid
+      const canKeepPets=!!currentOwn||manor3dOnly
       const plotKey=currentOwn?currentOwn.plotId:''
+      const homePosition=manor3dOnly?projectPlaygroundPosition(residentVilla,cfg):null
       let savedResident=null
       if(canKeepPets) {
         const petsNow=await currentPets(tx,pets,openid)
         savedResident={kind:'resident',communityId:id,ownerOpenid:openid,plotId:plotKey,session,revision:Math.max(residentEpoch,(resident&&resident.revision||0)+1),petSeq:0,layoutKey:resident&&resident.layoutKey||layoutKey(plots),
+          ...(manor3dOnly?{manor3dOnly:true,manor3dPlotId:residentVilla.plotId,homePosition}:{}),
           serviceCare:resident&&resident.communityId===id&&resident.plotId===plotKey?resident.serviceCare||null:null,
           serviceCares:resident&&resident.communityId===id&&resident.plotId===plotKey?resident.serviceCares||(resident.serviceCare?[resident.serviceCare]:[]):[],
           careAgent:resident&&resident.communityId===id&&resident.plotId===plotKey?resident.careAgent||null:null,
           careAgents:resident&&resident.communityId===id&&resident.plotId===plotKey?resident.careAgents||(resident.careAgent?[resident.careAgent]:[]):[],
           name:actor.name,nameColor:actor.nameColor,pets:petsNow.map((p,i)=>{
             const previous=resident && resident.communityId===id && resident.plotId===plotKey && (resident.pets||[]).find((q)=>q.id===p._id)
-            const origin={x:start.x+(i%3-1)*5,z:start.z+Math.floor(i/3)*4}
+            const origin=manor3dOnly?homePosition:{x:start.x+(i%3-1)*5,z:start.z+Math.floor(i/3)*4}
             return {...previous,id:p._id,name:p.name||'宠物',species:p.species==='cat'?'cat':'dog',modelScale:Math.max(.5,Math.min(2,Number(p.playgroundScale)||1)),
               needs:previous&&previous.needs||{at:stamp,energy:100,satiety:100,hydration:100},
-              appearance:publicAppearance(p.playgroundAppearance,'pet',p._id,openid),motion:previous?previous.motion:motion(cfg,plots,origin,stamp,p._id)}
+              appearance:publicAppearance(p.playgroundAppearance,'pet',p._id,openid),motion:previous?previous.motion:manor3dOnly
+                ? {epoch:stamp,approach:[origin],patrol:[origin],speed:7,roamSpeed:3,wait:3}
+                : motion(cfg,plots,origin,stamp,p._id)}
           })}
       }
       const vehicle=await vehicles.onEnter(tx,openid,id,actor,currentHome,cfg,plots)
@@ -374,6 +567,13 @@ module.exports = function createShared(context) {
     if(!Number.isSafeInteger(data.seq)||data.seq<1) throw new Error('3D角色同步序号无效')
     if(data.online!==undefined&&typeof data.online!=='boolean') throw new Error('3D角色在线状态无效')
     const online=data.online!==false
+    const currentActor=await check(openid,data)
+    const companionsDue=(currentActor.active===true||currentActor.manor3dSession===true)&&!currentActor.vehicleId&&
+      now()-Number(currentActor.lastCompanionSync||0)>=600
+    const [cfg,plots]=await Promise.all([
+      readPlaygroundConfig(),
+      companionsDue?readManor3dPlots(currentActor.communityId):Promise.resolve([])
+    ])
     const result=await transaction(db,async(tx)=>{
       const actor=await check(openid,data,tx)
       const stamp=now()
@@ -402,15 +602,29 @@ module.exports = function createShared(context) {
         patch.position3d=next
         patch.manor3dSaved=true
         patch.manor3dInterior=manor3dInterior(data.interior)
+        if(!patch.manor3dInterior) {
+          const projected=projectPlaygroundPosition(next,cfg)
+          if(projected) patch.position=projected
+        }
       }
       // A coalesced sample describes presence. Only the local 3D navigation has the path between reports.
+      const nextActor={...actor,...patch}
+      const resident=companionsDue&&stamp-Number(actor.lastCompanionSync||0)>=600
+        ? await companions.sync(tx,nextActor,cfg,plots) : null
+      if(nextActor.lastCompanionSync!==actor.lastCompanionSync) {
+        patch.lastCompanionSync=nextActor.lastCompanionSync
+        nextActor.lastCompanionSync=patch.lastCompanionSync
+      }
       const update=patch.position3d?{...patch,position3d:db.command.set(next),
         manor3dInterior:db.command.set(patch.manor3dInterior)}:patch
       await tx.collection(COLLECTION).doc(actor._id).update({data:update})
-      return {accepted:true,ackSeq:data.seq,position3d:next,manor3dOnline:online,actor:{...actor,...patch}}
+      return {accepted:true,ackSeq:data.seq,position3d:next,manor3dOnline:online,actor:nextActor,resident}
     })
-    const {actor,...response}=result
-    if(actor) await publishManor3d(actor,{knownShard:true})
+    const {actor,resident,...response}=result
+    await Promise.all([
+      actor&&publishManor3d(actor,{knownShard:true}),
+      resident&&companions.publishLife(resident)
+    ])
     return {...response,serverTime:now()}
   }
   async function syncManor3dVehicle(openid,data) { return manor3dVehicles.sync(openid,data) }
@@ -442,7 +656,7 @@ module.exports = function createShared(context) {
     return {communities:[...communities].map(([id,community])=>({id,community}))}
   }
   async function sync(openid,data) {
-    const [cfg,plots]=await Promise.all([service.config(),rows(data.sceneId,'plot')])
+    const [cfg,plots]=await Promise.all([readPlaygroundConfig(),rows(data.sceneId,'plot')])
     const result=await transaction(db,async(tx)=>{
       const actor=await check(openid,data,tx)
       const stamp=now()
@@ -526,39 +740,30 @@ module.exports = function createShared(context) {
     await check(openid,data)
     const cursor=String(data.cursor||'')
     if(cursor.length>128) throw new Error('无效场景页码')
+    const plots=await rows(data.sceneId,'plot'),cfg=await readPlaygroundConfig()
+    const careService=require('../playground-care')(context)
+    const careRules=await readPlaygroundCareRules()
     if(data.manor3d===true) {
-      const where={communityId:data.sceneId,kind:db.command.in(['plot','presence',manor3dBuildings.KIND,manor3dVehicles.KIND])}
+      const manor3dHomes=await rows(data.sceneId,manor3dBuildings.KIND)
+      if(!cursor) await ensureResidentRecords(data.sceneId,plots,cfg,manor3dHomes)
+      const where={communityId:data.sceneId,kind:db.command.in(['plot','presence','resident',manor3dBuildings.KIND,manor3dVehicles.KIND])}
       if(cursor) where._id=db.command.gt(cursor)
       const page=(await db.collection(COLLECTION).where(where).orderBy('_id','asc').limit(100).get()).data||[]
       const stamp=now()
-      const records=page.filter(row=>row.kind==='plot'?!row.demolished:row.kind!=='presence'||row.active===true||manor3dOnline(row, stamp))
+      await advanceResidentRows(page,data.sceneId,plots,cfg,careService,careRules,5000,manor3dHomes)
+      const records=page.filter(row=>row.kind==='plot'?!row.demolished:row.kind==='resident'
+        ? plots.some(plot=>plot.ownerOpenid===row.ownerOpenid&&plot._id===row.plotId)||
+          row.manor3dOnly&&manor3dHomes.some(home=>home.ownerOpenid===row.ownerOpenid&&home.buildingId==='red_tile_villa')
+        : row.kind!=='presence'||row.active===true||manor3dOnline(row, stamp))
         .map(row=>({...hooks.publicRecord(row),mine:row.ownerOpenid===openid}))
       return {serverTime:stamp,nextCursor:page.length===100?page[page.length-1]._id:'',records}
     }
-    const plots=await rows(data.sceneId,'plot'), cfg=await service.config()
-    const careService=require('../playground-care')(context)
-    const careRules=(await require('../playground-config').readConfig(db)).care
     await careService.decoratePlots(plots)
     if(!cursor) {
       const cars=await rows(data.sceneId,'vehicle')
       for(const plot of plots.filter((p)=>!p.isNewPlot))if(!cars.some((car)=>car.ownerOpenid===plot.ownerOpenid&&car.plotId===plot._id&&car.plotInstanceId===(plot.instanceId||plot.createdAt||'')))await vehicles.ensure(plot.ownerOpenid)
       // Existing residents need not log in after deployment for their pets to appear.
-      const existing=await rows(data.sceneId,'resident')
-      for(const plot of plots.filter((p)=>!p.isNewPlot)) if(!existing.some((r)=>r.ownerOpenid===plot.ownerOpenid&&r.plotId===plot._id)) {
-        const pets=((await db.collection('pets').where({openid:plot.ownerOpenid}).orderBy('createdAt','desc').limit(100).get()).data||[])
-          .filter((p)=>!p.deletedAt&&['cat','dog'].includes(p.species||'dog')).slice(0,8)
-        await transaction(db,async(tx)=>{
-          const owned=await read(tx,world.ownerId(plot.ownerOpenid)), old=await read(tx,residentId(plot.ownerOpenid))
-          if(!owned || owned.communityId!==data.sceneId || owned.plotId!==plot._id || old&&old.communityId===data.sceneId&&old.plotId===plot._id) return
-          const petsNow=await currentPets(tx,pets,plot.ownerOpenid)
-          const resident={kind:'resident',communityId:data.sceneId,ownerOpenid:plot.ownerOpenid,plotId:plot._id,revision:now(),
-            name:plot.ownerName||String(plot.name||'邻居').replace(/的庭院$/,''),nameColor:owned.nameColor,layoutKey:layoutKey(plots),pets:petsNow.map((p,i)=>({id:p._id,name:p.name||'宠物',species:p.species==='cat'?'cat':'dog',
-              appearance:publicAppearance(p.playgroundAppearance,'pet',p._id,plot.ownerOpenid),
-              needs:{at:now(),energy:100,satiety:100,hydration:100},
-              modelScale:Math.max(.5,Math.min(2,Number(p.playgroundScale)||1)),motion:motion(cfg,plots,{x:plot.x+(i%3-1)*5,z:plot.z+14+Math.floor(i/3)*4},now(),p._id)}))}
-          await tx.collection(COLLECTION).doc(residentId(plot.ownerOpenid)).set({data:resident})
-        })
-      }
+      await ensureResidentRecords(data.sceneId,plots,cfg)
     }
     const where={communityId:data.sceneId,kind:db.command.in(['plot','presence','resident','vehicle',manor3dBuildings.KIND])}
     if(cursor) where._id=db.command.gt(cursor)
@@ -575,47 +780,7 @@ module.exports = function createShared(context) {
     const legacyActors=new Set()
     for(const row of page) if(row.kind==='presence' && row.active===undefined && await read(db,world.ownerId(row.ownerOpenid))) legacyActors.add(row._id)
     const stamp=now()
-    const geometry=layoutKey(plots)
-    // A new/demolished yard invalidates old outdoor routes, even for offline owners.
-    for(let i=0;i<page.length;i++) if(page[i].kind==='resident' &&
-      plots.some((p)=>p.ownerOpenid===page[i].ownerOpenid&&p._id===page[i].plotId)) {
-      const serviceOrders=await careService.activeOrders(page[i].ownerOpenid)
-      page[i]=await transaction(db,async(tx)=>{
-        const row=await read(tx,page[i]._id)
-        if(!row || row.communityId!==data.sceneId) return {...page[i],pets:[]}
-        const layoutMismatch = row.layoutKey!==geometry
-        row.pets=(row.pets||[]).map((pet)=>{
-          if(pet.ridingVehicleId)return pet
-          if (layoutMismatch) {
-            const current=sampleMotion(pet.motion,stamp).position
-            const start=safePoint(navigation(cfg,plots,current,current,'pet',row.plotId),current)
-            settleNeeds(pet,stamp)
-            return {...pet,care:null,motion:motion(cfg,plots,start,stamp,pet.id+(layoutMismatch?geometry:'roam'))}
-          }
-          return pet
-        })
-        let rulesChanged=false
-        for(const pet of row.pets||[]) {
-          const rules=careRules[pet.species==='cat'?'cat':'dog']
-          if(JSON.stringify(pet.needsRules)!==JSON.stringify(rules)){settleNeeds(pet,stamp);pet.needsRules=rules;rulesChanged=true}
-        }
-        const serviceChanged=await careService.advance(tx,row,cfg,plots,hooks,serviceOrders)
-        const lifeChanged=await companions.advance(tx,row,cfg,plots)
-        if(!layoutMismatch&&!lifeChanged&&!serviceChanged&&!rulesChanged)return row
-        if (layoutMismatch) row.layoutKey=geometry
-        row.revision=Math.max(stamp,(row.revision||0)+1)
-        const key=row._id
-        delete row._id
-        await tx.collection(COLLECTION).doc(key).set({data:row})
-        return {...row,_id:key}
-      })
-      // Automatic meals reserve food in the same transaction. Read the latest
-      // plot for both the snapshot and live projection after that commit.
-      if(page[i].pets.some((p)=>p.care&&p.care.type==='eat') || (page[i].careAgents||[]).some((agent)=>agent.phase==='caring')) {
-        const latest=await read(db,page[i].plotId),plotIndex=page.findIndex((p)=>p._id===page[i].plotId)
-        if(latest){if(plotIndex>=0)page[plotIndex]=latest;await publish(latest)}
-      }
-    }
+    await advanceResidentRows(page,data.sceneId,plots,cfg,careService,careRules)
     const visible=page.filter((row)=>{
       if(row.kind==='plot') return !row.demolished
       if(row.kind==='presence') return row.active===true || legacyActors.has(row._id)
@@ -635,7 +800,7 @@ module.exports = function createShared(context) {
   async function commandPet(openid,data) {
     const petRecord=((await db.collection('pets').where({_id:data.petId,openid}).get()).data||[])[0]
     if(!petRecord || petRecord.deletedAt) throw new Error('只能操作自己的宠物，宠物不存在或已删除')
-    const cfg=await service.config(), stamp=now()
+    const cfg=await readPlaygroundConfig(), stamp=now()
     const plots=await rows(data.sceneId,'plot')
     // High-frequency movement must not invalidate a pet-command transaction.
     // The resident session fences commands against concurrent scene re-entry.
@@ -650,23 +815,39 @@ module.exports = function createShared(context) {
       if(pet.serviceManaged)throw new Error('宠物正在接受宠托师服务，请等待照护完成后再操作')
       if(!Number.isInteger(data.commandSeq) || data.commandSeq<1) throw new Error('无效宠物操作序号')
       if(data.commandSeq<=(resident.petSeq||0)) throw new Error('宠物操作已更新，请使用最新指令')
-      const current=sampleMotion(pet.motion,stamp).position
+      let current=sampleMotion(pet.motion,stamp).position
+      const manor3dPosition=commandManor3dPosition(data,cfg)
+      if(manor3dPosition) {
+        current=manor3dPosition
+        if(!resident.manor3dOnly&&!navigation(cfg,plots,current,current,'pet',resident.plotId).walkable(current)) {
+          throw new Error('宠物不能进入其他住户的庭院')
+        }
+        pet.motion=resident.manor3dOnly
+          ? {epoch:stamp,approach:[current],patrol:[current],speed:7,roamSpeed:3,wait:3}
+          : motion(cfg,plots,current,stamp,pet.id+'-manor3d')
+      }
       settleNeeds(pet,stamp)
       if(data.interact!==true){pet.following=false;pet.care=null}
       else pet.followCenter=null
       let target=data.target
       if(data.interact===true) {
         if(pet.interactionUntil>stamp) throw new Error('宠物正在互动，请稍等一下')
-        if(Math.hypot(actor.position.x-current.x,actor.position.z-current.z)>4 ||
-          !navigation(cfg,plots,actor.position,current,'character',null,await social.access(openid,plots,tx)).clearSegment(actor.position,current)) throw new Error('请先走近自己的宠物')
+        const nearby=manor3dPosition&&validManor3dPosition(actor.position3d)
+          ? Math.hypot(actor.position3d.x-data.manor3dPosition.x,actor.position3d.z-data.manor3dPosition.z)<=4.5
+          : Math.hypot(actor.position.x-current.x,actor.position.z-current.z)<=4
+        const visiblePath=resident.manor3dOnly||navigation(cfg,plots,actor.position,current,'character',null,
+          await social.access(openid,plots,tx)).clearSegment(actor.position,current)
+        if(!nearby||!visiblePath) throw new Error('请先走近自己的宠物')
         target=current
       }
       if(!target || ![target.x,target.z].every((n)=>typeof n==='number'&&Number.isFinite(n))) throw new Error('请选择有效目的地')
       if(Math.hypot(target.x-current.x,target.z-current.z)>300) throw new Error('请先选择附近的草地')
-      const nav=navigation(cfg,plots,current,target,'pet',resident.plotId)
-      const route=nav.path(current,target)
+      const nav=resident.manor3dOnly?null:navigation(cfg,plots,current,target,'pet',resident.plotId)
+      const route=resident.manor3dOnly?[data.interact===true?current:target]:nav.path(current,target)
       if(!route) throw new Error('这里无法到达，请从自家庭院院门进出')
-      pet.motion=motion(cfg,plots,target,data.interact===true?stamp-500:stamp,pet.id+stamp,[current,...route])
+      pet.motion=resident.manor3dOnly
+        ? {epoch:data.interact===true?stamp-500:stamp,approach:[current,...route],patrol:[target],speed:7,roamSpeed:3,wait:3}
+        : motion(cfg,plots,target,data.interact===true?stamp-500:stamp,pet.id+stamp,[current,...route])
       pet.interactionUntil=data.interact===true?stamp+2500:0
       pet.commandSeq=data.commandSeq
       resident.petSeq=data.commandSeq

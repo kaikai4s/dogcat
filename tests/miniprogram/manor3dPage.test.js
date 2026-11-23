@@ -19,7 +19,7 @@ const touchEvent = (points, changed = []) => {
 function fixture({ envId = ENV_MAP.trial, read = key => key === 'layout' ? layout : key,
   decode = key => ({ key }), savedCharacter, savedSensitivity, canGoBack = true, entryTicket, communityScene,
   placeResult = true, syncStart = null, buildPlots = [], buildGround, saveBuilding,
-  checkpointStorage = new Map(), asyncPositionWrites, vehicleSyncState = null } = {}) {
+  checkpointStorage = new Map(), asyncPositionWrites, vehicleSyncState = null, petModels = false } = {}) {
   let definition, nextFrame = 0, now = 0, lost = false, pixelRatio = 1
   let sensitivityStorage = savedSensitivity
   let canvasSize = { width: 390, height: 780 }
@@ -91,6 +91,7 @@ function fixture({ envId = ENV_MAP.trial, read = key => key === 'layout' ? layou
       getVillaEntryState() { return { inside: this.isInsideVilla, nearDoor: false } },
       getPlayerSyncState() { return { position3d: { x: playerPosition?.x || 0, z: playerPosition?.z || 0 }, moving: false, running: false, facing: 0 } },
       setSharedRecords(records) { sharedRecords.push(records) },
+      ...(petModels ? { setPetModel(type) { events.push('pet:' + type); return true } } : {}),
       getBuildPlots() { return buildPlots },
       setBuildModel() {},
       setBuildPreview(preview) { buildPreviews.push(structuredClone(preview)) },
@@ -261,6 +262,7 @@ test('resuming a terrain load after rotating uses the new canvas size on its fir
   assert.equal(f.events.length, eventsBeforeFrame)
   assert.equal(f.frames.size, 0)
   f.page.onShow()
+  await flush()
   assert.equal(f.frames.size, 1)
   f.page.onUnload()
 })
@@ -502,6 +504,67 @@ test('resuming the manor keeps the local character and avoids downloading it aga
   f.page.onUnload()
 })
 
+test('resuming restarts pet model downloads cancelled while the page was hidden', async () => {
+  let rejectFirstDogRead, dogReads = 0
+  const f = fixture({ petModels: true, read(key) {
+    if (key === 'dog' && dogReads++ === 0) return new Promise((resolve, reject) => { rejectFirstDogRead = reject })
+    return key === 'layout' ? layout : key
+  } })
+  f.mount()
+  for (let attempt = 0; attempt < 12 && dogReads === 0; attempt++) await flush()
+  assert.equal(dogReads, 1)
+  assert.equal(f.page.data.petModelsStatus, 'loading')
+
+  f.page.onHide()
+  assert.equal(f.page.data.petModelsStatus, 'pending')
+  f.page.onShow()
+  await flush()
+  assert.equal(dogReads, 2)
+  assert.equal(f.page.data.petModelsStatus, 'ready')
+
+  rejectFirstDogRead(new Error('cancelled old request'))
+  await flush()
+  assert.equal(f.page.data.petModelsStatus, 'ready')
+  assert.equal(dogReads, 2)
+  f.page.onUnload()
+})
+
+test('resuming reapplies the canvas size before drawing even when the measured size is unchanged', async () => {
+  const f = fixture()
+  f.mount()
+  await flush()
+  f.page.onHide()
+  const sizesBeforeResume = f.sizes.length
+  let finishMeasurement
+  f.page._queryCanvas = () => new Promise(resolve => { finishMeasurement = resolve })
+  f.page.onShow()
+  assert.equal(f.frames.size, 0)
+  finishMeasurement({ width: 390, height: 780 })
+  await flush()
+  assert.equal(f.sizes.length, sizesBeforeResume + 1)
+  assert.deepEqual(f.sizes.at(-1), { width: 390, height: 780, pixelRatio: 1.5 })
+  assert.equal(f.frames.size, 1)
+  f.tick()
+  assert.deepEqual(f.drawSizes.at(-1), { width: 390, height: 780, pixelRatio: 1.5 })
+  f.page.onUnload()
+})
+
+test('a resize event supersedes an unfinished resume measurement', async () => {
+  const f = fixture()
+  f.mount()
+  await flush()
+  f.page.onHide()
+  let finishMeasurement
+  f.page._queryCanvas = () => new Promise(resolve => { finishMeasurement = resolve })
+  f.page.onShow()
+  await f.page.onResize({ size: { windowWidth: 780, windowHeight: 390 } })
+  finishMeasurement({ width: 390, height: 780 })
+  await flush()
+  assert.deepEqual(f.sizes.at(-1), { width: 780, height: 390, pixelRatio: 1.5 })
+  assert.equal(f.frames.size, 1)
+  f.page.onUnload()
+})
+
 test('the title-free page follows screen orientation and can leave when opened directly', () => {
   const f = fixture({ canGoBack: false })
   assert.equal(pageConfig.navigationStyle, 'custom')
@@ -512,6 +575,35 @@ test('the title-free page follows screen orientation and can leave when opened d
   assert.match(markup, /<slider class="manor-sensitivity-slider" min="25" max="150" step="5"/)
   assert.match(markup, /id="manor-stick"[^>]*catchtouchstart="onStickStart"[^>]*catchtouchcancel="onStickCancel"/)
   for (const [, handler] of markup.matchAll(/(?:bind|catch)\w+="(\w+)"/g)) assert.equal(typeof f.page[handler], 'function', handler)
+})
+
+test('scene interactions share the right-side action area and the minimap background is translucent', () => {
+  const start = markup.indexOf('class="manor-context-actions"')
+  const end = markup.indexOf('class="manor-player-action-row"', start)
+  const interactions = markup.slice(start, end)
+  for (const handler of ['enterVilla', 'exitVilla', 'useRoomDoor', 'useElevator', 'openVehiclePanel']) {
+    assert.match(interactions, new RegExp('bindtap="' + handler + '"'))
+  }
+  assert.doesNotMatch(markup, /class="manor-door-prompt|class="manor-interior-bar/)
+  assert.match(styles, /\.manor-context-actions\s*\{[^}]*flex-wrap:\s*wrap;[^}]*gap:/)
+  assert.match(styles, /\.manor-minimap\s*\{[^}]*background:\s*rgba\(214, 231, 189, \.72\)/)
+})
+
+test('the pet panel only offers cleanup when loose poop can be collected', () => {
+  const f = fixture()
+  const state = { pets: [{ id: 'pet_1', name: '豆豆', waste: [{ id: 'pee_1', type: 'pee' }] }], selected: null }
+  f.page.data.selectedPetId = 'pet_1'
+  f.page._scene = { getPetUiState: () => state, getPetInteractionState: () => null }
+  f.page._refreshPetUi()
+  assert.equal(f.page.data.selectedPet.hasCleanableWaste, false)
+  assert.match(markup, /wx:if="\{\{selectedPet\.hasCleanableWaste\}\}"[^>]*bindtap="clearPetWaste"/)
+
+  state.pets[0].waste.push({ id: 'poop_vehicle', type: 'poop', vehicleId: 'car_1' })
+  f.page._refreshPetUi()
+  assert.equal(f.page.data.selectedPet.hasCleanableWaste, false)
+  state.pets[0].waste.push({ id: 'poop_1', type: 'poop' })
+  f.page._refreshPetUi()
+  assert.equal(f.page.data.selectedPet.hasCleanableWaste, true)
 })
 
 test('leaving the manor confirms once, then saves position before going back or redirecting', async () => {
