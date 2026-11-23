@@ -417,7 +417,7 @@ module.exports = function createService({
       if (!user?.roles?.includes('admin') || ['disabled', 'deleted'].includes(user.status) || !(await getAdminPermissionFlags(user, ['adminMall.listOrders']))['adminMall.listOrders']) {
         return { status: 'skipped', error: 'admin_mall_access_revoked', templateKey: message.templateKey }
       }
-      const order = (await db.collection('mall_orders').doc(message.orderId).get()).data
+      const order = (await db.collection('mall_orders').doc(message.orderId).get().catch(() => ({ data: null }))).data
       if (!order || order.paymentStatus !== 'paid' || order.status !== 'pending_ship') return { status: 'skipped', error: 'admin_mall_order_handled', templateKey: message.templateKey }
     }
     // Earlier versions queued acceptance at payment time, before assigning staff.
@@ -425,7 +425,7 @@ module.exports = function createService({
       return { status: 'skipped', error: 'legacy_order_not_accepted', templateKey: message.templateKey }
     }
     if (message.templateKey === 'upcomingServiceReminder' && (message.deliveryKey || '').startsWith('upcoming_service:')) {
-      const order = (await db.collection('orders').doc(message.orderId).get()).data
+      const order = (await db.collection('orders').doc(message.orderId).get().catch(() => ({ data: null }))).data
       const session = order && getQueuedReminderSession(order, message.deliveryKey)
       const parts = String(message.deliveryKey || '').split(':')
       const sessionIndex = Number(parts[3])
@@ -438,7 +438,7 @@ module.exports = function createService({
       }
     }
     if (message.templateKey === 'staffDirectOrder') {
-      const order = (await db.collection('orders').doc(message.orderId).get()).data
+      const order = (await db.collection('orders').doc(message.orderId).get().catch(() => ({ data: null }))).data
       const current = order && !order.adminDeletedAt && order.paymentStatus === 'paid' && (message.assignmentKind === 'request'
         ? order.status === 'paid' && !order.staffOpenid && order.publishMode === 'direct' && order.requestedStaffOpenid === message.openid && order.paymentNo === message.assignmentVersion
         : order.status === 'assigned' && order.staffOpenid === message.openid && order.assignmentNoticeRevision === message.assignmentVersion)

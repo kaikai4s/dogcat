@@ -86,7 +86,7 @@ module.exports = function createService({
         badgeTag: normalizeMemberBadgeTag(user.badgeTag) || normalizeMemberBadgeTag(matched.badgeTag) || `V${idx >= 0 ? idx + 1 : 1}`,
         nameColor: normalizeMemberNameColor(user.nameColor) || normalizeMemberNameColor(matched.nameColor),
         nameEffect: (user.nameEffect && normalizeMemberNameEffect(user.nameEffect) !== 'none') ? normalizeMemberNameEffect(user.nameEffect) : normalizeMemberNameEffect(matched.nameEffect),
-        badgeStyle: normalizeMemberBadgeStyle(user.badgeStyle) || normalizeMemberBadgeStyle(matched.badgeStyle),
+        badgeStyle: normalizeMemberBadgeStyle(matched.badgeStyle || user.badgeStyle),
         pointMultiplier: Math.max(Number(matched.pointMultiplier || 1), 1),
         description: safeText(matched.description).trim() || safeText(user.description).trim(),
         benefits: normalizeBenefits(matched.benefits)
@@ -100,7 +100,7 @@ module.exports = function createService({
       badgeTag: normalizeMemberBadgeTag(user.badgeTag) || (baselineLevel ? normalizeMemberBadgeTag(baselineLevel.badgeTag) : 'V1'),
       nameColor: normalizeMemberNameColor(user.nameColor) || (baselineLevel ? normalizeMemberNameColor(baselineLevel.nameColor) : ''),
       nameEffect: (user.nameEffect && normalizeMemberNameEffect(user.nameEffect) !== 'none') ? normalizeMemberNameEffect(user.nameEffect) : (baselineLevel ? normalizeMemberNameEffect(baselineLevel.nameEffect) : 'none'),
-      badgeStyle: normalizeMemberBadgeStyle(user.badgeStyle) || (baselineLevel ? normalizeMemberBadgeStyle(baselineLevel.badgeStyle) : 'gold'),
+      badgeStyle: normalizeMemberBadgeStyle((baselineLevel && baselineLevel.badgeStyle) || user.badgeStyle),
       pointMultiplier: 1,
       description: '',
       benefits: []
@@ -180,6 +180,10 @@ module.exports = function createService({
           data: {
             memberLevel: levelInfo.memberLevel,
             memberLevelName: levelInfo.memberLevelName,
+            badgeTag: levelInfo.badgeTag || '',
+            badgeStyle: levelInfo.badgeStyle || 'gold',
+            nameColor: levelInfo.nameColor || '',
+            nameEffect: levelInfo.nameEffect || 'none',
             updatedAt: time
           }
         })

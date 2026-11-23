@@ -8,6 +8,8 @@ const { cloneAvatarModel, disposeAvatarSkeletons } = require('./manor-avatar-clo
 const { createManorVehicle } = require('./manor-vehicle');
 const { createManorBuildView, RED_VILLA, COURTYARD, visualSpecs } = require('./manor-build-view');
 const { createManorPetManager } = require('./manor-pets');
+const { createManorTowerLayout } = require('./manor-tower-layout');
+const { createManorTowerDisplay } = require('./manor-tower-model');
 
 const MIN_DISTANCE = 23;
 const PLAYER_DISTANCE = 8.5;
@@ -40,6 +42,9 @@ const REMOTE_MODEL_LIMIT = 8;
 const REMOTE_CULL_INTERVAL = .25;
 const REMOTE_SNAP_DISTANCE_SQUARED = 32 ** 2;
 const FULL_TURN = Math.PI * 2;
+const TOWER_SITE = { width: 42, depth: 34, centerZ: 1, lift: .085 };
+const TOWER_BODY = { halfWidth: 15.6, halfDepth: 11.4, height: 58 };
+const TOWER_CAMERA_CLEARANCE = .21;
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const finite = Number.isFinite;
 function layoutError(message) {
@@ -193,7 +198,7 @@ function prepareLandscape(THREE, group, clock, { bridge, ground }) {
       if (data.grass === true) {
         const detailRange = data.detail === 'near' ? 122 : 210;
         grass.push({ mesh, center: sphere.center, range2: Math.pow(sphere.radius + detailRange, 2),
-          plot: data.grassPlotId, sourceVisible: mesh.visible });
+          plot: data.grassPlotId, radius: sphere.radius, sourceVisible: mesh.visible });
       }
     }
     mesh.receiveShadow = castsShadow || /sunlit meadow|sky-blue current|handlaid buff limestone|meadow grass|reference wildflowers/.test(display);
@@ -218,6 +223,37 @@ function prepareLandscape(THREE, group, clock, { bridge, ground }) {
   return grass;
 }
 
+// The existing meadow tiles also cover public space. Remove grass under the
+// new paving without hiding whole tiles (which would leave bare rectangles).
+function clearTowerTurf(grass, footprints) {
+  for (const { mesh, center, radius, plot } of grass) {
+    if (plot) continue;
+    const sites = footprints.filter(site => Math.abs(site.x - center.x) < site.width / 2 + radius &&
+      Math.abs(site.z - center.z) < site.depth / 2 + radius);
+    if (!sites.length) continue;
+    const { geometry, matrixWorld } = mesh;
+    const vertices = geometry.getAttribute('position'), index = geometry.getIndex();
+    if (!vertices || !index) continue;
+    const m = matrixWorld.elements;
+    function contains(site, vertex) {
+      const x = vertices.getX(vertex), y = vertices.getY(vertex), z = vertices.getZ(vertex);
+      return Math.abs(m[0] * x + m[4] * y + m[8] * z + m[12] - site.x) < site.width / 2 - .08 &&
+        Math.abs(m[2] * x + m[6] * y + m[10] * z + m[14] - site.z) < site.depth / 2 - .08;
+    }
+    let kept = 0;
+    for (let i = 0; i + 2 < index.count; i += 3) {
+      const a = index.getX(i), b = index.getX(i + 1), c = index.getX(i + 2);
+      if (sites.some(site => contains(site, a) && contains(site, b) && contains(site, c))) continue;
+      if (i !== kept) { index.setX(kept, a); index.setX(kept + 1, b); index.setX(kept + 2, c); }
+      kept += 3;
+    }
+    if (kept < index.count) {
+      geometry.setDrawRange(0, kept);
+      index.needsUpdate = true;
+    }
+  }
+}
+
 function createManorScene({ THREE, renderer, disposeModel }) {
   const scene = new THREE.Scene();
   const buildings = createManorBuildView({ THREE, scene, disposeModel });
@@ -229,6 +265,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   const offset = new THREE.Vector3();
   const followPoint = new THREE.Vector3();
   const cameraRay = new THREE.Raycaster();
+  const towerRay = new THREE.Ray();
   const cutawayHits = new Set();
   const cameraHit = new THREE.Vector3();
   const interiorDirection = new THREE.Vector3();
@@ -261,6 +298,9 @@ function createManorScene({ THREE, renderer, disposeModel }) {
 
   let config;
   let landscape;
+  let highRises;
+  let towerBounds = [];
+  let towerCameraDistance;
   let villa;
   let villaAnchor;
   let villaBounds;
@@ -1162,12 +1202,13 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   }
 
   function refreshOutdoorBounds(relocate = false) {
-    outdoorBounds = villaBounds ? [villaBounds, ...buildings.collision] : buildings.collision;
+    outdoorBounds = [...towerBounds, ...buildings.collision];
+    if (villaBounds) outdoorBounds.push(villaBounds);
     const position = player?.position;
     if (relocate && !isInsideBuilding() && !courtyardPassage && !vehicle?.busy() && position &&
         navigation.sample(position.x, position.z, outdoorBounds) === null) {
       const point = navigation.nearestWalkable(position.x, position.z, outdoorBounds, 24);
-      if (point ? player.place(point.x, point.z, player.facing, point.y) : player.avoidVilla()) {
+      if ((point && player.place(point.x, point.z, player.facing, point.y)) || player.avoidVilla()) {
         if (view === 'player') trackPlayer(true);
       }
     }
@@ -1300,6 +1341,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     const next = validateLayout(layout);
     const nextGrass = prepareLandscape(THREE, group, clock, next);
     const nextNavigation = createManorNavigation({ THREE, landscape: group, config: next });
+    releaseHighRises();
     releaseCourtyards();
     vehicle?.dispose();
     vehicle = null;
@@ -1331,6 +1373,47 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     view = 'default';
     defaultView();
     return config;
+  }
+
+  function releaseHighRises() {
+    if (!highRises) return;
+    highRises.removeFromParent();
+    disposeModel(highRises);
+    highRises = null;
+    towerBounds = [];
+    towerCameraDistance = undefined;
+  }
+
+  function showHighRises(model, communityId) {
+    if (disposed || !landscape || highRises || !model?.isObject3D || model.parent) return false;
+    const footprints = createManorTowerLayout({ config, navigation, communityId, footprint: TOWER_SITE });
+    if (!footprints.length) return false;
+    const display = createManorTowerDisplay(THREE, model);
+    const group = new THREE.Group();
+    group.name = 'Manor high-rise neighborhood';
+    const body = new THREE.Box3(new THREE.Vector3(-TOWER_BODY.halfWidth, 0, -TOWER_BODY.halfDepth),
+      new THREE.Vector3(TOWER_BODY.halfWidth, TOWER_BODY.height, TOWER_BODY.halfDepth));
+    const bounds = footprints.map(({ id, x, y, z, yaw }, i) => {
+      const tower = new THREE.Group();
+      tower.name = 'Manor high-rise ' + id;
+      // Site runs from -16 to +18 along Z, so its center is in front of
+      // the GLB root. Keep the entry pavement just above the existing grass.
+      tower.position.set(x - Math.sin(yaw) * TOWER_SITE.centerZ, y + TOWER_SITE.lift, z - Math.cos(yaw) * TOWER_SITE.centerZ);
+      tower.rotation.y = yaw;
+      tower.updateMatrix();
+      tower.add(i === 0 ? display : display.clone(true));
+      group.add(tower);
+      return body.clone().applyMatrix4(tower.matrix);
+    });
+    highRises = group;
+    towerBounds = bounds;
+    scene.add(group);
+    clearTowerTurf(grass, footprints);
+    refreshOutdoorBounds();
+    if (vehicle?.revalidateParking() && view === 'player') trackPlayer(true);
+    refreshOutdoorBounds(true);
+    pets.repositionBlocked();
+    return footprints;
   }
 
   function showVilla(group) {
@@ -1548,7 +1631,26 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     return allowed - next > .01;
   }
 
-  function interiorCameraFov() {
+  function keepCameraOutsideTowers(dt) {
+    towerRay.origin.copy(target);
+    const desired = towerRay.direction.subVectors(camera.position, target).length();
+    if (desired < .05) return false;
+    towerRay.direction.divideScalar(desired);
+    let allowed = desired;
+    for (const bounds of towerBounds) {
+      if (towerRay.intersectBox(bounds, cameraHit)) {
+        allowed = Math.min(allowed, Math.max(.05, target.distanceTo(cameraHit) - TOWER_CAMERA_CLEARANCE));
+      }
+    }
+    // Pull in immediately to clear a facade and ease back out after passing it.
+    const last = towerCameraDistance ?? allowed;
+    const next = dt > 0 && last < allowed - .01 ? last + (allowed - last) * (1 - Math.exp(-14 * dt)) : allowed;
+    towerCameraDistance = next;
+    towerRay.at(next, camera.position);
+    return allowed - next > .01;
+  }
+
+  function closeCameraFov() {
     if (!player?.position || camera.position.distanceToSquared(target) >= distance * distance - .01) return CAMERA_FOV;
     camera.updateMatrixWorld();
     const { x, y, z } = player.position;
@@ -2092,8 +2194,12 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   }
 
   function updateCamera(dt) {
-    if (isInsideBuilding()) refreshMovingOccluders();
+    const indoors = isInsideBuilding();
+    if (indoors) refreshMovingOccluders();
     const eyeView = isFirstPersonView();
+    const towerView = !eyeView && !indoors && view === 'player' && towerBounds.length > 0;
+    if (!towerView) towerCameraDistance = undefined;
+    else if (towerBounds.some(bounds => bounds.containsPoint(target))) trackPlayer(true);
     const eyeHeight = eyeView ? player.height * FIRST_PERSON_EYE_HEIGHT + player.jumpHeight : 0;
     const cockpit = eyeView ? vehicle?.viewpoint(eyeHeight) : null;
     let releasingCamera = false;
@@ -2120,15 +2226,18 @@ function createManorScene({ THREE, renderer, disposeModel }) {
         ? (buildingNavigation.sample(camera.position.x, camera.position.z, null, player?.position?.y) ?? player?.position?.y ?? config.ground)
         : (navigation.sample(camera.position.x, camera.position.z, outdoorBounds) ?? config.ground);
       camera.position.y = Math.max(camera.position.y, floor + CAMERA_GROUND_CLEARANCE);
-      releasingCamera = isInsideBuilding() && view === 'player' && interiorOccluders.length ? keepCameraInside(dt) : false;
+      const desired = camera.position.distanceToSquared(target);
+      if (towerView) releasingCamera = keepCameraOutsideTowers(dt);
+      else if (indoors && view === 'player' && interiorOccluders.length) releasingCamera = keepCameraInside(dt);
       camera.lookAt(target);
       // Keep the orbit above ground while tilting the lens toward the sky.
       if (elevation < 0) {
         const floorPitch = Math.atan2(camera.position.y - target.y, distance);
         camera.rotateX(-elevation + floorPitch * elevation / MIN_ELEVATION);
       }
-      near = isInsideBuilding() ? 0.045 : clamp(distance / 125, 0.25, 25);
-      fov = isInsideBuilding() ? interiorCameraFov() : CAMERA_FOV;
+      const close = indoors || (towerView && camera.position.distanceToSquared(target) < desired - .01);
+      near = close ? .045 : clamp(distance / 125, .25, 25);
+      fov = close ? closeCameraFov() : CAMERA_FOV;
     }
     updateInteriorCutaway(eyeView);
     if (camera.near !== near || camera.fov !== fov) {
@@ -2149,6 +2258,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
   function dispose() {
     if (disposed) return;
     disposed = true;
+    releaseHighRises();
     releaseCourtyards();
     vehicle?.dispose();
     vehicle = null;
@@ -2170,7 +2280,7 @@ function createManorScene({ THREE, renderer, disposeModel }) {
     sun.shadow.dispose();
   }
 
-  return { resize, showLandscape, showCharacter, showVilla, setVillaInteriorMetadata, getVillaEntryState,
+  return { resize, showLandscape, showHighRises, showCharacter, showVilla, setVillaInteriorMetadata, getVillaEntryState,
     enterInterior, exitInterior, getElevatorState, useElevator, getRoomDoor, interactRoomDoor, getRestState, interactRest, canJumpPlayer, jumpPlayer, setPlayerInput, pan, orbit, zoom,
     enterMapView, exitMapView, getMapPlayerPosition, getPlayerSyncState, placeCharacterAt,
     getPlayerCheckpoint, restorePlayerPosition,

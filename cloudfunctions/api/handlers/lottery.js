@@ -73,9 +73,10 @@ module.exports = function createHandler(context) {
     }
     if (action === 'listMyRecords') {
       const user = await getUser(openid)
-      const pageSize = Math.min(Math.max(Math.round(Number(data.pageSize || 20)), 1), 50)
+      const rawPageSize = Number(data && data.pageSize)
+      const pageSize = Math.min(Math.max(Math.round(Number.isFinite(rawPageSize) ? rawPageSize : 20), 1), 50)
       const records = await db.collection('lottery_records')
-        .where({ openid: user.openid || openid })
+        .where({ openid: user.openid || openid, status: 'completed' })
         .orderBy('createdAt', 'desc')
         .limit(pageSize)
         .get()
@@ -174,16 +175,22 @@ module.exports = function createHandler(context) {
           }
 
           // 按概率随机抽取
-          const totalProb = availablePrizes.reduce((sum, p) => sum + Number(p.probability || 0), 0)
-          const rand = Math.random() * (totalProb > 0 ? totalProb : availablePrizes.length)
-          let cumulative = 0
+          const positivePrizes = availablePrizes.filter((p) => Number(p.probability || 0) > 0)
           let selected = availablePrizes[availablePrizes.length - 1]
-          for (let i = 0; i < availablePrizes.length; i++) {
-            cumulative += Number(availablePrizes[i].probability || 0)
-            if (rand <= cumulative) {
-              selected = availablePrizes[i]
-              break
+          if (positivePrizes.length > 0) {
+            const totalProb = positivePrizes.reduce((sum, p) => sum + Number(p.probability || 0), 0)
+            const rand = Math.random() * totalProb
+            let cumulative = 0
+            for (let i = 0; i < positivePrizes.length; i++) {
+              cumulative += Number(positivePrizes[i].probability || 0)
+              if (rand <= cumulative) {
+                selected = positivePrizes[i]
+                break
+              }
             }
+          } else {
+            const randIndex = Math.floor(Math.random() * availablePrizes.length)
+            selected = availablePrizes[randIndex]
           }
 
           // 定位库存扣减位置（优先按稳定奖品 id 匹配，fallback 按原始数组索引）

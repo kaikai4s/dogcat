@@ -104,6 +104,8 @@
             style="left:{{item.x}}%;top:{{item.y}}%;width:{{item.width}}%;height:{{item.height}}%"></view>
           <view wx:for="{{minimap.crossings}}" wx:key="id" class="manor-minimap-mark manor-minimap-bridge"
             style="left:{{item.x}}%;top:{{item.y}}%;width:{{item.width}}%;height:{{item.height}}%;transform:translate(-50%,-50%) rotate({{item.angle}}deg)"></view>
+          <view wx:for="{{minimap.towers}}" wx:key="id" class="manor-minimap-mark manor-minimap-tower"
+            style="left:{{item.x}}%;top:{{item.y}}%;width:{{item.width}}%;height:{{item.height}}%"></view>
           <view wx:for="{{mapNeighbors}}" wx:key="id" class="manor-minimap-mark manor-minimap-neighbor"
             style="left:{{item.x}}%;top:{{item.y}}%"></view>
           <view wx:if="{{mapPlayer}}" class="manor-minimap-mark manor-minimap-player"

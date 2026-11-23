@@ -526,6 +526,7 @@ typeof Page === 'function' ? Page({
     securityCoverageText: '',
     securityCoverageOk: true,
     uploadingKeyImage: false,
+    couponChoiceMode: 'auto',
     selectedCouponId: '',
     selectedCoupon: null,
     selectedPet: null,
@@ -768,12 +769,12 @@ typeof Page === 'function' ? Page({
     if (!selected) return
     wx.removeStorageSync(SELECTED_COUPON_KEY)
     if (selected.clear) {
-      this.setData({ selectedCouponId: '', selectedCoupon: null }, () => {
+      this.setData({ couponChoiceMode: 'none', selectedCouponId: '', selectedCoupon: null }, () => {
         this.triggerAutoQuote()
       })
       return
     }
-    this.setData({ selectedCouponId: selected._id, selectedCoupon: selected }, () => {
+    this.setData({ couponChoiceMode: 'manual', selectedCouponId: selected._id, selectedCoupon: selected }, () => {
       this.triggerAutoQuote()
     })
   },
@@ -930,7 +931,7 @@ typeof Page === 'function' ? Page({
   },
 
   input(e) {
-    this.setData({ ['form.' + e.currentTarget.dataset.field]: e.detail.value, quote: null })
+    this.setData({ ['form.' + e.currentTarget.dataset.field]: e.detail.value })
   },
 
   choosePublishMode(e) {
@@ -1131,7 +1132,12 @@ typeof Page === 'function' ? Page({
       .then((template) => {
         if (this._closed || this.data.creating || seq !== this._addressSeq) return
         const serviceTypes = ensureVisitFeeServiceTypes(template.serviceTypes || [template.serviceType])
-        const petIds = normalizeSelectedPetIds(template.petIds, template.petId)
+        const rawPetIds = normalizeSelectedPetIds(template.petIds, template.petId)
+        const petIds = this.data.petsLoaded && Array.isArray(this.data.pets) && this.data.pets.length
+          ? (rawPetIds.filter((id) => this.data.pets.some((p) => p._id === id)).length
+              ? rawPetIds.filter((id) => this.data.pets.some((p) => p._id === id))
+              : [this.data.pets[0]._id].filter(Boolean))
+          : rawPetIds
         const serviceOptionsWithSelected = markSelected(this.data.serviceOptions, serviceTypes)
         const update = {
           ['form.sourceOrderId']: template.sourceOrderId,
@@ -2207,8 +2213,8 @@ typeof Page === 'function' ? Page({
       serviceSessions,
       sessionCount: serviceSessions.length,
       orderHomeSecurity,
-      couponId: this.data.groupBuyMode ? '' : this.data.selectedCouponId,
-      autoApplyCoupon: !this.data.groupBuyMode && !this.data.selectedCouponId
+      couponId: this.data.groupBuyMode ? '' : (this.data.couponChoiceMode === 'manual' ? (this.data.selectedCouponId || '') : ''),
+      autoApplyCoupon: !this.data.groupBuyMode && this.data.couponChoiceMode === 'auto'
     }
   },
 
@@ -2331,9 +2337,12 @@ typeof Page === 'function' ? Page({
           hasPetTimeExtraFee
         }
 
-        if (quote.coupon && !this.data.selectedCouponId) {
+        if (quote.coupon) {
           nextData.selectedCouponId = quote.coupon.couponId
           nextData.selectedCoupon = quote.coupon
+        } else if (this.data.couponChoiceMode === 'auto') {
+          nextData.selectedCouponId = ''
+          nextData.selectedCoupon = null
         }
 
         this.setData(nextData)
@@ -2342,6 +2351,12 @@ typeof Page === 'function' ? Page({
       .catch((err) => {
         if (request !== this._quoteRequest) return null
         this.quotingPrice = false
+        if (this.data.couponChoiceMode === 'manual' && this.data.selectedCouponId) {
+          this.setData({ couponChoiceMode: 'auto', selectedCouponId: '', selectedCoupon: null }, () => {
+            this.calculatePrice({ silent: true })
+          })
+          return null
+        }
         this.setData({ quote: null, displayPriceDigits: getPriceDigitsArray(0) })
         if (!silent || showToast) {
           showError(err)

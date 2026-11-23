@@ -18,6 +18,8 @@ Page({
     total: 0,
     hasMore: false,
     loading: false,
+    granting: false,
+    sendingRetroMail: false,
     form: { openid: '', delta: '', reason: '' },
     filterOpenid: '',
     memberLevels: [],
@@ -133,25 +135,33 @@ Page({
   },
 
   grant() {
+    if (this.data.granting) return
     const { openid, delta, reason } = this.data.form
     if (!openid) return wx.showToast({ title: '请填写用户 openid', icon: 'none' })
     const deltaNum = Math.round(Number(delta))
     if (!deltaNum) return wx.showToast({ title: '积分变动不能为 0', icon: 'none' })
-    callFunction('admin', 'grantPoints', { openid, delta: deltaNum, reason })
+    this.setData({ granting: true })
+    const clientRequestId = `admin_grant_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    callFunction('admin', 'grantPoints', { openid, delta: deltaNum, reason, clientRequestId })
       .then(() => {
         wx.showToast({ title: '已操作' })
         this.setData({ form: { openid: '', delta: '', reason: '' } })
         this.load(true)
       })
       .catch(showError)
+      .finally(() => {
+        this.setData({ granting: false })
+      })
   },
 
   sendRetroCardMail() {
+    if (this.data.sendingRetroMail) return
     const form = this.data.retroMailForm
     const count = Math.round(Number(form.count || 0))
     if (!count) return wx.showToast({ title: '请填写补签卡数量', icon: 'none' })
     if (form.targetType === 'openid_list' && !String(form.openids || '').trim()) return wx.showToast({ title: '请填写用户 openid', icon: 'none' })
     if (form.targetType === 'member_level' && !form.targetLevelIds.length) return wx.showToast({ title: '请选择会员等级', icon: 'none' })
+    this.setData({ sendingRetroMail: true })
     callFunction('admin', 'publishRetroCardMail', { ...form, count })
       .then((res) => {
         wx.showToast({ title: `已发送 ${res.issued || 0} 封`, icon: 'none' })
@@ -163,5 +173,8 @@ Page({
         })
       })
       .catch(showError)
+      .finally(() => {
+        this.setData({ sendingRetroMail: false })
+      })
   }
 })

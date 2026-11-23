@@ -40,19 +40,26 @@ module.exports = function createService({
     const extraPetRule = key === VISIT_FEE_SERVICE_KEY ? 'none' : normalizeExtraPetRule(item.extraPetRule, key)
     const enabled = item.enabled !== false
     const showOnHome = key !== VISIT_FEE_SERVICE_KEY && enabled && item.showOnHome === true
-    const price = Math.max(Number(item.price || 0), 0)
-    const extraPetFee = Math.max(Number(item.extraPetFee !== undefined ? item.extraPetFee : defaultExtraPetFeeForService(key)), 0)
+    const priceNum = Number(item.price || 0)
+    const price = Number.isFinite(priceNum) ? Math.max(priceNum, 0) : 0
+    const defaultExtra = defaultExtraPetFeeForService(key)
+    const extraPetFeeNum = Number(item.extraPetFee !== undefined ? item.extraPetFee : defaultExtra)
+    const extraPetFee = Number.isFinite(extraPetFeeNum) ? Math.max(extraPetFeeNum, 0) : defaultExtra
     const extraHalfHourFeeValue = Number(item.extraHalfHourFee || 0)
     const extraHalfHourFee = Number.isFinite(extraHalfHourFeeValue) ? Math.max(extraHalfHourFeeValue, 0) : 0
     const internExtraHalfHourFeeValue = Number(item.internExtraHalfHourFee !== undefined ? item.internExtraHalfHourFee : extraHalfHourFee)
     const internExtraHalfHourFee = Number.isFinite(internExtraHalfHourFeeValue) ? Math.max(internExtraHalfHourFeeValue, 0) : extraHalfHourFee
+    const internPriceNum = Number(item.internPrice !== undefined ? item.internPrice : price)
+    const internPrice = Number.isFinite(internPriceNum) ? Math.max(internPriceNum, 0) : price
+    const internExtraPetFeeNum = Number(item.internExtraPetFee !== undefined ? item.internExtraPetFee : extraPetFee)
+    const internExtraPetFee = Number.isFinite(internExtraPetFeeNum) ? Math.max(internExtraPetFeeNum, 0) : extraPetFee
     return {
       key,
       label: String(item.label || '').trim(),
       price,
-      internPrice: Math.max(Number(item.internPrice !== undefined ? item.internPrice : price), 0),
+      internPrice,
       extraPetFee,
-      internExtraPetFee: Math.max(Number(item.internExtraPetFee !== undefined ? item.internExtraPetFee : extraPetFee), 0),
+      internExtraPetFee,
       extraPetRule,
       extraHalfHourFee: ['walk', 'play'].includes(key) ? extraHalfHourFee : 0,
       internExtraHalfHourFee: ['walk', 'play'].includes(key) ? internExtraHalfHourFee : 0,

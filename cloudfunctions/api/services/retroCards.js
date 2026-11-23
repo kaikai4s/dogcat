@@ -40,7 +40,7 @@ module.exports = function createService({
         try { existing = (await tx.collection('retro_card_logs').doc(id).get()).data } catch (error) {
           if (!String(error.message || error.errMsg).includes(`document with _id ${id} does not exist`)) throw error
         }
-        if (!existing) {
+        if (!existing && !options.idempotencyKey) {
           const legacy = (await db.collection('retro_card_logs').where({ openid, sourceType, sourceId }).limit(1).get()).data[0]
           if (legacy) existing = (await tx.collection('retro_card_logs').doc(legacy._id).get()).data
         }

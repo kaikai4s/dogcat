@@ -54,7 +54,7 @@ module.exports = function createService({
       }
 
       // 兼容历史未记录 idempotencyKey 但有 sourceType 与 sourceId 的记录
-      if (sourceType && sourceId && sourceType !== 'admin_grant') {
+      if (!options.idempotencyKey && !options.businessKey && sourceType && sourceId && sourceType !== 'admin_grant') {
         const legacyLog = (await db.collection('point_logs').where({
           openid: targetOpenid,
           sourceType,

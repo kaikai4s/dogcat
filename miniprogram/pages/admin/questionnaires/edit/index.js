@@ -79,7 +79,7 @@ function buildPayload(form) {
       title: q.title,
       required: q.required !== false,
       options: String(q.optionsText || '').split('\n').map(item => item.trim()).filter(Boolean),
-      max: Number(q.max || 5),
+      max: Number(q.max) === 3 || Number(q.max) === 10 ? Number(q.max) : 5,
       placeholder: q.placeholder || ''
     }))
   }
@@ -155,6 +155,13 @@ Page({
   toggleQuestion(e) {
     const index = e.currentTarget.dataset.index
     this.setData({ [`form.questions[${index}].required`]: e.detail.value })
+  },
+
+  changeRatingMax(e) {
+    const index = e.currentTarget.dataset.index
+    const mapping = [3, 5, 10]
+    const chosenMax = mapping[Number(e.detail.value)] || 5
+    this.setData({ [`form.questions[${index}].max`]: chosenMax })
   },
 
   changeType(e) {

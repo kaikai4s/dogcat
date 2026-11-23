@@ -45,7 +45,7 @@ Page({
 
   load() {
     this.setData({ loading: true })
-    callFunction('rewardMail', 'listMyMails')
+    return callFunction('rewardMail', 'listMyMails')
       .then((list) => {
         this.setData({
           mails: (list || []).map((item) => ({

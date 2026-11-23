@@ -46,15 +46,19 @@ Page({
   onShow() {
     ensureLogin({ content: '登录后可参与抽奖。' })
       .then(() => {
-        this.load()
+        this.load(true)
         this.loadRecords()
       })
       .catch(() => {})
   },
 
-  load() {
+  load(preserveResult = false) {
     callFunction('lottery', 'getActiveActivity')
-      .then((activity) => this.setData({ activity, result: null }))
+      .then((activity) => {
+        const nextData = { activity }
+        if (!preserveResult) nextData.result = null
+        this.setData(nextData)
+      })
       .catch(showError)
   },
 
@@ -100,7 +104,7 @@ Page({
             confirmColor: '#e05c8b'
           })
         }
-        this.load()
+        this.load(true)
         this.loadRecords()
       })
       .catch((err) => {

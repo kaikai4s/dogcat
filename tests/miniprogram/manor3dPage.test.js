@@ -19,7 +19,7 @@ const touchEvent = (points, changed = []) => {
 function fixture({ envId = ENV_MAP.trial, read = key => key === 'layout' ? layout : key,
   decode = key => ({ key }), savedCharacter, savedSensitivity, canGoBack = true, entryTicket, communityScene,
   placeResult = true, syncStart = null, buildPlots = [], buildGround, saveBuilding,
-  checkpointStorage = new Map(), asyncPositionWrites, vehicleSyncState = null, petModels = false } = {}) {
+  checkpointStorage = new Map(), asyncPositionWrites, vehicleSyncState = null, petModels = false, showHighRises } = {}) {
   let definition, nextFrame = 0, now = 0, lost = false, pixelRatio = 1
   let sensitivityStorage = savedSensitivity
   let canvasSize = { width: 390, height: 780 }
@@ -72,6 +72,7 @@ function fixture({ envId = ENV_MAP.trial, read = key => key === 'layout' ? layou
     '../utils/manor-scene': { createManorScene: () => ({
       resize(width, height) { sizes.push({ width, height, pixelRatio }) }, showLandscape(model) { events.push('attach:' + model.key) },
       showVilla(model) { events.push('attach:' + model.key) }, render() { events.push('draw'); drawSizes.push(sizes.at(-1)) },
+      showHighRises,
       showCharacter(model, type) { playerPosition ??= { x: 0, z: 0 }; events.push('attach:' + model.key + (type ? ':' + type : '')) },
       isInsideVilla: false,
       placeCharacterAt(position) { placements.push(position); if (placeResult) playerPosition = position; return placeResult },
@@ -229,6 +230,75 @@ test('the terrain and player are ready before the villa download, and a villa re
   f.page.onUnload()
   assert.equal(f.frames.size, 0)
   assert.deepEqual(f.events.slice(-2), ['disposeScene', 'disposeRenderer'])
+})
+
+test('the neighborhood uses its canonical scene ID and attaches the optional tower asset only once', async () => {
+  const block = { id: 'tower-1', x: -60, z: 120, width: 42, depth: 34 }
+  const attached = []
+  let finishEntry
+  const f = fixture({
+    entryTicket: { community: { name: '青溪花园' }, createdAt: 0 },
+    communityScene: () => new Promise(resolve => { finishEntry = resolve }),
+    showHighRises(model, id) { attached.push([model.key, id]); return [block] }
+  })
+  f.mount({ entryKey: 'abc' })
+  await flush()
+  assert.equal(f.page.data.status, 'ready')
+  assert.equal(f.events.includes('read:highRise'), false)
+  finishEntry({ session: 'visitor-token', sceneId: 'neighborhood-key', playerId: 'visitor', hasAvatar: false })
+  await flush()
+  assert.deepEqual(attached, [['highRise', 'neighborhood-key']])
+  assert.equal(f.events.filter(event => event === 'dispose:highRise').length, 1)
+  assert.ok(f.updates.some(data => data['minimap.towers']?.[0].x === 45))
+  f.page.onHide()
+  f.page.onShow()
+  await flush()
+  assert.equal(f.events.filter(event => event === 'read:highRise').length, 1)
+  f.page.onUnload()
+})
+
+test('a missing tower GLB leaves normal manor entry and villa loading unaffected', async () => {
+  let attempts = 0
+  const f = fixture({
+    read(key) {
+      if (key === 'highRise' && ++attempts === 1) throw new Error('云存储文件不存在')
+      return key === 'layout' ? layout : key
+    },
+    showHighRises() { return [{ id: 'test-tower', x: 120, z: 60, width: 42, depth: 34 }] }
+  })
+  f.mount()
+  await flush()
+  assert.equal(f.page.data.status, 'ready')
+  assert.equal(f.page.data.villaStatus, 'ready')
+  assert.equal(f.page.data.characterStatus, 'ready')
+  assert.deepEqual(f.page.data.minimap.towers, [])
+  assert.equal(f.frames.size, 1)
+  f.page.onHide()
+  f.page.onShow()
+  await flush()
+  assert.equal(attempts, 2)
+  assert.ok(f.updates.some(data => data['minimap.towers']?.[0].id === 'test-tower'))
+  f.page.onUnload()
+})
+
+test('a tower decode that finishes after leaving is disposed without attaching to the scene', async () => {
+  let resolveTower, towerOptions
+  const f = fixture({
+    decode(key, options) {
+      if (key !== 'highRise') return { key }
+      towerOptions = options
+      return new Promise(resolve => { resolveTower = resolve })
+    },
+    showHighRises() { assert.fail('stale tower model was attached') }
+  })
+  f.mount()
+  await flush()
+  f.page.onUnload()
+  assert.equal(towerOptions.isCancelled(), true)
+  resolveTower({ key: 'stale-tower' })
+  await flush()
+  assert.equal(f.events.filter(event => event === 'dispose:stale-tower').length, 1)
+  assert.equal(f.updates.some(data => data['minimap.towers']), false)
 })
 
 test('resuming a terrain load after rotating uses the new canvas size on its first draw', async () => {

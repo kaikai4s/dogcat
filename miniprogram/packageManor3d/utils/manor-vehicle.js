@@ -50,13 +50,22 @@ function validParking(sample, candidate) {
   return { x: candidate.x, y, z: candidate.z, yaw: candidate.yaw }
 }
 
-function parkingSpot(sample, spawn) {
+function blocksOnFoot(origin, yaw, x, z) {
+  const dx = x - origin.x, dz = z - origin.z
+  if (Math.abs(dx) > 3.3 || Math.abs(dz) > 3.3) return false
+  const s = Math.sin(yaw), c = Math.cos(yaw)
+  const localX = dx * c - dz * s, localZ = dx * s + dz * c
+  return Math.abs(localX) < HALF_WIDTH + .29 && localZ > REAR - .29 && localZ < FRONT + .29
+}
+
+function parkingSpot(sample, spawn, keepClearOf) {
   for (const radius of [5, 6, 8, 11, 15, 22]) {
     for (let i = 0; i < 16; i++) {
       const angle = i * Math.PI / 8
       const yaw = angle + Math.PI / 2
-      const { x, z } = worldPoint(spawn, angle, 0, radius)
-      const parked = validParking(sample, { x, z, yaw })
+      const point = worldPoint(spawn, angle, 0, radius)
+      if (keepClearOf && blocksOnFoot(point, yaw, keepClearOf.x, keepClearOf.z)) continue
+      const parked = validParking(sample, { ...point, yaw })
       if (parked) return parked
     }
   }
@@ -71,11 +80,13 @@ function createManorVehicle({ THREE, model, scene, player, sample, spawn, saved,
   if (!doors.L || !doors.R || !wheel || [...steering, ...tires].some(node => !node)) {
     throw new Error('Copper GT 缺少车门、车轮或方向盘节点')
   }
-  const parked = validParking(sample, {
+  const savedParking = {
     x: saved?.position3d?.x,
     z: saved?.position3d?.z,
     yaw: saved?.yaw
-  }) || parkingSpot(sample, spawn)
+  }
+  const parked = validParking(sample, savedParking) ||
+    ([savedParking.x, savedParking.z].every(Number.isFinite) && parkingSpot(sample, savedParking)) || parkingSpot(sample, spawn)
   if (!parked) throw new Error('附近没有适合停放 Copper GT 的位置')
 
   const anchor = new THREE.Group()
@@ -103,11 +114,7 @@ function createManorVehicle({ THREE, model, scene, player, sample, spawn, saved,
   const busy = () => !!(seat || passage)
 
   function blocks(x, z) {
-    const dx = x - anchor.position.x, dz = z - anchor.position.z
-    if (Math.abs(dx) > 3.3 || Math.abs(dz) > 3.3) return false
-    const s = Math.sin(anchor.rotation.y), c = Math.cos(anchor.rotation.y)
-    const localX = dx * c - dz * s, localZ = dx * s + dz * c
-    return Math.abs(localX) < HALF_WIDTH + .29 && localZ > REAR - .29 && localZ < FRONT + .29
+    return blocksOnFoot(anchor.position, anchor.rotation.y, x, z)
   }
 
   function clear(a, b) {
@@ -219,6 +226,12 @@ function createManorVehicle({ THREE, model, scene, player, sample, spawn, saved,
     player.updateTransport(dt, p.x, p.y, p.z, yaw, motion)
   }
 
+  function poseSeat(dt) {
+    pose(dt, seatPoint(seat), anchor.rotation.y, {
+      action: seat.id === 'driver' ? 'drive' : 'seated', steering: steer, wheel, seatBlend: seatBlend(seat, 1)
+    })
+  }
+
   function handle(selected, inside) {
     return doors[selected.door].localToWorld(new THREE.Vector3(
       selected.side * (inside ? -.09 : .10), inside ? .15 : .175, inside ? -.44 : -1.20))
@@ -286,11 +299,8 @@ function createManorVehicle({ THREE, model, scene, player, sample, spawn, saved,
     if (dt <= 0) return true
     if (passage) updatePassage(dt)
     else {
-      const driver = seat.id === 'driver'
-      if (driver) updateDriving(dt)
-      pose(dt, seatPoint(seat), anchor.rotation.y, {
-        action: driver ? 'drive' : 'seated', steering: steer, wheel, seatBlend: seatBlend(seat, 1)
-      })
+      if (seat.id === 'driver') updateDriving(dt)
+      poseSeat(dt)
     }
     return true
   }
@@ -357,6 +367,32 @@ function createManorVehicle({ THREE, model, scene, player, sample, spawn, saved,
     return true
   }
 
+  function revalidateParking() {
+    const { x, z } = anchor.position
+    if (validParking(sample, { x, z, yaw: anchor.rotation.y })) {
+      if (passage?.phase !== 'walk') return false
+      const start = player.position
+      // A newly loaded building can cut off the old route even when the car is clear.
+      const route = Number.isFinite(sample(start.x, start.z)) && routeTo(start, passage.outside)
+      if (route) passage.route = route
+      else passage = null
+      return !route
+    }
+    const keepClearOf = seat ? null : player.position
+    const parked = parkingSpot(sample, { x, z }, keepClearOf) || parkingSpot(sample, spawn, keepClearOf)
+    if (!parked) return false
+    if (passage) {
+      doors[passage.selected.door].rotation.y = 0
+      passage = null
+    }
+    clearInput()
+    anchor.position.set(parked.x, parked.y, parked.z)
+    anchor.rotation.y = parked.yaw
+    if (seat) poseSeat(0)
+    onMove()
+    return true
+  }
+
   function clearInput() {
     inputX = inputY = 0
     speed = 0
@@ -370,7 +406,7 @@ function createManorVehicle({ THREE, model, scene, player, sample, spawn, saved,
   }
 
   return { blocks, busy, enter, exit, setInput, brake, update, state, viewpoint, checkpoint, syncState,
-    restore, clearInput, dispose }
+    restore, revalidateParking, clearInput, dispose }
 }
 
 module.exports = { createManorVehicle }

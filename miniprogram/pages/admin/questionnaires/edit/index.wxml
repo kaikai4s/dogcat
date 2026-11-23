@@ -201,7 +201,7 @@
     <!-- 评分题最高分 -->
     <view wx:if="{{item.type === 'rating'}}" class="form-item">
       <view class="form-label">最高分级</view>
-      <picker mode="selector" range="{{['3分制', '5分制 (推荐)', '10分制']}}" value="{{item.max === 10 ? 2 : (item.max === 3 ? 0 : 1)}}" data-index="{{index}}" bindchange="inputQuestion" data-field="max">
+      <picker mode="selector" range="{{['3分制', '5分制 (推荐)', '10分制']}}" value="{{item.max === 10 ? 2 : (item.max === 3 ? 0 : 1)}}" data-index="{{index}}" bindchange="changeRatingMax">
         <view class="picker-box">
           <text class="picker-value">{{item.max || 5}} 分制</text>
           <text class="remix-icon ri-arrow-down-s-line picker-arrow"></text>

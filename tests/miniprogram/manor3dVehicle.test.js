@@ -131,3 +131,66 @@ test('the owner vehicle restores its saved coordinates and reports a syncable po
   assert.equal(anchor.position.x, 60)
   vehicle.dispose()
 })
+
+test('a late building keeps the passenger seated while moving their blocked door to a safe parking spot', () => {
+  let built = false
+  const sample = x => built && x <= 0 ? null : 0
+  const saved = { position3d: { x: 1.45, y: 0, z: 0 }, yaw: 0 }
+  const { vehicle, player, tick } = setup(sample, saved)
+  player.position.set(4.5, 0, 0)
+  assert.equal(vehicle.enter('passenger'), true)
+  tick(180)
+  assert.equal(vehicle.state().mode, 'passenger')
+
+  built = true
+  assert.equal(vehicle.revalidateParking(), true)
+  assert.equal(vehicle.state().mode, 'passenger')
+  assert.ok(vehicle.blocks(player.position.x, player.position.z))
+  assert.equal(vehicle.exit(), true)
+  tick(60)
+  assert.equal(vehicle.state().mode, 'walking')
+  assert.ok(player.position.x > 0)
+  assert.equal(vehicle.blocks(player.position.x, player.position.z), false)
+})
+
+test('loading a building cancels boarding from blocked ground without moving a valid parked car', () => {
+  let built = false
+  const sample = x => built && x <= 0 ? null : 0
+  const saved = { position3d: { x: 4, y: 0, z: 0 }, yaw: 0 }
+  const { vehicle, player, tick } = setup(sample, saved)
+  player.position.set(-1, 0, 0)
+  assert.equal(vehicle.enter('passenger'), true)
+  tick(1)
+  assert.equal(vehicle.state().mode, 'entering')
+
+  built = true
+  assert.equal(vehicle.revalidateParking(), true)
+  assert.equal(vehicle.state().mode, 'walking')
+  assert.deepEqual(vehicle.syncState().position3d, saved.position3d)
+  player.position.set(1, 0, 0)
+  assert.equal(vehicle.enter('passenger'), true)
+  tick(180)
+  assert.equal(vehicle.state().mode, 'passenger')
+})
+
+test('when saved parking overlaps a new building, the car first looks for safe parking nearby', () => {
+  const saved = { position3d: { x: 65, y: 0, z: -36 }, yaw: 0 }
+  const sample = (x, z) => Math.abs(x - 65) <= 9 && Math.abs(z + 36) <= 9 ? null : 0
+  const { vehicle } = setup(sample, saved)
+  const point = vehicle.syncState().position3d
+  assert.equal(sample(point.x, point.z), 0)
+  assert.ok(Math.hypot(point.x - 65, point.z + 36) <= 22)
+})
+
+test('a car displaced by a late building leaves the walking player clear', () => {
+  let built = false
+  const sample = (x, z) => built && z < 0 ? null : 0
+  const saved = { position3d: { x: 0, y: 0, z: -.5 }, yaw: 0 }
+  const { vehicle, player } = setup(sample, saved)
+  player.position.set(0, 0, 4.5)
+  built = true
+
+  assert.equal(vehicle.revalidateParking(), true)
+  assert.ok(vehicle.syncState().position3d.z > 0)
+  assert.equal(vehicle.blocks(player.position.x, player.position.z), false)
+})

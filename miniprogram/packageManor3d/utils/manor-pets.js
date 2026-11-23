@@ -412,6 +412,15 @@ function createManorPetManager({ THREE, scene, navigation, getNavigation, getOut
     }
   }
 
+  function repositionBlocked() {
+    for (const pet of pets.values()) {
+      const { x, z } = pet.group.position
+      if (sample(x, z)) continue
+      const point = nearest(x, z) || currentNavigation()?.spawn?.(getOutdoorBounds?.())
+      if (point && setPosition(pet, point)) createPatrol(pet)
+    }
+  }
+
   function segmentClear(from, to) {
     const length = Math.hypot(to.x - from.x, to.z - from.z)
     const steps = Math.max(2, Math.ceil(length / .75))
@@ -649,7 +658,7 @@ function createManorPetManager({ THREE, scene, navigation, getNavigation, getOut
   }
 
   return {
-    setModel, setRecords, setPlayerPosition, repositionNearVilla, applyRecordById, command, interact, relief, clearWaste, clearSelection, update, getPet, getPets, dispose,
+    setModel, setRecords, setPlayerPosition, repositionNearVilla, repositionBlocked, applyRecordById, command, interact, relief, clearWaste, clearSelection, update, getPet, getPets, dispose,
     get root() { return root }
   }
 }

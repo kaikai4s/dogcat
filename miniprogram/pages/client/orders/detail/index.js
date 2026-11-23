@@ -8,12 +8,28 @@ const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
 const CHECKIN_EVENT_LABELS = {
   sanitization: '进门消毒',
+  enter_door: '到达入户',
+  leash_on: '牵引准备',
   feed: '添加粮食',
   water: '更换饮水',
+  pet_status: '宠物状态',
+  return_home: '返家确认',
+  leave_door: '离户检查',
   litter: '清理猫砂',
+  clean: '清洁卫生',
   play: '陪伴玩耍',
   medicine: '喂药照料',
+  video_checkin: '视频打卡',
   pet_beauty_photo: '毛孩子美照'
+}
+
+function formatLiveCheckins(checkins = []) {
+  return (Array.isArray(checkins) ? checkins : [])
+    .filter((item) => item && item.mediaFileId)
+    .map((item) => ({
+      ...item,
+      eventTypeLabel: CHECKIN_EVENT_LABELS[item.eventType] || formatCheckinEvent(item.eventType) || '现场打卡'
+    }))
 }
 
 function getRefundText(order = {}) {
@@ -175,9 +191,7 @@ Page({
         }
         const displayOrder = withOrderText(order)
         const careCards = buildOrderCareCards(displayOrder)
-        const liveCheckins = (checkins || [])
-          .filter(item => item.mediaFileId)
-          .map(item => ({ ...item, eventTypeLabel: CHECKIN_EVENT_LABELS[item.eventType] || '现场打卡' }))
+        const liveCheckins = formatLiveCheckins(checkins)
         this.setData({
           order: { ...displayOrder, refundText: getRefundText(displayOrder), careCards, hasHighRiskCare: careCards.some((card) => card.isHighRisk) },
           timeline: withTimelineText(timeline),
@@ -261,7 +275,7 @@ Page({
           const displayOrder = withOrderText(mergedOrder)
           const careCards = buildOrderCareCards(displayOrder)
           const nextData = { order: { ...displayOrder, refundText: getRefundText(displayOrder), careCards, hasHighRiskCare: careCards.some((card) => card.isHighRisk) } }
-          if (Array.isArray(progress.liveCheckins)) nextData.liveCheckins = progress.liveCheckins.filter(item => item.mediaFileId)
+          if (Array.isArray(progress.liveCheckins)) nextData.liveCheckins = formatLiveCheckins(progress.liveCheckins)
           this.setData(nextData)
           if (displayOrder.earlyStartRequest && displayOrder.earlyStartRequest.status === 'pending') {
             this.checkPromptEarlyStart(displayOrder.earlyStartRequest)

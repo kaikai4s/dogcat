@@ -3,7 +3,7 @@ const { callFunction } = require('../../utils/cloud')
 const { createCloudAssets, hasManorAssets } = require('../utils/cloud-assets')
 const { THREE, createRenderer, loadGlb, disposeModel } = require('../utils/model-runtime')
 const { createManorScene } = require('../utils/manor-scene')
-const { createManorMinimap, projectManorMapPoint } = require('../utils/manor-minimap')
+const { createManorMinimap, projectManorMapPoint, projectManorMapTowers } = require('../utils/manor-minimap')
 const ENTRY_STORAGE_PREFIX = 'manor3d:entry:'
 const ENTRY_MAX_AGE_MS = 10 * 60 * 1000
 // An enter request can still replace the server session after its page hides.
@@ -256,6 +256,7 @@ Page({
 
   onShow() {
     this._shown = true
+    this._highRiseUnavailable = false
     this._prepareCommunityEntry()
     if (this._hasLandscape) {
       const resumeToken = this._resumeToken = {}
@@ -266,6 +267,7 @@ Page({
       })
       this._loadCharacter()
       this._loadVehicle()
+      this._loadHighRises()
       this._loadPetModels()
       this._restorePlayerPosition()
     }
@@ -290,6 +292,7 @@ Page({
     this._stopLoad('_interiorSession')
     this._stopLoad('_buildModelSession')
     this._stopLoad('_vehicleSession')
+    this._stopLoad('_highRiseSession')
     this._stopLoad('_remoteCharacterSession')
     const petModelsPending = this._petModelsLoading || this.data.petModelsStatus === 'loading'
     this._petModelsGeneration = (this._petModelsGeneration || 0) + 1
@@ -351,7 +354,8 @@ Page({
   _isCurrent(session) {
     return this._shown && !this._closed && (this._session === session || this._characterSession === session ||
       this._interiorSession === session || this._buildModelSession === session || this._vehicleSession === session ||
-      this._remoteCharacterSession === session || [...(this._petModelSessions?.values?.() || [])].some(item => item === session))
+      this._highRiseSession === session || this._remoteCharacterSession === session ||
+      [...(this._petModelSessions?.values?.() || [])].some(item => item === session))
   },
 
   _stopLoad(field = '_session') {
@@ -368,10 +372,12 @@ Page({
     this._endBuild()
     this._stopLoad('_buildModelSession')
     this._stopLoad('_vehicleSession')
+    this._stopLoad('_highRiseSession')
     this._stopLoad('_remoteCharacterSession')
     this._remoteModelRetryAt = 0
     this._nextCommunityMapUpdate = 0
     this._hasVehicle = false
+    this._hasHighRises = this._highRiseUnavailable = false
     this._vehicleStateSignature = ''
     this._placedBuildings = null
     this._resetCanvasTouches()
@@ -546,6 +552,7 @@ Page({
         this._pendingCommunityPosition = stayingHere || this._pendingPlayerPosition ? null : scene.position3d || null
         this.setData({ communityName: scene?.community?.name || '' })
         this._loadVehicle()
+        this._loadHighRises()
         const sync = this._communitySync = new (require('../utils/manor-community-sync').ManorCommunitySync)(
           scene,
           (records, options) => {
@@ -1042,6 +1049,7 @@ Page({
         // Give the player priority over the optional villa on first entry.
         await this._loadCharacter()
         this._loadVehicle()
+        this._loadHighRises()
       }
       if (!this._isCurrent(session) || this.data.villaStatus === 'error') return
       if (this._hasVilla) {
@@ -1164,6 +1172,37 @@ Page({
       this.setData({ vehicleLoadError: 'Copper GT 加载失败' })
     } finally {
       if (this._vehicleSession === session) this._stopLoad('_vehicleSession')
+    }
+  },
+
+  async _loadHighRises() {
+    // Use the canonical ID returned by enterScene; the session token and
+    // player ID differ between visitors to the same neighborhood.
+    const neighborhoodId = this._entrySelected ? this._communityScene?.sceneId : 'local'
+    if (!neighborhoodId || !this._shown || this._closed || !this._hasLandscape || !this._scene?.showHighRises ||
+        this._hasHighRises || this._highRiseUnavailable || this._highRiseSession) return
+    const session = { assets: createCloudAssets({ wx, envId: this._envId }) }
+    this._highRiseSession = session
+    try {
+      let footprints
+      const attached = await this._attach(session, 'highRise', null, () => {}, model => {
+        footprints = this._scene.showHighRises(model, neighborhoodId)
+        if (!footprints) return false
+        disposeModel(model)
+      })
+      if (!this._isCurrent(session)) return
+      this._hasHighRises = attached
+      this._highRiseUnavailable = !attached
+      if (attached && this.data.minimap) {
+        this.setData({ 'minimap.towers': projectManorMapTowers(this.data.minimap, footprints) })
+        this._updateMinimapPlayer()
+      }
+    } catch (error) {
+      if (!this._isCurrent(session)) return
+      this._highRiseUnavailable = true
+      console.warn('[manor3d] 小区住宅楼加载失败', error?.message)
+    } finally {
+      if (this._highRiseSession === session) this._stopLoad('_highRiseSession')
     }
   },
 

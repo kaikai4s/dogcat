@@ -458,7 +458,7 @@
 
   <view class="booking-side-card interactive" wx:if="{{!groupBuyMode}}" bindtap="chooseCoupon">
     <view class="remix-icon ri-coupon-3-line side-icon"></view>
-    <view class="side-main"><view class="strong">优惠券</view><view class="muted">{{selectedCoupon ? selectedCoupon.name : '自动选择最优优惠券'}}</view></view>
+    <view class="side-main"><view class="strong">优惠券</view><view class="muted">{{couponChoiceMode === 'none' ? '不使用优惠券' : (selectedCoupon ? selectedCoupon.name : '自动选择最优优惠券')}}</view></view>
     <view class="menu-arrow remix-icon ri-arrow-right-s-line"></view>
   </view>
 

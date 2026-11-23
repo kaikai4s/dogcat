@@ -9,6 +9,13 @@ function projectManorMapPoint(minimap, x, z) {
   return { x: percent(x, minimap.worldWidth), y: percent(z, minimap.worldDepth) }
 }
 
+function projectManorMapTowers(minimap, footprints) {
+  return footprints.map(({ id, x, z, width, depth }) => ({
+    id, ...projectManorMapPoint(minimap, x, z),
+    width: width / minimap.worldWidth * 100, height: depth / minimap.worldDepth * 100
+  }))
+}
+
 function riverOutline(landscape, minimap) {
   let stream
   landscape?.traverse?.(node => {
@@ -68,8 +75,9 @@ function createManorMinimap(layout, landscape) {
     river: riverOutline(landscape, minimap),
     plots: shapes(layout.plots, item => [item.width, item.depth]),
     crossings: shapes(bridges, item => [item.width, item.length]),
-    trees: shapes(layout.landmarkTrees, item => [item.r * 2, item.r * 2])
+    trees: shapes(layout.landmarkTrees, item => [item.r * 2, item.r * 2]),
+    towers: []
   }
 }
 
-module.exports = { createManorMinimap, projectManorMapPoint }
+module.exports = { createManorMinimap, projectManorMapPoint, projectManorMapTowers }

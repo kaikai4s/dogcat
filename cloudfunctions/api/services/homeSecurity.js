@@ -286,8 +286,13 @@ module.exports = function createService({
       isAllDestroyed = updatedSec.sessionCodes.every((item) => item.destroyed === true)
     }
 
-    // 全单完结或单日订单完单或全部场次已销毁（多日订单中间场次且使用统一门锁密码时，不销毁统一门锁密码）
-    const isFullyDestroyed = options.isFinal === true || !sessionIndex || (hasSessionCodes && isAllDestroyed)
+    const totalSessions = Array.isArray(order && order.serviceSessions) && order.serviceSessions.length > 0 ? order.serviceSessions.length : 1
+    const isMultiDay = (order && (order.orderType === 'multi_day' || (order.serviceSessions && order.serviceSessions.length > 1))) || false
+    const isLastSession = options.isFinal === true || (Boolean(sessionIndex) && sessionIndex >= totalSessions)
+    // 多日订单未到最后一场且不是显式 final，不可全单销毁统一门锁密码
+    const isFullyDestroyed = isMultiDay
+      ? isLastSession
+      : (options.isFinal === true || !sessionIndex || (hasSessionCodes && isAllDestroyed))
     if (isFullyDestroyed) {
       if (updatedSec.oneTimeCode) {
         updatedSec.oneTimeCode = {
@@ -327,17 +332,20 @@ module.exports = function createService({
 
     updatedSec.updatedAt = time
 
-    // 更新 order_home_security 集合
+    // 更新 order_home_security 集合（剔除 _id 防止 SDK update 报错）
     if (secDoc) {
+      const { _id, ...cleanUpdatedSec } = updatedSec
       await db.collection('order_home_security').doc(secDoc._id).update({
-        data: updatedSec
+        data: cleanUpdatedSec
       }).catch((err) => {
         console.error('[destroyOrderHomeSecuritySecrets] failed to update order_home_security:', err)
       })
     }
 
     // 更新 orders 集合中的快照与安防对象
-    const hasRemainingCodes = !isFullyDestroyed && Array.isArray(updatedSec.sessionCodes) && updatedSec.sessionCodes.some(s => !s.destroyed)
+    const hasActiveOneTimeCode = Boolean(updatedSec.oneTimeCode && !updatedSec.oneTimeCode.destroyed && (updatedSec.oneTimeCode.cipher || updatedSec.oneTimeCode.code))
+    const hasActiveSessionCodes = Array.isArray(updatedSec.sessionCodes) && updatedSec.sessionCodes.some((s) => !s.destroyed)
+    const hasRemainingCodes = !isFullyDestroyed && (hasActiveOneTimeCode || hasActiveSessionCodes)
     updatedSec.hasDoorLockCode = hasRemainingCodes
     const publicSnapshot = toPublicHomeSecuritySnapshot(updatedSec)
 

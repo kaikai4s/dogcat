@@ -59,8 +59,9 @@ module.exports = function createService({
   function normalizeRewardConfig(value = {}) {
     const points = Math.max(Math.round(Number(value.points || 0)), 0)
     const couponTemplateId = cleanText(value.couponTemplateId, 80)
-    const enabled = value.enabled !== false && (points > 0 || couponTemplateId)
-    return { enabled, points, couponTemplateId }
+    const enabled = value.enabled !== false && Boolean(points > 0 || couponTemplateId)
+    const couponSnapshot = (value.couponSnapshot && typeof value.couponSnapshot === 'object') ? value.couponSnapshot : null
+    return { enabled, points, couponTemplateId, ...(couponSnapshot ? { couponSnapshot } : {}) }
   }
 
   function normalizeQuestionnairePayload(data = {}) {

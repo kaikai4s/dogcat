@@ -224,7 +224,11 @@ function createManorNavigation({ THREE, landscape, config }) {
     return null
   }
 
-  return { sample, spawn, nearestWalkable }
+  function hasPath(x, z) {
+    return paths.some(path => path.sample(x, z) !== null)
+  }
+
+  return { sample, spawn, nearestWalkable, hasPath }
 }
 
 module.exports = { createManorNavigation }

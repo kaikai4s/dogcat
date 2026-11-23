@@ -591,7 +591,19 @@ module.exports = function createHandler(context) {
         throw new Error(item.status === 'closed' ? '该问卷已结束征集，感谢关注！' : '问卷不存在或不可填写')
       }
       const existing = (await db.collection('questionnaire_responses').where({ questionnaireId: item._id, openid }).limit(1).get()).data[0]
-      return { ...formatQuestionnaire(item, { includeQuestions: true }), answered: !!existing }
+      const formatted = formatQuestionnaire(item, { includeQuestions: true })
+      if (formatted.rewardConfig && formatted.rewardConfig.couponTemplateId && !formatted.rewardConfig.couponSnapshot) {
+        const tpl = (await db.collection('coupon_templates').doc(formatted.rewardConfig.couponTemplateId).get().catch(() => ({ data: null }))).data
+        if (tpl) {
+          formatted.rewardConfig.couponSnapshot = {
+            _id: tpl._id,
+            name: tpl.name || '专享优惠券',
+            discountAmount: tpl.discountAmount || 0,
+            type: tpl.type
+          }
+        }
+      }
+      return { ...formatted, answered: !!existing }
     }
     if (action === 'submit') return submitQuestionnaire(user, data)
     if (action === 'myResponses') {

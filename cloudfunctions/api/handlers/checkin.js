@@ -182,7 +182,9 @@ module.exports = function createHandler(context) {
         // 仅在卡已扣除且发奖未完成时退还补签卡
         if (cardSpent && !rewardClaimed) {
           try {
-            await grantRetroCards(openid, user._id, 1, 'retro_checkin_rollback', dateKey, `补签 ${dateKey} 失败退回补签卡 1 张`)
+            await grantRetroCards(openid, user._id, 1, 'retro_checkin_rollback', `${dateKey}_${attemptToken}`, `补签 ${dateKey} 失败退回补签卡 1 张`, {
+              idempotencyKey: `retro_rollback:${dateKey}:${attemptToken}`
+            })
           } catch (rollbackErr) {
             // ignore rollback error
           }
