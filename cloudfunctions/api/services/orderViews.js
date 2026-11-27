@@ -1,3 +1,5 @@
+const { decorateOrderPetSummary } = require('../utils/petOrderSummary')
+
 module.exports = function createService({
   ORDER_STATUS,
   createPetSnapshot,
@@ -115,11 +117,11 @@ module.exports = function createService({
         snapshots = latestSnapshots.filter(Boolean)
       } catch (error) {}
     }
-    const withSnapshots = {
+    const withSnapshots = decorateOrderPetSummary({
       ...order,
       petSnapshot: snapshots[0] || order.petSnapshot || null,
       petSnapshots: snapshots.length ? snapshots : order.petSnapshots
-    }
+    })
     return decorateOrderWithVaccineSummary ? decorateOrderWithVaccineSummary(withSnapshots) : withSnapshots
   }
 

@@ -117,6 +117,13 @@ Page({
     this.setData({ orderKeyword: '', startDate: '', endDate: '', page: 1, hasMore: true }, () => this.load({ reset: true }))
   },
   detail(e) { wx.navigateTo({ url: '/pages/staff/orders/detail/index?id=' + e.currentTarget.dataset.id }) },
+  previewOrderPetPhotos(e) {
+    const raw = e.currentTarget.dataset.urls
+    const single = e.currentTarget.dataset.url
+    const urls = Array.isArray(raw) && raw.length ? raw.filter(Boolean) : (single ? [single] : [])
+    if (!urls.length) return
+    wx.previewImage({ current: single || urls[0], urls })
+  },
   openOrderMessages(e) {
     const id = e.currentTarget.dataset.id
     if (!id) return

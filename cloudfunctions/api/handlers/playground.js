@@ -51,7 +51,10 @@ module.exports = function createHandler(context) {
     if (action === 'getScene') return shared.snapshot(openid, data)
     if (action === 'vehicleAction') return shared.vehicles.action(openid,user,data)
     if (action === 'setVehicleSpeed') return shared.vehicles.speed(openid,user,data)
-    if (action === 'petAction') return shared.companions.action(openid,data)
+    if (action === 'petAction') {
+      if (data && data.manor3dPosition != null) await assertManor3dEnabled(db, context.getSystemSettings)
+      return shared.companions.action(openid,data)
+    }
     if (action === 'petRelief') return shared.companions.relief(openid,data)
     if (action === 'getFarm') return shared.farm.state(openid,data)
     if (action === 'getFarmCatalog') return require('../services/playground-farm-catalog').readCatalog(db)
@@ -59,8 +62,14 @@ module.exports = function createHandler(context) {
     if (action === 'rideRequest') return shared.rides.request(openid,data)
     if (action === 'rideRespond') return shared.rides.respond(openid,data)
     if (action === 'rideLeave') return shared.rides.leave(openid,data)
-    if (action === 'movePet') return shared.commandPet(openid, data)
-    if (action === 'interactPet') return shared.commandPet(openid, {...data,interact:true})
+    if (action === 'movePet') {
+      if (data && data.manor3dPosition != null) await assertManor3dEnabled(db, context.getSystemSettings)
+      return shared.commandPet(openid, data)
+    }
+    if (action === 'interactPet') {
+      if (data && data.manor3dPosition != null) await assertManor3dEnabled(db, context.getSystemSettings)
+      return shared.commandPet(openid, {...data,interact:true})
+    }
     if (action === 'getSocial') return shared.social.state(openid)
     if (action === 'requestFriend') return shared.social.request(openid,{...data,type:'friend'})
     if (action === 'requestVisit') return shared.social.request(openid,{...data,type:'visit'})

@@ -50,7 +50,10 @@ Page({
           }
         }
         const careCards = buildOrderCareCards(displayOrder)
-        this.setData({ order: { ...displayOrder, careCards, hasHighRiskCare: careCards.some((card) => card.isHighRisk) } })
+        const petProfiles = Array.isArray(displayOrder.petSnapshots) && displayOrder.petSnapshots.length
+          ? displayOrder.petSnapshots
+          : [displayOrder.petSnapshot].filter(Boolean)
+        this.setData({ order: { ...displayOrder, petProfiles, careCards, hasHighRiskCare: careCards.some((card) => card.isHighRisk) } })
       })
       .catch(showError)
   },
@@ -75,10 +78,15 @@ Page({
     }
     copyText(orderNo, { successTitle: '订单号已复制', emptyTitle: '暂无订单号' })
   },
-  previewPetPhoto() {
-    const photo = this.data.order && this.data.order.petSnapshot && this.data.order.petSnapshot.avatarFileId
-    if (photo) {
-      wx.previewImage({ urls: [photo] })
+  previewPetPhoto(e) {
+    const current = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.url
+    const order = this.data.order || {}
+    const urls = Array.isArray(order.petPhotoUrls) && order.petPhotoUrls.length
+      ? order.petPhotoUrls
+      : (order.petProfiles || [order.petSnapshot]).filter(Boolean).map((p) => p.avatarFileId).filter(Boolean)
+    const target = current || (order.petSnapshot && order.petSnapshot.avatarFileId) || urls[0]
+    if (target) {
+      wx.previewImage({ current: target, urls: urls.length ? urls : [target] })
     }
   },
   openNavigation() {

@@ -291,6 +291,14 @@ Page({
 
   detail(e) { wx.navigateTo({ url: '/pages/staff/orders/detail/index?id=' + e.currentTarget.dataset.id }) },
 
+  previewOrderPetPhotos(e) {
+    const raw = e.currentTarget.dataset.urls
+    const single = e.currentTarget.dataset.url
+    const urls = Array.isArray(raw) && raw.length ? raw.filter(Boolean) : (single ? [single] : [])
+    if (!urls.length) return
+    wx.previewImage({ current: single || urls[0], urls })
+  },
+
   backProfile() { wx.redirectTo({ url: '/pages/staff/profile/index' }) },
 
   // 城市筛选

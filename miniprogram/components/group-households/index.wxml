@@ -14,7 +14,7 @@
     <view class="household-pet" wx:for="{{selected.petSnapshots}}" wx:for-item="pet" wx:key="name">
       <image wx:if="{{pet.avatarFileId}}" class="pet-avatar" src="{{pet.avatarFileId}}" mode="aspectFill" data-url="{{pet.avatarFileId}}" bindtap="preview"/>
       <view wx:else class="pet-placeholder">🐾</view>
-      <view class="pet-copy"><view class="pet-name">{{pet.name}}</view><view class="pet-meta">{{pet.species === 'cat' ? '猫咪' : pet.species === 'dog' ? '狗狗' : '宠物'}}{{pet.breed ? ' · ' + pet.breed : ''}}{{pet.weight ? ' · ' + pet.weight + 'kg' : ''}}</view>
+      <view class="pet-copy"><view class="pet-name">{{pet.name}}<text class="large-dog-tag" wx:if="{{pet.isLargeDog}}">大型犬 ≥25kg</text></view><view class="pet-meta">{{pet.species === 'cat' ? '猫咪' : pet.species === 'dog' ? '狗狗' : '宠物'}}{{pet.breed ? ' · ' + pet.breed : ''}} · {{pet.weight ? pet.weight + 'kg' : '未填体重'}}</view>
         <view class="pet-note" wx:if="{{pet.personality}}">性格：{{pet.personality}}</view>
         <view class="pet-note" wx:if="{{pet.specialNotes}}">照护：{{pet.specialNotes}}</view>
         <view class="pet-note" wx:if="{{pet.healthNotes}}">健康：{{pet.healthNotes}}</view>

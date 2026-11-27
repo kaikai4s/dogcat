@@ -32,7 +32,7 @@ function validate(settings) {
 Page({
   data: { loading: true, loadError: false, saving: false, dirty: false, settings: null, activeSpecies: 'cat',
     species: [{key:'cat',label:'猫咪'},{key:'dog',label:'狗狗'}], fieldGroups },
-  onShow() { if (!this.data.settings) return this.load() },
+  onShow() { if (!this.data.dirty && !this.data.saving) return this.load() },
   async load() {
     this.setData({ loading: true, loadError: false })
     try {

@@ -20,7 +20,8 @@
 .household-pet .pet-avatar, .pet-placeholder { width: 112rpx; height: 112rpx; flex: 0 0 112rpx; border-radius: 18rpx; background: #efe5d7; }
 .pet-placeholder { display: flex; align-items: center; justify-content: center; font-size: 40rpx; }
 .pet-copy { flex: 1; min-width: 0; }
-.pet-name { font-size: 27rpx; font-weight: 700; overflow-wrap: anywhere; line-height: 1.5; }
+.pet-name { display: flex; align-items: center; flex-wrap: wrap; gap: 10rpx; font-size: 27rpx; font-weight: 700; overflow-wrap: anywhere; line-height: 1.5; }
+.large-dog-tag { display: inline-flex; align-items: center; padding: 2rpx 10rpx; border-radius: 999rpx; background: #fef2f2; color: #dc2626; font-size: 20rpx; font-weight: 800; }
 .pet-meta, .pet-note { margin-top: 7rpx; font-size: 22rpx; line-height: 1.65; color: #8a7664; overflow-wrap: anywhere; }
 .open-household { margin: 24rpx 0 0; width: 100%; padding: 20rpx 16rpx; font-size: 25rpx; line-height: 1.5; color: #a46a38; background: #ffedda; border-radius: 18rpx; }
 .open-household::after { border: 0; }

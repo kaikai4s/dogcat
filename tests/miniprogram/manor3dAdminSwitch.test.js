@@ -261,4 +261,67 @@ test('client playground entry, 3D entry chooser, and direct 3D page respect enab
   assert.equal(manorPage.data.status, 'unavailable')
   assert.equal(manorPage.data.mountCanvas, false)
   assert.deepEqual(assetEvents, [])
+
+  // 4. Stale cached enableManor3d: false recovers when loadSystemSettings returns enableManor3d: true
+  let reopenManorDef
+  let reopenAssetsCreated = 0
+  vm.runInNewContext(fs.readFileSync(path.join(root, 'packageManor3d/pages/index.js'), 'utf8'), {
+    Page(value) { reopenManorDef = value },
+    Date,
+    setTimeout,
+    clearTimeout,
+    console: { warn() {} },
+    wx: {
+      getMenuButtonBoundingClientRect: () => ({ bottom: 82 }),
+      getWindowInfo: () => ({ pixelRatio: 1 }),
+      getStorageSync: () => null,
+      removeStorageSync() {},
+      setStorageSync() {},
+      createSelectorQuery: () => ({
+        in: () => ({
+          select: () => ({
+            fields: () => ({ exec: (cb) => cb([{ node: {}, width: 375, height: 667 }]) })
+          })
+        })
+      })
+    },
+    require(mod) {
+      if (mod === '../../envList') return { getActiveEnvId: () => ENV_MAP.trial }
+      if (mod === '../../utils/cloud') {
+        return {
+          getCachedSystemSettings: () => ({ enableManor3d: false }),
+          loadSystemSettings: async () => ({ enableManor3d: true })
+        }
+      }
+      if (mod === '../utils/cloud-assets') {
+        return {
+          hasManorAssets,
+          createCloudAssets() {
+            reopenAssetsCreated += 1
+            return { read: () => new Promise(() => {}), invalidate() {}, cancel() {} }
+          }
+        }
+      }
+      if (mod === '../utils/model-runtime') {
+        return {
+          THREE: {},
+          createRenderer: () => ({ getPixelRatio: () => 1, setPixelRatio() {}, dispose() {} }),
+          async loadGlb() {},
+          disposeModel() {}
+        }
+      }
+      if (mod === '../utils/manor-scene') return { createManorScene: () => ({ resize() {}, dispose() {} }) }
+      if (mod === '../utils/manor-minimap') return require('../../miniprogram/packageManor3d/utils/manor-minimap')
+      throw new Error('unexpected module: ' + mod)
+    }
+  })
+  const reopenPage = { ...reopenManorDef, data: structuredClone(reopenManorDef.data), setData(p, cb) { Object.assign(this.data, p); cb?.() } }
+  reopenPage.onLoad({})
+  assert.equal(reopenPage.data.status, 'unavailable')
+  reopenPage.onReady()
+  reopenPage.onShow()
+  await flush()
+  assert.notEqual(reopenPage.data.status, 'unavailable')
+  assert.equal(reopenPage.data.mountCanvas, true)
+  assert.ok(reopenAssetsCreated >= 1)
 })

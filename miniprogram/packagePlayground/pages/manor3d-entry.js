@@ -12,6 +12,27 @@ function isManor3dDisabled() {
   return false
 }
 
+function getSystemSettingsLoader() {
+  if (typeof require !== 'function') return null
+  try {
+    const cloud = require('../../utils/cloud')
+    return typeof cloud?.loadSystemSettings === 'function' ? cloud.loadSystemSettings : null
+  } catch (_) {
+    return null
+  }
+}
+
+async function refreshIfCachedDisabled() {
+  const loader = getSystemSettingsLoader()
+  if (!loader) return true
+  try {
+    const latest = await loader()
+    return Boolean(latest && latest.enableManor3d === false)
+  } catch (_) {
+    return isManor3dDisabled()
+  }
+}
+
 function createEntryKey() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 10)
 }
@@ -49,8 +70,11 @@ Page({
   async chooseCommunity() {
     if (!this._alive || this.data.opening) return
     if (isManor3dDisabled()) {
-      this.setData({ opening: false, error: '3D 庄园暂未开放' })
-      return
+      if (await refreshIfCachedDisabled()) {
+        if (this._alive) this.setData({ opening: false, error: '3D 庄园暂未开放' })
+        return
+      }
+      if (!this._alive || this.data.opening) return
     }
     const generation = this._openingGeneration = (this._openingGeneration || 0) + 1
     this.setData({ opening: true, error: '' })
@@ -73,8 +97,21 @@ Page({
   enterSolo() {
     if (!this._alive || this.data.opening) return
     if (isManor3dDisabled()) {
-      this.setData({ opening: false, error: '3D 庄园暂未开放' })
-      return
+      const loader = getSystemSettingsLoader()
+      if (!loader) {
+        this.setData({ opening: false, error: '3D 庄园暂未开放' })
+        return
+      }
+      const generation = this._openingGeneration = (this._openingGeneration || 0) + 1
+      this.setData({ opening: true, error: '' })
+      return refreshIfCachedDisabled().then(disabled => {
+        if (!this._alive || generation !== this._openingGeneration) return
+        if (disabled) {
+          this.setData({ opening: false, error: '3D 庄园暂未开放' })
+          return
+        }
+        this.openManor(null)
+      })
     }
     this.setData({ opening: true, error: '' })
     this.openManor(null)

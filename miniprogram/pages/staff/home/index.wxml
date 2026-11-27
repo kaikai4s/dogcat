@@ -80,9 +80,10 @@
       <view class="order-card-head">
         <view class="order-person">
           <view class="avatar-level-wrap">
-            <image class="order-avatar" wx:if="{{item.petSnapshot && item.petSnapshot.avatarFileId}}" src="{{item.petSnapshot.avatarFileId}}" mode="aspectFill" lazy-load="true" />
+            <image class="order-avatar" wx:if="{{item.petSnapshot && item.petSnapshot.avatarFileId}}" src="{{item.petSnapshot.avatarFileId}}" mode="aspectFill" lazy-load="true" data-url="{{item.petSnapshot.avatarFileId}}" data-urls="{{item.petPhotoUrls}}" catchtap="previewOrderPetPhotos" />
             <image class="order-avatar" wx:elif="{{item.clientSnapshot && item.clientSnapshot.avatarUrl}}" src="{{item.clientSnapshot.avatarUrl}}" mode="aspectFill" lazy-load="true" />
             <view class="order-avatar placeholder" wx:else><text class="remix-icon ri-user-3-line"></text></view>
+            <view class="avatar-photo-tip" wx:if="{{item.petSnapshot && item.petSnapshot.avatarFileId}}" data-url="{{item.petSnapshot.avatarFileId}}" data-urls="{{item.petPhotoUrls}}" catchtap="previewOrderPetPhotos">{{item.petPhotoUrls && item.petPhotoUrls.length > 1 ? item.petPhotoUrls.length + '图' : '看图'}}</view>
             <view class="avatar-level-badge badge-{{item.clientSnapshot.badgeStyle || 'gold'}}" wx:if="{{!(item.petSnapshot && item.petSnapshot.avatarFileId) && item.clientSnapshot && (item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName)}}">{{item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName}}</view>
           </view>
           <view class="order-person-info">
@@ -90,6 +91,7 @@
               <text class="order-client-name {{item.clientSnapshot.nameEffect && item.clientSnapshot.nameEffect !== 'none' ? 'name-effect-' + item.clientSnapshot.nameEffect : ''}}" style="{{item.clientSnapshot.nameColor ? 'color: ' + item.clientSnapshot.nameColor + ';' : ''}}">{{item.clientSnapshot.displayName || '宠物主'}}</text>
               <text class="member-badge badge-{{item.clientSnapshot.badgeStyle || 'gold'}}" wx:if="{{item.clientSnapshot && (item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName)}}">{{item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName}}</text>
               <text class="order-pet-name">· {{item.petName}}</text>
+              <text class="large-dog-badge" wx:if="{{item.hasLargeDog}}">大型犬 ≥25kg</text>
               <view class="pet-title" wx:if="{{(item.petSnapshot && item.petSnapshot.beautyTitle && item.petSnapshot.beautyTitle.title) || (item.beautyTitle && item.beautyTitle.title)}}">
                 <text class="remix-icon ri-vip-crown-fill"></text>
                 <text>{{(item.petSnapshot && item.petSnapshot.beautyTitle && item.petSnapshot.beautyTitle.title) || (item.beautyTitle && item.beautyTitle.title)}}</text>
@@ -102,6 +104,11 @@
         <view class="badge pink">指定单</view>
       </view>
 
+      <view class="large-dog-banner" wx:if="{{item.hasLargeDog}}">
+        <text class="remix-icon ri-alarm-warning-fill large-dog-icon"></text>
+        <text>{{item.largeDogSummaryText}} · 接单前请确认具备控绳与安全照护能力</text>
+      </view>
+
       <view class="order-card-address">
         <text class="remix-icon ri-map-pin-2-line addr-icon"></text>
         <text>{{item.serviceAddress || '未填写地址'}}</text>
@@ -109,6 +116,7 @@
 
       <view class="chip-row">
         <view class="chip"><text class="remix-icon ri-time-line"></text>{{beijingTime.format(item.startTime)}}</view>
+        <view class="chip weight-chip" wx:if="{{item.petWeightSummary}}"><text class="remix-icon ri-footprint-line"></text>体重 {{item.petWeightSummary}}</view>
         <view class="chip green" wx:if="{{item.staffEarning}}"><text class="remix-icon ri-money-cny-circle-line"></text>{{item.staffEarningText}}</view>
         <view class="chip blue"><text class="remix-icon ri-navigation-line"></text>{{item.distanceText || '未定位'}}</view>
       </view>
@@ -253,9 +261,10 @@
         <view class="order-card-head">
           <view class="order-person">
             <view class="avatar-level-wrap">
-              <image class="order-avatar" wx:if="{{item.petSnapshot && item.petSnapshot.avatarFileId}}" src="{{item.petSnapshot.avatarFileId}}" mode="aspectFill" lazy-load="true" />
+              <image class="order-avatar" wx:if="{{item.petSnapshot && item.petSnapshot.avatarFileId}}" src="{{item.petSnapshot.avatarFileId}}" mode="aspectFill" lazy-load="true" data-url="{{item.petSnapshot.avatarFileId}}" data-urls="{{item.petPhotoUrls}}" catchtap="previewOrderPetPhotos" />
               <image class="order-avatar" wx:elif="{{item.clientSnapshot && item.clientSnapshot.avatarUrl}}" src="{{item.clientSnapshot.avatarUrl}}" mode="aspectFill" lazy-load="true" />
               <view class="order-avatar placeholder" wx:else><text class="remix-icon ri-user-3-line"></text></view>
+              <view class="avatar-photo-tip" wx:if="{{item.petSnapshot && item.petSnapshot.avatarFileId}}" data-url="{{item.petSnapshot.avatarFileId}}" data-urls="{{item.petPhotoUrls}}" catchtap="previewOrderPetPhotos">{{item.petPhotoUrls && item.petPhotoUrls.length > 1 ? item.petPhotoUrls.length + '图' : '看图'}}</view>
               <view class="avatar-level-badge badge-{{item.clientSnapshot.badgeStyle || 'gold'}}" wx:if="{{!(item.petSnapshot && item.petSnapshot.avatarFileId) && item.clientSnapshot && (item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName)}}">{{item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName}}</view>
             </view>
             <view class="order-person-info">
@@ -263,6 +272,7 @@
                 <text class="order-client-name {{item.clientSnapshot.nameEffect && item.clientSnapshot.nameEffect !== 'none' ? 'name-effect-' + item.clientSnapshot.nameEffect : ''}}" style="{{item.clientSnapshot.nameColor ? 'color: ' + item.clientSnapshot.nameColor + ';' : ''}}">{{item.isGroupBuyBundle ? '同小区多户拼单' : (item.clientSnapshot.displayName || '宠物主')}}</text>
                 <text class="member-badge badge-{{item.clientSnapshot.badgeStyle || 'gold'}}" wx:if="{{!item.isGroupBuyBundle && item.clientSnapshot && (item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName)}}">{{item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName}}</text>
                 <text class="order-pet-name">· {{item.isGroupBuyBundle ? '共' + item.householdCount + '户' : item.petName}}</text>
+                <text class="large-dog-badge" wx:if="{{item.hasLargeDog}}">大型犬 ≥25kg</text>
                 <view class="pet-title" wx:if="{{!item.isGroupBuyBundle && ((item.petSnapshot && item.petSnapshot.beautyTitle && item.petSnapshot.beautyTitle.title) || (item.beautyTitle && item.beautyTitle.title))}}">
                   <text class="remix-icon ri-vip-crown-fill"></text>
                   <text>{{(item.petSnapshot && item.petSnapshot.beautyTitle && item.petSnapshot.beautyTitle.title) || (item.beautyTitle && item.beautyTitle.title)}}</text>
@@ -280,10 +290,17 @@
           <view class="bundle-suborders-header">本次拼单包含服务（接单后分户打卡）：</view>
           <view class="bundle-suborder-row" wx:for="{{item.subOrders}}" wx:for-item="sub" wx:key="orderId">
             <text class="bundle-sub-tag">住户{{sub.householdIndex}}</text>
-            <text class="bundle-sub-pet">{{sub.petName}}</text>
+            <image class="bundle-sub-avatar" wx:if="{{sub.petAvatar}}" src="{{sub.petAvatar}}" mode="aspectFill" lazy-load="true" data-url="{{sub.petAvatar}}" data-urls="{{sub.petPhotoUrls}}" catchtap="previewOrderPetPhotos" />
+            <text class="bundle-sub-pet">{{sub.petName}}<text class="bundle-sub-weight" wx:if="{{sub.petWeightSummary}}"> ({{sub.petWeightSummary}})</text></text>
+            <text class="large-dog-mini-tag" wx:if="{{sub.hasLargeDog}}">大型犬</text>
             <text class="bundle-sub-service">{{sub.serviceSummary || '上门宠护'}}</text>
             <text class="bundle-sub-earning">{{sub.staffEarningText}}</text>
           </view>
+        </view>
+
+        <view class="large-dog-banner" wx:if="{{item.hasLargeDog}}">
+          <text class="remix-icon ri-alarm-warning-fill large-dog-icon"></text>
+          <text>{{item.largeDogSummaryText}} · 抢单前请确认具备控绳与安全照护能力</text>
         </view>
 
         <view class="order-card-address">
@@ -293,6 +310,7 @@
 
         <view class="chip-row">
           <view class="chip"><text class="remix-icon ri-time-line"></text>{{beijingTime.format(item.startTime)}}</view>
+          <view class="chip weight-chip" wx:if="{{item.petWeightSummary}}"><text class="remix-icon ri-footprint-line"></text>体重 {{item.petWeightSummary}}</view>
           <view class="chip purple" wx:if="{{item.orderType === 'multi_day' || (item.sessionCount && item.sessionCount > 1)}}">连续{{item.sessionCount}}天</view>
           <view class="chip green" wx:if="{{item.staffEarning}}"><text class="remix-icon ri-money-cny-circle-line"></text>{{item.staffEarningText}}</view>
           <view class="chip blue">待抢单</view>
@@ -370,20 +388,27 @@
         <view class="order-card-head">
           <view class="order-person">
             <view class="avatar-level-wrap">
-              <image class="order-avatar" wx:if="{{item.petSnapshot && item.petSnapshot.avatarFileId}}" src="{{item.petSnapshot.avatarFileId}}" mode="aspectFill" lazy-load="true" />
+              <image class="order-avatar" wx:if="{{item.petSnapshot && item.petSnapshot.avatarFileId}}" src="{{item.petSnapshot.avatarFileId}}" mode="aspectFill" lazy-load="true" data-url="{{item.petSnapshot.avatarFileId}}" data-urls="{{item.petPhotoUrls}}" catchtap="previewOrderPetPhotos" />
               <image class="order-avatar" wx:elif="{{item.clientSnapshot && item.clientSnapshot.avatarUrl}}" src="{{item.clientSnapshot.avatarUrl}}" mode="aspectFill" lazy-load="true" />
               <view class="order-avatar placeholder" wx:else><text class="remix-icon ri-user-3-line"></text></view>
+              <view class="avatar-photo-tip" wx:if="{{item.petSnapshot && item.petSnapshot.avatarFileId}}" data-url="{{item.petSnapshot.avatarFileId}}" data-urls="{{item.petPhotoUrls}}" catchtap="previewOrderPetPhotos">{{item.petPhotoUrls && item.petPhotoUrls.length > 1 ? item.petPhotoUrls.length + '图' : '看图'}}</view>
             </view>
             <view class="order-person-info">
               <view class="order-title-row">
                 <text class="order-client-name">{{item.clientSnapshot.displayName || '客户'}}</text>
                 <text class="order-pet-name">· {{item.petName}}</text>
+                <text class="large-dog-badge" wx:if="{{item.hasLargeDog}}">大型犬 ≥25kg</text>
                 <view class="vaccine-badge {{item.petSnapshot.vaccineCertified ? 'certified' : item.petSnapshot.vaccineBadgeClass}}" wx:if="{{item.petSnapshot}}">{{item.petSnapshot.vaccineStatusText || '未接种认证'}}</view>
               </view>
               <view class="order-service">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
             </view>
           </view>
           <view class="count-badge urgent-dist-badge">{{item.distanceText || '已测距'}}</view>
+        </view>
+
+        <view class="large-dog-banner" wx:if="{{item.hasLargeDog}}">
+          <text class="remix-icon ri-alarm-warning-fill large-dog-icon"></text>
+          <text>{{item.largeDogSummaryText}} · 抢单前请确认具备控绳与安全照护能力</text>
         </view>
 
         <view class="order-card-address">
@@ -399,6 +424,7 @@
 
         <view class="chip-row">
           <view class="chip"><text class="remix-icon ri-time-line"></text>{{beijingTime.format(item.startTime)}}</view>
+          <view class="chip weight-chip" wx:if="{{item.petWeightSummary}}"><text class="remix-icon ri-footprint-line"></text>体重 {{item.petWeightSummary}}</view>
           <view class="chip purple" wx:if="{{item.orderType === 'multi_day' || (item.sessionCount && item.sessionCount > 1)}}">连续{{item.sessionCount}}天</view>
           <view class="chip urgent-earning-chip"><text class="remix-icon ri-money-cny-circle-line"></text>收益 {{item.staffEarningText}} (含补贴)</view>
         </view>
@@ -437,7 +463,7 @@
         <view class="risk-close" bindtap="closeAcceptRiskModal">×</view>
       </view>
       <view wx:if="{{acceptRiskStep === 1}}">
-        <view class="risk-desc">该订单与你的接单设置不完全匹配，请确认是否仍要继续接单。</view>
+        <view class="risk-desc">{{acceptRisk.noticeDesc || '该订单与你的接单设置不完全匹配，请确认是否仍要继续接单。'}}</view>
         <view class="risk-warning" wx:for="{{acceptRisk.warnings}}" wx:key="type">
           <view class="risk-warning-title">{{item.title}}</view>
           <view class="risk-warning-detail">{{item.detail}}</view>

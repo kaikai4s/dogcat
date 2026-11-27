@@ -6,6 +6,8 @@ const { requireStaffGender, normalizeStaffGenderRequirement, matchesStaffGender,
 const { CARD_STYLE_FIELDS, validateCardStyleUpdate } = require('../utils/profileCardStyle')
 const { extractLocationCity, sameCity, assertServiceCityMatchesLocation } = require('../utils/locationCity')
 const { mapRefreshIds, visibleMapRows, mapConcurrent } = require('../utils/mapCards')
+const { summarizeBundlePets } = require('../utils/petOrderSummary')
+const { isParticipatingGroupOrder } = require('../utils/groupBuyMembership')
 
 module.exports = function createHandler(context) {
   const {
@@ -302,6 +304,11 @@ module.exports = function createHandler(context) {
       const pageRows = accepted.slice(start, start + size)
       const toMapOrder = order => ({
         _id: order._id, serviceSummary: order.isGroupBuyBundle ? '同小区多户照护' : order.serviceSummary || '', petSummary: order.petSummary || order.petName || '',
+        petAvatar: order.petAvatar || (order.petSnapshot && order.petSnapshot.avatarFileId) || '',
+        petPhotoUrls: Array.isArray(order.petPhotoUrls) ? order.petPhotoUrls : [],
+        petWeightSummary: order.petWeightSummary || '',
+        hasLargeDog: Boolean(order.hasLargeDog),
+        largeDogSummaryText: order.largeDogSummaryText || '',
         startTime: order.startTime || '', endTime: order.endTime || '', sessionCount: order.sessionCount || 1,
         durationMinutes: order.durationMinutes || 0, isUrgent: !!(order.isUrgent || order.assignmentSource === 'admin_urgent_republish'),
         staffEarningText: `¥${(Number(order.staffEarning) || 0).toFixed(2)}`, isGroupBuyBundle: !!order.isGroupBuyBundle, householdCount: order.householdCount || 1,
@@ -1437,6 +1444,11 @@ module.exports = function createHandler(context) {
           householdIndex: idx + 1,
           householdLabel: `住户 ${idx + 1}`,
           petName: item.petName || (item.petSnapshot && item.petSnapshot.name) || '宠物',
+          petAvatar: item.petAvatar || (item.petSnapshot && item.petSnapshot.avatarFileId) || '',
+          petPhotoUrls: Array.isArray(item.petPhotoUrls) ? item.petPhotoUrls : [],
+          petWeightSummary: item.petWeightSummary || '',
+          hasLargeDog: Boolean(item.hasLargeDog),
+          largeDogSummaryText: item.largeDogSummaryText || '',
           petSummary: item.petSummary || '',
           serviceType: item.serviceType || 'feed',
           serviceSummary: item.serviceSummary || '',
@@ -1445,9 +1457,14 @@ module.exports = function createHandler(context) {
           staffEarning: Number(item.staffEarning) || 0,
           staffEarningText: `¥${(Number(item.staffEarning) || 0).toFixed(2)}`
         }))
+        const bundlePetSummary = summarizeBundlePets(bundleList)
         const allPets = bundleList.map((item) => item.petName || '宠物').filter(Boolean).join('、')
         const aggregated = {
           ...primary,
+          ...bundlePetSummary,
+          petSnapshot: primary.petSnapshot && primary.petSnapshot.avatarFileId
+            ? primary.petSnapshot
+            : (bundlePetSummary.petAvatar ? { ...(primary.petSnapshot || {}), avatarFileId: bundlePetSummary.petAvatar } : primary.petSnapshot),
           ...(internal.map ? { mapCommunityId: bundleList.every(item => item.mapCommunityId === primary.mapCommunityId) ? primary.mapCommunityId : '',
             isUrgent: bundleList.some(item => item.isUrgent || item.assignmentSource === 'admin_urgent_republish') } : {}),
           isGroupBuy: true,
@@ -1782,13 +1799,24 @@ module.exports = function createHandler(context) {
       const publishMode = order.publishMode === 'direct' ? 'direct' : 'open'
       if (publishMode === 'direct' && order.requestedStaffOpenid !== openid) throw new Error('该订单指定了其他宠托师')
       if (publishMode === 'open' && order.requestedStaffOpenid) throw new Error('该订单指定了其他宠托师')
-      assertStaffCanAcceptOrderVaccines(profile, await attachOrderDisplayData(order))
-      const conflict = await findStaffOrderConflict(profile.openid, order, orderId)
-      if (conflict) throw new Error('宠托师该时间段已有订单，无法重复预约')
+      const enrichedOrder = await attachOrderDisplayData(order)
+      let bundleOrders = null
+      if (order.groupBuyId) {
+        const groupRows = (await readAll('orders', { groupBuyId: order.groupBuyId })).filter(isParticipatingGroupOrder)
+        if (groupRows.length) {
+          bundleOrders = await Promise.all(groupRows.map((member) => attachOrderDisplayData(member)))
+          for (const member of bundleOrders) assertStaffCanAcceptOrderVaccines(profile, member)
+        }
+      }
+      if (!bundleOrders) assertStaffCanAcceptOrderVaccines(profile, enrichedOrder)
+      for (const target of (bundleOrders || [order])) {
+        const conflict = await findStaffOrderConflict(profile.openid, target, target._id || orderId)
+        if (conflict) throw new Error('宠托师该时间段已有订单，无法重复预约')
+      }
 
       await assertStaffOrderCapacity(openid, order, orderId, settings)
 
-      return checkAcceptOrderRisk(profile, order)
+      return checkAcceptOrderRisk(profile, enrichedOrder, { bundleOrders })
     }
     if (action === 'acceptOrder') {
       const user = await getUser(openid)
@@ -1822,7 +1850,16 @@ module.exports = function createHandler(context) {
       const publishMode = order.publishMode === 'direct' ? 'direct' : 'open'
       if (publishMode === 'direct' && order.requestedStaffOpenid !== openid) throw new Error('该订单指定了其他宠托师')
       if (publishMode === 'open' && order.requestedStaffOpenid) throw new Error('该订单指定了其他宠托师')
-      assertStaffCanAcceptOrderVaccines(profile, await attachOrderDisplayData(order))
+      const enrichedOrder = await attachOrderDisplayData(order)
+      let bundleOrders = null
+      if (order.groupBuyId) {
+        const groupRows = (await readAll('orders', { groupBuyId: order.groupBuyId })).filter(isParticipatingGroupOrder)
+        if (groupRows.length) {
+          bundleOrders = await Promise.all(groupRows.map((member) => attachOrderDisplayData(member)))
+          for (const member of bundleOrders) assertStaffCanAcceptOrderVaccines(profile, member)
+        }
+      }
+      if (!bundleOrders) assertStaffCanAcceptOrderVaccines(profile, enrichedOrder)
 
       // 校验进行中订单总数上限与目标日期单日接单上限
       await assertStaffOrderCapacity(openid, order, orderId, settings)
@@ -1844,10 +1881,14 @@ module.exports = function createHandler(context) {
         }
       }
 
-      const risk = await checkAcceptOrderRisk(profile, order)
-      const conflict = await findStaffOrderConflict(profile.openid, order, data.orderId)
-      if (conflict) throw new Error('宠托师该时间段已有订单，无法重复预约')
-      if (risk.requiresConfirmation && data.riskConfirmed !== true) throw new Error('请先阅读并确认超出接单设置的履约责任')
+      const risk = await checkAcceptOrderRisk(profile, enrichedOrder, { bundleOrders })
+      for (const target of (bundleOrders || [order])) {
+        const conflict = await findStaffOrderConflict(profile.openid, target, target._id || data.orderId)
+        if (conflict) throw new Error('宠托师该时间段已有订单，无法重复预约')
+      }
+      if (risk.requiresConfirmation && data.riskConfirmed !== true) {
+        throw new Error(risk.hasLargeDog ? '该订单包含大型犬（≥25kg），请先阅读并确认大型犬安全履约须知' : '请先阅读并确认超出接单设置的履约责任')
+      }
       const time = now()
       const isUrgentGrab = Boolean(
         order.isUrgent === true ||

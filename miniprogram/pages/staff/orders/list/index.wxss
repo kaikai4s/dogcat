@@ -293,6 +293,8 @@
   font-size: 20rpx;
   font-weight: 850;
 }
+.weight-badge { padding: 4rpx 12rpx; border-radius: 999rpx; background: #fff7ed; color: #9a3412; font-size: 20rpx; font-weight: 850; }
+.large-dog-badge { padding: 4rpx 12rpx; border-radius: 999rpx; background: #fef2f2; color: #dc2626; border: 1rpx solid rgba(220, 38, 38, 0.25); font-size: 20rpx; font-weight: 900; }
 .vaccine-badge { padding: 4rpx 12rpx; border-radius: 999rpx; background: #f4f4f5; color: #8e8580; font-size: 20rpx; font-weight: 900; }
 .vaccine-badge.certified,
 .vaccine-badge.success { color: #16a34a; background: #ecfdf3; }

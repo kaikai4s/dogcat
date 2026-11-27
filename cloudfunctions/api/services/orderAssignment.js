@@ -2,6 +2,7 @@ const { clockHours } = require('../utils/time')
 const { assertStaffGenderMatches } = require('../utils/staffGender')
 const { readDocuments, documentPages, readOptionalDocument } = require('../utils/documentPages')
 const { isParticipatingGroupOrder } = require('../utils/groupBuyMembership')
+const { decorateOrderPetSummary } = require('../utils/petOrderSummary')
 
 module.exports = function createService(context) {
   const {
@@ -77,9 +78,11 @@ module.exports = function createService(context) {
   }
 
   async function assertVaccinesStillAllowed(profile, order) {
-    if (typeof assertStaffCanAcceptOrderVaccines !== 'function') return
-    const orderForVaccineCheck = typeof attachOrderDisplayData === 'function' ? await attachOrderDisplayData(order) : order
-    assertStaffCanAcceptOrderVaccines(profile, orderForVaccineCheck)
+    const enriched = typeof attachOrderDisplayData === 'function' ? await attachOrderDisplayData(order) : decorateOrderPetSummary(order)
+    if (typeof assertStaffCanAcceptOrderVaccines === 'function') {
+      assertStaffCanAcceptOrderVaccines(profile, enriched)
+    }
+    return enriched
   }
 
   async function assignOrderAtomically(orderId, expectedOrder, patch, options = {}) {
@@ -119,7 +122,10 @@ module.exports = function createService(context) {
         if (member.status !== 'paid' || member.staffOpenid) throw new Error('拼单中有订单已被分配或状态不可接单')
         if (member.paymentStatus !== 'paid') throw new Error('订单支付或退款状态不可接单，请等待支付退款结果')
         assertStaffGenderMatches(member, profile)
-        await assertVaccinesStillAllowed(profile, member)
+        const enrichedMember = await assertVaccinesStillAllowed(profile, member)
+        if (options.enforceAcceptLimits && !options.admin && enrichedMember && enrichedMember.hasLargeDog && !options.riskConfirmed) {
+          throw new Error('该订单包含大型犬（≥25kg），请先阅读并确认大型犬安全履约须知')
+        }
         const start = toTimeValue(member.startTime || member.serviceSessions?.[0]?.startTime)
         if (start > 0 && start <= now().getTime()) throw new Error('订单服务时间已过，无法接单')
         if ((member.groupBuyId || member.source === 'community_groupbuy') && start > 0 && start - 2 * 3600000 <= now().getTime()) throw new Error('拼单已到服务开始前2小时截止时间，无法接单')

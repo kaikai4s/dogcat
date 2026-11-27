@@ -527,6 +527,13 @@ Page({
     const id = encodeURIComponent(e.currentTarget.dataset.id)
     wx.navigateTo({ url: this.data.mode === 'orders' ? `/pages/staff/orders/detail/index?id=${id}` : `/pages/client/sitters/detail/index?id=${id}&staffGenderRequirement=${this.data.staffGenderRequirement}` })
   },
+  previewPetPhotos(e) {
+    const raw = e.currentTarget.dataset.urls
+    const single = e.currentTarget.dataset.url
+    const urls = Array.isArray(raw) && raw.length ? raw.filter(Boolean) : (single ? [single] : [])
+    if (!urls.length || typeof wx.previewImage !== 'function') return
+    wx.previewImage({ current: single || urls[0], urls })
+  },
   async book(e) {
     if (this.interactionLocked() || this._cardsBusy || this.data.mode !== 'sitters') return
     const id = e.currentTarget.dataset.id, sitter = this.data.cards.find(row => row._id === id)

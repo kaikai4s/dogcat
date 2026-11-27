@@ -1,5 +1,7 @@
 const { clockHours } = require('../utils/time')
 const { readDocuments } = require('../utils/documentPages')
+const { isParticipatingGroupOrder } = require('../utils/groupBuyMembership')
+const { extractOrderPetSnapshots, summarizePetsForStaff } = require('../utils/petOrderSummary')
 module.exports = function createService({
   WEEKDAY_NAMES,
   calcDistanceKm,
@@ -283,45 +285,119 @@ module.exports = function createService({
   }
 
   function buildAcceptRiskNotice(warnings = []) {
+    const hasLargeDog = warnings.some((item) => item && item.type === 'large_dog')
+    const hasScheduleOrRange = warnings.some((item) => item && item.type !== 'large_dog')
+    const noticeTitle = hasLargeDog && hasScheduleOrRange
+      ? '接单风险与大型犬安全确认'
+      : hasLargeDog
+        ? '大型犬接单安全确认'
+        : '超出接单设置确认'
+    const noticeDesc = hasLargeDog && !hasScheduleOrRange
+      ? '该订单包含体重 ≥25kg 的大型犬，接单前请确认具备相应控犬与安全照护能力。'
+      : hasLargeDog
+        ? '该订单包含大型犬且与你的接单设置存在差异，请仔细核对后再确认接单。'
+        : '该订单与你的接单设置不完全匹配，请确认是否仍要继续接单。'
+    const noticeItems = [
+      ...(hasLargeDog ? [
+        '服务大型犬须确认自身具备控犬与应急处理能力：进出家门先确认防冲门措施，外出遛狗必须全程佩戴牢固牵引绳或胸背带并短牵控绳，严禁松绳脱手，主动避让行人与其他动物。'
+      ] : []),
+      '接单后必须按订单约定时间准时出发并完成服务，不得因距离较远或非本人常规接单时间擅自迟到、爽约或降低服务质量。',
+      '未按规定时间服务、未及时出发、无法按时到达或服务缺失，可能导致客户投诉、订单退款、差评、收益扣减或保证金/信用处罚。',
+      '若服务过程中发生异常，应第一时间联系客户并在平台内留痕，必要时联系平台客服协助处理。',
+      '继续接单即表示你已充分评估交通、时间、服务距离和自身安排，并承诺遵守平台履约规范。'
+    ]
     return {
       requiresConfirmation: warnings.length > 0,
+      hasLargeDog,
       warnings,
-      noticeTitle: '超出接单设置确认',
-      noticeItems: [
-        '接单后必须按订单约定时间准时出发并完成服务，不得因距离较远或非本人常规接单时间擅自迟到、爽约或降低服务质量。',
-        '未按规定时间服务、未及时出发、无法按时到达或服务缺失，可能导致客户投诉、订单退款、差评、收益扣减或保证金/信用处罚。',
-        '若服务过程中发生异常，应第一时间联系客户并在平台内留痕，必要时联系平台客服协助处理。',
-        '继续接单即表示你已充分评估交通、时间、服务距离和自身安排，并承诺遵守平台履约规范。'
-      ]
+      noticeTitle,
+      noticeDesc,
+      noticeItems
     }
   }
 
-  async function checkAcceptOrderRisk(profile, order) {
+  async function resolveOrderPetsForRisk(targetOrders = []) {
+    const collected = []
+    for (const item of targetOrders) {
+      if (!item) continue
+      const snapshots = extractOrderPetSnapshots(item)
+      if (snapshots.length && snapshots.every((pet) => Number(pet.weight) > 0)) {
+        collected.push(...snapshots)
+        continue
+      }
+      const petIds = Array.isArray(item.petIds) && item.petIds.length ? item.petIds : [item.petId].filter(Boolean)
+      if (petIds.length && db && typeof db.collection === 'function') {
+        const loaded = await Promise.all(petIds.map(async (petId, idx) => {
+          const doc = await db.collection('pets').doc(petId).get().catch(() => ({ data: null }))
+          return doc && doc.data ? { ...(snapshots[idx] || {}), ...doc.data } : snapshots[idx]
+        }))
+        collected.push(...loaded.filter(Boolean))
+      } else {
+        collected.push(...snapshots)
+      }
+    }
+    return collected
+  }
+
+  async function checkAcceptOrderRisk(profile, order, options = {}) {
     const warnings = []
+
+    // 检查大型犬风险（单户订单或同小区拼单整团子单中任一狗狗体重 ≥25kg 均需提醒确认）
+    let targetOrders = Array.isArray(options.bundleOrders) && options.bundleOrders.length ? options.bundleOrders : [order]
+    if (!options.bundleOrders && order && order.groupBuyId && db && typeof db.collection === 'function') {
+      try {
+        const siblings = await readDocuments(db, db.command, 'orders', { groupBuyId: order.groupBuyId })
+        const participating = siblings.filter(isParticipatingGroupOrder)
+        if (participating.length) targetOrders = participating
+      } catch (_) {}
+    }
+    const allPets = await resolveOrderPetsForRisk(targetOrders)
+    const petSummary = summarizePetsForStaff(allPets)
+    if (petSummary.hasLargeDog) {
+      const dogLabels = petSummary.largeDogs.map((d) => d.label).join('、')
+      warnings.push({
+        type: 'large_dog',
+        title: `订单包含大型犬（≥25kg）：${dogLabels}`,
+        detail: `本单需服务大型犬（${dogLabels}），力量与爆发力较强。接单前请确认具备大型犬控绳与安抚经验，进出家门严防冲门，遛狗全程系牢牵引绳并避开密集人群与其他犬只。`,
+        largeDogs: petSummary.largeDogs
+      })
+    }
 
     // 检查距离风险 - 这里是基于固定服务地址的距离，仅作为参考提示
     // 实际的强制限制已在acceptOrder中使用实时位置验证
     const radiusKm = Math.max(Number(profile.serviceRadiusKm || 5), 1)
-    const distanceKm = calcDistanceKm(profile.serviceLatitude, profile.serviceLongitude, order.addressLatitude, order.addressLongitude)
-    if (distanceKm !== null && distanceKm > radiusKm) {
+    let maxDistanceKm = null
+    for (const target of targetOrders) {
+      if (!target) continue
+      const dist = calcDistanceKm(profile.serviceLatitude, profile.serviceLongitude, target.addressLatitude, target.addressLongitude)
+      if (dist !== null && (maxDistanceKm === null || dist > maxDistanceKm)) {
+        maxDistanceKm = dist
+      }
+    }
+    if (maxDistanceKm !== null && maxDistanceKm > radiusKm) {
       warnings.push({
         type: 'range',
         title: '订单地址距离你的固定服务地址较远',
-        detail: `订单距离你设置的固定服务地址约 ${formatDistance(distanceKm)}，已超出 ${radiusKm}km 接单范围。接单以当前位置为准，请确认能按时到达。`,
-        distanceKm,
+        detail: `订单距离你设置的固定服务地址约 ${formatDistance(maxDistanceKm)}，已超出 ${radiusKm}km 接单范围。接单以当前位置为准，请确认能按时到达。`,
+        distanceKm: maxDistanceKm,
         radiusKm
       })
     }
 
-    // 检查时间风险 - 作为警告，提示宠托师确认按时履约
-    const sessions = getOrderTimeRanges(order)
+    // 检查时间风险 - 作为警告，提示宠托师确认按时履约（含拼单整团各户服务时段）
+    const sessions = targetOrders.filter(Boolean).flatMap((target) => getOrderTimeRanges(target))
     const failedSessions = []
+    const seenSessionFailure = new Set()
 
     for (const session of sessions) {
       try {
         await validateStaffScheduleOnly(profile, session.startTime, session.endTime)
       } catch (error) {
-        failedSessions.push(`${session.startTime}：${error.message || '不在你设置的可接单时间段内'}`)
+        const msg = `${session.startTime}：${error.message || '不在你设置的可接单时间段内'}`
+        if (!seenSessionFailure.has(msg)) {
+          seenSessionFailure.add(msg)
+          failedSessions.push(msg)
+        }
       }
     }
 

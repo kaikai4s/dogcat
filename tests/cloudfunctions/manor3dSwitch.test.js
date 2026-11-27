@@ -108,7 +108,10 @@ test('disabling 3D manor blocks 3D playground endpoints while keeping 2D playgro
     ['syncManor3d', { sceneId, session, seq: 1, position3d: { x: 0, z: 0 }, moving: false, running: false, facing: 0 }],
     ['syncManor3dVehicle', { sceneId, session, seq: 1, position3d: { x: 0, y: 0, z: 0 }, yaw: 0, moving: false }],
     ['listManor3dHomes', {}],
-    ['placeManor3dBuilding', { sceneId, session, buildingId: 'songying_courtyard', plotId: 'M86', x: 14, z: 172, rotation: 90 }]
+    ['placeManor3dBuilding', { sceneId, session, buildingId: 'songying_courtyard', plotId: 'M86', x: 14, z: 172, rotation: 90 }],
+    ['movePet', { sceneId, session, petId: 'pet_1', manor3dPosition: { x: 1, y: 0, z: 2 } }],
+    ['interactPet', { sceneId, session, petId: 'pet_1', actionKey: 'touch', manor3dPosition: { x: 1, y: 0, z: 2 } }],
+    ['petAction', { sceneId, session, petId: 'pet_1', actionKey: 'rest', manor3dPosition: { x: 1, y: 0, z: 2 } }]
   ]
   for (const [action, data] of blockedActions) {
     const res = await client.main({ module: 'playground', action, data })

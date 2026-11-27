@@ -245,10 +245,7 @@ Page({
       const user = require('../../utils/cloud').getCachedUser?.()
       this._openPositionSlot('local', user?._id || user?.openid || user?._openid || 'guest')
     }
-    const cloud = require('../../utils/cloud')
-    const cachedDisabled = typeof cloud.getCachedSystemSettings === 'function' &&
-      cloud.getCachedSystemSettings()?.enableManor3d === false
-    if (!hasManorAssets(this._envId) || cachedDisabled) {
+    if (!hasManorAssets(this._envId)) {
       this.setData({ status: 'unavailable', mountCanvas: false })
       return
     }
@@ -256,6 +253,10 @@ Page({
       if (wx.getStorageSync(CHARACTER_KEY) === 'girl') this.setData({ characterType: 'girl' })
       this.setData({ cameraSensitivity: normalizeCameraSensitivity(wx.getStorageSync(CAMERA_SENSITIVITY_KEY)) })
     } catch (_) {}
+    const cloud = require('../../utils/cloud')
+    if (typeof cloud.getCachedSystemSettings === 'function' && cloud.getCachedSystemSettings()?.enableManor3d === false) {
+      this.setData({ status: 'unavailable', mountCanvas: false })
+    }
   },
 
   onReady() {
@@ -273,6 +274,10 @@ Page({
     this._stopLoad('_vehicleSession')
     this._stopLoad('_highRiseSession')
     this._stopLoad('_remoteCharacterSession')
+    this._petModelsGeneration = (this._petModelsGeneration || 0) + 1
+    this._petModelsLoading = false
+    for (const session of this._petModelSessions?.values?.() || []) session.assets?.cancel?.()
+    this._petModelSessions?.clear?.()
     this._disconnectCommunity()
     this._releaseScene()
     this.setData({ status: 'unavailable', mountCanvas: false, error: '', communityStatus: 'idle', communityError: '' })
@@ -281,15 +286,27 @@ Page({
   onShow() {
     this._shown = true
     const cloud = require('../../utils/cloud')
-    if (typeof cloud.getCachedSystemSettings === 'function' && cloud.getCachedSystemSettings()?.enableManor3d === false) {
-      this._markManor3dUnavailable()
-      return
-    }
-    if (typeof cloud.loadSystemSettings === 'function' && this.data.status !== 'unavailable') {
+    const cachedDisabled = typeof cloud.getCachedSystemSettings === 'function' &&
+      cloud.getCachedSystemSettings()?.enableManor3d === false
+    if (cachedDisabled) this._markManor3dUnavailable()
+    if (hasManorAssets(this._envId) && typeof cloud.loadSystemSettings === 'function') {
       cloud.loadSystemSettings().then(settings => {
-        if (settings?.enableManor3d === false) this._markManor3dUnavailable()
+        if (this._closed) return
+        if (settings?.enableManor3d === false) {
+          this._markManor3dUnavailable()
+          return
+        }
+        if (this.data.status === 'unavailable') {
+          this.setData({ status: 'loading', mountCanvas: true, stage: '正在准备 3D 庄园', error: '' }, () => {
+            if (this._shown && !this._closed) {
+              this._prepareCommunityEntry()
+              this._beginLoad()
+            }
+          })
+        }
       }).catch(() => {})
     }
+    if (this.data.status === 'unavailable') return
     this._highRiseUnavailable = false
     this._prepareCommunityEntry()
     if (this._hasLandscape) {
