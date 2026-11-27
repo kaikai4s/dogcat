@@ -36,6 +36,72 @@ function setup(patch = {}) {
     setClock: value => { clock = new Date(value) }, counts: () => ({ messageCalls, subscriptionCalls }) }
 }
 
+test('zero-pay designated cancellation restores its coupon once without a refund or gateway call', async () => {
+  const s = setup({ publishMode: 'direct', payAmount: 0, couponId: 'coupon' })
+  s.db.state.user_coupons = [{ _id: 'coupon', status: 'used', usedOrderId: 'o', validTo: '2099-01-01' }]
+  Object.assign(s.context, require('../../cloudfunctions/api/services/coupons')({ ...s.context, safeText: value => String(value || '') }))
+  s.context.createRefundForOrder = async () => { throw new Error('zero refund must never be requested') }
+  const messages = []
+  s.context.appendOrderClientMessage = async (order, message) => { messages.push(message); return { _id: 'm' } }
+  s.rebuild()
+  const input = await s.data()
+  const results = await Promise.all([s.service.cancelStaffAcceptedOrder('staff', input), s.service.cancelStaffAcceptedOrder('staff', input)])
+  assert.deepEqual(results[0], results[1])
+  assert.equal(s.db.state.orders[0].status, 'cancelled')
+  assert.equal(s.db.state.orders[0].homeSecurityCleanupPending, true)
+  assert.equal(s.db.state.user_coupons[0].status, 'available')
+  assert.equal(s.db.state.user_coupons[0].usedOrderId, '')
+  assert.equal(s.db.state.refunds.length, 0)
+  assert.equal(s.db.state.payment_events.length, 1)
+  assert.equal(messages.length, 1)
+  assert.doesNotMatch(JSON.stringify(messages), /退款中|发起全额退款/)
+})
+
+test('zero-pay cancellation rolls back its event and coupon when coupon restoration fails', async () => {
+  const s = setup({ publishMode: 'direct', payAmount: 0, couponId: 'coupon' })
+  s.db.state.user_coupons = [{ _id: 'coupon', status: 'used', usedOrderId: 'o' }]
+  s.context.restoreOrderCoupon = async (id, orderId, tx) => {
+    await tx.collection('user_coupons').doc(id).update({ data: { status: 'available' } })
+    throw new Error('coupon write unavailable')
+  }
+  s.rebuild()
+  await assert.rejects(s.service.cancelStaffAcceptedOrder('staff', await s.data()), /coupon write unavailable/)
+  assert.equal(s.db.state.orders[0].status, 'assigned')
+  assert.equal(s.db.state.user_coupons[0].status, 'used')
+  assert.equal(s.db.state.payment_events.length, 0)
+  assert.equal((s.db.state.order_timeline || []).length, 0)
+})
+
+for (const change of ['role', 'assignment', 'balance']) {
+  test(`zero-pay cancellation transaction rechecks concurrent ${change} changes`, async () => {
+    const s = setup({ publishMode: 'direct', payAmount: 0, couponId: 'coupon' })
+    s.db.state.user_coupons = [{ _id: 'coupon', status: 'used', usedOrderId: 'o' }]
+    s.context.restoreOrderCoupon = async () => { throw new Error('must reject before restoring') }
+    s.rebuild()
+    const input = await s.data()
+    const run = s.db.runTransaction
+    s.db.runTransaction = callback => {
+      if (change === 'role') s.db.state.users[0].roles = ['client']
+      if (change === 'assignment') s.db.state.orders[0].staffOpenid = 'other'
+      if (change === 'balance') s.db.state.orders[0].payAmount = 100
+      return run(callback)
+    }
+    await assert.rejects(s.service.cancelStaffAcceptedOrder('staff', input), /宠托师|异常/)
+    assert.equal(s.db.state.orders[0].status, 'assigned')
+    assert.equal(s.db.state.payment_events.length, 0)
+    assert.equal(s.db.state.user_coupons[0].status, 'used')
+  })
+}
+
+for (const patch of [{ payAmount: 0 }, { payAmount: 100, refundAmount: 100 }]) {
+  test(`zero refundable balance cannot bypass financial verification: ${JSON.stringify(patch)}`, async () => {
+    const s = setup({ publishMode: 'direct', ...patch })
+    await assert.rejects(s.service.cancelStaffAcceptedOrder('staff', await s.data()), /核对|异常/)
+    assert.equal(s.db.state.orders[0].status, 'assigned')
+    assert.equal(s.db.state.payment_events.length, 0)
+  })
+}
+
 test('group cancellation rejects any household that has departed, started, or completed', async () => {
   for (const status of ['on_the_way', 'in_service', 'day_completed', 'completed']) {
     const s = setup({ groupBuyId: 'g' })

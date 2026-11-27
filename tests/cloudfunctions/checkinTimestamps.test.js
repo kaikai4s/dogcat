@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { createCollectionStore, loadCloudFunction } = require('./helpers')
 
-test('checkin photos with numeric recordedAt (as sent by mini program) are counted in getOrderDetail and satisfy finishService', async () => {
+test('checkin photos with numeric recordedAt (as sent by mini program) are counted in getOrderDetail and satisfy finishService', async t => {
   const db = createCollectionStore({
     users: [
       { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' },
@@ -99,7 +99,13 @@ test('checkin photos with numeric recordedAt (as sent by mini program) are count
     assert.ok(req.photos.length >= 1, `${eventType} photos 列表不应为空`)
   }
 
-  // 5. 验证可正常完成服务
+  // 提前开始的批准不豁免实际履约时长。
+  const earlyFinish = await staffFn.main({ module: 'order', action: 'finishService', data: { id: orderId } })
+  assert.equal(earlyFinish.ok, false)
+  assert.match(earlyFinish.message, /时长/)
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() + 60 * 60000 })
+
+  // 5. 足时且全部打卡完成后可正常完单
   const finishRes = await staffFn.main({
     module: 'order',
     action: 'finishService',

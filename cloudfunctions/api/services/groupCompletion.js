@@ -1,9 +1,10 @@
 const crypto = require('crypto')
+const { assertServiceCompletionTime } = require('./orderSessions')
 const { readDocuments } = require('../utils/documentPages')
 const { isParticipatingGroupOrder } = require('../utils/groupBuyMembership')
 
 module.exports = function createGroupCompletion({ db, now, normalizeServiceSessions, markServiceSession,
-  isFinalServiceSession, evaluateCheckinCompletion, completeSingleOrderService, appendOrderTimeline, appendOrderClientMessage, toTimeValue }) {
+  isFinalServiceSession, evaluateCheckinCompletion, completeSingleOrderService, appendOrderTimeline, appendOrderClientMessage, toTimeValue, destroyOrderHomeSecuritySecrets }) {
   function ready(order) {
     const sessions = normalizeServiceSessions(order)
     return order.status === 'completed' || (order.status === 'day_completed' && sessions.length > 0 && sessions.every(s => s.status === 'completed'))
@@ -27,10 +28,12 @@ module.exports = function createGroupCompletion({ db, now, normalizeServiceSessi
         const currentIndex = Number(current.activeSessionIndex || 0)
         if ((currentIndex && currentIndex !== Number(activeSession.index)) ||
           toTimeValue(current.currentSessionStartedAt || current.startedAt) !== toTimeValue(order.currentSessionStartedAt || order.startedAt)) throw new Error('服务场次已变化，请刷新后重试')
+        if (current.completionType !== 'admin_manual') assertServiceCompletionTime(current, activeSession, time)
         const checkins = await evaluateCheckinCompletion(current, toTimeValue(current.currentSessionStartedAt || activeSession.startedAt || current.startedAt))
         if (!checkins.isComplete) throw new Error(`缺少必打卡照片：${checkins.missing.join('、')}`)
         const session = { ...activeSession, startedAt: activeSession.startedAt || current.currentSessionStartedAt || current.startedAt || '', finishedAt: time }
         const patch = { status: 'day_completed', serviceSessions: markServiceSession(normalizeServiceSessions(current), session.index, { status: 'completed', finishedAt: time }),
+          homeSecurityCleanupPending: true,
           groupCompletionSession: session, groupCompletionPending: true, groupCompletionIsAuto: options.isAuto === true,
           activeSessionIndex: 0, activeSessionDate: '', currentSessionStartedAt: '', lastCompletedSessionIndex: session.index, updatedAt: time }
         await tx.collection('orders').doc(order._id).update({ data: patch })
@@ -51,6 +54,10 @@ module.exports = function createGroupCompletion({ db, now, normalizeServiceSessi
       }
       return { members, staged, remaining }
     })
+    if (typeof destroyOrderHomeSecuritySecrets === 'function') {
+      await destroyOrderHomeSecuritySecrets(order._id, { isFinal: true, reason: 'group_household_completed', actor: options.actor || 'staff', time })
+        .catch(error => console.error('[group-security-cleanup]', { orderId: order._id, message: error.message }))
+    }
     if (state.remaining) {
       if (state.staged) {
         await appendOrderTimeline(order._id, 'day_completed', '住户服务打卡已完成', '等待同拼单团其他住户打卡完毕后统一结算。', options.actor || 'staff')

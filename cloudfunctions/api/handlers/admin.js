@@ -2531,6 +2531,8 @@ module.exports = function createHandler(context) {
         }))
         finalSession = sessions[sessions.length - 1] || null
         Object.assign(updateData, {
+          homeSecurityCleanupPending: true,
+          adminVerifiedCompletion: true,
           serviceSessions: sessions,
           lastCompletedSessionIndex: finalSession ? finalSession.index : Number(order.lastCompletedSessionIndex || 0),
           activeSessionIndex: 0,
@@ -2567,6 +2569,7 @@ module.exports = function createHandler(context) {
         await resolveOrderDispatchNotifications(orderId, { reason: 'admin_manual_status_completed', actor: openid, time }).catch(() => {})
         if (typeof destroyOrderHomeSecuritySecrets === 'function') {
           await destroyOrderHomeSecuritySecrets(orderId, {
+            isFinal: true,
             reason: 'admin_manual_status_completed',
             actor: 'admin',
             time
@@ -2638,6 +2641,7 @@ module.exports = function createHandler(context) {
         const updateData = {
           status: latest.groupBuyId ? 'day_completed' : 'completed',
           completionType: 'admin_manual',
+          homeSecurityCleanupPending: true,
           adminManualAccountingVersion: 2,
           adminManualCompletedAt: time,
           adminManualCompletedBy: openid,
@@ -2688,7 +2692,7 @@ module.exports = function createHandler(context) {
       await resolveOrderDispatchNotifications(orderId, { reason: 'admin_manual_completed', actor: openid, time })
         .catch(err => console.error('[manualCompleteOrder] resolve dispatch notifications failed:', err))
       if (typeof destroyOrderHomeSecuritySecrets === 'function') {
-        await destroyOrderHomeSecuritySecrets(orderId, { reason: 'admin_manual_completed', actor: 'admin', time })
+        await destroyOrderHomeSecuritySecrets(orderId, { isFinal: true, reason: 'admin_manual_completed', actor: 'admin', time })
           .catch(err => console.error('[manualCompleteOrder] destroy secrets failed:', err))
       }
       const settlementText = pendingGroup ? '等待同拼单团全部住户服务完成后统一结算' : `实际入账收益 ¥${finalStaffReward.toFixed(2)}`

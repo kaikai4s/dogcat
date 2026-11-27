@@ -42,6 +42,36 @@ function loadServicePage({ status = 'on_the_way', preflight = () => Promise.reso
 
 const tap = (type = 'sanitization') => ({ currentTarget: { dataset: { type } } })
 
+test('timed service cannot open completion confirmation until its current visit reaches full duration', () => {
+  const { page, toasts, calls } = loadServicePage({ status: 'in_service' })
+  Object.assign(page.data.order, { serviceType: 'walk', durationMinutes: 60, activeSessionIndex: 2,
+    startedAt: new Date(Date.now() - 86400000), currentSessionStartedAt: new Date(Date.now() - 2000),
+    serviceSessions: [{ index: 2, status: 'in_service', startedAt: new Date(Date.now() - 2000) }] })
+  page.finish()
+  assert.match(toasts[0].title, /服务时长尚未完成/)
+  assert.equal(calls.length, 0)
+  page.data.order.currentSessionStartedAt = ''
+  page.data.order.serviceSessions[0].startedAt = ''
+  page.finish()
+  assert.match(toasts[1].title, /计时异常/)
+})
+
+test('service timer updates remaining time and unblocks completion at the elapsed boundary', () => {
+  const { page } = loadServicePage({ status: 'in_service' })
+  Object.assign(page.data.order, { serviceType: 'walk', durationMinutes: 60, currentSessionStartedAt: new Date(Date.now() - 2000) })
+  try {
+    page.startServiceElapsedTimer(page.data.order)
+    assert.equal(page.data['order.finishTimeBlocked'], true)
+    assert.match(page.data['order.finishTimeTip'], /还需/)
+    page.data.order.currentSessionStartedAt = new Date(Date.now() - 3600000)
+    page.startServiceElapsedTimer(page.data.order)
+    assert.equal(page.data['order.finishTimeBlocked'], false)
+    assert.equal(page.data['order.finishTimeTip'], '')
+  } finally { page.stopServiceElapsedTimer() }
+  const template = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/staff/orders/service/index.wxml'), 'utf8')
+  assert.match(template, /disabled="{{finishing \|\| order.finishTimeBlocked}}"/)
+})
+
 test('missing checkin hints format event codes while preserving custom requirement labels', () => {
   const { page } = loadServicePage()
   const requirements = [

@@ -5,7 +5,7 @@ const { toTimeValue } = require('../utils/time')
 module.exports = function createService({ db, crypto, now, getPayableOrder, getSystemSettings,
   assertPaymentModeAllowed, getWechatPayConfig, wechatPayRequest, sanitizeWechatPayload, amountYuanToFen, createRefundNo, restoreOrderCoupon,
   adjustStaffEarningsForRefund,
-  enqueueOrderNotification, notifyOrder,
+  enqueueOrderNotification, notifyOrder, destroyOrderHomeSecuritySecrets,
   normalizeMallProduct, getSkuById }) {
   const inventory = require('./mallRefundInventory')({ db, now, normalizeMallProduct, getSkuById })
   const idFor = value => `refund_${crypto.createHash('sha256').update(value).digest('hex').slice(0, 32)}`
@@ -96,6 +96,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         refundNo: value.refundNo, refundRevision: Number(current.refundRevision || 0) + 1, updatedAt: time,
         pendingEarningRefundIds: [...new Set([...(current.pendingEarningRefundIds || []), id, ...cancellationHolds])],
         ...(options.cancelStatus ? { status: options.cancelStatus, cancelReason: reason || '', cancelledAt: time } : {}),
+        ...(options.cancelStatus && resolved.collectionName === 'orders' ? { homeSecurityCleanupPending: true } : {}),
         ...(options.cancelStatus === 'expired' ? { expiredAt: time, expireReason: '服务开始时间前无人接单' } : {}),
         ...(source === 'mall_after_sale' && current.afterSaleType === 'return_and_refund' && current.refundStatus === 'return_shipped'
           ? { returnReceivedAt: current.returnReceivedAt || time } : {}),
@@ -281,6 +282,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         paymentStatus, refundStatus,
         ...(['success', 'failed'].includes(status) ? { pendingEarningRefundIds: (order.pendingEarningRefundIds || []).filter(id => id !== refund._id && !releaseHoldIds.includes(id)) } : {}),
         status: nextStatus,
+        ...(full && !isMallOrder ? { homeSecurityCleanupPending: true } : {}),
         ...(shouldRestoreStock ? { stockRestorePending: true, stockRestoreCheckedAt: time, stockRestoreError: '' } : {}),
         updatedAt: time
       } })
@@ -304,6 +306,10 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
       }
       return { ...latest, ...patch }
     })
+    if (result?.status === 'success' && resolved.collectionName === 'orders' && typeof destroyOrderHomeSecuritySecrets === 'function') {
+      await destroyOrderHomeSecuritySecrets(refund.orderId, { isFinal: true, onlyIfTerminated: true, reason: 'refund_terminal_cleanup', actor: 'system' })
+        .catch(error => console.error('[refund-security-cleanup]', { orderId: refund.orderId, message: error.message }))
+    }
     if (result?.status === 'success' && resolved.collectionName === 'mall_orders') await inventory.restorePendingStock(refund.orderId)
     if (result && ['success', 'failed'].includes(result.status) && !isMock && resolved.collectionName !== 'mall_orders') {
       // The committed queue survives a send failure or a process restart.

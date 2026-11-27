@@ -1,3 +1,4 @@
+const crypto = require('crypto')
 const { readOptionalDocument } = require('../utils/documentPages')
 const { currentKeyReturn } = require('../utils/keyReturnEvidence')
 
@@ -252,134 +253,115 @@ module.exports = function createService({
     const reason = options.reason || 'service_completed_auto_destroyed'
     const actor = options.actor || 'staff'
 
-    // 1. 查询 order_home_security 独立集合
-    const secRes = await db.collection('order_home_security').where({ orderId }).limit(1).get().catch(() => ({ data: [] }))
-    const secDoc = secRes.data && secRes.data[0]
+    return db.runTransaction(async tx => {
+      const secRes = await tx.collection('order_home_security').where({ orderId }).limit(2).get()
+      if (secRes.data.length > 1) throw new Error('订单安防记录重复，请联系平台核对')
+      const secDoc = secRes.data[0]
+      const order = await readOptionalDocument(tx, 'orders', orderId)
+      if (!order) return null
+      const terminal = ['cancelled', 'expired', 'completed', 'refunded', 'closed'].includes(order.status)
+      const groupFinished = order.groupCompletionPending && (order.serviceSessions || []).length > 0 &&
+        order.serviceSessions.every(session => session.status === 'completed')
+      if (options.onlyIfTerminated && !terminal && !groupFinished) return null
+      if (options.onlyIfSessionCompleted && !(order.serviceSessions || []).some(session =>
+        Number(session.index) === sessionIndex && ['completed', 'cancelled'].includes(session.status))) return null
+      const pendingSessionIndexes = (order.homeSecurityPendingSessionIndexes || []).filter(index => Number(index) !== sessionIndex)
+      const existingSecurity = secDoc || order.orderHomeSecurity || order.homeSecuritySnapshot ||
+        (order.doorLockCodeCipher || order.doorLockCode ? { type: 'one_time_code' } : null)
+      if (!existingSecurity) {
+        await tx.collection('orders').doc(orderId).update({ data: {
+          ...(terminal || groupFinished ? { homeSecurityCleanupPending: false, homeSecurityPendingSessionIndexes: [] }
+            : { homeSecurityPendingSessionIndexes: pendingSessionIndexes })
+        } })
+        return null
+      }
 
-    // 2. 查询 orders 集合
-    const orderRes = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
-    const order = orderRes && orderRes.data
-    const existingSecurity = secDoc || (order && (order.orderHomeSecurity || order.homeSecuritySnapshot)) || null
-    if (!existingSecurity) return null
+      const updatedSec = { ...order.orderHomeSecurity, ...existingSecurity }
+      delete updatedSec._id
+      const destroyCode = item => ({
+        ...item, code: '', doorLockCode: '', cipher: '', iv: '', tag: '',
+        destroyed: true, destroyedAt: item.destroyedAt || time,
+        destroyReason: item.destroyReason || reason, masked: item.masked || '******'
+      })
+      const hasSessionCodes = Array.isArray(updatedSec.sessionCodes) && updatedSec.sessionCodes.length > 0
+      if (sessionIndex && hasSessionCodes) {
+        updatedSec.sessionCodes = updatedSec.sessionCodes.map(item =>
+          Number(item.sessionIndex || item.index) === sessionIndex ? destroyCode(item) : item)
+      }
+      const totalSessions = (order.serviceSessions || []).length || 1
+      const isMultiDay = order.orderType === 'multi_day' || totalSessions > 1
+      // 中间场次只销毁当天密码；整单终止或明确最终完单才销毁统一码和未来场次。
+      const isFullyDestroyed = terminal || options.isFinal === true || (isMultiDay
+        ? Boolean(sessionIndex) && sessionIndex >= totalSessions
+        : !sessionIndex || (hasSessionCodes && updatedSec.sessionCodes.every(item => item.destroyed === true)))
+      if (isFullyDestroyed) {
+        if (updatedSec.oneTimeCode) updatedSec.oneTimeCode = destroyCode(updatedSec.oneTimeCode)
+        if (Array.isArray(updatedSec.sessionCodes)) updatedSec.sessionCodes = updatedSec.sessionCodes.map(destroyCode)
+        Object.assign(updatedSec, {
+          doorLockCodeCipher: '', doorLockCodeIv: '', doorLockCodeTag: '', doorLockCode: '', code: '',
+          destroyed: true, destroyedAt: updatedSec.destroyedAt || time,
+          destroyReason: updatedSec.destroyReason || reason, destroyedBy: updatedSec.destroyedBy || actor,
+          isPasswordDestroyed: true
+        })
+      }
+      updatedSec.updatedAt = time
+      const hasActiveOneTimeCode = Boolean(updatedSec.oneTimeCode && !updatedSec.oneTimeCode.destroyed &&
+        (updatedSec.oneTimeCode.cipher || updatedSec.oneTimeCode.code))
+      const hasActiveSessionCodes = hasSessionCodes && updatedSec.sessionCodes.some(item => !item.destroyed)
+      const hasRemainingCodes = !isFullyDestroyed && (hasActiveOneTimeCode || hasActiveSessionCodes)
+      updatedSec.hasDoorLockCode = hasRemainingCodes
+      const orderUpdateData = {
+        orderHomeSecurity: db.command.set(updatedSec),
+        homeSecuritySnapshot: db.command.set(toPublicHomeSecuritySnapshot(updatedSec)),
+        hasDoorLockCode: hasRemainingCodes, updatedAt: time,
+        homeSecurityPendingSessionIndexes: isFullyDestroyed ? [] : pendingSessionIndexes
+      }
+      if (isFullyDestroyed) {
+        Object.assign(orderUpdateData, {
+          isDoorLockCodeDestroyed: true, doorLockCodeDestroyedAt: updatedSec.destroyedAt,
+          homeSecurityCleanupPending: false,
+          doorLockCode: '', doorLockCodeCipher: '', doorLockCodeIv: '', doorLockCodeTag: ''
+        })
+      }
+      const logId = `destroy_${crypto.createHash('sha256').update(JSON.stringify([orderId, isFullyDestroyed ? 'final' : sessionIndex])).digest('hex').slice(0, 32)}`
+      const logged = await readOptionalDocument(tx, 'unlock_code_logs', logId)
+      if (secDoc) {
+        await tx.collection('order_home_security').doc(secDoc._id).update({ data: {
+          ...updatedSec,
+          ...(updatedSec.oneTimeCode ? { oneTimeCode: db.command.set(updatedSec.oneTimeCode) } : {})
+        } })
+      }
+      await tx.collection('orders').doc(orderId).update({ data: orderUpdateData })
+      if (!logged) await tx.collection('unlock_code_logs').doc(logId).set({ data: {
+        orderId, staffOpenid: order.staffOpenid || '', result: 'destroyed', reason, actor,
+        sessionIndex: sessionIndex || 0, createdAt: time
+      } })
+      return updatedSec
+    })
+  }
 
-    const updatedSec = { ...existingSecurity }
-
-    const hasSessionCodes = Array.isArray(updatedSec.sessionCodes) && updatedSec.sessionCodes.length > 0
-    // 销毁多日订单中特定场次
-    let isAllDestroyed = false
-    if (sessionIndex && hasSessionCodes) {
-      updatedSec.sessionCodes = updatedSec.sessionCodes.map((item) => {
-        if (Number(item.sessionIndex || item.index) === sessionIndex) {
-          return {
-            ...item,
-            cipher: '',
-            iv: '',
-            tag: '',
-            destroyed: true,
-            destroyedAt: time,
-            destroyReason: reason,
-            masked: item.masked || '******'
+  async function retryPendingHomeSecurityCleanup() {
+    const rows = (await db.collection('orders').where(db.command.or([
+      { homeSecurityCleanupPending: true },
+      { 'homeSecurityPendingSessionIndexes.0': db.command.exists(true) }
+    ])).orderBy('updatedAt', 'asc').limit(30).get()).data || []
+    for (const order of rows) {
+      try {
+        const terminal = ['cancelled', 'expired', 'completed', 'refunded', 'closed'].includes(order.status) ||
+          (order.groupCompletionPending && (order.serviceSessions || []).length > 0 && order.serviceSessions.every(session => session.status === 'completed'))
+        if (terminal) {
+          await destroyOrderHomeSecuritySecrets(order._id, { isFinal: true, onlyIfTerminated: true, reason: 'terminal_cleanup_retry', actor: 'system' })
+        } else {
+          for (const sessionIndex of order.homeSecurityPendingSessionIndexes || []) {
+            await destroyOrderHomeSecuritySecrets(order._id, { sessionIndex, onlyIfSessionCompleted: true, reason: 'session_cleanup_retry', actor: 'system' })
           }
         }
-        return item
-      })
-      isAllDestroyed = updatedSec.sessionCodes.every((item) => item.destroyed === true)
-    }
-
-    const totalSessions = Array.isArray(order && order.serviceSessions) && order.serviceSessions.length > 0 ? order.serviceSessions.length : 1
-    const isMultiDay = (order && (order.orderType === 'multi_day' || (order.serviceSessions && order.serviceSessions.length > 1))) || false
-    const isLastSession = options.isFinal === true || (Boolean(sessionIndex) && sessionIndex >= totalSessions)
-    // 多日订单未到最后一场且不是显式 final，不可全单销毁统一门锁密码
-    const isFullyDestroyed = isMultiDay
-      ? isLastSession
-      : (options.isFinal === true || !sessionIndex || (hasSessionCodes && isAllDestroyed))
-    if (isFullyDestroyed) {
-      if (updatedSec.oneTimeCode) {
-        updatedSec.oneTimeCode = {
-          ...updatedSec.oneTimeCode,
-          cipher: '',
-          iv: '',
-          tag: '',
-          destroyed: true,
-          destroyedAt: time,
-          destroyReason: reason,
-          masked: updatedSec.oneTimeCode.masked || '******'
-        }
+      } catch (error) {
+        console.error('[home-security-cleanup]', { orderId: order._id, message: error.message })
       }
-      if (Array.isArray(updatedSec.sessionCodes)) {
-        updatedSec.sessionCodes = updatedSec.sessionCodes.map((item) => ({
-          ...item,
-          cipher: '',
-          iv: '',
-          tag: '',
-          destroyed: true,
-          destroyedAt: time,
-          destroyReason: reason,
-          masked: item.masked || '******'
-        }))
-      }
-      updatedSec.doorLockCodeCipher = ''
-      updatedSec.doorLockCodeIv = ''
-      updatedSec.doorLockCodeTag = ''
-      updatedSec.doorLockCode = ''
-      updatedSec.code = ''
-      updatedSec.destroyed = true
-      updatedSec.destroyedAt = time
-      updatedSec.destroyReason = reason
-      updatedSec.destroyedBy = actor
-      updatedSec.isPasswordDestroyed = true
+      await db.collection('orders').doc(order._id).update({ data: { updatedAt: now() } })
     }
-
-    updatedSec.updatedAt = time
-
-    // 更新 order_home_security 集合（剔除 _id 防止 SDK update 报错）
-    if (secDoc) {
-      const { _id, ...cleanUpdatedSec } = updatedSec
-      await db.collection('order_home_security').doc(secDoc._id).update({
-        data: cleanUpdatedSec
-      }).catch((err) => {
-        console.error('[destroyOrderHomeSecuritySecrets] failed to update order_home_security:', err)
-      })
-    }
-
-    // 更新 orders 集合中的快照与安防对象
-    const hasActiveOneTimeCode = Boolean(updatedSec.oneTimeCode && !updatedSec.oneTimeCode.destroyed && (updatedSec.oneTimeCode.cipher || updatedSec.oneTimeCode.code))
-    const hasActiveSessionCodes = Array.isArray(updatedSec.sessionCodes) && updatedSec.sessionCodes.some((s) => !s.destroyed)
-    const hasRemainingCodes = !isFullyDestroyed && (hasActiveOneTimeCode || hasActiveSessionCodes)
-    updatedSec.hasDoorLockCode = hasRemainingCodes
-    const publicSnapshot = toPublicHomeSecuritySnapshot(updatedSec)
-
-    const orderUpdateData = {
-      orderHomeSecurity: updatedSec,
-      homeSecuritySnapshot: publicSnapshot,
-      hasDoorLockCode: hasRemainingCodes,
-      updatedAt: time
-    }
-    if (isFullyDestroyed) {
-      orderUpdateData.isDoorLockCodeDestroyed = true
-      orderUpdateData.doorLockCodeDestroyedAt = time
-    }
-
-    await db.collection('orders').doc(orderId).update({
-      data: orderUpdateData
-    }).catch((err) => {
-      console.error('[destroyOrderHomeSecuritySecrets] failed to update orders:', err)
-    })
-
-    // 写入安全审计流水
-    await db.collection('unlock_code_logs').add({
-      data: {
-        orderId,
-        staffOpenid: (order && order.staffOpenid) || '',
-        result: 'destroyed',
-        reason,
-        actor,
-        sessionIndex: sessionIndex || undefined,
-        createdAt: time
-      }
-    }).catch(() => {})
-
-    return updatedSec
+    return rows.length
   }
 
   return {
@@ -397,6 +379,7 @@ module.exports = function createService({
     toEarlyStartView,
     toPublicHomeSecuritySnapshot,
     toPublicOrderHomeSecurity,
-    destroyOrderHomeSecuritySecrets
+    destroyOrderHomeSecuritySecrets,
+    retryPendingHomeSecurityCleanup
   }
 }

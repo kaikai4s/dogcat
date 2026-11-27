@@ -1,3 +1,5 @@
+const { getServiceCompletionTiming } = require('./orderSessions')
+
 module.exports = function createService({
   ORDER_STATUS,
   appendOrderClientMessage,
@@ -225,14 +227,17 @@ module.exports = function createService({
       if (sessionStartedAt && sessionStartedAt < windowStartTs) continue
       const sessionEndTime = toTimeValue((activeSession && activeSession.endTime) || order.endTime)
       const durationMs = (Math.max(Number(order.durationMinutes || 60), 30)) * 60 * 1000
-      const estimatedEndTime = sessionEndTime || (sessionStartedAt ? sessionStartedAt + durationMs : 0)
+      const timing = getServiceCompletionTiming(order, activeSession, currentTime)
+      const estimatedEndTime = Math.max(sessionEndTime || (sessionStartedAt ? sessionStartedAt + durationMs : 0), timing.earliestFinishAt)
       if (!estimatedEndTime) continue
 
       const overdueMs = currentTs - estimatedEndTime
       if (overdueMs < 15 * 60 * 1000) continue
 
       const serviceName = order.serviceSummary || (order.serviceType === 'walk' ? '上门遛狗' : '上门喂养') || '宠护服务'
-      const checkinResult = await evaluateCheckinCompletion({ ...order, _id: order._id }, sessionStartedAt || currentTs)
+      const checkinResult = timing.timed && !timing.earliestFinishAt
+        ? { isComplete: false, missing: ['服务开始时间或约定时长异常，请联系平台核实'] }
+        : await evaluateCheckinCompletion({ ...order, _id: order._id }, sessionStartedAt || currentTs)
 
       const sessionIndex = Number(activeSession.index || 1)
       const autoCompletedSessions = Array.isArray(order.autoCompletedSessions) ? order.autoCompletedSessions : []
@@ -247,7 +252,7 @@ module.exports = function createService({
         } catch (error) {
           // A new photo, deletion or changed visit requires fresh validation
           // on the next sweep, while other orders can still be processed.
-          if (['SERVICE_PROOF_CHANGED', 'SERVICE_VISIT_CHANGED'].includes(error.code)) continue
+          if (['SERVICE_PROOF_CHANGED', 'SERVICE_VISIT_CHANGED', 'SERVICE_DURATION_INCOMPLETE'].includes(error.code)) continue
           throw error
         }
         processed.push({ orderId: order._id, sessionIndex, type: 'auto_completed', result: completeRes })

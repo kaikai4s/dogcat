@@ -313,7 +313,8 @@
       <text class="remix-icon ri-time-fill"></text>
       <text>已超过约定服务时间 {{order.finishOverdueMinutes}} 分钟！{{order.allCheckinsDone ? '打卡已齐全，请点击下方【完成服务】结算收益；若超时30分钟未操作，系统将自动结算。' : '请确认服务进度并尽快补全打卡照片。'}}</text>
     </view>
-    <button class="primary-btn finish-btn {{order.allCheckinsDone ? 'highlight-btn' : ''}}" loading="{{finishing}}" disabled="{{finishing}}" bindtap="finish">{{finishing ? '处理中...' : (order.allCheckinsDone ? '确认离开并完成服务' : '完成服务')}}</button>
+    <view class="overdue-alert-banner warning" wx:if="{{order.finishTimeBlocked}}"><text>{{order.finishTimeTip}}</text></view>
+    <button class="primary-btn finish-btn {{order.allCheckinsDone && !order.finishTimeBlocked ? 'highlight-btn' : ''}}" loading="{{finishing}}" disabled="{{finishing || order.finishTimeBlocked}}" bindtap="finish">{{finishing ? '处理中...' : (order.allCheckinsDone ? '确认离开并完成服务' : '完成服务')}}</button>
   </view>
 </view>
 

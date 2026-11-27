@@ -4,6 +4,376 @@ const { createCollectionStore, loadCloudFunction } = require('./helpers')
 
 process.env.HOME_SECURITY_KEY = process.env.HOME_SECURITY_KEY || 'test-home-security-key'
 
+function terminatedSecurityFixture(status = 'cancelled') {
+  const security = { type: 'one_time_code', oneTimeCode: { cipher: 'unified', iv: 'iv', tag: 'tag' },
+    sessionCodes: [{ sessionIndex: 1, cipher: 'one' }, { sessionIndex: 2, cipher: 'two' }] }
+  const db = createCollectionStore({ orders: [{ _id: 'multi', status, orderType: 'multi_day',
+    startTime: '2099-01-01 10:00', endTime: '2099-01-02 11:00',
+    serviceSessions: [{ index: 1, startTime: '2099-01-01 10:00', endTime: '2099-01-01 11:00' },
+      { index: 2, startTime: '2099-01-02 10:00', endTime: '2099-01-02 11:00' }],
+    orderHomeSecurity: security, homeSecurityCleanupPending: true }],
+    order_home_security: [{ _id: 'sec', orderId: 'multi', ...security }] })
+  require('./optimisticTransactions')(db)
+  return { db, c: require('../../cloudfunctions/api/services/context')({ db, cloud: {} }) }
+}
+
+for (const status of ['cancelled', 'expired', 'completed', 'refunded']) {
+  test(`terminal multi-day ${status} clears all password records exactly once`, async () => {
+    const { db, c } = terminatedSecurityFixture(status)
+    await c.destroyOrderHomeSecuritySecrets('multi', { reason: 'terminal_cleanup' })
+    for (const security of [db.state.orders[0].orderHomeSecurity, db.state.order_home_security[0]]) {
+      assert.equal(security.oneTimeCode.cipher, '')
+      assert.ok(security.sessionCodes.every(code => code.cipher === '' && code.destroyed))
+      assert.equal(security.destroyed, true)
+    }
+    assert.equal(db.state.orders[0].hasDoorLockCode, false)
+    assert.equal(db.state.orders[0].homeSecurityCleanupPending, false)
+    await c.destroyOrderHomeSecuritySecrets('multi', { reason: 'terminal_cleanup' })
+    assert.equal(db.state.unlock_code_logs.length, 1)
+  })
+}
+
+test('password destruction failure rolls back both records and never logs success; scheduled retry recovers', async () => {
+  const { db, c } = terminatedSecurityFixture()
+  const run = db.runTransaction
+  db.runTransaction = callback => run(tx => callback({ collection(name) {
+    if (name === 'order_home_security') {
+      const collection = tx.collection(name)
+      const doc = collection.doc.bind(collection)
+      collection.doc = id => ({ ...doc(id), update: async () => { throw new Error('security write unavailable') } })
+      return collection
+    }
+    return tx.collection(name)
+  } }))
+  await assert.rejects(c.destroyOrderHomeSecuritySecrets('multi'), /security write unavailable/)
+  assert.equal(db.state.orders[0].orderHomeSecurity.oneTimeCode.cipher, 'unified')
+  assert.equal((db.state.unlock_code_logs || []).length, 0)
+  db.runTransaction = run
+  await c.retryPendingHomeSecurityCleanup()
+  assert.equal(db.state.orders[0].orderHomeSecurity.oneTimeCode.cipher, '')
+  assert.equal(db.state.orders[0].homeSecurityCleanupPending, false)
+})
+
+test('intermediate multi-day completion destroys only its own code and preserves future credentials', async () => {
+  const { db, c } = terminatedSecurityFixture('day_completed')
+  await c.destroyOrderHomeSecuritySecrets('multi', { sessionIndex: 1 })
+  for (const security of [db.state.orders[0].orderHomeSecurity, db.state.order_home_security[0]]) {
+    assert.equal(security.oneTimeCode.cipher, 'unified')
+    assert.equal(security.sessionCodes[0].cipher, '')
+    assert.equal(security.sessionCodes[1].cipher, 'two')
+    assert.equal(security.hasDoorLockCode, true)
+  }
+})
+
+test('cleanup uses whole-object replacement to remove legacy plaintext from cloud snapshots', async () => {
+  const security = { type: 'one_time_code', oneTimeCode: { code: 'plaintext', cipher: 'cipher' },
+    sessionCodes: [{ sessionIndex: 1, code: 'plaintext', cipher: 'cipher' }] }
+  const db = createCollectionStore({ orders: [{ _id: 'legacy', status: 'cancelled', doorLockCode: 'plaintext',
+    orderHomeSecurity: security, homeSecuritySnapshot: security }],
+    order_home_security: [{ _id: 'sec', orderId: 'legacy', ...security }] }, { cloudObjectUpdates: true })
+  const c = require('../../cloudfunctions/api/services/context')({ db, cloud: {} })
+  await c.destroyOrderHomeSecuritySecrets('legacy')
+  assert.doesNotMatch(JSON.stringify(db.state.orders), /plaintext|"cipher":"cipher"/)
+  assert.doesNotMatch(JSON.stringify(db.state.order_home_security), /plaintext|"cipher":"cipher"/)
+})
+
+test('terminal cleanup retry rechecks transaction status and cannot erase a resumed service', async () => {
+  const { db, c } = terminatedSecurityFixture()
+  const run = db.runTransaction
+  db.runTransaction = callback => {
+    db.state.orders[0].status = 'in_service'
+    return run(callback)
+  }
+  await c.retryPendingHomeSecurityCleanup()
+  assert.equal(db.state.orders[0].orderHomeSecurity.oneTimeCode.cipher, 'unified')
+  assert.equal((db.state.unlock_code_logs || []).length, 0)
+})
+
+test('session cleanup retries a concurrent password reset without overwriting a future credential', async () => {
+  const { db, c } = terminatedSecurityFixture('day_completed')
+  const run = db.runTransaction
+  let reset = false
+  db.runTransaction = callback => run(async tx => {
+    const result = await callback(tx)
+    if (!reset) {
+      reset = true
+      db.state.order_home_security[0].sessionCodes[1].cipher = 'new-future-code'
+    }
+    return result
+  })
+  await c.destroyOrderHomeSecuritySecrets('multi', { sessionIndex: 1 })
+  assert.equal(db.state.orders[0].orderHomeSecurity.sessionCodes[1].cipher, 'new-future-code')
+  assert.equal(db.state.order_home_security[0].sessionCodes[1].cipher, 'new-future-code')
+  assert.equal(db.state.unlock_code_logs.length, 1)
+})
+
+for (const mode of ['unpaid', 'expired']) {
+  test(`${mode} termination clears multi-day credentials in both collections`, async () => {
+    const { db, c } = terminatedSecurityFixture(mode === 'unpaid' ? 'pending_pay' : 'paid')
+    const order = db.state.orders[0]
+    Object.assign(order, { paymentStatus: mode === 'unpaid' ? 'unpaid' : 'paid', payAmount: 0,
+      startTime: new Date(Date.now() - 3600000), couponId: 'coupon' })
+    db.state.user_coupons = [{ _id: 'coupon', status: mode === 'unpaid' ? 'locked' : 'used',
+      lockedOrderId: 'multi', usedOrderId: 'multi', validTo: '2099-01-01' }]
+    if (mode === 'unpaid') await c.cancelUnpaidOrder(order)
+    else await c.expireUnacceptedOrder('multi', order)
+    assert.equal(db.state.orders[0].status, mode === 'unpaid' ? 'cancelled' : 'expired')
+    assert.equal(db.state.orders[0].orderHomeSecurity.oneTimeCode.cipher, '')
+    assert.equal(db.state.order_home_security[0].oneTimeCode.cipher, '')
+    assert.equal(db.state.orders[0].homeSecurityCleanupPending, false)
+  })
+}
+
+test('client cancellation remains committed when security cleanup fails and its durable retry recovers', async () => {
+  const { db, c } = terminatedSecurityFixture('paid')
+  Object.assign(db.state.orders[0], { clientOpenid: 'client', paymentStatus: 'paid', payAmount: 0,
+    startTime: '2099-01-01 10:00', endTime: '2099-01-02 11:00', couponId: 'coupon' })
+  db.state.users = [{ _id: 'client', openid: 'client', roles: ['client'], status: 'active' }]
+  db.state.user_coupons = [{ _id: 'coupon', status: 'used', usedOrderId: 'multi', validTo: '2099-01-01' }]
+  const run = db.runTransaction
+  db.runTransaction = callback => run(tx => callback({ collection(name) {
+    if (name === 'order_home_security') throw new Error('security temporarily unavailable')
+    return tx.collection(name)
+  } }))
+  const api = loadCloudFunction('api', db, 'client')
+  const result = await api.main({ module: 'order', action: 'cancelOrder', data: { orderId: 'multi' } })
+  assert.equal(result.ok, true, result.message)
+  assert.equal(db.state.orders[0].status, 'cancelled')
+  assert.equal(db.state.orders[0].homeSecurityCleanupPending, true)
+  assert.equal(db.state.user_coupons[0].status, 'available')
+  assert.equal((db.state.unlock_code_logs || []).length, 0)
+  db.runTransaction = run
+  await c.retryPendingHomeSecurityCleanup()
+  assert.equal(db.state.orders[0].orderHomeSecurity.oneTimeCode.cipher, '')
+  assert.equal(db.state.orders[0].homeSecurityCleanupPending, false)
+})
+
+test('resetting one visit password preserves encrypted credentials for other visits in both records', async () => {
+  const { db, c } = terminatedSecurityFixture('assigned')
+  db.state.orders[0].clientOpenid = 'client'
+  db.state.users = [{ _id: 'client', openid: 'client', roles: ['client'], status: 'active' }]
+  const handler = require('../../cloudfunctions/api/handlers/homeSecurity')({ ...c, appendOrderStaffMessage: async () => {} })
+  await handler('client', 'updateOrderOneTimeCode', { orderId: 'multi', sessionIndex: 1, code: '123456',
+    effectiveStart: '2099-01-01 09:00', effectiveEnd: '2099-01-01 12:00' })
+  for (const security of [db.state.orders[0].orderHomeSecurity, db.state.order_home_security[0]]) {
+    assert.equal(security.sessionCodes[1].cipher, 'two')
+    const { cipher, iv, tag } = security.sessionCodes[0]
+    assert.equal(c.decryptText(cipher, iv, tag), '123456')
+  }
+})
+
+for (const race of ['cancelled', 'completed', 'write_failure']) {
+  test(`password reset cannot resurrect secrets or partially commit during ${race}`, async () => {
+    const { db, c } = terminatedSecurityFixture('assigned')
+    db.state.orders[0].clientOpenid = 'client'
+    db.state.users = [{ _id: 'client', openid: 'client', roles: ['client'], status: 'active' }]
+    const run = db.runTransaction
+    db.runTransaction = callback => {
+      if (race !== 'write_failure') db.state.orders[0].status = race
+      return run(tx => callback({ collection(name) {
+        const collection = tx.collection(name)
+        if (race === 'write_failure' && name === 'order_home_security') {
+          const doc = collection.doc.bind(collection)
+          collection.doc = id => ({ ...doc(id), update: async () => { throw new Error('security update unavailable') } })
+        }
+        return collection
+      } }))
+    }
+    const handler = require('../../cloudfunctions/api/handlers/homeSecurity')({ ...c, appendOrderStaffMessage: async () => {} })
+    await assert.rejects(handler('client', 'updateOrderOneTimeCode', { orderId: 'multi', code: '123456',
+      effectiveStart: '2099-01-01 09:00', effectiveEnd: '2099-01-02 12:00' }), /不可修改密码|security update unavailable/)
+    assert.equal(db.state.orders[0].orderHomeSecurity.oneTimeCode.cipher, 'unified')
+    assert.equal(db.state.order_home_security[0].oneTimeCode.cipher, 'unified')
+  })
+}
+
+for (const [amount, failCleanup] of [[20, false], [100, false], [100, true]]) {
+  test(`refund of ${amount} preserves live secrets or cleans terminal credentials (cleanup failure: ${failCleanup})`, async () => {
+    const { db, c } = terminatedSecurityFixture('assigned')
+    Object.assign(db.state.orders[0], { payAmount: 100, paymentStatus: 'paid', paymentChannel: 'mock', clientOpenid: 'client' })
+    db.state.orders[0].homeSecurityCleanupPending = false
+    const refunds = require('../../cloudfunctions/api/services/refunds')({ ...c,
+      getSystemSettings: async () => ({ payment: { mode: 'mock' } }), assertPaymentModeAllowed: () => {},
+      getPayableOrder: async () => ({ collectionName: 'orders', order: db.state.orders[0] }),
+      createRefundNo: () => 'REFUND', adjustStaffEarningsForRefund: async () => {}, notifyOrder: async () => {},
+      ...(failCleanup ? { destroyOrderHomeSecuritySecrets: async () => { throw new Error('cleanup unavailable') } } : {}) })
+    await refunds.requestOrderRefund(structuredClone(db.state.orders[0]), amount, '协商退款', 'admin_manual', 'admin', 'request')
+    assert.equal(db.state.orders[0].refundedAmount, amount)
+    if (amount < 100 || failCleanup) {
+      assert.equal(db.state.orders[0].orderHomeSecurity.oneTimeCode.cipher, 'unified')
+    } else {
+      assert.equal(db.state.orders[0].orderHomeSecurity.oneTimeCode.cipher, '')
+      assert.equal(db.state.order_home_security[0].oneTimeCode.cipher, '')
+    }
+    assert.equal(db.state.orders[0].homeSecurityCleanupPending, failCleanup)
+    if (failCleanup) {
+      assert.equal(db.state.orders[0].status, 'refunded')
+      await c.retryPendingHomeSecurityCleanup()
+      assert.equal(db.state.orders[0].orderHomeSecurity.oneTimeCode.cipher, '')
+    }
+  })
+}
+
+function liveSecurityFixture(count = 2) {
+  const time = new Date('2030-01-01T02:30:00Z')
+  const db = createCollectionStore({ users: [
+    { _id: 'client', openid: 'client', roles: ['client'], status: 'active' },
+    { _id: 'staff', openid: 'staff', roles: ['staff'], status: 'active' }
+  ], orders: [] })
+  require('./optimisticTransactions')(db)
+  const c = require('../../cloudfunctions/api/services/context')({ db, cloud: {} })
+  const sessions = Array.from({ length: count }, (_, i) => ({ index: i + 1,
+    startTime: new Date(+time - 1800000 + i * 86400000), endTime: new Date(+time + 1800000 + i * 86400000),
+    status: i ? 'pending' : 'in_service', ...(i ? {} : { startedAt: new Date(+time - 1800000) }) }))
+  const security = { type: 'one_time_code', oneTimeCode: { ...c.encryptText('UNIFIED'), effectiveStart: sessions[0].startTime, effectiveEnd: sessions[count - 1].endTime },
+    sessionCodes: sessions.map(s => ({ sessionIndex: s.index, ...c.encryptText(`DAY_${s.index}`), effectiveStart: s.startTime, effectiveEnd: s.endTime })) }
+  db.state.orders.push({ _id: 'live', clientOpenid: 'client', staffOpenid: 'staff', status: 'in_service', serviceType: 'feed',
+    orderType: count > 1 ? 'multi_day' : 'single', activeSessionIndex: 1, startedAt: sessions[0].startedAt,
+    currentSessionStartedAt: sessions[0].startedAt, startTime: sessions[0].startTime, endTime: sessions[count - 1].endTime,
+    serviceSessions: sessions, orderHomeSecurity: security })
+  db.state.order_home_security = [{ _id: 'sec', orderId: 'live', ...structuredClone(security) }]
+  const handler = require('../../cloudfunctions/api/handlers/homeSecurity')({ ...c, now: () => time,
+    appendOrderStaffMessage: async () => {}, checkRateLimit: async () => {}, getApprovedEarlyStart: async () => null })
+  return { db, c, time, handler }
+}
+
+for (const count of [1, 2]) {
+  test(`common reset replaces old per-visit overrides for ${count} visits and staff decrypts the new code`, async () => {
+    const { db, handler } = liveSecurityFixture(count)
+    await handler('client', 'updateOrderOneTimeCode', { orderId: 'live', code: 'NEW_CODE',
+      effectiveStart: db.state.orders[0].startTime, effectiveEnd: db.state.orders[0].endTime })
+    const result = await handler('staff', 'getUnlockCode', { orderId: 'live', sessionIndex: 1 })
+    assert.equal(result.doorLockCode, 'NEW_CODE')
+    for (const security of [db.state.orders[0].orderHomeSecurity, db.state.order_home_security[0]]) {
+      assert.equal(security.sessionCodes.length, 0)
+    }
+  })
+}
+
+test('common reset preserves completed-code tombstones and requires coverage of all remaining visits', async () => {
+  const { db, c, handler } = liveSecurityFixture(3)
+  const order = db.state.orders[0]
+  order.status = 'day_completed'
+  order.activeSessionIndex = 0
+  order.serviceSessions[0].status = 'completed'
+  await c.destroyOrderHomeSecuritySecrets('live', { sessionIndex: 1 })
+  await assert.rejects(handler('client', 'updateOrderOneTimeCode', { orderId: 'live', code: 'NEW_CODE',
+    effectiveStart: order.serviceSessions[1].startTime, effectiveEnd: order.serviceSessions[1].endTime }), /覆盖/)
+  await handler('client', 'updateOrderOneTimeCode', { orderId: 'live', code: 'NEW_CODE',
+    effectiveStart: order.serviceSessions[1].startTime, effectiveEnd: order.serviceSessions[2].endTime })
+  for (const security of [db.state.orders[0].orderHomeSecurity, db.state.order_home_security[0]]) {
+    assert.equal(security.sessionCodes.length, 1)
+    assert.equal(security.sessionCodes[0].sessionIndex, 1)
+    assert.equal(security.sessionCodes[0].destroyed, true)
+  }
+})
+
+for (const index of [0, 1, 99, 1.5]) {
+  test(`password reset rejects completed or invalid target visit ${index}`, async () => {
+    const { db, handler } = liveSecurityFixture()
+    db.state.orders[0].serviceSessions[0].status = 'completed'
+    await assert.rejects(handler('client', 'updateOrderOneTimeCode', { orderId: 'live', sessionIndex: index, code: 'NEW_CODE',
+      effectiveStart: db.state.orders[0].startTime, effectiveEnd: db.state.orders[0].endTime }), /场次/)
+  })
+}
+
+test('batch reset cannot resurrect completed visits or accept duplicate indices', async () => {
+  const { db, handler } = liveSecurityFixture()
+  const order = db.state.orders[0]
+  order.serviceSessions[0].status = 'completed'
+  const code = { sessionIndex: 1, code: 'NEW_CODE', effectiveStart: order.startTime, effectiveEnd: order.endTime }
+  await assert.rejects(handler('client', 'updateOrderOneTimeCode', { orderId: 'live', sessionCodes: [code] }), /场次/)
+  await assert.rejects(handler('client', 'updateOrderOneTimeCode', { orderId: 'live', sessionCodes: [{ ...code, sessionIndex: 2 }, { ...code, sessionIndex: 2 }] }), /场次/)
+})
+
+for (const status of ['completed', 'cancelled']) {
+  test(`staff cannot decrypt a ${status} visit even while old credentials and time windows remain valid`, async () => {
+    const { db, handler } = liveSecurityFixture()
+    Object.assign(db.state.orders[0], { status: 'day_completed', activeSessionIndex: 0 })
+    db.state.orders[0].serviceSessions[0].status = status
+    await assert.rejects(handler('staff', 'getUnlockCode', { orderId: 'live', sessionIndex: 1 }), /场次.*(完成|取消)/)
+    assert.notEqual(db.state.unlock_code_logs[0].result, 'success')
+  })
+}
+
+for (const failure of ['cleanup', 'timeline', 'message', 'notification']) {
+  test(`intermediate visit cleanup survives ${failure} failure and scheduler preserves the next visit`, async () => {
+    const { db, c, time } = liveSecurityFixture(3)
+    const fail = async () => { throw new Error(`simulated ${failure} failure`) }
+    const noop = async () => {}
+    const execution = require('../../cloudfunctions/api/services/serviceExecution')({ ...c,
+      appendOrderTimeline: failure === 'timeline' ? fail : noop, appendOrderClientMessage: failure === 'message' ? fail : noop,
+      enqueueOrderNotification: noop, notifyOrder: failure === 'notification' ? fail : noop,
+      ...(failure === 'cleanup' ? { destroyOrderHomeSecuritySecrets: fail } : {}) })
+    const order = structuredClone(db.state.orders[0])
+    const finish = execution.completeOrderService(order, c.getActiveServiceSession(order), time)
+    if (failure === 'cleanup') await finish
+    else await assert.rejects(finish, /simulated/)
+    assert.equal(db.state.orders[0].status, 'day_completed')
+    if (failure === 'cleanup') assert.deepEqual(db.state.orders[0].homeSecurityPendingSessionIndexes, [1])
+    else assert.equal(db.state.order_home_security[0].sessionCodes[0].cipher, '')
+    Object.assign(db.state.orders[0], { status: 'in_service', activeSessionIndex: 2 })
+    db.state.orders[0].serviceSessions[1].status = 'in_service'
+    await c.retryPendingHomeSecurityCleanup()
+    assert.equal(db.state.order_home_security[0].sessionCodes[0].cipher, '')
+    assert.ok(db.state.order_home_security[0].sessionCodes[1].cipher)
+    assert.ok(db.state.order_home_security[0].oneTimeCode.cipher)
+    assert.deepEqual(db.state.orders[0].homeSecurityPendingSessionIndexes, [])
+  })
+}
+
+test('session cleanup retry rechecks completed status before touching a resumed visit', async () => {
+  const { db, c } = liveSecurityFixture(3)
+  const order = db.state.orders[0]
+  order.serviceSessions[0].status = 'completed'
+  order.homeSecurityPendingSessionIndexes = [1]
+  const original = order.orderHomeSecurity.sessionCodes[0].cipher
+  const run = db.runTransaction
+  db.runTransaction = callback => {
+    db.state.orders[0].serviceSessions[0].status = 'in_service'
+    return run(callback)
+  }
+  await c.retryPendingHomeSecurityCleanup()
+  assert.equal(db.state.order_home_security[0].sessionCodes[0].cipher, original)
+  assert.deepEqual(db.state.orders[0].homeSecurityPendingSessionIndexes, [1])
+  assert.equal((db.state.unlock_code_logs || []).length, 0)
+})
+
+test('session cleanup retry drains multiple finished visits without destroying the shared or future code', async () => {
+  const { db, c } = liveSecurityFixture(3)
+  Object.assign(db.state.orders[0], { homeSecurityPendingSessionIndexes: [1, 2], activeSessionIndex: 3 })
+  db.state.orders[0].serviceSessions.forEach(session => { session.status = session.index < 3 ? 'completed' : 'in_service' })
+  await c.retryPendingHomeSecurityCleanup()
+  for (const security of [db.state.orders[0].orderHomeSecurity, db.state.order_home_security[0]]) {
+    assert.equal(security.sessionCodes[0].cipher, '')
+    assert.equal(security.sessionCodes[1].cipher, '')
+    assert.ok(security.sessionCodes[2].cipher)
+    assert.ok(security.oneTimeCode.cipher)
+  }
+  assert.deepEqual(db.state.orders[0].homeSecurityPendingSessionIndexes, [])
+})
+
+test('session cleanup clears its pending marker even when the order has no security record', async () => {
+  const db = createCollectionStore({ orders: [{ _id: 'no-security', status: 'day_completed',
+    serviceSessions: [{ index: 1, status: 'completed' }, { index: 2, status: 'pending' }],
+    homeSecurityPendingSessionIndexes: [1] }] })
+  const c = require('../../cloudfunctions/api/services/context')({ db, cloud: {} })
+  await c.retryPendingHomeSecurityCleanup()
+  assert.deepEqual(db.state.orders[0].homeSecurityPendingSessionIndexes, [])
+  assert.equal((db.state.unlock_code_logs || []).length, 0)
+})
+
+for (const mode of ['single', 'batch']) {
+  test(`${mode} password reset rejects a validity window that does not cover its target visit`, async () => {
+    const { db, handler } = liveSecurityFixture()
+    const session = db.state.orders[0].serviceSessions[1]
+    const item = { sessionIndex: 2, code: 'NEW_CODE', effectiveStart: new Date(+session.startTime + 1), effectiveEnd: session.endTime }
+    await assert.rejects(handler('client', 'updateOrderOneTimeCode', { orderId: 'live',
+      ...(mode === 'batch' ? { sessionCodes: [item] } : item) }), /覆盖/)
+    assert.equal(db.state.order_home_security[0].sessionCodes[1].cipher, db.state.orders[0].orderHomeSecurity.sessionCodes[1].cipher)
+  })
+}
+
 test('homeSecurity saveHomeSecurity requires configured encryption key', async () => {
   const previous = process.env.HOME_SECURITY_KEY
   delete process.env.HOME_SECURITY_KEY

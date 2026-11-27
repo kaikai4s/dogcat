@@ -6,6 +6,7 @@ const { getOrderRefundState } = require('../utils/orderRefundState')
 const { assertModuleAvailable } = require('../services/moduleMaintenance')
 const { readDocuments, readOptionalDocument } = require('../utils/documentPages')
 const { checkinMatchesVisit } = require('../utils/checkinVisit')
+const { assertServiceCompletionTime } = require('../services/orderSessions')
 
 module.exports = function createHandler(context) {
   const {
@@ -633,7 +634,7 @@ module.exports = function createHandler(context) {
       if (!quote.canCancel) throw new Error(quote.ruleText)
       if (order.paymentStatus === 'refunding' || (quote.refundAmount > 0 && order.paymentStatus !== 'paid')) throw new Error('订单支付或退款状态已变化，请刷新后重试')
       const time = now()
-      const update = { status: 'cancelled', cancelReason: reason || '', refundStatus: quote.refundStatus, refundAmount: quote.refundAmount, canceledAt: time, updatedAt: time }
+      const update = { status: 'cancelled', homeSecurityCleanupPending: true, cancelReason: reason || '', refundStatus: quote.refundStatus, refundAmount: quote.refundAmount, canceledAt: time, updatedAt: time }
       // Recheck the quote and settle the ledger in the same transaction as
       // cancellation/refund reservation, before calling the payment gateway.
       const prepareCancellation = async (tx, current, metadata = {}) => {
@@ -1517,6 +1518,7 @@ module.exports = function createHandler(context) {
       assertOrderTransition(order.status, ORDER_STATUS.COMPLETED, '订单状态不可完成')
       const activeSession = getActiveServiceSession(order) || getTodayServiceSession(order, order.currentSessionStartedAt || order.startedAt || now()) || normalizeServiceSessions(order)[0] || { index: 1, date: beijingDateKey(order.startedAt || now()), startedAt: order.currentSessionStartedAt || order.startedAt || '' }
       const sessionStartedAt = toTimeValue(order.currentSessionStartedAt || (activeSession && activeSession.startedAt) || order.startedAt)
+      assertServiceCompletionTime(order, activeSession, now())
       const checkinResult = await evaluateCheckinCompletion({ ...order, _id: data.id }, sessionStartedAt)
       if (!checkinResult.isComplete) {
         throw new Error(`缺少必打卡照片：${checkinResult.missing.join('、')}`)

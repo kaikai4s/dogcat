@@ -115,7 +115,8 @@ module.exports = function createHelpers(context) {
         }
       }
       const updateData = {
-        status: 'cancelled', paymentStatus: 'closed', cancelReason: reason, cancelledAt: time, updatedAt: time
+        status: 'cancelled', paymentStatus: 'closed', cancelReason: reason, cancelledAt: time, updatedAt: time,
+        ...(collectionName === 'orders' ? { homeSecurityCleanupPending: true } : {})
       }
       if (current.stockReserved === true) {
         updateData.stockReserved = false
@@ -136,6 +137,10 @@ module.exports = function createHelpers(context) {
       } })
       return true
     })
+    if (success && collectionName === 'orders' && typeof context.destroyOrderHomeSecuritySecrets === 'function') {
+      await context.destroyOrderHomeSecuritySecrets(order._id, { isFinal: true, reason: 'unpaid_order_cancelled', actor: options.actorRole || 'system', time })
+        .catch(error => console.error('[cancel-unpaid-security]', { orderId: order._id, message: error.message }))
+    }
     if (success && (order.groupBuyId || order.source === 'community_groupbuy')) {
       try {
         const groupBuy = require('../services/playground-group-buy')(context)

@@ -1,3 +1,34 @@
+const { toTimeValue: parseTime } = require('../utils/time')
+
+function getServiceCompletionTiming(order = {}, session = {}, current = new Date()) {
+  const types = Array.isArray(order.serviceTypes) ? order.serviceTypes : [order.serviceType]
+  const durations = order.priceSnapshot?.petServiceDurations || order.petServiceDurations || []
+  const timedDurations = durations.filter(item => ['walk', 'play'].includes(item.serviceKey))
+  const timed = types.some(type => ['walk', 'play'].includes(type)) || timedDurations.length > 0
+  if (!timed) return { timed: false, minimumDurationMinutes: 0, earliestFinishAt: 0, remainingMs: 0, canFinish: true }
+  const minimumDurationMinutes = timedDurations.length
+    ? timedDurations.reduce((sum, item) => sum + Number(item.durationMinutes), 0)
+    : Number(order.durationMinutes || 0)
+  const index = Number(session.index || order.activeSessionIndex || 1)
+  const currentSession = (order.serviceSessions || []).find(item => Number(item.index) === index)
+  const startedAt = parseTime(currentSession?.startedAt || order.currentSessionStartedAt || session.startedAt || (index === 1 ? order.startedAt : ''))
+  const valid = startedAt > 0 && Number.isFinite(minimumDurationMinutes) && minimumDurationMinutes > 0
+  const earliestFinishAt = valid ? startedAt + minimumDurationMinutes * 60000 : 0
+  const remainingMs = valid ? Math.max(earliestFinishAt - parseTime(current), 0) : 0
+  return { timed: true, minimumDurationMinutes, earliestFinishAt, remainingMs, canFinish: valid && remainingMs === 0 }
+}
+
+function assertServiceCompletionTime(order, session, current) {
+  const timing = getServiceCompletionTiming(order, session, current)
+  if (!timing.canFinish) {
+    const message = timing.earliestFinishAt
+      ? `服务时长未满，还需服务${Math.ceil(timing.remainingMs / 60000)}分钟`
+      : '本次服务开始时间或约定时长异常，请联系平台核实'
+    throw Object.assign(new Error(message), { code: 'SERVICE_DURATION_INCOMPLETE' })
+  }
+  return timing
+}
+
 module.exports = function createService({
   ORDER_STATUS,
   db,
@@ -117,6 +148,8 @@ module.exports = function createService({
 
   return {
     validateOrderTime,
+    getServiceCompletionTiming,
+    assertServiceCompletionTime,
     formatDateTimeParts,
     formatDateTime,
     addMinutesToDateTimeText,
@@ -131,3 +164,6 @@ module.exports = function createService({
     findActiveStaffService
   }
 }
+
+module.exports.getServiceCompletionTiming = getServiceCompletionTiming
+module.exports.assertServiceCompletionTime = assertServiceCompletionTime

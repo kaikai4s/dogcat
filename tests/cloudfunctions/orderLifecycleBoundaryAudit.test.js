@@ -5,6 +5,69 @@ const optimistic = require('./optimisticTransactions')
 const createContext = require('../../cloudfunctions/api/services/context')
 const createAssignment = require('../../cloudfunctions/api/services/orderAssignment')
 
+function timedVisit(patch = {}) {
+  const startedAt = new Date('2026-11-12T15:00:00Z')
+  return { serviceType: 'walk', durationMinutes: 60, activeSessionIndex: 2,
+    startedAt: at(-24), currentSessionStartedAt: startedAt,
+    serviceSessions: [{ index: 1, status: 'completed' }, { index: 2, status: 'in_service', startedAt }], ...patch }
+}
+
+test('timed completion requires the full current visit and accepts the exact boundary', () => {
+  const { c } = fixture()
+  const order = timedVisit()
+  const session = c.getActiveServiceSession(order)
+  assert.throws(() => c.assertServiceCompletionTime(order, session, new Date(+session.startedAt + 2000)), /时长/)
+  assert.throws(() => c.assertServiceCompletionTime(order, session, new Date(+clock - 1)), /时长/)
+  assert.doesNotThrow(() => c.assertServiceCompletionTime(order, session, clock))
+})
+
+test('timed completion sums frozen pet durations and never uses day-one time for later visits', () => {
+  const { c } = fixture()
+  const order = timedVisit({ durationMinutes: 30, priceSnapshot: { petServiceDurations: [
+    { serviceKey: 'walk', durationMinutes: 60 }, { serviceKey: 'play', durationMinutes: 30 }
+  ] } })
+  assert.equal(c.getServiceCompletionTiming(order, c.getActiveServiceSession(order), clock).minimumDurationMinutes, 90)
+  assert.throws(() => c.assertServiceCompletionTime(order, c.getActiveServiceSession(order), clock), /时长/)
+  const missing = timedVisit({ currentSessionStartedAt: '', serviceSessions: [{ index: 2, status: 'in_service' }] })
+  assert.throws(() => c.assertServiceCompletionTime(missing, c.getActiveServiceSession(missing), clock), /开始时间/)
+  assert.doesNotThrow(() => c.assertServiceCompletionTime({ serviceType: 'feed', durationMinutes: 60 }, {}, clock))
+})
+
+test('manual timed completion rejects fresh valid photos without settling earnings', async () => {
+  const { db, c } = fixture({ ...timedVisit(), status: 'in_service', staffOpenid: 'staff' })
+  const handler = require('../../cloudfunctions/api/handlers/order')({ ...c,
+    requireStaffOrder: async () => ({ order: structuredClone(db.state.orders[0]) }),
+    now: () => new Date('2026-11-12T15:00:02Z'), evaluateCheckinCompletion: async () => ({ isComplete: true }),
+    completeOrderService: async () => ({ status: 'completed' }) })
+  await assert.rejects(handler('staff', 'finishService', { id: 'order' }), /时长/)
+  assert.equal(db.state.orders[0].status, 'in_service')
+  assert.equal((db.state.staff_earnings || []).length, 0)
+})
+
+test('late-started timed visits are not automatically completed at their old scheduled deadline', async () => {
+  const { c, db } = fixture({ ...timedVisit(), status: 'in_service', staffOpenid: 'staff',
+    currentSessionStartedAt: new Date(+clock - 10000),
+    serviceSessions: [{ index: 2, status: 'in_service', startedAt: new Date(+clock - 10000), endTime: at(-1) }] })
+  let completions = 0
+  const overdue = require('../../cloudfunctions/api/services/overdueOrders')({ ...c,
+    evaluateCheckinCompletion: async () => ({ isComplete: true }),
+    completeOrderService: async () => { completions++; return {} } })
+  assert.deepEqual(await overdue.processOverdueUnfinishedOrders(clock), [])
+  assert.equal(completions, 0)
+  assert.equal(db.state.orders[0].status, 'in_service')
+})
+
+test('group staging and direct settlement cannot bypass timed visit duration', async () => {
+  const { c, db } = fixture({ ...timedVisit(), groupBuyId: 'group', groupBuyStatus: 'formed', status: 'in_service', staffOpenid: 'staff' })
+  const order = structuredClone(db.state.orders[0])
+  const session = c.getActiveServiceSession(order)
+  const early = new Date(+session.startedAt + 2000)
+  const group = require('../../cloudfunctions/api/services/groupCompletion')({ ...c, evaluateCheckinCompletion: async () => ({ isComplete: true }) })
+  await assert.rejects(group.finishGroup(order, session, early), /时长/)
+  assert.equal(db.state.orders[0].status, 'in_service')
+  await assert.rejects(c.completeOrderService({ ...order, groupBuyId: '' }, session, early), /时长/)
+})
+
 const clock = new Date('2026-11-12T16:00:00Z')
 const at = hours => new Date(clock.getTime() + hours * 3600000)
 function fixture(patch = {}, overrides = {}) {

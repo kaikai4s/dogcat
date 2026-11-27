@@ -1,4 +1,5 @@
 const { currentKeyReturn } = require('../utils/keyReturnEvidence')
+const { assertServiceCompletionTime } = require('./orderSessions')
 const { checkinMatchesVisit, assertCompletionSnapshot } = require('../utils/checkinVisit')
 
 module.exports = function createService({
@@ -81,7 +82,7 @@ module.exports = function createService({
   }
 
   const groupCompletion = require('./groupCompletion')({ db, now, normalizeServiceSessions, markServiceSession,
-    isFinalServiceSession, evaluateCheckinCompletion, completeSingleOrderService, appendOrderTimeline, appendOrderClientMessage, toTimeValue })
+    isFinalServiceSession, evaluateCheckinCompletion, completeSingleOrderService, appendOrderTimeline, appendOrderClientMessage, toTimeValue, destroyOrderHomeSecuritySecrets })
 
   async function completeOrderService(order, activeSession, time = now(), options = {}) {
     if (order.groupBuyId && (groupCompletion.isGroupMemberReady(order) || isFinalServiceSession(order, activeSession))) {
@@ -92,6 +93,9 @@ module.exports = function createService({
 
   async function completeSingleOrderService(order, activeSession, time = now(), options = {}) {
     const isAuto = options.isAuto === true
+    if (order.status !== ORDER_STATUS.COMPLETED && order.completionType !== 'admin_manual' && order.adminVerifiedCompletion !== true) {
+      assertServiceCompletionTime(order, activeSession, time)
+    }
     const actor = options.actor || (isAuto ? 'system' : 'staff')
     const completedSessions = markServiceSession(normalizeServiceSessions(order), activeSession.index, { status: 'completed', finishedAt: time })
     const finalSession = isFinalServiceSession({ ...order, serviceSessions: completedSessions }, activeSession)
@@ -124,10 +128,20 @@ module.exports = function createService({
         const current = (await tx.collection('orders').doc(orderId).get()).data
         if (!current || current.status !== ORDER_STATUS.IN_SERVICE || current.staffOpenid !== order.staffOpenid) throw new Error('订单状态不可完成当天服务')
         assertCompletionSnapshot(current, order)
+        assertServiceCompletionTime(current, activeSession, time)
         if (Number(current.activeSessionIndex || 0) && Number(current.activeSessionIndex) !== sessionIndex) throw new Error('服务日期已变化，请刷新订单')
+        dayUpdateData.homeSecurityPendingSessionIndexes = [...new Set([...(current.homeSecurityPendingSessionIndexes || []), sessionIndex])]
         await tx.collection('orders').doc(orderId).update({ data: dayUpdateData })
         await enqueueOrderNotification(tx, order.clientOpenid, 'serviceFinish', order, { statusText: '当天已完成', completedAt: time, tip: isAuto ? '今日服务打卡齐全，系统已确认完成' : '今日服务已完成' }, 'client', `finish:day:${sessionIndex}`)
       })
+      if (typeof destroyOrderHomeSecuritySecrets === 'function') {
+        await destroyOrderHomeSecuritySecrets(orderId, {
+          sessionIndex,
+          reason: isAuto ? 'system_auto_day_completed' : 'day_completed',
+          actor,
+          time
+        }).catch((err) => console.error('[completeOrderService] destroy session secrets failed:', err))
+      }
       const dayCompletedOrder = { ...order, _id: orderId, status: ORDER_STATUS.DAY_COMPLETED, serviceSessions: completedSessions, autoCompletedSessions: nextAutoCompletedSessions, autoCompleted: isAuto, updatedAt: time }
       await appendOrderTimeline(orderId, isAuto ? 'system_auto_day_completed' : 'day_completed', isAuto ? `系统自动完成第${activeSession.index}天服务` : `第${activeSession.index}天服务已完成`, isAuto ? '检测到打卡凭证齐全且已超时，系统已自动完成今日服务。' : '', actor)
       await appendOrderClientMessage(dayCompletedOrder, {
@@ -146,14 +160,6 @@ module.exports = function createService({
         })
       }
       await notifyOrder(order.clientOpenid, 'serviceFinish', order, { statusText: '当天已完成', completedAt: time, tip: isAuto ? '今日服务打卡齐全，系统已确认完成' : '今日服务已完成' }, 'client', `finish:day:${sessionIndex}`)
-      if (typeof destroyOrderHomeSecuritySecrets === 'function') {
-        await destroyOrderHomeSecuritySecrets(orderId, {
-          sessionIndex,
-          reason: isAuto ? 'system_auto_day_completed' : 'day_completed',
-          actor,
-          time
-        }).catch((err) => console.error('[completeOrderService] destroy session secrets failed:', err))
-      }
       return { id: orderId, status: ORDER_STATUS.DAY_COMPLETED, activeSessionIndex: 0, autoCompleted: isAuto, autoCompletedSessions: nextAutoCompletedSessions }
     }
 
@@ -236,9 +242,16 @@ module.exports = function createService({
       const clientUser = (await transaction.collection('users').doc(candidate._id).get()).data
       if (!clientUser || clientUser.openid !== clientOpenid) throw new Error('订单客户归属异常')
       const alreadyCompleted = currentOrder.status === ORDER_STATUS.COMPLETED
-      if (!alreadyCompleted && options.completionPatch && !options.manualVerification) assertCompletionSnapshot(currentOrder, order)
+      if (!alreadyCompleted && options.completionPatch && !options.manualVerification) {
+        assertCompletionSnapshot(currentOrder, order)
+        if (currentOrder.completionType !== 'admin_manual' && currentOrder.adminVerifiedCompletion !== true) {
+          const session = normalizeServiceSessions(currentOrder).find(item => Number(item.index) === Number(options.completionPatch.lastCompletedSessionIndex)) || {}
+          assertServiceCompletionTime(currentOrder, session, time)
+        }
+      }
       const legacyManualCompletion = alreadyCompleted && currentOrder.completionType === 'admin_manual' && !currentOrder.adminManualAccountingVersion
-      const orderPatch = { ...(!alreadyCompleted ? options.completionPatch || {} : {}) }
+      const orderPatch = { ...(!alreadyCompleted ? options.completionPatch || {} : {}),
+        ...(!alreadyCompleted ? { homeSecurityCleanupPending: true } : {}) }
       const completedAt = currentOrder.completedAt || time
 
       // 1. 积分补偿与发放（addPoints 内部依据 order_complete_${orderId} 进行日志查重防重）

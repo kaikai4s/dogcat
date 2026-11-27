@@ -1,4 +1,4 @@
-module.exports = function createHelpers({ now, toTimeValue, ORDER_STATUS, safeText, createRefundForOrder, makeIdempotencyKey, db, appendOrderTimeline, appendOrderClientMessage, restoreOrderCoupon, notifyOrder }) {
+module.exports = function createHelpers({ now, toTimeValue, ORDER_STATUS, safeText, createRefundForOrder, makeIdempotencyKey, db, appendOrderTimeline, appendOrderClientMessage, restoreOrderCoupon, notifyOrder, destroyOrderHomeSecuritySecrets }) {
 function shouldExpireUnacceptedOrder(order = {}, time = now()) {
   const start = toTimeValue(order.startTime || (order.serviceSessions && order.serviceSessions[0] && order.serviceSessions[0].startTime))
   const isGroup = !!(order.groupBuyId || order.source === 'community_groupbuy')
@@ -22,6 +22,7 @@ async function expireUnacceptedOrder(orderId, order, time = now(), forceGroupExp
   const refundReason = isGroup ? '服务开始前2小时无人接单，拼单自动全额退款' : '服务开始时间前无人接单，系统自动全额退款'
   const update = {
     status: ORDER_STATUS.EXPIRED,
+    homeSecurityCleanupPending: true,
     expiredAt: time,
     expireReason,
     ...(isGroup ? { groupBuyStatus: 'cancelled' } : {}),
@@ -62,6 +63,10 @@ async function expireUnacceptedOrder(orderId, order, time = now(), forceGroupExp
       return true
     })
     if (!changed) return order
+  }
+  if (typeof destroyOrderHomeSecuritySecrets === 'function') {
+    await destroyOrderHomeSecuritySecrets(orderId, { isFinal: true, reason: 'order_expired', actor: 'system', time })
+      .catch(error => console.error('[expire-order-security]', { orderId, message: error.message }))
   }
   const updatedOrder = refund ? ((await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))).data || { ...order, _id: orderId, ...update }) : { ...order, _id: orderId, ...update }
   const refundDescription = refundAmount < Number(current.payAmount) ? `剩余退款 ¥${refundAmount}` : `全额退款 ¥${refundAmount}`

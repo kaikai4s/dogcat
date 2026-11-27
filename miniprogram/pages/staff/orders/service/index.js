@@ -47,6 +47,21 @@ function buildPetNoticeRows(order) {
   return buildOrderCareCards(order)
 }
 
+function serviceFinishTiming(order, current = Date.now()) {
+  const durations = order.priceSnapshot?.petServiceDurations || order.petServiceDurations || []
+  const timedDurations = durations.filter(item => ['walk', 'play'].includes(item.serviceKey))
+  const types = Array.isArray(order.serviceTypes) ? order.serviceTypes : [order.serviceType]
+  const timed = timedDurations.length > 0 || types.some(type => ['walk', 'play'].includes(type))
+  const minutes = timedDurations.length ? timedDurations.reduce((sum, item) => sum + Number(item.durationMinutes), 0) : Number(order.durationMinutes || 0)
+  const session = (order.serviceSessions || []).find(item => Number(item.index) === Number(order.activeSessionIndex) || item.status === 'in_service')
+  const startedAt = toTimeValue(session?.startedAt || order.currentSessionStartedAt || (Number(session?.index || order.activeSessionIndex || 1) === 1 ? order.startedAt : ''))
+  const valid = startedAt > 0 && Number.isFinite(minutes) && minutes > 0
+  const remaining = valid ? Math.max(startedAt + minutes * 60000 - current, 0) : 0
+  return { earliestFinishAt: timed && valid ? startedAt + minutes * 60000 : 0,
+    finishTimeBlocked: timed && (!valid || remaining > 0),
+    finishTimeTip: timed && !valid ? '服务计时异常，请联系平台核实' : remaining > 0 ? `约定服务时长尚未完成，还需 ${formatElapsed(remaining)}` : '' }
+}
+
 function withServiceActionState(order) {
   if (!order) return order
   const serviceStarted = order.status === 'in_service'
@@ -71,7 +86,8 @@ function withServiceActionState(order) {
   const nowTs = Date.now()
   const isStartOverdue = canStartService && startTime > 0 && nowTs > startTime
   const startOverdueMinutes = isStartOverdue ? Math.floor((nowTs - startTime) / 60000) : 0
-  const endTimeVal = toTimeValue((currentSession && currentSession.endTime) || order.endTime)
+  const timing = serviceFinishTiming(order)
+  const endTimeVal = Math.max(toTimeValue((currentSession && currentSession.endTime) || order.endTime), timing.earliestFinishAt)
   const isFinishOverdue = serviceStarted && endTimeVal > 0 && nowTs > endTimeVal
   const finishOverdueMinutes = isFinishOverdue ? Math.floor((nowTs - endTimeVal) / 60000) : 0
   const allCheckinsDone = sanitizationCompleted && (order.checkinRequirements || []).every((req) => !req.required || req.completed)
@@ -98,6 +114,7 @@ function withServiceActionState(order) {
     ...order,
     orderHomeSecurity,
     serviceStarted,
+    ...timing,
     canDepart,
     isOnTheWay,
     canStartService,
@@ -279,12 +296,17 @@ Page({
 
   startServiceElapsedTimer(order) {
     this.stopServiceElapsedTimer()
-    const startedAt = toTimeValue(order && (order.currentSessionStartedAt || (order.activeSession && order.activeSession.startedAt) || order.startedAt))
+    const session = order && ((order.serviceSessions || []).find(item => Number(item.index) === Number(order.activeSessionIndex) || item.status === 'in_service') || order.activeSession)
+    const startedAt = toTimeValue(order && (session?.startedAt || order.currentSessionStartedAt || (Number(session?.index || order.activeSessionIndex || 1) === 1 ? order.startedAt : '')))
     if (!startedAt) {
       this.setData({ serviceElapsedText: '00:00:00' })
       return
     }
-    const updateElapsed = () => this.setData({ serviceElapsedText: formatElapsed(Date.now() - startedAt) })
+    const updateElapsed = () => {
+      const timing = serviceFinishTiming(this.data.order || order)
+      this.setData({ serviceElapsedText: formatElapsed(Date.now() - startedAt),
+        'order.finishTimeBlocked': timing.finishTimeBlocked, 'order.finishTimeTip': timing.finishTimeTip })
+    }
     updateElapsed()
     this.serviceElapsedTimer = setInterval(updateElapsed, 1000)
   },
@@ -880,6 +902,11 @@ Page({
 
   finish() {
     if (!this.data.order || !this.data.order.serviceStarted) return
+    const timing = serviceFinishTiming(this.data.order)
+    if (timing.finishTimeBlocked) {
+      wx.showToast({ title: timing.finishTimeTip, icon: 'none' })
+      return
+    }
     const missingTip = this.validateRequiredCheckins()
     if (missingTip) {
       wx.showToast({ title: missingTip, icon: 'none' })

@@ -47,7 +47,10 @@ function optimistic(db) {
           else rows[index] = row
         } else {
           assert.ok(index >= 0)
-          Object.assign(rows[index], data)
+          for (const [key, value] of Object.entries(data)) {
+            if (value && value.__cloudCommand === 'remove') delete rows[index][key]
+            else rows[index][key] = value && value.__cloudCommand === 'set' ? structuredClone(value.value) : value
+          }
         }
       }
       return result

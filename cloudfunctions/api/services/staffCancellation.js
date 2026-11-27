@@ -41,12 +41,15 @@ module.exports = function createService(context) {
     else if (!assigned || elapsed < 0) blocked = '接单时间异常，请联系平台'
     else if (direct && elapsed > 600000) blocked = '指定订单接单已超过10分钟，不可取消，请联系平台客服'
     else if (!start || start - time.getTime() <= 1800000) blocked = '距服务开始不足或等于30分钟，请联系平台'
+    if (!blocked && direct && refundableBalance(order) === 0 && (Number(order.payAmount) !== 0 || !order.couponId)) {
+      blocked = '订单零元支付或历史退款异常，请联系平台核对'
+    }
     const pending = !blocked && !direct && elapsed > 600000
     return {
       orderId: order._id, assignmentToken: assigned ? tokenFor(order) : '', publishMode: direct ? 'direct' : 'open',
       canCancel: !blocked, isFree: !blocked && !pending, amountPendingReview: pending,
       deductAmount: 0, refundAmount: direct && !blocked ? refundableBalance(order) : 0,
-      returnsToPool: !direct, ruleText: blocked || (direct ? '接单10分钟内免费取消，订单全额退款' : pending ? '取消后订单返回接单大厅，保证金扣除金额待平台审核' : '接单10分钟内免费取消，订单返回接单大厅')
+      returnsToPool: !direct, ruleText: blocked || (direct ? (Number(order.payAmount) === 0 ? '接单10分钟内免费取消，零元订单关闭并按有效期退回优惠券' : '接单10分钟内免费取消，订单全额退款') : pending ? '取消后订单返回接单大厅，保证金扣除金额待平台审核' : '接单10分钟内免费取消，订单返回接单大厅')
     }
   }
   async function getStaffCancellationQuote(openid, data = {}) {
@@ -94,7 +97,7 @@ module.exports = function createService(context) {
     if (q.publishMode !== expectedMode) throw new Error('订单发布方式已变化，请刷新后重试')
     const time = now()
     const patch = { ...cleanup(order, openid), updatedAt: time,
-      ...(q.publishMode === 'open' ? { status: 'paid', publishMode: 'open' } : { status: 'cancelled', cancelReason: data.reason, cancelledAt: time }) }
+      ...(q.publishMode === 'open' ? { status: 'paid', publishMode: 'open' } : { status: 'cancelled', homeSecurityCleanupPending: true, cancelReason: data.reason, cancelledAt: time }) }
     const cancelledSiblings = []
     for (const sibId of (siblingIds || [])) {
       const sib = await read(tx, 'orders', sibId)
@@ -155,7 +158,9 @@ module.exports = function createService(context) {
     }
     await tx.collection('payment_events').doc(eventId).set({ data: event })
     const timelineTitle = q.publishMode === 'direct' ? '宠托师已取消预约' : '宠托师已取消接单'
-    const timelineDetail = q.publishMode === 'direct' ? '指定宠托师取消接单，订单已关闭并发起全额退款' : '宠托师取消接单，订单已重新放回抢单大厅等待接单'
+    const timelineDetail = q.publishMode === 'direct'
+      ? (q.refundAmount > 0 ? '指定宠托师取消接单，订单已关闭并发起全额退款' : '指定宠托师取消接单，零元订单已关闭，优惠券已按有效期退回')
+      : '宠托师取消接单，订单已重新放回抢单大厅等待接单'
     await tx.collection('order_timeline').doc(`cancel_${eventId}`).set({
       data: {
         orderId: data.orderId,
@@ -182,7 +187,26 @@ module.exports = function createService(context) {
       const q = quote(order && { ...order, _id: data.orderId }, openid)
       if (q.assignmentToken !== data.assignmentToken) throw new Error('接单记录已变化，请刷新后重试')
       if (!q.canCancel) throw new Error(q.ruleText)
-      if (q.publishMode === 'direct') {
+      if (q.publishMode === 'direct' && q.refundAmount === 0) {
+        event = await db.runTransaction(async tx => {
+          await staff(openid, tx, user._id)
+          const existing = await read(tx, 'payment_events', eventId)
+          if (existing) { assertReplay(existing, openid, data); return existing }
+          const current = await read(tx, 'orders', data.orderId)
+          if (!current || Number(current.payAmount) !== 0 || !current.couponId || refundableBalance(current) !== 0) {
+            throw new Error('订单零元支付或历史退款异常，请联系平台核对')
+          }
+          const coupon = await read(tx, 'user_coupons', current.couponId)
+          if (!coupon || !['used', 'locked'].includes(coupon.status) ||
+              ((coupon.usedOrderId || coupon.lockedOrderId) && coupon.usedOrderId !== data.orderId && coupon.lockedOrderId !== data.orderId)) {
+            throw new Error('零元订单优惠券记录异常，请联系平台核对')
+          }
+          const committed = await commitCancellation(tx, current, user, openid, data, eventId, 'direct')
+          await context.restoreOrderCoupon(current.couponId, data.orderId, tx)
+          await tx.collection('orders').doc(data.orderId).update({ data: committed.patch })
+          return committed.event
+        })
+      } else if (q.publishMode === 'direct') {
         try {
           await createRefundForOrder({ ...order, _id: data.orderId }, q.refundAmount, data.reason, 'staff_cancel', openid, eventId, {
             cancelStatus: 'cancelled',
@@ -223,6 +247,10 @@ module.exports = function createService(context) {
         })
       }
     }
+    if (event.publishMode === 'direct' && typeof context.destroyOrderHomeSecuritySecrets === 'function') {
+      await context.destroyOrderHomeSecuritySecrets(data.orderId, { isFinal: true, reason: 'staff_cancelled', actor: 'staff' })
+        .catch(error => console.error('[staff-cancellation-security]', { orderId: data.orderId, message: error.message }))
+    }
     await deliverCancellationNotification(eventId).catch(error => console.error('[staff-cancellation-notification]', { eventId, message: error.message }))
     return result(event)
   }
@@ -242,8 +270,11 @@ module.exports = function createService(context) {
       })
     }
     const direct = event.publishMode === 'direct'
-    const title = direct ? '宠托师已取消，订单退款中' : '宠托师已取消，订单等待重新接单'
-    const detail = direct ? '指定宠托师已取消接单，订单已取消并发起全额退款。' : '宠托师已取消接单，订单已返回接单大厅，等待其他宠托师接单。'
+    const refunding = direct && Number(event.refundAmount) > 0
+    const title = direct ? (refunding ? '宠托师已取消，订单退款中' : '宠托师已取消，订单已关闭') : '宠托师已取消，订单等待重新接单'
+    const detail = direct
+      ? (refunding ? '指定宠托师已取消接单，订单已取消并发起全额退款。' : '指定宠托师已取消接单，零元订单已关闭，优惠券已按有效期退回。')
+      : '宠托师已取消接单，订单已返回接单大厅，等待其他宠托师接单。'
     try {
       if (!event.messageDone) {
         const message = await appendOrderClientMessage(event.notificationOrder, { eventType: 'staff_cancellation', title, detail,
@@ -253,7 +284,7 @@ module.exports = function createService(context) {
       }
       if (!event.subscriptionDone) {
         const sent = await notifyOrder(event.notificationOrder.clientOpenid, 'orderCancelled', event.notificationOrder,
-          { statusText: direct ? '已取消' : '待重新接单', cancelReason: direct ? '宠托师取消接单，已发起全额退款' : '宠托师取消接单，订单等待重新接单', refundAmount: direct ? event.refundAmount : 0, cancelledAt: event.createdAt }, 'client', eventId)
+          { statusText: direct ? '已取消' : '待重新接单', cancelReason: direct ? (refunding ? '宠托师取消接单，已发起全额退款' : '零元订单已取消，优惠券已按有效期退回') : '宠托师取消接单，订单等待重新接单', refundAmount: direct ? event.refundAmount : 0, cancelledAt: event.createdAt }, 'client', eventId)
         if (!sent || !['sent', 'skipped'].includes(sent.status)) throw new Error('订阅通知待重试')
         await update({ subscriptionDone: true })
       }

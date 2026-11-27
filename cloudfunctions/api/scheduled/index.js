@@ -29,7 +29,8 @@ module.exports = function createHandler(context) {
       { name: 'staffDepositRefunds', fn: reconcileStaffDepositRefunds },
       { name: 'subscriptions', fn: retryFailedSubscriptions },
       { name: 'staffCancellationNotifications', fn: retryStaffCancellationNotifications },
-      { name: 'groupCompletions', fn: retryPendingGroupCompletions }
+      { name: 'groupCompletions', fn: retryPendingGroupCompletions },
+      { name: 'homeSecurityCleanup', fn: context.retryPendingHomeSecurityCleanup }
     ]
     await Promise.allSettled(retryTasks.map(async ({ name, fn }) => {
       try {
