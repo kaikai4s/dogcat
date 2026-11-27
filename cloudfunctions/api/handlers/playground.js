@@ -1,6 +1,7 @@
 module.exports = function createHandler(context) {
   const { db, getUser, safeText } = context
   const worldService = require('../services/playground-world')
+  const { isManor3dEnabled, assertManor3dEnabled } = require('../services/playground-config')
   const { placedBuildings, isPublicBuilding } = require('../services/playground-shared/plot-buildings')
   const world = worldService.create(context)
   const shared = require('../services/playground-shared')(context)
@@ -15,11 +16,23 @@ module.exports = function createHandler(context) {
   } = require('../services/playground')(context)
 
   return async function playground(openid, action, data = {}) {
-    if (action === 'syncManor3d') return shared.syncManor3d(openid, data)
-    if (action === 'syncManor3dVehicle') return shared.syncManor3dVehicle(openid, data)
-    if (action === 'getScene' && data.manor3d === true) return shared.snapshot(openid, data)
+    if (action === 'syncManor3d') {
+      await assertManor3dEnabled(db, context.getSystemSettings)
+      return shared.syncManor3d(openid, data)
+    }
+    if (action === 'syncManor3dVehicle') {
+      await assertManor3dEnabled(db, context.getSystemSettings)
+      return shared.syncManor3dVehicle(openid, data)
+    }
+    if (action === 'getScene' && data.manor3d === true) {
+      await assertManor3dEnabled(db, context.getSystemSettings)
+      return shared.snapshot(openid, data)
+    }
     const user = await getUser(openid)
-    if (action === 'listManor3dHomes') return shared.listManor3dHomes(openid, user)
+    if (action === 'listManor3dHomes') {
+      await assertManor3dEnabled(db, context.getSystemSettings)
+      return shared.listManor3dHomes(openid, user)
+    }
     if (action === 'listUserTitles') return context.getUserTitleState(user)
     if (action === 'equipUserTitle') {
       const { record, ...result } = await context.equipUserTitle(user, data.titleId)
@@ -31,7 +44,10 @@ module.exports = function createHandler(context) {
     if (action === 'listCommunityGroupBuys') return require('../services/playground-group-buy')(context).list(openid)
     if (action === 'getPublicPetCare') return require('../services/playground-care')(context).publicCare(openid, data)
     if (action === 'syncScene') return shared.sync(openid, data)
-    if (action === 'placeManor3dBuilding') return shared.placeManor3dBuilding(openid, user, data)
+    if (action === 'placeManor3dBuilding') {
+      await assertManor3dEnabled(db, context.getSystemSettings)
+      return shared.placeManor3dBuilding(openid, user, data)
+    }
     if (action === 'getScene') return shared.snapshot(openid, data)
     if (action === 'vehicleAction') return shared.vehicles.action(openid,user,data)
     if (action === 'setVehicleSpeed') return shared.vehicles.speed(openid,user,data)
@@ -501,6 +517,10 @@ module.exports = function createHandler(context) {
     }
 
     if (action !== 'getOverview' && action !== 'enterScene') throw new Error('未知 playground 操作')
+    const enableManor3d = await isManor3dEnabled(db, context.getSystemSettings)
+    if (action === 'enterScene' && data.manor3d === true && !enableManor3d) {
+      throw Object.assign(new Error('3D 庄园暂未开放'), { code: 'MANOR3D_DISABLED' })
+    }
 
     const playground = await getOrCreateClientPlayground(openid)
     const petRes = await db
@@ -561,6 +581,7 @@ module.exports = function createHandler(context) {
     } catch (e) {}
 
     return {
+      enableManor3d,
       activeService,
       world: {...await world.config(),plotSizes:(await buildingsService.readCatalog()).plotSizes.map((p)=>require('../services/playground-access').decorate(p,member))},
       farmCatalog: await require('../services/playground-farm-catalog').readCatalog(db),

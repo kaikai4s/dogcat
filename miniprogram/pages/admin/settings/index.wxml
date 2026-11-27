@@ -11,7 +11,17 @@
       <view class="setting-summary-line">单独暂停排行榜、预约下单及分享邀请；不影响已有订单和历史收益。</view>
     </view>
     <navigator wx:if="{{adminSuper}}" class="admin-compact-card setting-overview-card" url="/pages/admin/config-migration/index"><view class="admin-summary-title">配置导入与导出</view><view class="setting-summary-line">导出全部配置，跨环境预览导入，自动保留备份 ›</view></navigator>
-    <navigator class="admin-compact-card setting-overview-card" url="/pages/admin/playground/index"><view class="admin-summary-title">宠物庄园管理</view><view class="setting-summary-line">拼单优惠、宠物状态、地面及庄园素材统一管理 ›</view></navigator>
+    <navigator class="admin-compact-card setting-overview-card" url="/pages/admin/playground/index"><view class="admin-summary-title">宠物庄园管理</view><view class="setting-summary-line">3D 庄园开关、拼单优惠、宠物状态、地面及庄园素材统一管理 ›</view></navigator>
+    <view class="admin-compact-card setting-overview-card" data-panel="manor3d" bindtap="openSettingModal">
+      <view class="admin-summary-row">
+        <view class="admin-summary-main">
+          <view class="admin-summary-title">3D 庄园开关</view>
+          <view class="admin-summary-sub">{{settingSummary.manor3d}}</view>
+        </view>
+        <view class="meta-chip {{settings.enableManor3d !== false ? 'success' : 'warning'}}">{{settings.enableManor3d !== false ? '开启' : '关闭'}}</view>
+      </view>
+      <view class="setting-summary-line">控制前台宠物庄园“3D 庄园”入口展示与场景开放状态。</view>
+    </view>
     <view class="admin-compact-card setting-overview-card" data-panel="staffPolicy" bindtap="openSettingModal">
       <view class="admin-summary-title">宠托师保证金与用品报销</view>
       <view class="setting-summary-line">保证金{{settings.staffDeposit.enabled ? '已启用' : '未启用'}} · ¥{{settings.staffDeposit.amount}}；首次用品{{settings.staffSupplies.shippingEnabled ? '平台寄送，费用 ¥' + settings.staffSupplies.supplyFeeAmount : '寄送未启用'}}。</view>
@@ -261,6 +271,7 @@
         <view class="modal-title" wx:if="{{activeSettingPanel === 'staffZhima'}}">宠托师芝麻信用准入</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'staffPolicy'}}">保证金与用品报销</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'playground'}}">宠物乐园地面</view>
+        <view class="modal-title" wx:if="{{activeSettingPanel === 'manor3d'}}">3D 庄园开关</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'wechatTransfer'}}">微信零钱提现 / 微信商家转账</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'debug'}}">开发调试</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'petBreedAi'}}">宠物档案 AI</view>
@@ -484,6 +495,17 @@
             <switch checked="{{settings.enablePetBreedAi}}" bindchange="togglePetBreedAi" />
           </view>
           <view class="notice">该开关只控制宠物档案照片识别种类/品种功能，不影响手动填写宠物资料。</view>
+        </view>
+
+        <view wx:if="{{activeSettingPanel === 'manor3d'}}" class="setting-modal-section">
+          <view class="compact-toggle-row">
+            <view class="compact-toggle-main">
+              <view class="strong">开启 3D 庄园</view>
+              <view class="muted">关闭后，前台宠物庄园不再显示 3D 庄园入口，后端接口也会暂停进入 3D 庄园场景。</view>
+            </view>
+            <switch checked="{{settings.enableManor3d !== false}}" disabled="{{adminSuper === false}}" bindchange="toggleManor3d" />
+          </view>
+          <view class="notice">该开关控制 3D 庄园（晴溪庄园）开放状态，不影响 2D 宠物庄园与纪念园；修改后点击底部“保存全局设置”生效。</view>
         </view>
 
         <view wx:if="{{activeSettingPanel === 'payment'}}" class="setting-modal-section">

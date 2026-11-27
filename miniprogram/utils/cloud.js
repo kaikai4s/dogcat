@@ -302,6 +302,7 @@ function getCachedSystemSettings() {
   const cached = wx.getStorageSync(SYSTEM_SETTINGS_STORAGE_KEY) || {}
   return {
     enableTestAddressMode: cached.enableTestAddressMode === true,
+    enableManor3d: cached.enableManor3d !== false,
     enablePetBreedAi: cached.enablePetBreedAi !== false,
     subscription: normalizeSubscriptionConfig(cached.subscription),
     homeHeroCarousel: normalizeHomeHeroCarousel(cached.homeHeroCarousel),
@@ -315,8 +316,10 @@ function getCachedSystemSettings() {
 
 function setCachedSystemSettings(settings) {
   const source = settings || {}
+  const previous = wx.getStorageSync(SYSTEM_SETTINGS_STORAGE_KEY) || {}
   const normalized = {
     enableTestAddressMode: source.enableTestAddressMode === true,
+    enableManor3d: source.enableManor3d !== undefined ? source.enableManor3d !== false : previous.enableManor3d !== false,
     enablePetBreedAi: source.enablePetBreedAi !== false,
     subscription: normalizeSubscriptionConfig(source.subscription),
     homeHeroCarousel: normalizeHomeHeroCarousel(source.homeHeroCarousel),

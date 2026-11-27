@@ -551,6 +551,7 @@ function buildSettingSummary(settings = {}) {
 
   return {
     debug: settings.enableTestAddressMode ? '测试地址模式已开启' : '测试地址模式已关闭',
+    manor3d: settings.enableManor3d === false ? '前台 3D 庄园已关闭' : '前台 3D 庄园已开启',
     petBreedAi: settings.enablePetBreedAi === false ? '前台宠物档案 AI 识别已关闭' : '前台宠物档案 AI 识别已开启',
     payment: `${payment.enabled ? '支付已启用' : '支付已关闭'} · ${payment.mode === 'wechat' ? '微信支付' : '模拟支付'} · ${payment.refundEnabled ? '退款已启用' : '退款已关闭'}`,
     subscription: `${subscription.enabled ? '订阅已启用' : '订阅已关闭'} · 已配置 ${configuredTemplateCount} 个模板`,
@@ -599,6 +600,7 @@ Page({
       staffSupplies: normalizeStaffSupplies(),
       staffZhima: normalizeStaffZhima(),
       enableTestAddressMode: false,
+      enableManor3d: true,
       enablePetBreedAi: true,
       juheTelecomKeyConfigured: '',
       juheTelecomKeyInput: '',
@@ -624,6 +626,7 @@ Page({
     homeModuleOptions,
     settingSummary: buildSettingSummary({
       enableTestAddressMode: false,
+      enableManor3d: true,
       enablePetBreedAi: true,
       logistics: normalizeLogisticsConfig(),
       payment: normalizePaymentConfig(),
@@ -693,6 +696,7 @@ Page({
           staffZhima: normalizeStaffZhima(settings.staffZhima),
           staffZhima: normalizeStaffZhima(settings.staffZhima),
           enableTestAddressMode: settings.enableTestAddressMode === true,
+          enableManor3d: settings.enableManor3d !== false,
           enablePetBreedAi: settings.enablePetBreedAi !== false,
           juheTelecomKeyConfigured: settings.juheTelecomKeyConfigured || '',
           juheTelecomKeyInput: '',
@@ -919,6 +923,11 @@ Page({
 
   togglePetBreedAi(e) {
     this.setData({ ['settings.enablePetBreedAi']: e.detail.value })
+  },
+
+  toggleManor3d(e) {
+    if (this.data.adminSuper === false) return
+    this.setData({ ['settings.enableManor3d']: e.detail.value === true })
   },
 
   toggleCarouselEnabled(e) {
@@ -2313,6 +2322,7 @@ Page({
       ...this.data.settings,
       juheTelecomKeyInput: keyInputToSubmit,
       enableTestAddressMode: this.data.settings.enableTestAddressMode === true,
+      enableManor3d: this.data.settings.enableManor3d !== false,
       enablePetBreedAi: this.data.settings.enablePetBreedAi !== false,
       payment: this.data.settings.payment,
       settlement: this.data.settings.settlement,
@@ -2370,6 +2380,7 @@ Page({
           staffSupplies: normalizeStaffSupplies(settings.staffSupplies),
           staffZhima: normalizeStaffZhima(settings.staffZhima),
           enableTestAddressMode: settings.enableTestAddressMode === true,
+          enableManor3d: settings.enableManor3d !== false,
           enablePetBreedAi: settings.enablePetBreedAi !== false,
           logistics: normalizeLogisticsConfig(settings.logistics),
           payment: normalizePaymentConfig(settings.payment),

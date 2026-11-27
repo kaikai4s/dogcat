@@ -1,5 +1,14 @@
-const { callFunction, showError, ensureLogin } = require('../../utils/cloud')
+const { callFunction, showError, ensureLogin, getCachedSystemSettings, setCachedSystemSettings } = require('../../utils/cloud')
 const { getActiveEnvId, hasManorAssets } = require('../../envList')
+
+function canShowManor3d(enabled) {
+  if (!hasManorAssets(getActiveEnvId())) return false
+  if (typeof enabled === 'boolean') return enabled
+  if (typeof getCachedSystemSettings === 'function') {
+    return getCachedSystemSettings()?.enableManor3d !== false
+  }
+  return true
+}
 
 Page({
   data: {
@@ -16,7 +25,7 @@ Page({
   },
 
   onLoad() {
-    this.setData({ showManor3d: hasManorAssets(getActiveEnvId()) })
+    this.setData({ showManor3d: canShowManor3d() })
   },
 
   onShow() {
@@ -46,11 +55,16 @@ Page({
       .then((overview) => {
         if (!current()) return
         const pets = overview.pets || []
+        const manor3dEnabled = overview.enableManor3d !== false
+        if (typeof overview.enableManor3d === 'boolean' && typeof setCachedSystemSettings === 'function' && typeof getCachedSystemSettings === 'function') {
+          setCachedSystemSettings({ ...getCachedSystemSettings(), enableManor3d: overview.enableManor3d })
+        }
         this.setData({
           overview,
           pets,
           empty: !pets.length,
           loading: false,
+          showManor3d: canShowManor3d(manor3dEnabled),
           userCommunity: overview.userCommunity || null,
           hasCommunity: Boolean(overview.hasCommunity)
         })

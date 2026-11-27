@@ -1141,9 +1141,10 @@ module.exports = function createHandler(context) {
     }
     if (action === 'savePlaygroundSettings') {
       const current=await getSystemSettings({includeSecrets:true})
-      const saved=await saveSystemSettings({...current,playground:data.playground,playgroundCare:data.playgroundCare,playgroundGroupBuy:data.playgroundGroupBuy})
+      const enableManor3d = data.enableManor3d === undefined ? current.enableManor3d !== false : data.enableManor3d !== false
+      const saved=await saveSystemSettings({...current,enableManor3d,playground:data.playground,playgroundCare:data.playgroundCare,playgroundGroupBuy:data.playgroundGroupBuy})
       const result=normalizeSystemSettings(saved.value)
-      await logAdmin(admin,'platform_config','playground','savePlaygroundSettings',{playground:result.playground,playgroundGroupBuy:result.playgroundGroupBuy,playgroundCare:result.playgroundCare})
+      await logAdmin(admin,'platform_config','playground','savePlaygroundSettings',{enableManor3d:result.enableManor3d,playground:result.playground,playgroundGroupBuy:result.playgroundGroupBuy,playgroundCare:result.playgroundCare})
       return result
     }
     if (action === 'saveSystemSettings') {

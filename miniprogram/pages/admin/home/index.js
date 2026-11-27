@@ -49,7 +49,7 @@ const adminSections = [
     items: [
       { icon: 'ri-leaf-line', title: '纪念园管理', desc: '新增、命名园区与申请设置', url: '/pages/admin/memorial/gardens' },
       { icon: 'ri-leaf-line', title: '时光小筑审核', desc: '小筑申请、公开回忆与宠物画像', url: '/pages/admin/memorial/index' },
-      { icon: 'ri-home-heart-line', title: '庄园规则与配置', desc: '拼单优惠、猫狗状态与排泄规则', url: '/pages/admin/playground/index' },
+      { icon: 'ri-home-heart-line', title: '庄园规则与配置', desc: '3D庄园开关、拼单与状态规则', url: '/pages/admin/playground/index' },
       { icon: 'ri-palette-line', title: '乐园形象定制', desc: '照片申请与专属形象发布', url: '/pages/admin/playground-customizations/index' },
       { icon: 'ri-plant-line', title: '农作物管理', desc: '装饰素材、生长阶段与会员解锁', url: '/pages/admin/playground-crops/index' },
       { icon: 'ri-building-line', title: '乐园建筑管理', desc: '建筑素材、土地会员解锁与积分配置', url: '/pages/admin/playground-buildings/index' },

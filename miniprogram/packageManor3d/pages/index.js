@@ -245,7 +245,10 @@ Page({
       const user = require('../../utils/cloud').getCachedUser?.()
       this._openPositionSlot('local', user?._id || user?.openid || user?._openid || 'guest')
     }
-    if (!hasManorAssets(this._envId)) {
+    const cloud = require('../../utils/cloud')
+    const cachedDisabled = typeof cloud.getCachedSystemSettings === 'function' &&
+      cloud.getCachedSystemSettings()?.enableManor3d === false
+    if (!hasManorAssets(this._envId) || cachedDisabled) {
       this.setData({ status: 'unavailable', mountCanvas: false })
       return
     }
@@ -260,8 +263,33 @@ Page({
     this._beginLoad()
   },
 
+  _markManor3dUnavailable() {
+    if (this._closed || this.data.status === 'unavailable') return
+    this._stopFrames()
+    this._stopLoad()
+    this._stopLoad('_characterSession')
+    this._stopLoad('_interiorSession')
+    this._stopLoad('_buildModelSession')
+    this._stopLoad('_vehicleSession')
+    this._stopLoad('_highRiseSession')
+    this._stopLoad('_remoteCharacterSession')
+    this._disconnectCommunity()
+    this._releaseScene()
+    this.setData({ status: 'unavailable', mountCanvas: false, error: '', communityStatus: 'idle', communityError: '' })
+  },
+
   onShow() {
     this._shown = true
+    const cloud = require('../../utils/cloud')
+    if (typeof cloud.getCachedSystemSettings === 'function' && cloud.getCachedSystemSettings()?.enableManor3d === false) {
+      this._markManor3dUnavailable()
+      return
+    }
+    if (typeof cloud.loadSystemSettings === 'function' && this.data.status !== 'unavailable') {
+      cloud.loadSystemSettings().then(settings => {
+        if (settings?.enableManor3d === false) this._markManor3dUnavailable()
+      }).catch(() => {})
+    }
     this._highRiseUnavailable = false
     this._prepareCommunityEntry()
     if (this._hasLandscape) {
@@ -572,6 +600,10 @@ Page({
           },
           error => {
             if (!isCurrent()) return
+            if (error?.code === 'MANOR3D_DISABLED') {
+              this._markManor3dUnavailable()
+              return
+            }
             this._communityConnected = false
             this.setData({ communityStatus: 'error', communityError: error?.message || '邻居同步暂时中断', canBuildManor3d: false })
             this._refreshBuild()
@@ -589,7 +621,13 @@ Page({
         await sync.start()
         if (isCurrent() && this._communityConnected) this._placeCommunityCharacter()
       } catch (error) {
-        if (isCurrent()) this.setData({ communityStatus: 'error', communityError: error?.message || '庄园场景连接失败，请重试' })
+        if (isCurrent()) {
+          if (error?.code === 'MANOR3D_DISABLED') {
+            this._markManor3dUnavailable()
+          } else {
+            this.setData({ communityStatus: 'error', communityError: error?.message || '庄园场景连接失败，请重试' })
+          }
+        }
       } finally {
         if (generation === this._communityEntryGeneration) this._communityEntryPromise = null
       }

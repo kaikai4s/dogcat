@@ -1,5 +1,16 @@
 const STORAGE_PREFIX = 'manor3d:entry:'
 const TARGET_URL = '/packageManor3d/pages/index?entryKey='
+const SETTINGS_STORAGE_KEY = 'vip_pet_system_settings'
+
+function isManor3dDisabled() {
+  try {
+    if (typeof wx !== 'undefined' && typeof wx.getStorageSync === 'function') {
+      const cached = wx.getStorageSync(SETTINGS_STORAGE_KEY)
+      return Boolean(cached && cached.enableManor3d === false)
+    }
+  } catch (_) {}
+  return false
+}
 
 function createEntryKey() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 10)
@@ -37,6 +48,10 @@ Page({
 
   async chooseCommunity() {
     if (!this._alive || this.data.opening) return
+    if (isManor3dDisabled()) {
+      this.setData({ opening: false, error: '3D 庄园暂未开放' })
+      return
+    }
     const generation = this._openingGeneration = (this._openingGeneration || 0) + 1
     this.setData({ opening: true, error: '' })
     try {
@@ -57,6 +72,10 @@ Page({
 
   enterSolo() {
     if (!this._alive || this.data.opening) return
+    if (isManor3dDisabled()) {
+      this.setData({ opening: false, error: '3D 庄园暂未开放' })
+      return
+    }
     this.setData({ opening: true, error: '' })
     this.openManor(null)
   },

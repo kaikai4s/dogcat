@@ -28,6 +28,21 @@ function careConfig(value = {}) {
 async function readConfig(db) {
   const res = await db.collection('platform_configs').where({ key: 'system_settings' }).limit(1).get()
   const value = (res.data && res.data[0] && res.data[0].value) || {}
-  return { groupBuy: groupConfig(value.playgroundGroupBuy), care: careConfig(value.playgroundCare) }
+  return { enableManor3d: value.enableManor3d !== false, groupBuy: groupConfig(value.playgroundGroupBuy), care: careConfig(value.playgroundCare) }
 }
-module.exports = { DEFAULT_GROUP, DEFAULT_CARE, groupConfig, careConfig, readConfig }
+async function isManor3dEnabled(db, getSystemSettings) {
+  if (typeof getSystemSettings === 'function') {
+    const settings = await getSystemSettings()
+    return settings?.enableManor3d !== false
+  }
+  if (!db || typeof db.collection !== 'function') return true
+  const res = await db.collection('platform_configs').where({ key: 'system_settings' }).limit(1).get()
+  const value = (res.data && res.data[0] && res.data[0].value) || {}
+  return value.enableManor3d !== false
+}
+async function assertManor3dEnabled(db, getSystemSettings) {
+  if (!(await isManor3dEnabled(db, getSystemSettings))) {
+    throw Object.assign(new Error('3D 庄园暂未开放'), { code: 'MANOR3D_DISABLED' })
+  }
+}
+module.exports = { DEFAULT_GROUP, DEFAULT_CARE, groupConfig, careConfig, readConfig, isManor3dEnabled, assertManor3dEnabled }

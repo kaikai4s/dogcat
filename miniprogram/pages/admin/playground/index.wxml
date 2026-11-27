@@ -1,5 +1,5 @@
 <view class="manor-admin {{fontClass}}">
-  <view class="admin-hero"><view class="eyebrow">社区运营</view><view class="page-title">宠物庄园管理</view><view class="hero-tip">拼单规则、场景空间与宠物状态统一管理</view></view>
+  <view class="admin-hero"><view class="eyebrow">社区运营</view><view class="page-title">宠物庄园管理</view><view class="hero-tip">3D 庄园开关、拼单规则、场景空间与宠物状态统一管理</view></view>
   <view class="quick-links">
     <navigator wx:if="{{adminSuper || adminPermissions.playgroundAppearance_listAdmin}}" url="/pages/admin/playground-customizations/index"><text class="remix-icon ri-user-smile-line"></text><text>形象定制</text><text class="link-arrow">›</text></navigator>
     <navigator wx:if="{{adminSuper || adminPermissions.playgroundFarm_list}}" url="/pages/admin/playground-crops/index"><text class="remix-icon ri-plant-line"></text><text>庭院植物</text><text class="link-arrow">›</text></navigator>
@@ -9,6 +9,10 @@
   <view wx:elif="{{loadError}}" class="empty-state"><view>配置加载失败</view><button bindtap="load">重新加载</button></view>
   <block wx:elif="{{settings}}">
     <view class="readonly-note" wx:if="{{!adminSuper}}"><text class="remix-icon ri-lock-2-line"></text> 当前为查看模式，保存平台规则需主管理员权限</view>
+    <view class="card">
+      <view class="card-heading"><view><view class="card-title">3D 庄园</view><view class="card-subtitle">控制用户端 3D 庄园入口展示与场景开放状态</view></view><text class="section-icon remix-icon ri-building-line"></text></view>
+      <view class="manor-field" style="border-bottom:0;padding-bottom:4rpx"><view class="field-main"><text>开启 3D 庄园</text><text class="field-tip">关闭后隐藏用户端 3D 庄园入口并暂停进入 3D 场景，2D 庄园不受影响</text></view><switch color="#397660" checked="{{settings.enableManor3d !== false}}" disabled="{{!adminSuper || saving}}" data-field="enableManor3d" bindchange="toggle" /></view>
+    </view>
     <view class="card">
       <view class="card-heading"><view><view class="card-title">同小区拼单</view><view class="card-subtitle">控制开放范围与成团优惠</view></view><text class="section-icon remix-icon ri-building-line"></text></view>
       <view class="manor-field"><view class="field-main"><text>开放拼单</text><text class="field-tip">关闭后已有订单仍可查看</text></view><switch color="#397660" checked="{{settings.playgroundGroupBuy.enabled}}" disabled="{{!adminSuper || saving}}" data-field="playgroundGroupBuy.enabled" bindchange="toggle" /></view>

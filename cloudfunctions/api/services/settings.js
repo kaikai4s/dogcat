@@ -258,6 +258,9 @@ module.exports = function createService({
     const normalized = {
       maxPetsPerUser: Math.max(1, Math.min(100, Math.round(Number(value.maxPetsPerUser ?? existingSettings.maxPetsPerUser ?? 20)))),
       enableTestAddressMode: value.enableTestAddressMode === true,
+      enableManor3d: value.enableManor3d !== undefined
+        ? value.enableManor3d !== false
+        : existingSettings.enableManor3d !== false,
       playground: require('./playground-world').dimensions(value.playground || existingSettings.playground || {}),
       playgroundGroupBuy: require('./playground-config').groupConfig(value.playgroundGroupBuy || existingSettings.playgroundGroupBuy),
       playgroundCare: require('./playground-config').careConfig(value.playgroundCare || existingSettings.playgroundCare),

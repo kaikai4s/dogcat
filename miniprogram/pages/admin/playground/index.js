@@ -35,7 +35,12 @@ Page({
   onShow() { if (!this.data.settings) return this.load() },
   async load() {
     this.setData({ loading: true, loadError: false })
-    try { const settings = await callFunction('admin','getSystemSettings'); this.setData({ settings }); this.updatePreview() }
+    try {
+      const raw = await callFunction('admin','getSystemSettings')
+      const settings = { ...raw, enableManor3d: raw.enableManor3d !== false }
+      this.setData({ settings })
+      this.updatePreview()
+    }
     catch(error) { this.setData({ loadError: true }); showError(error) }
     finally { this.setData({ loading: false }) }
   },
@@ -53,8 +58,8 @@ Page({
     this.setData({saving:true})
     try {
       const s = this.data.settings
-      const result = await callFunction('admin','savePlaygroundSettings',{playground:s.playground,playgroundGroupBuy:s.playgroundGroupBuy,playgroundCare:s.playgroundCare})
-      setCachedSystemSettings(result); this.setData({ settings: result, dirty: false }); this.updatePreview()
+      const result = await callFunction('admin','savePlaygroundSettings',{enableManor3d:s.enableManor3d!==false,playground:s.playground,playgroundGroupBuy:s.playgroundGroupBuy,playgroundCare:s.playgroundCare})
+      setCachedSystemSettings(result); this.setData({ settings: { ...result, enableManor3d: result.enableManor3d !== false }, dirty: false }); this.updatePreview()
       wx.showToast({title:'庄园配置已保存'})
     } catch(error) { showError(error) } finally { this.setData({saving:false}) }
   }
